@@ -32,7 +32,9 @@ public static class Program
 
             if (mode == EngineMode.Live || mode == EngineMode.Paper)
             {
-                builder.Services.AddSingleton<IBrokerAdapter, NamedPipeBrokerAdapter>();
+                var pipeName = builder.Configuration.GetValue<string>("Engine:Broker:PipeName") ?? "trading-engine";
+                builder.Services.AddSingleton<IBrokerAdapter>(sp =>
+                    new NamedPipeBrokerAdapter(pipeName, sp.GetRequiredService<ILogger<NamedPipeBrokerAdapter>>()));
             }
             else
             {

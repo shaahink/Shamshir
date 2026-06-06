@@ -1,214 +1,199 @@
 using System;
 using cAlgo.API;
 
-namespace TradingEngine.Adapters.CTrader
+namespace TradingEngine.Adapters.CTrader;
+
+public class OrderCommandHandler
 {
-    public class OrderCommandHandler
+    private readonly PipeClient _pipe;
+    private readonly Robot _robot;
+    private readonly ExecutionEventPublisher _executionPublisher;
+    private readonly AccountUpdatePublisher _accountPublisher;
+
+    public OrderCommandHandler(PipeClient pipe, Robot robot,
+        ExecutionEventPublisher executionPublisher,
+        AccountUpdatePublisher accountPublisher)
     {
-        private readonly PipeClient _pipe;
-        private readonly Robot _robot;
-        private readonly ExecutionEventPublisher _executionPublisher;
-        private readonly AccountUpdatePublisher _accountPublisher;
+        _pipe = pipe;
+        _robot = robot;
+        _executionPublisher = executionPublisher;
+        _accountPublisher = accountPublisher;
+    }
 
-        public OrderCommandHandler(PipeClient pipe, Robot robot,
-            ExecutionEventPublisher executionPublisher,
-            AccountUpdatePublisher accountPublisher)
+    public void Handle(PipeMessage message)
+    {
+        switch (message.Type)
         {
-            _pipe = pipe;
-            _robot = robot;
-            _executionPublisher = executionPublisher;
-            _accountPublisher = accountPublisher;
+            case "SubmitOrder":
+                HandleSubmitOrder(message.Payload);
+                break;
+            case "ModifyOrder":
+                HandleModifyOrder(message.Payload);
+                break;
+            case "CancelOrder":
+                HandleCancelOrder(message.Payload);
+                break;
+            case "ClosePosition":
+                HandleClosePosition(message.Payload);
+                break;
         }
+    }
 
-        public void Handle(PipeMessage message)
+    private void HandleSubmitOrder(string payload)
+    {
+        try
         {
-            switch (message.Type)
+            var data = MessageSerializer.Deserialize<SubmitOrderData>(payload);
+            var symbol = _robot.Symbols.GetSymbol(data.Symbol);
+            if (symbol is null)
             {
-                case "SubmitOrder":
-                    HandleSubmitOrder(message.Payload);
-                    break;
-                case "ModifyOrder":
-                    HandleModifyOrder(message.Payload);
-                    break;
-                case "CancelOrder":
-                    HandleCancelOrder(message.Payload);
-                    break;
-                case "ClosePosition":
-                    HandleClosePosition(message.Payload);
-                    break;
+                _executionPublisher.Publish(data.CorrelationId, "Rejected", null, 0,
+                    "Unknown symbol: " + data.Symbol, DateTime.UtcNow);
+                return;
+            }
+
+            var tradeType = data.Direction == "Long" ? TradeType.Buy : TradeType.Sell;
+            var volumeInUnits = LotsToVolume(data.Lots, symbol);
+            var slPips = PriceToPips(data.SlPrice, symbol);
+            var tpPips = PriceToPips(data.TpPrice, symbol);
+
+            var result = _robot.ExecuteMarketOrder(
+                tradeType, data.Symbol, volumeInUnits, "Shamshir", slPips, tpPips);
+
+            if (result?.IsSuccessful == true)
+            {
+                var pos = result.Position;
+                _executionPublisher.Publish(
+                    data.CorrelationId, "Filled", pos.EntryPrice, pos.VolumeInUnits, null, pos.EntryTime);
+
+                _accountPublisher.Publish(
+                    _robot.Account.Balance, _robot.Account.Equity,
+                    _robot.Account.Equity - _robot.Account.Balance, DateTime.UtcNow);
+            }
+            else
+            {
+                var error = result?.Error.ToString() ?? "Null result";
+                _executionPublisher.Publish(data.CorrelationId, "Rejected", null, 0, error, DateTime.UtcNow);
             }
         }
-
-        private void HandleSubmitOrder(string payload)
+        catch (Exception ex)
         {
-            try
-            {
-                var data = MessageSerializer.Deserialize<SubmitOrderData>(payload);
-                var symbol = _robot.Symbols.GetSymbol(data.Symbol);
-                if (symbol == null)
-                {
-                    _executionPublisher.Publish(data.CorrelationId, "Rejected", null, 0,
-                        "Unknown symbol: " + data.Symbol, DateTime.UtcNow);
-                    return;
-                }
-
-                var tradeType = data.Direction == "Long" ? TradeType.Buy : TradeType.Sell;
-                var volumeInUnits = LotsToVolume(data.Lots, symbol);
-                var slPips = PriceToPips(data.SlPrice, symbol);
-                var tpPips = PriceToPips(data.TpPrice, symbol);
-
-                var result = _robot.ExecuteMarketOrder(
-                    tradeType,
-                    data.Symbol,
-                    volumeInUnits,
-                    "Shamshir",
-                    slPips,
-                    tpPips);
-
-                if (result != null && result.IsSuccessful)
-                {
-                    var pos = result.Position;
-                    _executionPublisher.Publish(
-                        data.CorrelationId,
-                        "Filled",
-                        pos.EntryPrice,
-                        pos.VolumeInUnits,
-                        null,
-                        pos.EntryTime);
-
-                    _accountPublisher.Publish(
-                        _robot.Account.Balance,
-                        _robot.Account.Equity,
-                        _robot.Account.Equity - _robot.Account.Balance,
-                        DateTime.UtcNow);
-                }
-                else
-                {
-                    var error = result != null ? result.Error.ToString() : "Null result";
-                    _executionPublisher.Publish(
-                        data.CorrelationId,
-                        "Rejected",
-                        null,
-                        0,
-                        error,
-                        DateTime.UtcNow);
-                }
-            }
-            catch (Exception ex)
-            {
-                var data2 = MessageSerializer.Deserialize<SubmitOrderData>(payload);
-                _executionPublisher.Publish(data2.CorrelationId, "Rejected", null, 0,
-                    ex.Message, DateTime.UtcNow);
-            }
+            var d = MessageSerializer.Deserialize<SubmitOrderData>(payload);
+            _executionPublisher.Publish(d.CorrelationId, "Rejected", null, 0, ex.Message, DateTime.UtcNow);
         }
+    }
 
-        private void HandleModifyOrder(string payload)
+    private void HandleModifyOrder(string payload)
+    {
+        try
         {
-            try
+            var data = MessageSerializer.Deserialize<ModifyOrderData>(payload);
+            foreach (var pos in _robot.Positions)
             {
-                var data = MessageSerializer.Deserialize<ModifyOrderData>(payload);
-                foreach (var pos in _robot.Positions)
+                if (pos.Id.ToString() == data.OrderId.ToString())
                 {
-                    if (pos.Label == "Shamshir")
+                    var symbol = _robot.Symbols.GetSymbol(pos.SymbolName);
+                    if (symbol is not null)
                     {
-                        _robot.ModifyPosition(pos, pos.VolumeInUnits);
-                        break;
+#pragma warning disable CS0618
+                        _robot.ModifyPosition(pos, data.NewStopLoss, data.NewTakeProfit);
+#pragma warning restore CS0618
                     }
+                    break;
                 }
             }
-            catch (Exception ex)
-            {
-                _robot.Print("ModifyOrder error: " + ex.Message);
-            }
         }
-
-        private void HandleCancelOrder(string payload)
+        catch (Exception ex)
         {
-            try
+            _robot.Print("ModifyOrder error: " + ex.Message);
+        }
+    }
+
+    private void HandleCancelOrder(string payload)
+    {
+        try
+        {
+            var data = MessageSerializer.Deserialize<CancelOrderData>(payload);
+            foreach (var order in _robot.PendingOrders)
             {
-                var data = MessageSerializer.Deserialize<CancelOrderData>(payload);
-                foreach (var order in _robot.PendingOrders)
+                if (order.Label == "Shamshir")
                 {
-                    if (order.Label == "Shamshir")
-                    {
-                        _robot.CancelPendingOrder(order);
-                        break;
-                    }
+                    _robot.CancelPendingOrder(order);
+                    break;
                 }
             }
-            catch (Exception ex)
-            {
-                _robot.Print("CancelOrder error: " + ex.Message);
-            }
         }
-
-        private void HandleClosePosition(string payload)
+        catch (Exception ex)
         {
-            try
+            _robot.Print("CancelOrder error: " + ex.Message);
+        }
+    }
+
+    private void HandleClosePosition(string payload)
+    {
+        try
+        {
+            var data = MessageSerializer.Deserialize<ClosePositionData>(payload);
+            foreach (var pos in _robot.Positions)
             {
-                foreach (var pos in _robot.Positions)
+                if (pos.Id.ToString() == data.PositionId.ToString())
                 {
-                    if (pos.Label == "Shamshir")
+                    var result = _robot.ClosePosition(pos);
+                    if (result?.IsSuccessful == true)
                     {
-                        var result = _robot.ClosePosition(pos);
-                        if (result != null && result.IsSuccessful)
-                        {
-                            _accountPublisher.Publish(
-                                _robot.Account.Balance,
-                                _robot.Account.Equity,
-                                _robot.Account.Equity - _robot.Account.Balance,
-                                DateTime.UtcNow);
-                        }
-                        break;
+                        _accountPublisher.Publish(
+                            _robot.Account.Balance, _robot.Account.Equity,
+                            _robot.Account.Equity - _robot.Account.Balance, DateTime.UtcNow);
                     }
+                    break;
                 }
             }
-            catch (Exception ex)
-            {
-                _robot.Print("ClosePosition error: " + ex.Message);
-            }
         }
-
-        private static double LotsToVolume(double lots, cAlgo.API.Internals.Symbol symbol)
+        catch (Exception ex)
         {
-            var rawVolume = lots * 100000.0;
-            var step = symbol.VolumeInUnitsStep;
-            if (step <= 0) return rawVolume;
-            return Math.Floor(rawVolume / step) * step;
+            _robot.Print("ClosePosition error: " + ex.Message);
         }
+    }
 
-        private static double? PriceToPips(double price, cAlgo.API.Internals.Symbol symbol)
-        {
-            if (price <= 0) return null;
-            var diff = Math.Abs(price - symbol.Bid);
-            return diff / symbol.PipSize;
-        }
+    private static double LotsToVolume(double lots, cAlgo.API.Internals.Symbol symbol)
+    {
+        var rawVolume = lots * 100000.0;
+        var step = symbol.VolumeInUnitsStep;
+        if (step <= 0) return rawVolume;
+        return Math.Floor(rawVolume / step) * step;
+    }
 
-        private class SubmitOrderData
-        {
-            public Guid CorrelationId { get; set; }
-            public string Symbol { get; set; }
-            public string Direction { get; set; }
-            public double Lots { get; set; }
-            public double SlPrice { get; set; }
-            public double TpPrice { get; set; }
-        }
+    private static double? PriceToPips(double price, cAlgo.API.Internals.Symbol symbol)
+    {
+        if (price <= 0) return null;
+        var mid = (symbol.Bid + symbol.Ask) / 2.0;
+        return Math.Abs(price - mid) / symbol.PipSize;
+    }
 
-        private class ModifyOrderData
-        {
-            public Guid OrderId { get; set; }
-            public double NewStopLoss { get; set; }
-            public double NewTakeProfit { get; set; }
-        }
+    private class SubmitOrderData
+    {
+        public Guid CorrelationId { get; set; }
+        public string Symbol { get; set; } = "";
+        public string Direction { get; set; } = "";
+        public double Lots { get; set; }
+        public double SlPrice { get; set; }
+        public double TpPrice { get; set; }
+    }
 
-        private class CancelOrderData
-        {
-            public Guid OrderId { get; set; }
-        }
+    private class ModifyOrderData
+    {
+        public Guid OrderId { get; set; }
+        public double NewStopLoss { get; set; }
+        public double NewTakeProfit { get; set; }
+    }
 
-        private class ClosePositionData
-        {
-            public Guid PositionId { get; set; }
-        }
+    private class CancelOrderData
+    {
+        public Guid OrderId { get; set; }
+    }
+
+    private class ClosePositionData
+    {
+        public Guid PositionId { get; set; }
     }
 }

@@ -1,31 +1,30 @@
 using System;
 
-namespace TradingEngine.Adapters.CTrader
+namespace TradingEngine.Adapters.CTrader;
+
+public class AccountUpdatePublisher
 {
-    public class AccountUpdatePublisher
+    private readonly PipeClient _pipe;
+
+    public AccountUpdatePublisher(PipeClient pipe)
     {
-        private readonly PipeClient _pipe;
+        _pipe = pipe;
+    }
 
-        public AccountUpdatePublisher(PipeClient pipe)
+    public void Publish(double balance, double equity, double floatingPnl, DateTime timestamp)
+    {
+        var payload = MessageSerializer.Serialize(new
         {
-            _pipe = pipe;
-        }
+            Balance = balance,
+            Equity = equity,
+            FloatingPnL = floatingPnl,
+            TimestampUtc = timestamp.ToString("o")
+        });
 
-        public void Publish(double balance, double equity, double floatingPnl, DateTime timestamp)
+        _pipe.Send(new PipeMessage
         {
-            var payload = MessageSerializer.Serialize(new
-            {
-                Balance = balance,
-                Equity = equity,
-                FloatingPnL = floatingPnl,
-                TimestampUtc = timestamp.ToString("o")
-            });
-
-            _pipe.Send(new PipeMessage
-            {
-                Type = "AccountUpdate",
-                Payload = payload
-            });
-        }
+            Type = "AccountUpdate",
+            Payload = payload
+        });
     }
 }

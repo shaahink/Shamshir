@@ -5,6 +5,7 @@
   <Folder Name="/src/">
     <Project Path="src/TradingEngine.Adapters.CTrader/TradingEngine.Adapters.CTrader.csproj" />
     <Project Path="src/TradingEngine.Application/TradingEngine.Application.csproj" />
+    <Project Path="src/TradingEngine.CTraderRunner/TradingEngine.CTraderRunner.csproj" />
     <Project Path="src/TradingEngine.Domain/TradingEngine.Domain.csproj" />
     <Project Path="src/TradingEngine.Host/TradingEngine.Host.csproj" />
     <Project Path="src/TradingEngine.Infrastructure/TradingEngine.Infrastructure.csproj" />

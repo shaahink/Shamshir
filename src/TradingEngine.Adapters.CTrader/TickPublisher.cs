@@ -1,31 +1,30 @@
 using System;
 
-namespace TradingEngine.Adapters.CTrader
+namespace TradingEngine.Adapters.CTrader;
+
+public class TickPublisher
 {
-    public class TickPublisher
+    private readonly PipeClient _pipe;
+
+    public TickPublisher(PipeClient pipe)
     {
-        private readonly PipeClient _pipe;
+        _pipe = pipe;
+    }
 
-        public TickPublisher(PipeClient pipe)
+    public void Publish(string symbol, double bid, double ask, DateTime timestamp)
+    {
+        var payload = MessageSerializer.Serialize(new
         {
-            _pipe = pipe;
-        }
+            Symbol = symbol,
+            Bid = bid,
+            Ask = ask,
+            TimestampUtc = timestamp.ToString("o")
+        });
 
-        public void Publish(string symbol, double bid, double ask, DateTime timestamp)
+        _pipe.Send(new PipeMessage
         {
-            var payload = MessageSerializer.Serialize(new
-            {
-                Symbol = symbol,
-                Bid = bid,
-                Ask = ask,
-                TimestampUtc = timestamp.ToString("o")
-            });
-
-            _pipe.Send(new PipeMessage
-            {
-                Type = "Tick",
-                Payload = payload
-            });
-        }
+            Type = "Tick",
+            Payload = payload
+        });
     }
 }

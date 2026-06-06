@@ -1,12 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
-    <LangVersion>6</LangVersion>
-    <Nullable>disable</Nullable>
-    <ImplicitUsings>disable</ImplicitUsings>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>10</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="cTrader.Automate" Version="*" />
     <PackageReference Include="Newtonsoft.Json" Version="13.*" />
   </ItemGroup>
+
+  <Target Name="AutoDeployAlgo" AfterTargets="Build"
+          Condition="'$(AutoDeploy)' == 'true' AND '$(CTraderSourcesPath)' != ''">
+    <Copy SourceFiles="$(OutputPath)src.algo"
+          DestinationFolder="$(CTraderSourcesPath)"
+          OverwriteReadOnlyFiles="true" />
+    <Message Text="[Shamshir] Deployed src.algo → $(CTraderSourcesPath)" Importance="high" />
+  </Target>
 </Project>

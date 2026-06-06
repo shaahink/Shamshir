@@ -308,7 +308,7 @@ Quick reference:
 **Iteration 1 total:** 159 `.cs` source files + 17 test files | 37 tests | All 10 phases merged
 **Iteration 2 status:** See `ITERATION-2.md` — 3 sub-phases, 24 confirmed bugs, 4 new decisions
 **Iteration 3 status:** ✅ Complete (R1–R7). See `ITERATION-3-FINAL.md` — deep review found 6 critical + 7 serious + 10 moderate surviving bugs; 15 new decisions (D36–D50); strategy composition design; iteration 4 plan
-**Iteration 4 status:** Not started. See `ITERATION-3-FINAL.md §12` — 6 phases (4A–4F): critical fixes, OrderDispatcher wiring, composition + 3 new strategies, lot-sizing methods, live-mode robustness, Aspire fix
+**Iteration 4 status:** Not started. See `ITERATION-4.md` — money management circuit (4A) + cTrader CLI integration (11A–11E). D51–D59 resolved.
 
 ### Iteration 1 (Phases 0–10)
 
@@ -387,7 +387,7 @@ Quick reference:
 ### New Decisions (D36–D50) — Resolved in ITERATION-3-FINAL.md
 
 | ID | Decision | Vote |
-|---|---|---|
+|---|---|---|---|
 | D36 | Bar history cap | ✅ A — `MaxBarsPerTimeframe = 500`; evict oldest when exceeded |
 | D37 | Indicator key namespace | ✅ A — prefix with symbol: `"EURUSD:ATR_14"`; strip prefix when building `MarketContext.IndicatorValues` |
 | D38 | Strategy composition model | ✅ A — `ISignalProvider` + `IEntryFilter` + `IExitBehavior` + `IPositionBehavior`; `IStrategy` unchanged; new strategies use `ComposedStrategy` wrapper |
@@ -402,4 +402,13 @@ Quick reference:
 | D47 | Duplicate execution guard | ✅ A — `HashSet<Guid> _processedExecutionIds`; skip already-processed events |
 | D48 | Force close on DD breach | ✅ A — when `ForceCloseOnBreach == true` and max-DD protection entered: publish `ForceCloseAllRequested`; `EngineWorker` calls `ClosePositionAsync` for all open positions |
 | D49 | Aspire shared DB path | ✅ A — `Engine__Mode` env var (double underscore); `Persistence__DbPath` shared; `WaitForCompletion(engine)` on web |
-| D50 | Three new strategies | ✅ A — `EmaAlignmentStrategy`, `MeanReversionStrategy`, `SessionBreakoutStrategy`; all use `ComposedStrategy`; each with session filters and position behaviors |
+ | D50 | Three new strategies | ✅ A — `EmaAlignmentStrategy`, `MeanReversionStrategy`, `SessionBreakoutStrategy`; all use `ComposedStrategy`; each with session filters and position behaviors |
+ | D51 | DailyDdBase enum | ✅ A — `InitialBalance` / `DailyStart` on `PropFirmRuleSet`; drawdown tracker dispatches on mode |
+ | D52 | cBot target framework | ✅ A — `net6.0` — required for cTrader CLI (CLI rejects net48 algo files) |
+ | D53 | ctrader-cli.exe discovery | ✅ A — auto-glob `%LOCALAPPDATA%\Spotware\cTrader\**\ctrader-cli.exe`, take newest; config override `CTrader:CliPath` |
+ | D54 | Pipe transport for CLI backtest | ✅ A — named pipe (Windows); TCP deferred to future iteration |
+ | D55 | CTraderRunner project | ✅ A — new project `src/TradingEngine.CTraderRunner` (net10.0); runtime library for orchestrating ctrader-cli backtests |
+ | D56 | Backtest results storage | ✅ A — `BacktestRuns` table in existing SQLite via `TradingDbContext`; `BacktestRunSummary` domain record keyed by run ID |
+ | D57 | Web UI backtest page scope | ✅ A — table only, no charts, no detail page. Charts deferred |
+ | D58 | Auto-deploy mechanism | ✅ A — MSBuild `AfterTargets="Build"` target, gated by `-p:AutoDeploy=true`; off by default |
+ | D59 | Phase 4D merged into 4C | ✅ A — lot sizing variants implemented in same branch as strategy composition |

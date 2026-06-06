@@ -1,33 +1,32 @@
 using System;
 
-namespace TradingEngine.Adapters.CTrader
+namespace TradingEngine.Adapters.CTrader;
+
+public class ExecutionEventPublisher
 {
-    public class ExecutionEventPublisher
+    private readonly PipeClient _pipe;
+
+    public ExecutionEventPublisher(PipeClient pipe)
     {
-        private readonly PipeClient _pipe;
+        _pipe = pipe;
+    }
 
-        public ExecutionEventPublisher(PipeClient pipe)
+    public void Publish(Guid orderId, string newState, double? fillPrice, double filledLots, string? rejectionReason, DateTime timestamp)
+    {
+        var payload = MessageSerializer.Serialize(new
         {
-            _pipe = pipe;
-        }
+            OrderId = orderId,
+            NewState = newState,
+            FillPrice = fillPrice,
+            FilledLots = filledLots,
+            RejectionReason = rejectionReason,
+            TimestampUtc = timestamp.ToString("o")
+        });
 
-        public void Publish(Guid orderId, string newState, double? fillPrice, double filledLots, string rejectionReason, DateTime timestamp)
+        _pipe.Send(new PipeMessage
         {
-            var payload = MessageSerializer.Serialize(new
-            {
-                OrderId = orderId,
-                NewState = newState,
-                FillPrice = fillPrice,
-                FilledLots = filledLots,
-                RejectionReason = rejectionReason,
-                TimestampUtc = timestamp.ToString("o")
-            });
-
-            _pipe.Send(new PipeMessage
-            {
-                Type = "ExecutionEvent",
-                Payload = payload
-            });
-        }
+            Type = "ExecutionEvent",
+            Payload = payload
+        });
     }
 }
