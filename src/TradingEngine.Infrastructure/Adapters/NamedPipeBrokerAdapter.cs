@@ -1,5 +1,6 @@
 using System.IO.Pipes;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Channels;
 
 namespace TradingEngine.Infrastructure.Adapters;
@@ -87,7 +88,69 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         catch (IOException) { }
     }
 
-    private void ProcessMessage(string json) { }
+    private void ProcessMessage(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var type = doc.RootElement.GetProperty("Type").GetString();
+
+            switch (type)
+            {
+                case "Tick":
+                    var tickPayload = doc.RootElement.GetProperty("Payload");
+                    var tick = new Tick(
+                        Symbol.Parse(tickPayload.GetProperty("Symbol").GetString()!),
+                        tickPayload.GetProperty("Bid").GetDecimal(),
+                        tickPayload.GetProperty("Ask").GetDecimal(),
+                        tickPayload.GetProperty("TimestampUtc").GetDateTime());
+                    _tickChannel.Writer.TryWrite(tick);
+                    break;
+
+                case "Bar":
+                    var barPayload = doc.RootElement.GetProperty("Payload");
+                    var bar = new Bar(
+                        Symbol.Parse(barPayload.GetProperty("Symbol").GetString()!),
+                        Enum.Parse<Timeframe>(barPayload.GetProperty("Timeframe").GetString()!),
+                        barPayload.GetProperty("OpenTimeUtc").GetDateTime(),
+                        barPayload.GetProperty("Open").GetDecimal(),
+                        barPayload.GetProperty("High").GetDecimal(),
+                        barPayload.GetProperty("Low").GetDecimal(),
+                        barPayload.GetProperty("Close").GetDecimal(),
+                        barPayload.GetProperty("Volume").GetDouble());
+                    _barChannel.Writer.TryWrite(bar);
+                    break;
+
+                case "AccountUpdate":
+                    var acctPayload = doc.RootElement.GetProperty("Payload");
+                    var acct = new AccountUpdate(
+                        acctPayload.GetProperty("Balance").GetDecimal(),
+                        acctPayload.GetProperty("Equity").GetDecimal(),
+                        acctPayload.GetProperty("FloatingPnL").GetDecimal(),
+                        acctPayload.GetProperty("TimestampUtc").GetDateTime());
+                    _accountChannel.Writer.TryWrite(acct);
+                    break;
+
+                case "ExecutionEvent":
+                    var execPayload = doc.RootElement.GetProperty("Payload");
+                    var fillPrice = execPayload.TryGetProperty("FillPrice", out var fp) && fp.ValueKind == System.Text.Json.JsonValueKind.Number
+                        ? new Price(fp.GetDecimal()) : (Price?)null;
+                    var exec = new ExecutionEvent(
+                        execPayload.GetProperty("OrderId").GetGuid(),
+                        Enum.Parse<OrderState>(execPayload.GetProperty("NewState").GetString()!),
+                        fillPrice,
+                        execPayload.GetProperty("FilledLots").GetDecimal(),
+                        execPayload.GetProperty("RejectionReason").GetString(),
+                        execPayload.GetProperty("TimestampUtc").GetDateTime());
+                    _executionChannel.Writer.TryWrite(exec);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Pipe message parse error: {ex.Message}");
+        }
+    }
 
     private async Task SendCommandAsync(string type, object payload, CancellationToken ct)
     {
