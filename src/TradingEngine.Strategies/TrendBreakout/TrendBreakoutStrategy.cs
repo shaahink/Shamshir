@@ -45,18 +45,19 @@ public sealed class TrendBreakoutStrategy : IStrategy
             if (atr <= 0 || ema <= 0)
                 return null;
 
-            var highestHigh = h1Bars.TakeLast(p.LookbackBars).Max(b => b.High);
-            var lowestLow = h1Bars.TakeLast(p.LookbackBars).Min(b => b.Low);
+            var priorBars = h1Bars.TakeLast(p.LookbackBars + 1).SkipLast(1).ToList();
+            var highestHigh = priorBars.Count > 0 ? priorBars.Max(b => b.High) : h1Bars[^1].High;
+            var lowestLow = priorBars.Count > 0 ? priorBars.Min(b => b.Low) : h1Bars[^1].Low;
 
             var currentPrice = latestTick.Mid;
             var entryPrice = new Price(currentPrice);
             var entryDirection = (TradeDirection?)null;
 
-            if (latestBar.Close > highestHigh && currentPrice > (decimal)ema)
+            if (latestBar.High > highestHigh && currentPrice > (decimal)ema)
             {
                 entryDirection = TradeDirection.Long;
             }
-            else if (latestBar.Close < lowestLow && currentPrice < (decimal)ema)
+            else if (latestBar.Low < lowestLow && currentPrice < (decimal)ema)
             {
                 entryDirection = TradeDirection.Short;
             }
