@@ -104,7 +104,8 @@ public static class Program
             else
                 builder.Services.AddSingleton<IEngineClock, BrokerClock>();
 
-            var dbPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "data", "trading.db"));
+            var dbPath = builder.Configuration.GetValue<string>("Persistence:DbPath")
+                ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));
             Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
             using (var ctx = new TradingDbContext(new DbContextOptionsBuilder<TradingDbContext>().UseSqlite($"Data Source={dbPath}").Options))
