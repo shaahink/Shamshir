@@ -1,0 +1,16 @@
+{
+  "id": "mean-reversion",
+  "displayName": "Mean Reversion v1",
+  "enabled": true,
+  "symbols": ["EURUSD", "GBPUSD"],
+  "riskProfileId": "standard",
+  "timeframe": "H1",
+  "parameters": {
+    "rsiPeriod": 14,
+    "bbPeriod": 20,
+    "bbStdDev": 2.0,
+    "atrPeriod": 14,
+    "slAtrMultiple": 1.5,
+    "tpRrMultiple": 1.0
+  }
+}

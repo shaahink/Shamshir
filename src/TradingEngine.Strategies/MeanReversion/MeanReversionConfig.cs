@@ -15,4 +15,5 @@ public sealed record MeanReversionConfig(
     string DisplayName,
     IReadOnlyList<string> Symbols,
     string RiskProfileId,
-    MeanReversionParameters Parameters) : IStrategyConfig;
+    MeanReversionParameters Parameters,
+    Timeframe Timeframe = Timeframe.H1) : IStrategyConfig;

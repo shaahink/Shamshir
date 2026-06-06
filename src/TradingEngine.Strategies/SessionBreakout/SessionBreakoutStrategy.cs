@@ -8,7 +8,7 @@ public sealed class SessionBreakoutStrategy : IStrategy
 
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
     public int RequiredBarCount => _config.Parameters.AtrPeriod + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats { get; private set; } = new(0, 0, 0, 0);
@@ -24,7 +24,10 @@ public sealed class SessionBreakoutStrategy : IStrategy
     {
         try
         {
-            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
+            if (!_config.Symbols.Contains(context.Symbol.Value))
+                return null;
+
+            var h1Bars = context.Bars.GetValueOrDefault(_config.Timeframe);
             if (h1Bars is null || h1Bars.Count < RequiredBarCount) return null;
 
             var p = _config.Parameters;

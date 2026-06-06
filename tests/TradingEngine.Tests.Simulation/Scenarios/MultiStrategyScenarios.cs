@@ -12,8 +12,8 @@ public sealed class MultiStrategyScenarios
         var logger1 = Substitute.For<ILogger<TrendBreakoutStrategy>>();
         var logger2 = Substitute.For<ILogger<TrendBreakoutStrategy>>();
 
-        var strategy1 = new TrendBreakoutStrategy(new TrendBreakoutConfig(), registry, logger1);
-        var strategy2 = new TrendBreakoutStrategy(new TrendBreakoutConfig(), registry, logger2);
+        var strategy1 = new TrendBreakoutStrategy(new TrendBreakoutConfig { Symbols = ["EURUSD"] }, registry, logger1);
+        var strategy2 = new TrendBreakoutStrategy(new TrendBreakoutConfig { Symbols = ["EURUSD"] }, registry, logger2);
 
         var tempDir = Path.Combine(Path.GetTempPath(), $"shamshir-multi-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);

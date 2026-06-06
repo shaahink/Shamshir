@@ -4,6 +4,7 @@
   "enabled": true,
   "symbols": ["EURUSD", "GBPUSD"],
   "riskProfileId": "standard",
+  "timeframe": "H1",
   "parameters": {
     "fastPeriod": 20,
     "slowPeriod": 50,

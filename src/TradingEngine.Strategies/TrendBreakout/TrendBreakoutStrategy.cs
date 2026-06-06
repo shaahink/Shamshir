@@ -8,6 +8,7 @@ public sealed class TrendBreakoutStrategy : IStrategy
     private readonly TrendBreakoutConfig _config;
     private readonly ILogger<TrendBreakoutStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
+    private readonly Timeframe _timeframe;
     private int? _lastSignalDirection;
     private int _winStreak;
     private int _lossStreak;
@@ -16,7 +17,7 @@ public sealed class TrendBreakoutStrategy : IStrategy
 
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_timeframe];
     public int RequiredBarCount => Math.Max(
         Math.Max(_config.Parameters.LookbackBars, _config.Parameters.MaPeriod),
         _config.Parameters.AtrPeriod) + 5;
@@ -38,13 +39,17 @@ public sealed class TrendBreakoutStrategy : IStrategy
         _config = config;
         _symbolRegistry = symbolRegistry;
         _logger = logger;
+        _timeframe = config.Timeframe;
     }
 
     public TradeIntent? Evaluate(MarketContext context)
     {
         try
         {
-            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
+            if (!_config.Symbols.Contains(context.Symbol.Value))
+                return null;
+
+            var h1Bars = context.Bars.GetValueOrDefault(_timeframe);
             if (h1Bars is null || h1Bars.Count < RequiredBarCount)
                 return null;
 
@@ -58,8 +63,8 @@ public sealed class TrendBreakoutStrategy : IStrategy
                 return null;
 
             var priorBars = h1Bars.TakeLast(p.LookbackBars + 1).SkipLast(1).ToList();
-            var highestHigh = priorBars.Count > 0 ? priorBars.Max(b => b.High) : h1Bars[^1].High;
-            var lowestLow = priorBars.Count > 0 ? priorBars.Min(b => b.Low) : h1Bars[^1].Low;
+            var highestHigh = priorBars.Count > 0 ? priorBars.Max(b => b.High) : latestBar.High;
+            var lowestLow = priorBars.Count > 0 ? priorBars.Min(b => b.Low) : latestBar.Low;
 
             var currentPrice = context.LatestTick.Mid;
             var entryPrice = new Price(currentPrice);

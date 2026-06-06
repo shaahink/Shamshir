@@ -1,17 +1,17 @@
 {
-  "id": "trend-breakout",
-  "displayName": "Trend Breakout v1",
+  "id": "session-breakout",
+  "displayName": "Session Breakout v1",
   "enabled": true,
   "symbols": ["EURUSD", "GBPUSD"],
   "riskProfileId": "standard",
   "timeframe": "H1",
   "parameters": {
-    "lookbackBars": 20,
-    "maPeriod": 50,
     "atrPeriod": 14,
     "slAtrMultiple": 1.5,
     "tpRrMultiple": 2.0,
-    "trailingMethod": "AtrMultiple",
-    "trailingAtrMultiple": 1.0
+    "rangeStartUtc": "05:00:00",
+    "rangeEndUtc": "07:00:00",
+    "entryWindowEndUtc": "09:00:00",
+    "flattenTimeUtc": "12:00:00"
   }
 }

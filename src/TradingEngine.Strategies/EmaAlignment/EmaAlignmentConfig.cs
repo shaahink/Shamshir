@@ -16,4 +16,5 @@ public sealed record EmaAlignmentConfig(
     string DisplayName,
     IReadOnlyList<string> Symbols,
     string RiskProfileId,
-    EmaAlignmentParameters Parameters) : IStrategyConfig;
+    EmaAlignmentParameters Parameters,
+    Timeframe Timeframe = Timeframe.H1) : IStrategyConfig;

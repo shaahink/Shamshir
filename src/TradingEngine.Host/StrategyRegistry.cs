@@ -30,6 +30,7 @@ public sealed class StrategyRegistry
                 Enabled = entry.Enabled,
                 Symbols = entry.Symbols.ToList(),
                 RiskProfileId = entry.RiskProfileId,
+                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
                 Parameters = DeserializeParams<TrendBreakoutParameters>(entry.Parameters),
             };
             var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
@@ -44,7 +45,8 @@ public sealed class StrategyRegistry
                 entry.DisplayName,
                 entry.Symbols.ToList(),
                 entry.RiskProfileId,
-                DeserializeParams<EmaAlignmentParameters>(entry.Parameters));
+                DeserializeParams<EmaAlignmentParameters>(entry.Parameters),
+                Enum.Parse<Timeframe>(entry.Timeframe, true));
             return new EmaAlignmentStrategy(config);
         };
 
@@ -55,7 +57,8 @@ public sealed class StrategyRegistry
                 entry.DisplayName,
                 entry.Symbols.ToList(),
                 entry.RiskProfileId,
-                DeserializeParams<MeanReversionParameters>(entry.Parameters));
+                DeserializeParams<MeanReversionParameters>(entry.Parameters),
+                Enum.Parse<Timeframe>(entry.Timeframe, true));
             return new MeanReversionStrategy(config);
         };
 
@@ -66,7 +69,8 @@ public sealed class StrategyRegistry
                 entry.DisplayName,
                 entry.Symbols.ToList(),
                 entry.RiskProfileId,
-                DeserializeParams<SessionBreakoutParameters>(entry.Parameters));
+                DeserializeParams<SessionBreakoutParameters>(entry.Parameters),
+                Enum.Parse<Timeframe>(entry.Timeframe, true));
             return new SessionBreakoutStrategy(config);
         };
     }

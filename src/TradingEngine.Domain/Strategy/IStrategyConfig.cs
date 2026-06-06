@@ -6,5 +6,6 @@ public interface IStrategyConfig
     string DisplayName { get; }
     IReadOnlyList<string> Symbols { get; }
     string RiskProfileId { get; }
+    Timeframe Timeframe { get; }
 }
 

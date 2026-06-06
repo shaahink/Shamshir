@@ -225,7 +225,7 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                     var barPayload = GetCaseInsensitiveProperty(doc.RootElement, "Payload");
                     var bar = new Bar(
                         Symbol.Parse(CIProp(barPayload, "Symbol").GetString()!),
-                        Enum.Parse<Timeframe>(CIProp(barPayload, "Timeframe").GetString()!),
+                        Enum.Parse<Timeframe>(CIProp(barPayload, "Timeframe").GetString()!, ignoreCase: true),
                         CIProp(barPayload, "OpenTimeUtc").GetDateTime(),
                         CIProp(barPayload, "Open").GetDecimal(),
                         CIProp(barPayload, "High").GetDecimal(),

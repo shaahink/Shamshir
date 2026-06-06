@@ -16,4 +16,5 @@ public sealed record SessionBreakoutConfig(
     string DisplayName,
     IReadOnlyList<string> Symbols,
     string RiskProfileId,
-    SessionBreakoutParameters Parameters) : IStrategyConfig;
+    SessionBreakoutParameters Parameters,
+    Timeframe Timeframe = Timeframe.H1) : IStrategyConfig;
