@@ -73,6 +73,22 @@ public sealed class EngineWorker : BackgroundService
             EngineMode.Backtest, _strategies.Count());
 
         await _broker.ConnectAsync(ct);
+
+        try
+        {
+            var accountState = await _broker.GetAccountStateAsync(ct);
+            if (accountState.Balance > 0)
+            {
+                _riskManager.UpdateEquityLevels(accountState.Equity);
+                _logger.LogInformation("Startup reconciliation: Balance={Balance} Equity={Equity} OpenPositions={Count}",
+                    accountState.Balance, accountState.Equity, accountState.OpenPositions.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Startup reconciliation failed — continuing with clean state");
+        }
+
         await WarmUpIndicatorsAsync(ct);
 
         var tasks = new[]
@@ -114,7 +130,10 @@ public sealed class EngineWorker : BackgroundService
                     if (barSnapshot is null) continue;
                     if (barSnapshot.Values.Sum(b => b.Count) < strategy.RequiredBarCount) continue;
 
-                    var indicators = _indicatorValues.ToDictionary(kv => kv.Key, kv => kv.Value);
+                    var symbolPrefix = $"{tick.Symbol}:";
+                    var indicators = _indicatorValues
+                        .Where(kv => kv.Key.StartsWith(symbolPrefix))
+                        .ToDictionary(kv => kv.Key[symbolPrefix.Length..], kv => kv.Value);
                     var context = new MarketContext(tick.Symbol, tick, barSnapshot, indicators, _clock.UtcNow);
 
                     var intent = strategy.Evaluate(context);
@@ -136,19 +155,18 @@ public sealed class EngineWorker : BackgroundService
                     var slPips = PipCalculator.Distance(entryPrice, intent.StopLoss, symbolInfo);
                     var pipValue = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, _crossRateProvider);
 
-                    var lots = _riskManager.CalculateLotSize(intent, equity,
-                        new RiskProfile("standard", "Standard", 0.01, 0.04, 0.08, 100, 0.05, 0.5, 0.5, 3, false, "ftmo-standard"));
+                    var lots = _riskManager.CalculateLotSize(intent, equity, profile);
 
-                    _latestRiskAmount = (decimal)slPips.Value * pipValue * lots;
+                    var riskAmount = (decimal)slPips.Value * pipValue * lots;
 
                     _logger.LogInformation("Trade opened. Strategy={Strategy} Symbol={Symbol} Dir={Dir} Lots={Lots} Entry={Entry} SL={SL} TP={TP}",
                         strategy.Id, intent.Symbol, intent.Direction, lots, entryPrice.Value,
                         intent.StopLoss.Value, intent.TakeProfit?.Value);
 
-                    var orderId = Guid.NewGuid();
                     var orderReq = new OrderRequest(intent, lots, intent.Symbol, intent.Direction, OrderType.Market, intent.LimitPrice);
+                    var orderId = await _broker.SubmitOrderAsync(orderReq, ct);
                     _pendingOrdersMap[orderId] = orderReq;
-                    _ = _broker.SubmitOrderAsync(orderReq, ct);
+                    _latestRiskAmount = riskAmount;
                 }
             }
         }
@@ -255,14 +273,15 @@ public sealed class EngineWorker : BackgroundService
 
     private void HandleAccountUpdate(AccountUpdate update)
     {
+        _riskManager.UpdateEquityLevels(update.Equity);
+
         var riskState = _riskManager.CurrentState;
         var equity = new EquitySnapshot(
             update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
             update.Equity, update.Equity, riskState.DailyDrawdownUsed, riskState.MaxDrawdownUsed, EngineMode.Backtest);
         Volatile.Write(ref _currentEquity, equity);
-        _riskManager.OnEquityUpdate(equity);
         _ = _persistence.SaveEquitySnapshotAsync(equity, CancellationToken.None);
-        _ = _eventBus.PublishAsync(new EquityUpdated(equity, _riskManager.CurrentState, _clock.UtcNow), CancellationToken.None);
+        _ = _eventBus.PublishAsync(new EquityUpdated(equity, riskState, _clock.UtcNow), CancellationToken.None);
     }
 
     private IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>? BuildBarSnapshot(Symbol symbol)
@@ -286,31 +305,31 @@ public sealed class EngineWorker : BackgroundService
 
         foreach (var strategy in _strategies)
         {
-            var p = (strategy as TrendBreakoutStrategy)?.GetParameters();
-            if (p is null) continue;
-
-            _indicatorValues[$"ATR_{p.AtrPeriod}"] = _indicators.Atr(bars, p.AtrPeriod);
-            _indicatorValues[$"EMA_{p.MaPeriod}"] = _indicators.Ema(bars, p.MaPeriod);
-
-            _logger.LogTrace("Indicators recomputed. Strategy={Strategy} Bars={Count} ATR={Atr:F6} EMA={Ema:F6}",
-                strategy.Id, bars.Count, _indicatorValues[$"ATR_{p.AtrPeriod}"], _indicatorValues[$"EMA_{p.MaPeriod}"]);
+            foreach (var req in strategy.RequiredIndicators)
+            {
+                var key = $"{symbol}:{req.Key}";
+                _indicatorValues[key] = req.Type switch
+                {
+                    IndicatorType.Atr => _indicators.Atr(bars, req.Period),
+                    IndicatorType.Ema => _indicators.Ema(bars, req.Period),
+                    IndicatorType.Rsi => _indicators.Rsi(bars, req.Period),
+                    IndicatorType.Sma => _indicators.Sma(bars, req.Period),
+                    _ => throw new NotSupportedException($"Indicator {req.Type} not supported for recompute")
+                };
+            }
         }
         await Task.CompletedTask;
     }
 
     private async Task WarmUpIndicatorsAsync(CancellationToken ct)
     {
-        _logger.LogInformation("Warm-up: loading indicators for {Count} strategies", _strategies.Count());
-        foreach (var strategy in _strategies)
-        {
-            foreach (var tf in strategy.RequiredTimeframes)
-            {
-                var symbol = Symbol.Parse("EURUSD");
-                var byTf = _bars.GetOrAdd(symbol, _ => new());
-                var list = byTf.GetOrAdd(tf, _ => new());
-                _logger.LogInformation("Warm-up: strategy={Strategy} timeframe={Tf} bars={Count}", strategy.Id, tf, list.Count);
-            }
-        }
+        var symbols = _strategies
+            .SelectMany(s => Enumerable.Repeat(Symbol.Parse("EURUSD"), 1))
+            .Distinct()
+            .ToList();
+
+        _logger.LogInformation("Warm-up: loading indicators for {Count} strategies, {SymbolCount} symbols",
+            _strategies.Count(), symbols.Count);
         await Task.CompletedTask;
     }
 }

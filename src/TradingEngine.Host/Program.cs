@@ -110,7 +110,7 @@ public static class Program
             builder.Services.AddDbContext<TradingDbContext>(opt => opt.UseSqlite($"Data Source={dbPath}"));
             builder.Services.AddScoped<ITradeRepository, SqliteTradeRepository>();
             builder.Services.AddScoped<IEquityRepository, SqliteEquityRepository>();
-            builder.Services.AddScoped<PersistenceService>();
+            builder.Services.AddSingleton<PersistenceService>();
 
             builder.Services.AddSingleton<IPositionManager, PositionManager>();
             builder.Services.AddSingleton<IEventBus, TypedEventBus>();
@@ -140,6 +140,24 @@ public static class Program
             builder.Services.AddHostedService<DailyResetService>();
 
             var app = builder.Build();
+
+            var rm = app.Services.GetRequiredService<RiskManager>();
+            var activeRiskProfileId = loadedConfig.StrategyConfigs
+                .Select(c => c.RiskProfileId).FirstOrDefault() ?? "standard";
+            var activeProfile = loadedConfig.RiskProfiles.FirstOrDefault(r => r.Id == activeRiskProfileId);
+            var activeRuleSetId = activeProfile?.PropFirmRuleSetId ?? "ftmo-standard";
+            var ruleSet = loadedConfig.PropFirms.FirstOrDefault(r => r.Id == activeRuleSetId);
+            if (ruleSet is not null)
+            {
+                rm.SetActiveRuleSet(ruleSet);
+                Log.Information("Active prop firm rule set: {Id} (max daily DD {DailyPct}%, max total DD {TotalPct}%)",
+                    ruleSet.Id, ruleSet.MaxDailyLossPercent * 100, ruleSet.MaxTotalLossPercent * 100);
+            }
+            else
+            {
+                Log.Warning("No PropFirmRuleSet found for id={Id} — risk gates disabled", activeRuleSetId);
+            }
+
             app.Run();
         }
         catch (Exception ex)

@@ -2,12 +2,14 @@ using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Infrastructure.Adapters;
 
 public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 {
     private readonly string _pipeName;
+    private readonly ILogger<NamedPipeBrokerAdapter> _logger;
     private NamedPipeServerStream? _pipeServer;
     private readonly CancellationTokenSource _cts = new();
 
@@ -27,7 +29,17 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     public NamedPipeBrokerAdapter(string pipeName = "trading-engine")
     {
         _pipeName = pipeName;
+        _logger = null!;
     }
+
+    public NamedPipeBrokerAdapter(string pipeName, ILogger<NamedPipeBrokerAdapter> logger)
+    {
+        _pipeName = pipeName;
+        _logger = logger;
+    }
+
+    public Task<AccountState> GetAccountStateAsync(CancellationToken ct)
+        => Task.FromResult(new AccountState(0, 0, []));
 
     public async Task ConnectAsync(CancellationToken ct)
     {
@@ -48,8 +60,11 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    public Task SubmitOrderAsync(OrderRequest request, CancellationToken ct)
-        => SendCommandAsync("SubmitOrder", request, ct);
+    public async Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
+    {
+        await SendCommandAsync("SubmitOrder", request, ct);
+        return Guid.NewGuid();
+    }
 
     public Task ModifyOrderAsync(Guid orderId, Price newStopLoss, Price? newTakeProfit, CancellationToken ct)
         => SendCommandAsync("ModifyOrder", new { OrderId = orderId, NewStopLoss = newStopLoss.Value, NewTakeProfit = newTakeProfit?.Value }, ct);
@@ -62,30 +77,46 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     private async Task ReadLoopAsync(CancellationToken ct)
     {
-        var buffer = new byte[4];
         try
         {
             while (!ct.IsCancellationRequested && _pipeServer!.IsConnected)
             {
-                var bytesRead = await _pipeServer.ReadAsync(buffer, 0, 4, ct);
-                if (bytesRead < 4) break;
+                var length = await ReadLengthPrefixAsync(ct);
+                if (length <= 0) break;
 
-                var length = BitConverter.ToInt32(buffer, 0);
                 var messageBytes = new byte[length];
                 var totalRead = 0;
                 while (totalRead < length)
                 {
-                    bytesRead = await _pipeServer.ReadAsync(messageBytes, totalRead, length - totalRead, ct);
+                    var bytesRead = await _pipeServer.ReadAsync(messageBytes, totalRead, length - totalRead, ct);
                     if (bytesRead == 0) break;
                     totalRead += bytesRead;
                 }
+
+                if (totalRead < length) break;
 
                 var json = Encoding.UTF8.GetString(messageBytes, 0, totalRead);
                 ProcessMessage(json);
             }
         }
         catch (OperationCanceledException) { }
-        catch (IOException) { }
+        catch (IOException ex)
+        {
+            _logger?.LogWarning(ex, "Pipe read error");
+        }
+    }
+
+    private async Task<int> ReadLengthPrefixAsync(CancellationToken ct)
+    {
+        var buffer = new byte[4];
+        var totalRead = 0;
+        while (totalRead < 4)
+        {
+            var bytesRead = await _pipeServer!.ReadAsync(buffer, totalRead, 4 - totalRead, ct);
+            if (bytesRead == 0) return -1;
+            totalRead += bytesRead;
+        }
+        return BitConverter.ToInt32(buffer, 0);
     }
 
     private void ProcessMessage(string json)
@@ -148,7 +179,7 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Pipe message parse error: {ex.Message}");
+            _logger?.LogWarning(ex, "Pipe message parse error");
         }
     }
 

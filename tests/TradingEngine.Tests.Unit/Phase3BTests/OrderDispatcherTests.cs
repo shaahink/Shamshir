@@ -23,7 +23,7 @@ public sealed class OrderDispatcherTests
         var dispatcher = new OrderDispatcher(rm, resolver, registry, (_, _) => 1, logger);
         var broker = Substitute.For<IBrokerAdapter>();
         broker.SubmitOrderAsync(Arg.Any<OrderRequest>(), Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
+            .Returns(Guid.NewGuid());
 
         var intent = new TradeIntent(Symbol.Parse("EURUSD"), TradeDirection.Long, OrderType.Market, null,
             new Price(1.08210m), new Price(1.08500m), "test", "standard", "", DateTime.UtcNow);

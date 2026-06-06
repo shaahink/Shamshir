@@ -4,10 +4,10 @@ namespace TradingEngine.Tests.Unit.RiskTests;
 public sealed class PositionSizerTests
 {
     [Fact]
-    public void Calculate_NormalCase_ReturnsCorrectLots()
+    public void Calculate_StandardInput_ReturnsCorrectLots()
     {
-        var result = PositionSizer.Calculate(
-            equity: 10_000,
+        var lots = PositionSizer.Calculate(
+            equity: 10_000m,
             riskPercent: RiskPercent.Parse(0.01),
             stopLossDistance: new Pips(21),
             pipValue: 10m,
@@ -16,55 +16,57 @@ public sealed class PositionSizerTests
             brokerMinLots: 0.01m,
             brokerLotStep: 0.01m);
 
-        result.Should().Be(0.47m);
+        lots.Should().Be(0.47m);
     }
 
     [Fact]
-    public void Calculate_WithDDScaling_ReducesLots()
+    public void Calculate_ResultFlooredToLotStep_NeverRoundsUp()
     {
-        var result = PositionSizer.Calculate(
-            equity: 10_000,
-            riskPercent: RiskPercent.Parse(0.01),
-            stopLossDistance: new Pips(21),
-            pipValue: 10m,
-            drawdownScaleFactor: 0.5m,
-            maxLots: 100m,
-            brokerMinLots: 0.01m,
-            brokerLotStep: 0.01m);
+        var lots = PositionSizer.Calculate(
+            equity: 10_000m, riskPercent: RiskPercent.Parse(0.01),
+            stopLossDistance: new Pips(43), pipValue: 10m,
+            drawdownScaleFactor: 1.0m, maxLots: 100m,
+            brokerMinLots: 0.01m, brokerLotStep: 0.01m);
 
-        result.Should().Be(0.23m);
+        lots.Should().Be(0.23m);
     }
 
     [Fact]
-    public void Calculate_AlwaysRoundsDown()
+    public void Calculate_CappedAtMaxLots()
     {
-        var result = PositionSizer.Calculate(
-            equity: 10_000,
-            riskPercent: RiskPercent.Parse(0.01),
-            stopLossDistance: new Pips(21),
-            pipValue: 10m,
-            drawdownScaleFactor: 1.0m,
-            maxLots: 100m,
-            brokerMinLots: 0.01m,
-            brokerLotStep: 0.01m);
+        var lots = PositionSizer.Calculate(
+            equity: 100_000m, riskPercent: RiskPercent.Parse(0.50),
+            stopLossDistance: new Pips(5), pipValue: 10m,
+            drawdownScaleFactor: 1.0m, maxLots: 5.0m,
+            brokerMinLots: 0.01m, brokerLotStep: 0.01m);
 
-        result.Should().Be(0.47m);
-        result.Should().NotBe(0.48m);
+        lots.Should().Be(5.0m);
     }
 
     [Fact]
-    public void Calculate_RespectsMinLots()
+    public void Calculate_AtMinLotsWhenEquityZero_ReturnsMinLots()
     {
-        var result = PositionSizer.Calculate(
-            equity: 100,
-            riskPercent: RiskPercent.Parse(0.01),
-            stopLossDistance: new Pips(50),
-            pipValue: 10m,
-            drawdownScaleFactor: 1.0m,
-            maxLots: 100m,
-            brokerMinLots: 0.01m,
-            brokerLotStep: 0.01m);
+        var lots = PositionSizer.Calculate(
+            equity: 0m, riskPercent: RiskPercent.Parse(0.01),
+            stopLossDistance: new Pips(50), pipValue: 10m,
+            drawdownScaleFactor: 1.0m, maxLots: 100m,
+            brokerMinLots: 0.01m, brokerLotStep: 0.01m);
 
-        result.Should().Be(0.01m);
+        lots.Should().Be(0.01m);
+    }
+
+    [Fact]
+    public void Calculate_WithDrawdownScale_ReducesLots()
+    {
+        var fullLots = PositionSizer.Calculate(
+            100_000m, RiskPercent.Parse(0.01), new Pips(50), 10m,
+            drawdownScaleFactor: 1.0m, 100m, 0.01m, 0.01m);
+
+        var scaledLots = PositionSizer.Calculate(
+            100_000m, RiskPercent.Parse(0.01), new Pips(50), 10m,
+            drawdownScaleFactor: 0.5m, 100m, 0.01m, 0.01m);
+
+        scaledLots.Should().BeLessThan(fullLots);
+        scaledLots.Should().BeApproximately(fullLots * 0.5m, 0.01m);
     }
 }

@@ -7,16 +7,15 @@ public sealed class DailyResetService(
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        var resetTime = TimeSpan.Parse("22:00:00");
+        var resetTimeUtc = TimeSpan.Parse("22:00:00");
         var now = clock.UtcNow;
 
-        var nextReset = now.Date + resetTime;
+        var nextReset = now.Date + resetTimeUtc;
         if (now > nextReset)
         {
             logger.LogInformation("Daily reset: past 22:00 UTC, firing immediately");
             riskManager.OnDailyReset(0);
-            riskManager.OnEquityUpdate(new EquitySnapshot(
-                now, 0, 0, 0, 0, 0, 0, 0, EngineMode.Backtest));
+            riskManager.UpdateEquityLevels(0);
             nextReset = nextReset.AddDays(1);
         }
 

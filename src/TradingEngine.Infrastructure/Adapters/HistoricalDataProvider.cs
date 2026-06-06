@@ -3,10 +3,18 @@ using System.Runtime.CompilerServices;
 
 namespace TradingEngine.Infrastructure.Adapters;
 
-public sealed class HistoricalDataProvider(string dataDirectory) : IMarketDataProvider
+public sealed class HistoricalDataProvider : IMarketDataProvider
 {
+    private readonly string _dataDirectory;
+    private readonly ISymbolInfoRegistry _symbolRegistry;
     private DateTime _from;
     private DateTime _to;
+
+    public HistoricalDataProvider(string dataDirectory, ISymbolInfoRegistry? symbolRegistry = null)
+    {
+        _dataDirectory = dataDirectory;
+        _symbolRegistry = symbolRegistry ?? new SymbolInfoRegistry();
+    }
 
     public Task SeekAsync(DateTime from, DateTime to, CancellationToken ct)
     {
@@ -47,7 +55,7 @@ public sealed class HistoricalDataProvider(string dataDirectory) : IMarketDataPr
     {
         var defaultTf = Timeframe.H1;
         var barDuration = GetBarDuration(defaultTf);
-        var halfSpread = 0.00005m;
+        var halfSpread = ResolveHalfSpread(symbol);
 
         await foreach (var bar in StreamBarsAsync(symbol, defaultTf, ct))
         {
@@ -57,11 +65,24 @@ public sealed class HistoricalDataProvider(string dataDirectory) : IMarketDataPr
         }
     }
 
+    private decimal ResolveHalfSpread(Symbol symbol)
+    {
+        try
+        {
+            var info = _symbolRegistry.Get(symbol);
+            return info.TypicalSpread / 2m;
+        }
+        catch
+        {
+            return 0.0005m;
+        }
+    }
+
     private string BuildPath(Symbol symbol, Timeframe tf)
     {
         var symbolLower = symbol.ToString().ToLowerInvariant();
         var tfStr = tf.ToString().ToLowerInvariant();
-        return Path.Combine(dataDirectory, $"{symbolLower}-{tfStr}-2024.csv");
+        return Path.Combine(_dataDirectory, $"{symbolLower}-{tfStr}-2024.csv");
     }
 
     private static Bar? ParseBar(string line, Symbol symbol, Timeframe tf)

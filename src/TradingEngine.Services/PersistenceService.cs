@@ -1,17 +1,19 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Services;
 
 public sealed class PersistenceService(
-    ITradeRepository tradeRepository,
-    IEquityRepository equityRepository,
+    IServiceScopeFactory scopeFactory,
     ILogger<PersistenceService> logger)
 {
     public async Task SaveTradeAsync(TradeResult trade, CancellationToken ct)
     {
         try
         {
-            await tradeRepository.SaveAsync(trade, ct);
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
+            await repo.SaveAsync(trade, ct);
         }
         catch (Exception ex)
         {
@@ -23,7 +25,9 @@ public sealed class PersistenceService(
     {
         try
         {
-            await equityRepository.SaveAsync(snapshot, ct);
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IEquityRepository>();
+            await repo.SaveAsync(snapshot, ct);
         }
         catch (Exception ex)
         {

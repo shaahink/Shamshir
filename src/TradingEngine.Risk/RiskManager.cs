@@ -86,10 +86,14 @@ public sealed class RiskManager(
             (decimal)symbolInfo.MaxLots, symbolInfo.MinLots, symbolInfo.LotStep);
     }
 
-    public void OnEquityUpdate(EquitySnapshot snapshot)
+    public void UpdateEquityLevels(decimal rawEquity)
     {
-        drawdownTracker.OnEquityUpdate(snapshot.Equity);
-        CurrentState = CurrentState with { DailyDrawdownUsed = snapshot.CurrentDailyDrawdown, MaxDrawdownUsed = snapshot.CurrentMaxDrawdown };
+        drawdownTracker.OnEquityUpdate(rawEquity);
+        CurrentState = CurrentState with
+        {
+            DailyDrawdownUsed = drawdownTracker.CurrentDailyDrawdown,
+            MaxDrawdownUsed = drawdownTracker.CurrentMaxDrawdown
+        };
     }
 
     public void OnDailyReset(decimal currentEquity)

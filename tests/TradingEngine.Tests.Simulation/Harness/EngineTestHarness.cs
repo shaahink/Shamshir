@@ -144,9 +144,8 @@ public sealed class EngineTestHarness
 
                     var lots = 0.1m;
                     var orderReq = new OrderRequest(intent, lots, intent.Symbol, intent.Direction, OrderType.Market, null);
-                    var orderId = Guid.NewGuid();
+                    var orderId = await broker.SubmitOrderAsync(orderReq, ct);
                     pendingOrders.Add(new TrackedOrder(orderId, intent.Symbol, intent.Direction, lots, intent.StopLoss, intent.TakeProfit, strategy.Id));
-                    await broker.SubmitOrderAsync(orderReq, ct);
                 }
             }
 

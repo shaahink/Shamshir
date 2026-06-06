@@ -27,6 +27,9 @@ public sealed class TrendBreakoutStrategy : IStrategy
         new($"EMA_{_config.Parameters.MaPeriod}", IndicatorType.Ema, _config.Parameters.MaPeriod),
     ];
 
+    public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
+    public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);
+
     public TrendBreakoutStrategy(
         TrendBreakoutConfig config,
         ISymbolInfoRegistry symbolRegistry,

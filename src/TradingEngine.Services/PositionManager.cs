@@ -1,14 +1,31 @@
+using Microsoft.Extensions.Logging;
+
 namespace TradingEngine.Services;
 
-public sealed class PositionManager(ISymbolInfoRegistry symbolRegistry) : IPositionManager
+public sealed class PositionManager(
+    ISymbolInfoRegistry symbolRegistry,
+    IIndicatorService indicatorService,
+    ILogger<PositionManager> logger) : IPositionManager
 {
     private readonly Dictionary<Guid, (Position Pos, PositionManagementConfig Config)> _tracked = new();
+    private readonly HashSet<Guid> _beApplied = new();
+    private readonly Dictionary<Guid, decimal> _highWaterBid = new();
+    private readonly Dictionary<Guid, decimal> _lowWaterAsk = new();
 
     public void RegisterPosition(Position position, PositionManagementConfig config)
-        => _tracked[position.Id] = (position, config);
+    {
+        _tracked[position.Id] = (position, config);
+        _highWaterBid[position.Id] = position.EntryPrice.Value;
+        _lowWaterAsk[position.Id] = position.EntryPrice.Value;
+    }
 
     public void DeregisterPosition(Guid positionId)
-        => _tracked.Remove(positionId);
+    {
+        _tracked.Remove(positionId);
+        _beApplied.Remove(positionId);
+        _highWaterBid.Remove(positionId);
+        _lowWaterAsk.Remove(positionId);
+    }
 
     public IReadOnlyList<PositionModification> Evaluate(
         Position position, Tick currentTick, IReadOnlyList<Bar> recentBars)
@@ -18,16 +35,25 @@ public sealed class PositionManager(ISymbolInfoRegistry symbolRegistry) : IPosit
         var mods = new List<PositionModification>();
         var symbolInfo = symbolRegistry.Get(position.Symbol);
 
-        if (config.UseBreakeven)
+        _highWaterBid[position.Id] = Math.Max(
+            _highWaterBid.GetValueOrDefault(position.Id, position.EntryPrice.Value), currentTick.Bid);
+        _lowWaterAsk[position.Id] = Math.Min(
+            _lowWaterAsk.GetValueOrDefault(position.Id, position.EntryPrice.Value), currentTick.Ask);
+
+        if (config.UseBreakeven && !_beApplied.Contains(position.Id))
         {
             var newBeSl = TrailingHelpers.Breakeven(
                 position, currentTick.Bid, currentTick.Ask,
                 config.BreakevenTriggerR, config.BreakevenBufferPips, symbolInfo);
             if (newBeSl.HasValue)
+            {
+                _beApplied.Add(position.Id);
                 mods.Add(new MoveStopLoss(position.Id, newBeSl.Value));
+                logger.LogDebug("Breakeven applied. Id={Id} NewSl={Sl:F5}", position.Id, newBeSl.Value.Value);
+            }
         }
 
-        if (config.TrailingStop.Method == TrailingMethod.StepPips)
+        if (config.TrailingStop.Method == TrailingMethod.StepPips && !_beApplied.Contains(position.Id))
         {
             var trailingSl = TrailingHelpers.StepTrail(
                 position, currentTick.Bid, currentTick.Ask,
@@ -35,22 +61,36 @@ public sealed class PositionManager(ISymbolInfoRegistry symbolRegistry) : IPosit
             if (trailingSl.HasValue)
                 mods.Add(new MoveStopLoss(position.Id, trailingSl.Value));
         }
-        else if (config.TrailingStop.Method == TrailingMethod.AtrMultiple)
+
+        if (config.TrailingStop.Method == TrailingMethod.AtrMultiple && !_beApplied.Contains(position.Id))
         {
+            var atrKey = $"ATR_{config.TrailingStop.StepPips}";
+            var atrValue = 0.0;
+            if (recentBars.Count > 0)
+            {
+                atrValue = indicatorService.Atr(recentBars, Math.Max(14, recentBars.Count - 1));
+                if (atrValue <= 0) atrValue = config.TrailingStop.AtrMultiple * (double)symbolInfo.PipSize;
+            }
+
             var atrTrail = TrailingHelpers.AtrTrail(
-                position, currentTick.Bid > position.EntryPrice.Value ? currentTick.Bid : position.EntryPrice.Value,
-                currentTick.Ask < position.EntryPrice.Value ? currentTick.Ask : position.EntryPrice.Value,
-                config.TrailingStop.AtrMultiple, config.TrailingStop.AtrMultiple, symbolInfo);
+                position,
+                _highWaterBid.GetValueOrDefault(position.Id, position.EntryPrice.Value),
+                _lowWaterAsk.GetValueOrDefault(position.Id, position.EntryPrice.Value),
+                (double)atrValue, config.TrailingStop.AtrMultiple, symbolInfo);
             if (atrTrail.HasValue)
                 mods.Add(new MoveStopLoss(position.Id, atrTrail.Value));
         }
-        else if (config.TrailingStop.Method == TrailingMethod.BreakevenThenTrail)
+
+        if (config.TrailingStop.Method == TrailingMethod.BreakevenThenTrail && !_beApplied.Contains(position.Id))
         {
             var beTrail = TrailingHelpers.Breakeven(
                 position, currentTick.Bid, currentTick.Ask,
                 config.TrailingStop.BreakevenTriggerR, new Pips(1), symbolInfo);
             if (beTrail.HasValue)
+            {
+                _beApplied.Add(position.Id);
                 mods.Add(new MoveStopLoss(position.Id, beTrail.Value));
+            }
         }
 
         return mods;

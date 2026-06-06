@@ -35,9 +35,8 @@ public sealed class OrderDispatcher(
         logger.LogInformation("Order: Strategy={Strategy} Symbol={Symbol} Dir={Dir} Lots={Lots} Entry={Entry:F5} SL={SL:F5}",
             intent.StrategyId, intent.Symbol, intent.Direction, lots, entryPrice.Value, intent.StopLoss.Value);
 
-        var orderId = Guid.NewGuid();
         var orderReq = new OrderRequest(intent, lots, intent.Symbol, intent.Direction, OrderType.Market, intent.LimitPrice);
-        await broker.SubmitOrderAsync(orderReq, ct);
+        var orderId = await broker.SubmitOrderAsync(orderReq, ct);
 
         return new OrderContext(orderId, lots, riskAmount, profile);
     }

@@ -12,4 +12,11 @@ public record RiskProfile(
     double DrawdownScaleFloor,
     int MaxConcurrentPositions,
     bool AllowHedging,
-    string PropFirmRuleSetId);
+    string PropFirmRuleSetId,
+    LotSizingMethod LotSizingMethod = LotSizingMethod.PercentRisk,
+    decimal FixedLots = 0.1m,
+    decimal FixedDollarRisk = 0m,
+    double KellyFraction = 0.25,
+    double AntiMartingaleMultiplier = 1.5,
+    int AntiMartingaleMaxSteps = 3);
+

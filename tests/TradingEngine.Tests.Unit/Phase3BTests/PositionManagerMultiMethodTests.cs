@@ -15,10 +15,17 @@ public sealed class PositionManagerMultiMethodTests
         Guid.NewGuid(), Guid.NewGuid(), Symbol.Parse("EURUSD"), TradeDirection.Long, 0.1m,
         new Price(1.08500m), new Price(1.08300m), null, DateTime.UtcNow, "test");
 
+    private static PositionManager MakePm()
+    {
+        var indicators = Substitute.For<IIndicatorService>();
+        var logger = Substitute.For<ILogger<PositionManager>>();
+        return new PositionManager(MakeRegistry(), indicators, logger);
+    }
+
     [Fact]
     public void StepTrail_AdvancesSl()
     {
-        var pm = new PositionManager(MakeRegistry());
+        var pm = MakePm();
         var pos = MakePos();
         pm.RegisterPosition(pos, new PositionManagementConfig(
             "test", new TrailingConfig(TrailingMethod.StepPips, 10, 0, 0),
@@ -30,20 +37,19 @@ public sealed class PositionManagerMultiMethodTests
     [Fact]
     public void AtrTrail_DoesNotThrow()
     {
-        var pm = new PositionManager(MakeRegistry());
+        var pm = MakePm();
         var pos = MakePos();
         pm.RegisterPosition(pos, new PositionManagementConfig(
             "test", new TrailingConfig(TrailingMethod.AtrMultiple, 0, 1.5, 0),
             false, 0, new Pips(0), new Money(100, "USD")));
         var mods = pm.Evaluate(pos, new Tick(Symbol.Parse("EURUSD"), 1.08800m, 1.08810m, DateTime.UtcNow), []);
-        // ATR trail may or may not fire depending on mock bars, but should not throw
         mods.Should().BeAssignableTo<IReadOnlyList<PositionModification>>();
     }
 
     [Fact]
     public void BreakevenThenTrail_FiresOnProfit()
     {
-        var pm = new PositionManager(MakeRegistry());
+        var pm = MakePm();
         var pos = MakePos();
         pm.RegisterPosition(pos, new PositionManagementConfig(
             "test", new TrailingConfig(TrailingMethod.BreakevenThenTrail, 0, 0, 1.0),

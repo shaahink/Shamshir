@@ -16,7 +16,9 @@ public sealed class PositionManagerPhase3BTests
     [Fact] // T-9
     public void TrailingStop_AdvancesSlForWinningLong()
     {
-        var pm = new PositionManager(Registry);
+        var indicators = Substitute.For<IIndicatorService>();
+        var logger = Substitute.For<ILogger<PositionManager>>();
+        var pm = new PositionManager(Registry, indicators, logger);
         var pos = new Position(Guid.NewGuid(), Guid.NewGuid(), Symbol.Parse("EURUSD"), TradeDirection.Long,
             0.1m, new Price(1.08500m), new Price(1.08300m), null, DateTime.UtcNow, "test");
 
@@ -34,7 +36,9 @@ public sealed class PositionManagerPhase3BTests
     [Fact] // T-10
     public void Breakeven_TriggersAtRmultiple()
     {
-        var pm = new PositionManager(Registry);
+        var indicators = Substitute.For<IIndicatorService>();
+        var logger = Substitute.For<ILogger<PositionManager>>();
+        var pm = new PositionManager(Registry, indicators, logger);
         var pos = new Position(Guid.NewGuid(), Guid.NewGuid(), Symbol.Parse("EURUSD"), TradeDirection.Long,
             0.1m, new Price(1.08500m), new Price(1.08300m), null, DateTime.UtcNow, "test");
 

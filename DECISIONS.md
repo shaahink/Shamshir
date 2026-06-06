@@ -307,6 +307,8 @@ Quick reference:
 
 **Iteration 1 total:** 159 `.cs` source files + 17 test files | 37 tests | All 10 phases merged
 **Iteration 2 status:** See `ITERATION-2.md` — 3 sub-phases, 24 confirmed bugs, 4 new decisions
+**Iteration 3 status:** ✅ Complete (R1–R7). See `ITERATION-3-FINAL.md` — deep review found 6 critical + 7 serious + 10 moderate surviving bugs; 15 new decisions (D36–D50); strategy composition design; iteration 4 plan
+**Iteration 4 status:** Not started. See `ITERATION-3-FINAL.md §12` — 6 phases (4A–4F): critical fixes, OrderDispatcher wiring, composition + 3 new strategies, lot-sizing methods, live-mode robustness, Aspire fix
 
 ### Iteration 1 (Phases 0–10)
 
@@ -324,22 +326,13 @@ Quick reference:
 | 9 — cTrader | `phase/09-ctrader` | ✅ Done | — | C# 6 cBot with PipeClient, publishers, command handler |
 | 10 — CI/CD | `phase/10-aspire-cicd` | ✅ Done | — | GitHub Actions (PR + Release), Aspire AppHost |
 
-### Iteration 2 (Phases 2A–2C) — See ITERATION-2.md
+### Iteration 2 (Phases 2A–2C) ✅ Complete — See ITERATION-2.md
 
 | Phase | Branch | Status | Tests | Key Deliverables |
 |---|---|---|---|---|
-| 2A — Engine Unblocking | `phase/2a-engine-unblock` | ❌ Not started | — | Fix DI throws, bar accumulation, IIndicatorService wiring, DataFeedService path/sequencing |
-| 2B — Financial Correctness | `phase/2b-financial-correctness` | ❌ Not started | +7 unit | Fix lot sizing, FTMO daily floor, protection mode reset, 5 missing risk checks, SymbolInfo in strategies |
-| 2C — Working Engine Loop | `phase/2c-working-loop` | ❌ Not started | +7 simulation | TypedEventBus, PositionManager, SimulatedBrokerAdapter fills, real PnL in harness |
-
-### Iteration 2 Issue Summary
-
-| Severity | Count | Blocking |
-|---|---|---|
-| CRITICAL | 6 | Engine cannot start or produce trades |
-| SERIOUS | 5 | Silent financial errors |
-| MODERATE | 8 | Design violations, missing features |
-| MINOR | 4 | Technical debt |
+| 2A — Engine Unblocking | `phase/2a-engine-unblock` | ✅ Done | +9 unit | Fix DI throws, bar accumulation, IIndicatorService wiring, DataFeedService path/sequencing |
+| 2B — Financial Correctness | `phase/2b-financial-correctness` | ✅ Done | +7 unit | Fix lot sizing, FTMO daily floor, protection mode reset, 5 missing risk checks, SymbolInfo in strategies |
+| 2C — Working Engine Loop | `phase/2c-working-loop` | ✅ Done | +7 simulation | TypedEventBus, PositionManager, SimulatedBrokerAdapter fills, real PnL in harness |
 
 ### New Decisions (D21–D24) — All resolved in ITERATION-2.md
 
@@ -349,3 +342,64 @@ Quick reference:
 | D22 | PositionManager location | ✅ A — `TradingEngine.Services` |
 | D23 | TypedEventBus location | ✅ A — `TradingEngine.Infrastructure/Events` |
 | D24 | Open position tracking in RiskManager | ✅ A — `RegisterPosition`/`DeregisterPosition` on `IRiskManager` |
+
+### Iteration 3 (R1–R7) ✅ Complete — See ITERATION-3-FINAL.md
+
+| Phase | Branch | Status | Tests | Key Deliverables |
+|---|---|---|---|---|
+| R1 — Data & Symbol | `phase/r1-data-symbol` | ✅ Done | +7 | SimBrokerAdapter: ISymbolInfoRegistry, pip-size slippage. SlTpCalculator/TrailingStopService: real symbol lookup |
+| R2 — Config & Mode | `phase/r1-data-symbol` | ✅ Done | +4 | EngineMode from config, Aspire fix, dotnet format |
+| R3 — Position Manager | `phase/r3-position-engine` | ✅ Done | +7 | Exit reason SL/TP dynamic, trailing method switch, DD in equity |
+| R4 — Multi-Strategy | `phase/r4-multi-strategy` | ✅ Done | +1 | Two concurrent strategies, DataFeedService multi-symbol |
+| R5 — Web Real Data | `phase/r5-web-data` | ✅ Done | — | Dashboard/perf/trades/events query SQLite |
+| R6 — Dev Polish | `phase/r6-polish` | ✅ Done | — | README, .gitattributes |
+| R7 — Hardening | `phase/r7-hardening` | ✅ Done | — | Slippage from config, broker interface decoupled |
+
+**Results:** 26 bugs fixed (5 critical, 8 serious, 8 moderate, 5 minor). **69 tests passing** (64 unit + 3 integration + 2 simulation). **19 new tests.**
+
+### Iteration 4 (Phases 4A–4F) — See ITERATION-3-FINAL.md §12
+
+| Phase | Branch | Status | Tests | Key Deliverables |
+|---|---|---|---|---|
+| 4A — Critical Fixes | `phase/4a-critical-fixes` | ❌ Not started | +8 unit | Lot sizing uses real profile; indicator namespace; DD fraction fix; AccountUpdate from SimBroker; PersistenceService singleton; pipe partial-read fix; breakeven one-shot; AtrTrail high-water |
+| 4B — OrderDispatcher Wiring | `phase/4b-dispatcher-wiring` | ❌ Not started | — | Wire OrderDispatcher + PositionTracker into EngineWorker; remove duplicate logic; cap `_bars` at 500; partial fill + duplicate execution guards |
+| 4C — Strategy Composition | `phase/4c-composition` | ❌ Not started | +6 unit | `ISignalProvider`, `IEntryFilter`, `IExitBehavior`, `IPositionBehavior`; `ComposedStrategy`; built-in filters + behaviors; EmaAlignment, MeanReversion, SessionBreakout strategies; RSI + BB in Skender service |
+| 4D — Lot Sizing + Risk | `phase/4d-lot-sizing` | ❌ Not started | +4 unit | `LotSizingMethod` enum + `RiskProfile` fields; `PositionSizer` dispatch; `StrategyStats`; force-close on DD breach; tick synthesis spread fix |
+| 4E — State Sync | `phase/4e-state-sync` | ❌ Not started | +3 integration | `IBrokerAdapter.GetAccountStateAsync()`; startup reconciliation in live mode; pipe reconnect (3 retries, exponential backoff); `PositionLifecycleState` tracking |
+| 4F — Aspire + Test Harness | `phase/4f-aspire-tests` | ❌ Not started | +5 simulation | Aspire `Engine__Mode` + shared DB path + `WaitForCompletion`; EngineTestHarness real indicators + lot sizing; multi-strategy + composition + edge-case tests |
+
+### New Decisions (D25–D35) — Resolved in ITERATION-3-FINAL.md
+
+| ID | Decision | Vote |
+|---|---|---|
+| D25 | Risk profile resolution per intent | ✅ A — `IRiskProfileResolver` |
+| D26 | Per-strategy position cap | ✅ A — in `RiskManager.Validate()` |
+| D27 | Current equity propagation | ✅ A — `Volatile.Read` field |
+| D28 | Persistence writes from EngineWorker | ✅ A — `PersistenceService` fire-and-forget |
+| D29 | Shared DB path | ✅ A — solution-relative via `AppContext` |
+| D30 | EngineTestHarness real indicators | ✅ A — inject `SkenderIndicatorService` |
+| D31 | Real equity tracking | ✅ B — SimulatedBrokerAdapter owns balance |
+| D32 | DB path implementation | ✅ A — `AppContext.BaseDirectory` resolve-up |
+| D33 | getCrossRate injection | ✅ A — inject `Func<string,string,decimal>` |
+| D34 | SSE RiskState updates | ✅ B — `SseRiskHandler : IEventHandler<EquityUpdated>` |
+| D35 | Phase execution ordering | ✅ Confirmed — 3A→3B→(3C∥3E)→3D→3F |
+
+### New Decisions (D36–D50) — Resolved in ITERATION-3-FINAL.md
+
+| ID | Decision | Vote |
+|---|---|---|
+| D36 | Bar history cap | ✅ A — `MaxBarsPerTimeframe = 500`; evict oldest when exceeded |
+| D37 | Indicator key namespace | ✅ A — prefix with symbol: `"EURUSD:ATR_14"`; strip prefix when building `MarketContext.IndicatorValues` |
+| D38 | Strategy composition model | ✅ A — `ISignalProvider` + `IEntryFilter` + `IExitBehavior` + `IPositionBehavior`; `IStrategy` unchanged; new strategies use `ComposedStrategy` wrapper |
+| D39 | PositionManagementConfig source | ✅ A — strategies declare `IReadOnlyList<IPositionBehavior> PositionBehaviors { get; }`; `PositionManager` reads from this instead of hardcoded switch |
+| D40 | Lot sizing methods | ✅ A — add `LotSizingMethod` enum + fields to `RiskProfile`; `PositionSizer` dispatches on method |
+| D41 | Position state machine | ✅ A — `PositionLifecycleState` enum tracked in `PositionManager._tracked`; log every transition |
+| D42 | Pipe reconnection | ✅ A — 3 retries, exponential backoff (2s, 4s, 8s); enter protection mode if all fail; re-sync state on reconnect |
+| D43 | Broker state sync on startup | ✅ A — `IBrokerAdapter.GetAccountStateAsync()` called after `ConnectAsync` in live/paper mode; reconcile before accepting signals |
+| D44 | Tick synthesis spread | ✅ A — `HistoricalDataProvider` uses `symbolInfo.TypicalSpread / 2` as half-spread |
+| D45 | Order rejection handling | ✅ A — `OrderState.Rejected` removes from pending map, logs `RejectionReason`, deregisters risk |
+| D46 | Partial fill handling | ✅ A — track cumulative `FilledLots` per `OrderId`; remove from pending only when `FilledLots >= RequestedLots` |
+| D47 | Duplicate execution guard | ✅ A — `HashSet<Guid> _processedExecutionIds`; skip already-processed events |
+| D48 | Force close on DD breach | ✅ A — when `ForceCloseOnBreach == true` and max-DD protection entered: publish `ForceCloseAllRequested`; `EngineWorker` calls `ClosePositionAsync` for all open positions |
+| D49 | Aspire shared DB path | ✅ A — `Engine__Mode` env var (double underscore); `Persistence__DbPath` shared; `WaitForCompletion(engine)` on web |
+| D50 | Three new strategies | ✅ A — `EmaAlignmentStrategy`, `MeanReversionStrategy`, `SessionBreakoutStrategy`; all use `ComposedStrategy`; each with session filters and position behaviors |

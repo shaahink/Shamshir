@@ -11,15 +11,20 @@ public interface IBrokerAdapter
 
     DateTime BrokerTimeUtc { get; }
 
-    Task SubmitOrderAsync(OrderRequest request, CancellationToken ct);
+    Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct);
     Task ModifyOrderAsync(Guid orderId, Price newStopLoss, Price? newTakeProfit, CancellationToken ct);
     Task CancelOrderAsync(Guid orderId, CancellationToken ct);
     Task ClosePositionAsync(Guid positionId, CancellationToken ct);
 
+    Task<AccountState> GetAccountStateAsync(CancellationToken ct);
     Task ConnectAsync(CancellationToken ct);
     Task DisconnectAsync(CancellationToken ct);
     bool IsConnected { get; }
 }
+
+public record AccountState(decimal Balance, decimal Equity, IReadOnlyList<OpenPositionInfo> OpenPositions);
+
+public record OpenPositionInfo(Guid PositionId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price CurrentStopLoss, Price? TakeProfit);
 
 public record AccountUpdate(
     decimal Balance,

@@ -13,9 +13,7 @@ public sealed class DrawdownTracker
 
     public void Initialize(decimal initialBalance, string drawdownType = "Fixed")
     {
-        if (_initialized)
-            return;
-
+        if (_initialized) return;
         InitialAccountBalance = initialBalance;
         PeakEquity = initialBalance;
         DailyStartEquity = initialBalance;
@@ -25,35 +23,31 @@ public sealed class DrawdownTracker
 
     public void OnEquityUpdate(decimal equity)
     {
-        if (!_initialized)
-            return;
+        if (!_initialized) return;
 
         if (equity > PeakEquity)
             PeakEquity = equity;
 
-        var dailyDd = DailyStartEquity > 0
-            ? (DailyStartEquity - equity) / DailyStartEquity
+        CurrentDailyDrawdown = InitialAccountBalance > 0
+            ? Math.Max(0m, (InitialAccountBalance - equity) / InitialAccountBalance)
             : 0m;
-        CurrentDailyDrawdown = Math.Max(0, dailyDd);
 
         var equityBase = DrawdownType == "Trailing" ? PeakEquity : InitialAccountBalance;
-        var maxDd = equityBase > 0
-            ? (equityBase - equity) / equityBase
+        CurrentMaxDrawdown = equityBase > 0
+            ? Math.Max(0m, (equityBase - equity) / equityBase)
             : 0m;
-        CurrentMaxDrawdown = Math.Max(0, maxDd);
     }
 
     public void OnDailyReset(decimal currentEquity)
     {
         DailyStartEquity = currentEquity;
-        CurrentDailyDrawdown = 0;
     }
 
     public decimal GetMaxDrawdownFloor(decimal maxTotalLossPercent) =>
         DrawdownType == "Trailing"
-            ? PeakEquity * (1 - (decimal)maxTotalLossPercent)
-            : InitialAccountBalance * (1 - (decimal)maxTotalLossPercent);
+            ? PeakEquity * (1m - (decimal)maxTotalLossPercent)
+            : InitialAccountBalance * (1m - (decimal)maxTotalLossPercent);
 
     public decimal GetDailyLossLimit(decimal maxDailyLossPercent) =>
-        InitialAccountBalance * (1 - (decimal)maxDailyLossPercent);
+        InitialAccountBalance * (1m - (decimal)maxDailyLossPercent);
 }

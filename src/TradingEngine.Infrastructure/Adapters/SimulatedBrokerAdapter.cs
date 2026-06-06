@@ -25,9 +25,7 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
     private readonly ISymbolInfoRegistry _symbolRegistry;
     private readonly Func<string, string, decimal> _crossRateProvider;
     private readonly double _slippagePips;
-    #pragma warning disable IDE0044
     private decimal _currentBalance;
-    #pragma warning restore IDE0044
     private readonly Dictionary<Guid, PendingOrder> _pendingOrders = new();
     private readonly Dictionary<Guid, SimPosition> _openPositions = new();
 
@@ -58,14 +56,30 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
             0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
     }
 
+    public Task<AccountState> GetAccountStateAsync(CancellationToken ct)
+    {
+        var positions = new List<OpenPositionInfo>();
+        lock (_openPositions)
+        {
+            foreach (var (_, pos) in _openPositions)
+            {
+                positions.Add(new OpenPositionInfo(
+                    pos.OrderId, pos.Symbol, pos.Direction, pos.Lots,
+                    pos.EntryPrice, pos.StopLoss, pos.TakeProfit));
+            }
+        }
+        return Task.FromResult(new AccountState(_currentBalance, _currentBalance, positions));
+    }
+
     public Task ConnectAsync(CancellationToken ct) => Task.CompletedTask;
     public Task DisconnectAsync(CancellationToken ct) => Task.CompletedTask;
 
-    public Task SubmitOrderAsync(OrderRequest request, CancellationToken ct)
+    public Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
+        var orderId = Guid.NewGuid();
         lock (_pendingOrders)
         {
-            _pendingOrders[Guid.NewGuid()] = new PendingOrder
+            _pendingOrders[orderId] = new PendingOrder
             {
                 Symbol = request.Symbol,
                 Direction = request.Direction,
@@ -75,7 +89,7 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                 StrategyId = request.Intent.StrategyId,
             };
         }
-        return Task.CompletedTask;
+        return Task.FromResult(orderId);
     }
 
     public Task ModifyOrderAsync(Guid orderId, Price newStopLoss, Price? newTakeProfit, CancellationToken ct)
@@ -110,7 +124,10 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         {
             foreach (var (id, order) in _pendingOrders.ToList())
             {
-                var pipSize = ResolvePipSize(order.Symbol);
+                var symbolInfo = ResolveSymbolInfo(order.Symbol);
+                if (symbolInfo is null) continue;
+
+                var pipSize = symbolInfo.PipSize;
                 var fillPrice = order.Direction == TradeDirection.Long
                     ? tick.Ask + (decimal)_slippagePips * pipSize
                     : tick.Bid - (decimal)_slippagePips * pipSize;
@@ -125,6 +142,7 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                     StopLoss = order.StopLoss,
                     TakeProfit = order.TakeProfit,
                     StrategyId = order.StrategyId,
+                    SymbolInfo = symbolInfo,
                 };
 
                 _openPositions[id] = pos;
@@ -133,6 +151,9 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                 _executionChannel.Writer.TryWrite(new ExecutionEvent(
                     id, OrderState.Filled, new Price(fillPrice),
                     order.Lots, null, tick.TimestampUtc));
+
+                _accountChannel.Writer.TryWrite(new AccountUpdate(
+                    _currentBalance, 0m, _currentBalance, tick.TimestampUtc));
             }
         }
 
@@ -152,13 +173,34 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                 if (slHit || tpHit)
                 {
                     _openPositions.Remove(id);
+
+                    var exitPrice = slHit ? pos.StopLoss.Value : pos.TakeProfit!.Value.Value;
+                    var rawPnl = pos.Direction == TradeDirection.Long
+                        ? (exitPrice - pos.EntryPrice.Value) * pos.Lots * pos.SymbolInfo.ContractSize
+                        : (pos.EntryPrice.Value - exitPrice) * pos.Lots * pos.SymbolInfo.ContractSize;
+
+                    var pnlUsd = pos.SymbolInfo.QuoteCurrency == "USD"
+                        ? rawPnl
+                        : rawPnl * _crossRateProvider(pos.SymbolInfo.QuoteCurrency, "USD");
+
+                    _currentBalance += pnlUsd;
+
                     _executionChannel.Writer.TryWrite(new ExecutionEvent(
                         id, OrderState.Filled,
                         slHit ? pos.StopLoss : pos.TakeProfit!,
                         pos.Lots, null, tick.TimestampUtc));
+
+                    _accountChannel.Writer.TryWrite(new AccountUpdate(
+                        _currentBalance, 0m, _currentBalance, tick.TimestampUtc));
                 }
             }
         }
+    }
+
+    private SymbolInfo? ResolveSymbolInfo(Symbol symbol)
+    {
+        try { return _symbolRegistry.Get(symbol); }
+        catch { return null; }
     }
 
     private decimal ResolvePipSize(Symbol symbol)
@@ -187,5 +229,6 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         public Price StopLoss { get; set; }
         public Price? TakeProfit { get; set; }
         public string StrategyId { get; set; } = "";
+        public SymbolInfo SymbolInfo { get; set; } = null!;
     }
 }
