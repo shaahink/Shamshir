@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release
+      - run: dotnet publish src/TradingEngine.Host -c Release -r win-x64 --self-contained -o publish/engine
+      - run: dotnet publish src/TradingEngine.Web -c Release -r win-x64 --self-contained -o publish/web
+      - uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            ## Shamshir Trading Engine Release v${{ github.run_number }}
+            - Engine: `publish/engine/`
+            - Web Viewer: `publish/web/`
