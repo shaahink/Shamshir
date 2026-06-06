@@ -16,7 +16,7 @@ public sealed class BacktestRunner
         var cliPath = CTraderCliLocator.Locate(_config);
         var algoPath = ResolveAlgoPath();
         var runId = Guid.NewGuid().ToString("N")[..8];
-        var pipeName = $"trading-engine-{runId}";
+        var pipeName = "trading-engine";
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
         var reportJsonPath = Path.Combine(resultsDir, "report.json");

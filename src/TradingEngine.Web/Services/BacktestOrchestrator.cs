@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using TradingEngine.CTraderRunner;
 
 namespace TradingEngine.Web.Services;
@@ -94,6 +94,7 @@ public sealed class BacktestOrchestrator
             state.Error = ex.Message;
             state.LogLines.Enqueue($"[{DateTime.UtcNow:HH:mm:ss}] Error: {ex.Message}");
             _logger.LogError(ex, "Backtest {RunId} failed", runId);
+            throw;
         }
     }
 }

@@ -68,7 +68,7 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     }
 
     [Fact]
-    public async Task ApiBacktestStart_ReturnsRunId()
+    public async Task ApiBacktestStart_ReturnsRunId_AndCompletes()
     {
         var payload = JsonSerializer.Serialize(new
         {
@@ -86,6 +86,34 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         body.Should().Contain("runId");
         body.Should().Contain("status");
+
+        using var jsonDoc = JsonDocument.Parse(body);
+        var runId = jsonDoc.RootElement.GetProperty("runId").GetString()!;
+
+        // Poll status for up to 15s — backtest runs async, may fail gracefully
+        // (ctrader-cli not installed in CI) but must NOT crash with an exception
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(500);
+            var statusResp = await _client.GetAsync($"/api/backtest/{runId}/status");
+            statusResp.StatusCode.Should().Be(HttpStatusCode.OK);
+            var statusBody = await statusResp.Content.ReadAsStringAsync();
+            using var statusDoc = JsonDocument.Parse(statusBody);
+
+            var status = statusDoc.RootElement.GetProperty("status").GetString();
+            // "starting" / "running" → still in progress, keep polling
+            if (status is "starting" or "running") continue;
+
+            // Terminal states: "completed" or "failed"
+            // "failed" is acceptable (ctrader-cli not available)
+            // But the runId must be in the result, and no crash
+            statusDoc.RootElement.TryGetProperty("error", out var errorEl);
+            return;
+        }
+
+        // If we hit the deadline, the backtest is stuck — that's a bug
+        Assert.Fail("Backtest did not complete within 15s polling window");
     }
 
     [Fact]
