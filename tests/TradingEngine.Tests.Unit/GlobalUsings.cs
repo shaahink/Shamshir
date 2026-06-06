@@ -1,4 +1,5 @@
 global using FluentAssertions;
+global using Microsoft.Extensions.Logging;
 global using NSubstitute;
 global using Xunit;
 global using TradingEngine.Domain;
@@ -7,3 +8,4 @@ global using TradingEngine.Risk.Filters;
 global using TradingEngine.Services.Helpers;
 global using TradingEngine.Services.SLTPCalculation;
 global using TradingEngine.Services.TrailingStop;
+global using TradingEngine.Strategies.TrendBreakout;
