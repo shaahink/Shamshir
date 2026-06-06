@@ -17,8 +17,8 @@
         {
             <tr>
                 <td>@evt.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                <td>@evt.GetType().Name</td>
-                <td>@evt</td>
+                <td>@evt.EventType</td>
+                <td>@evt.Payload[..Math.Min(evt.Payload.Length, 200)]...</td>
             </tr>
         }
     </tbody>

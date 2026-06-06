@@ -25,10 +25,10 @@
                 <td>@trade.Symbol</td>
                 <td>@trade.Direction</td>
                 <td>@trade.Lots</td>
-                <td>@trade.EntryPrice.Value:F5</td>
-                <td>@trade.ExitPrice.Value:F5</td>
-                <td class="@(trade.NetPnL.Amount >= 0 ? "positive" : "negative")">
-                    @trade.NetPnL.Amount:F2
+                <td>@trade.EntryPrice:F5</td>
+                <td>@trade.ExitPrice:F5</td>
+                <td class="@(trade.NetPnLAmount >= 0 ? "positive" : "negative")">
+                    @trade.NetPnLAmount:F2
                 </td>
                 <td>@trade.RMultiple:F2</td>
                 <td>@trade.ExitReason</td>

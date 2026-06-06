@@ -1,15 +1,23 @@
 namespace TradingEngine.Web.Pages.Trades;
 
-public sealed class TradesIndexModel : PageModel
+public sealed class TradesIndexModel(ReportingDbContext db) : PageModel
 {
-    public IReadOnlyList<TradeResult> Trades { get; private set; } = [];
+    public IReadOnlyList<TradeResultEntity> Trades { get; private set; } = [];
     public int TotalPages { get; private set; }
     public int CurrentPage { get; private set; }
 
-    public void OnGet(int page = 1)
+    public async void OnGet(int page = 1, string? strategyId = null)
     {
         CurrentPage = page;
-        Trades = [];
-        TotalPages = 1;
+        var pageSize = 50;
+        var query = db.Trades.AsQueryable();
+        if (!string.IsNullOrEmpty(strategyId))
+            query = query.Where(t => t.StrategyId == strategyId);
+
+        var total = await query.CountAsync();
+        TotalPages = (int)Math.Ceiling((double)total / pageSize);
+
+        Trades = await query.OrderByDescending(t => t.ClosedAtUtc)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
     }
 }

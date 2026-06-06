@@ -1,11 +1,11 @@
 namespace TradingEngine.Web.Pages.Trades;
 
-public sealed class TradeDetailModel : PageModel
+public sealed class TradeDetailModel(ReportingDbContext db) : PageModel
 {
-    public TradeResult? Trade { get; private set; }
+    public TradeResultEntity? Trade { get; private set; }
 
-    public void OnGet(Guid id)
+    public async void OnGet(Guid id)
     {
-        Trade = null;
+        Trade = await db.Trades.FindAsync(id);
     }
 }

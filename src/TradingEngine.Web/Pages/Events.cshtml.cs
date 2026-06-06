@@ -1,11 +1,11 @@
 namespace TradingEngine.Web.Pages;
 
-public sealed class EventsModel : PageModel
+public sealed class EventsModel(ReportingDbContext db) : PageModel
 {
-    public IReadOnlyList<EngineEvent> Events { get; private set; } = [];
+    public IReadOnlyList<EngineEventEntity> Events { get; private set; } = [];
 
-    public void OnGet()
+    public async void OnGet()
     {
-        Events = [];
+        Events = await db.Events.OrderByDescending(e => e.OccurredAtUtc).Take(100).ToListAsync();
     }
 }
