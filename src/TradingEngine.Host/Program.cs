@@ -1,4 +1,5 @@
 using Serilog;
+using TradingEngine.Infrastructure.Events;
 
 namespace TradingEngine.Host;
 
@@ -31,8 +32,9 @@ public static class Program
 
             if (mode == EngineMode.Backtest)
             {
+                var dataDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "tests", "data"));
                 builder.Services.AddSingleton<IMarketDataProvider>(_ =>
-                    new HistoricalDataProvider(Path.Combine(AppContext.BaseDirectory, "config")));
+                    new HistoricalDataProvider(dataDir));
             }
             else
             {
@@ -45,13 +47,14 @@ public static class Program
             builder.Services.AddSingleton<RiskManager>();
             builder.Services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
 
-            builder.Services.AddSingleton<IEngineClock>(new StubClock(DateTime.UtcNow));
-            builder.Services.AddSingleton<IPositionManager>(_ =>
-                throw new NotSupportedException("PositionManager not yet implemented"));
-            builder.Services.AddSingleton<IEventBus>(_ =>
-                throw new NotSupportedException("EventBus not yet implemented"));
-            builder.Services.AddSingleton<IIndicatorService>(_ =>
-                throw new NotSupportedException("IndicatorService requires Skender in Infrastructure"));
+            if (mode == EngineMode.Backtest)
+                builder.Services.AddSingleton<IEngineClock>(new StubClock(DateTime.UtcNow));
+            else
+                builder.Services.AddSingleton<IEngineClock, BrokerClock>();
+
+            builder.Services.AddSingleton<IPositionManager, PositionManager>();
+            builder.Services.AddSingleton<IEventBus, TypedEventBus>();
+            builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
 
             var registry = new StrategyRegistry();
             var strategies = registry.CreateStrategies(

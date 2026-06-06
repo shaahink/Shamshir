@@ -5,56 +5,53 @@ public sealed class DataFeedService(
     SimulatedBrokerAdapter simulatedBroker,
     ILogger<DataFeedService> logger) : BackgroundService
 {
-    private readonly TaskCompletionSource _feedComplete = new();
-
-    public Task FeedComplete => _feedComplete.Task;
-
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         try
         {
             var symbol = Symbol.Parse("EURUSD");
-            logger.LogInformation("DataFeedService started for symbol {Symbol}", symbol);
+            logger.LogInformation("Data feed started for {Symbol}", symbol);
 
-            await foreach (var bar in marketData.StreamBarsAsync(symbol, Timeframe.H1, ct))
-            {
-                await simulatedBroker.BarWriter.WriteAsync(bar, ct);
+            var barTask = FeedBarsAsync(symbol, ct);
+            var tickTask = FeedTicksAsync(symbol, ct);
 
-                var barDuration = TimeSpan.FromHours(1);
-                var quarter = TimeSpan.FromTicks(barDuration.Ticks / 4);
-                var halfSpread = 0.0001m;
+            await Task.WhenAll(barTask, tickTask);
 
-                var ticks = new[]
-                {
-                    new Tick(symbol, bar.Open, bar.Open + halfSpread, bar.OpenTimeUtc),
-                    new Tick(symbol, bar.High, bar.High + halfSpread, bar.OpenTimeUtc + quarter),
-                    new Tick(symbol, bar.Low, bar.Low + halfSpread, bar.OpenTimeUtc + 2 * quarter),
-                    new Tick(symbol, bar.Close, bar.Close + halfSpread, bar.OpenTimeUtc + 3 * quarter),
-                };
-
-                foreach (var tick in ticks)
-                    await simulatedBroker.TickWriter.WriteAsync(tick, ct);
-
-                await simulatedBroker.AccountWriter.WriteAsync(
-                    new AccountUpdate(100_000, 100_000, 0, ticks[^1].TimestampUtc), ct);
-            }
-
-            logger.LogInformation("DataFeedService completed — data stream exhausted");
+            logger.LogInformation("Data feed completed");
         }
         catch (OperationCanceledException)
         {
-            logger.LogInformation("DataFeedService cancelled");
+            logger.LogInformation("Data feed cancelled");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "DataFeedService failed");
+            logger.LogError(ex, "Data feed failed");
         }
         finally
         {
             simulatedBroker.TickWriter.Complete();
             simulatedBroker.BarWriter.Complete();
             simulatedBroker.AccountWriter.Complete();
-            _feedComplete.TrySetResult();
+        }
+    }
+
+    private async Task FeedBarsAsync(Symbol symbol, CancellationToken ct)
+    {
+        await foreach (var bar in marketData.StreamBarsAsync(symbol, Timeframe.H1, ct))
+        {
+            await simulatedBroker.BarWriter.WriteAsync(bar, ct);
+        }
+    }
+
+    private async Task FeedTicksAsync(Symbol symbol, CancellationToken ct)
+    {
+        await foreach (var tick in marketData.StreamTicksAsync(symbol, ct))
+        {
+            await simulatedBroker.TickWriter.WriteAsync(tick, ct);
+            simulatedBroker.OnTickReceived(tick);
+
+            simulatedBroker.AccountWriter.TryWrite(new AccountUpdate(
+                100_000, 100_000, 0, tick.TimestampUtc));
         }
     }
 }

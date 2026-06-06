@@ -13,6 +13,8 @@ public sealed class TrendBreakoutStrategy : IStrategy
     private int _winStreak;
     private int _lossStreak;
 
+    public TrendBreakoutParameters GetParameters() => _config.Parameters;
+
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];

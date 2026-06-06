@@ -29,4 +29,8 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
     public Task ModifyOrderAsync(Guid orderId, Price newStopLoss, Price? newTakeProfit, CancellationToken ct) => Task.CompletedTask;
     public Task CancelOrderAsync(Guid orderId, CancellationToken ct) => Task.CompletedTask;
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct) => Task.CompletedTask;
+
+    public void OnTickReceived(Tick tick)
+    {
+    }
 }
