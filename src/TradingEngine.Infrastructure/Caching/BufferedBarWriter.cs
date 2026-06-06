@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Infrastructure.Caching;
 
@@ -15,10 +16,12 @@ public sealed class BufferedBarWriter : IAsyncDisposable
     private readonly IBarRepository _repo;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _consumerTask;
+    private readonly ILogger<BufferedBarWriter>? _logger;
 
-    public BufferedBarWriter(IBarRepository repo)
+    public BufferedBarWriter(IBarRepository repo, ILogger<BufferedBarWriter>? logger = null)
     {
         _repo = repo;
+        _logger = logger;
         _consumerTask = ConsumeAsync(_cts.Token);
     }
 
@@ -26,25 +29,33 @@ public sealed class BufferedBarWriter : IAsyncDisposable
 
     public async Task ConsumeAsync(CancellationToken ct)
     {
-        var batch = new List<Bar>(500);
-        await foreach (var bar in _channel.Reader.ReadAllAsync(ct))
+        try
         {
-            batch.Add(bar);
-            if (batch.Count >= 500)
+            var batch = new List<Bar>(500);
+            await foreach (var bar in _channel.Reader.ReadAllAsync(ct))
             {
-                await _repo.BulkInsertAsync(batch, ct);
-                batch.Clear();
+                batch.Add(bar);
+                if (batch.Count >= 500)
+                {
+                    await _repo.BulkInsertAsync(batch, ct);
+                    batch.Clear();
+                }
             }
+            if (batch.Count > 0)
+                await _repo.BulkInsertAsync(batch, ct);
         }
-
-        if (batch.Count > 0)
-            await _repo.BulkInsertAsync(batch, ct);
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "BufferedBarWriter consumer failed");
+        }
     }
 
     public async Task FlushAsync()
     {
         _channel.Writer.Complete();
-        await _consumerTask;
+        try { await _consumerTask; }
+        catch (Exception ex) { _logger?.LogError(ex, "BufferedBarWriter flush failed"); }
     }
 
     public async ValueTask DisposeAsync()
