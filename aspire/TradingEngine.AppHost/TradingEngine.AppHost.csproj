@@ -1,5 +1,10 @@
 <Project Sdk="Aspire.AppHost.Sdk/13.3.5">
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TradingEngine.Host\TradingEngine.Host.csproj" />
+    <ProjectReference Include="..\..\src\TradingEngine.Web\TradingEngine.Web.csproj" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>

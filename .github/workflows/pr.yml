@@ -1,0 +1,29 @@
+name: PR Build & Test
+
+on:
+  pull_request:
+    branches: [develop]
+    paths: ['src/**', 'tests/**']
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release --logger trx --collect:"XPlat Code Coverage"
+      - uses: codecov/codecov-action@v5
+
+  lint:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+      - run: dotnet restore
+      - run: dotnet format --verify-no-changes
