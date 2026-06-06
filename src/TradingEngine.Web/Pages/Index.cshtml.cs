@@ -7,7 +7,7 @@ public sealed class IndexModel(ReportingDbContext db) : PageModel
     public decimal LatestEquity { get; private set; }
     public int TotalTradesToday { get; private set; }
 
-    public async void OnGet()
+    public async Task OnGet()
     {
         var latest = await db.EquitySnapshots.OrderByDescending(e => e.TimestampUtc).FirstOrDefaultAsync();
         if (latest is not null)

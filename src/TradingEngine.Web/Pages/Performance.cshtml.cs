@@ -7,7 +7,7 @@ public sealed class PerformanceModel(TradeReportQueries queries) : PageModel
     public decimal NetPnL { get; private set; }
     public double AvgHoldHours { get; private set; }
 
-    public async void OnGet()
+    public async Task OnGet()
     {
         try
         {

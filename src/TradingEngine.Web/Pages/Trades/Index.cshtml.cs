@@ -6,7 +6,7 @@ public sealed class TradesIndexModel(ReportingDbContext db) : PageModel
     public int TotalPages { get; private set; }
     public int CurrentPage { get; private set; }
 
-    public async void OnGet(int page = 1, string? strategyId = null)
+    public async Task OnGet(int page = 1, string? strategyId = null)
     {
         CurrentPage = page;
         var pageSize = 50;

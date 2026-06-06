@@ -4,7 +4,7 @@ public sealed class TradeDetailModel(ReportingDbContext db) : PageModel
 {
     public TradeResultEntity? Trade { get; private set; }
 
-    public async void OnGet(Guid id)
+    public async Task OnGet(Guid id)
     {
         Trade = await db.Trades.FindAsync(id);
     }
