@@ -63,6 +63,9 @@ public sealed class PositionTracker(
 
         var symbolInfo = symbolRegistry.Get(pos.Symbol);
         var pnl = PipCalculator.GrossPnL(pos.Direction, pos.EntryPrice, new Price(fillPrice), pos.Lots, symbolInfo, crossRateProvider);
+        var exitReason = pos.Direction == TradeDirection.Long
+            ? (fillPrice <= pos.CurrentStopLoss.Value ? "SL" : "TP")
+            : (fillPrice >= pos.CurrentStopLoss.Value ? "SL" : "TP");
 
         _openPositions.Remove(evt.OrderId);
         riskManager.DeregisterPosition(pos.Id);
@@ -74,11 +77,11 @@ public sealed class PositionTracker(
                 pos.EntryPrice, new Price(fillPrice), pos.CurrentStopLoss, pos.TakeProfit,
                 pos.OpenedAtUtc, clock.UtcNow, pnl, Money.Zero(pnl.Currency), Money.Zero(pnl.Currency),
                 pnl, new Pips(0), 0, new Pips(0), new Pips(0),
-                "TP", pos.StrategyId, "standard", EngineMode.Backtest);
+                exitReason, pos.StrategyId, "standard", EngineMode.Backtest);
             s.OnTradeResult(tradeResult);
             _ = persistence.SaveTradeAsync(tradeResult, CancellationToken.None);
         }
 
-        logger.LogInformation("Closed. Id={Id} Exit={Exit:F5} PnL={PnL:F2}", pos.Id, fillPrice, pnl.Amount);
+        logger.LogInformation("Closed. Id={Id} Exit={Exit:F5} PnL={PnL:F2} Reason={Reason}", pos.Id, fillPrice, pnl.Amount, exitReason);
     }
 }

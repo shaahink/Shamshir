@@ -39,7 +39,7 @@ public sealed class PositionManagerPhase3BTests
             0.1m, new Price(1.08500m), new Price(1.08300m), null, DateTime.UtcNow, "test");
 
         pm.RegisterPosition(pos, new PositionManagementConfig(
-            "test", new TrailingConfig(TrailingMethod.BreakevenThenTrail, 0, 0, 1.0),
+            "test", new TrailingConfig(TrailingMethod.StepPips, 500, 0, 0), // wide step so it won't fire
             true, 1.0, new Pips(1), new Money(100, "USD")));
 
         var tick = new Tick(Symbol.Parse("EURUSD"), 1.08700m, 1.08710m, DateTime.UtcNow);

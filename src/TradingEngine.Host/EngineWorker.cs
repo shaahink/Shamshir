@@ -255,9 +255,10 @@ public sealed class EngineWorker : BackgroundService
 
     private void HandleAccountUpdate(AccountUpdate update)
     {
+        var riskState = _riskManager.CurrentState;
         var equity = new EquitySnapshot(
             update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
-            update.Equity, update.Equity, 0, 0, EngineMode.Backtest);
+            update.Equity, update.Equity, riskState.DailyDrawdownUsed, riskState.MaxDrawdownUsed, EngineMode.Backtest);
         Volatile.Write(ref _currentEquity, equity);
         _riskManager.OnEquityUpdate(equity);
         _ = _persistence.SaveEquitySnapshotAsync(equity, CancellationToken.None);
