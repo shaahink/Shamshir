@@ -1,0 +1,35 @@
+@page "/trades/{id:guid}"
+@model TradeDetailModel
+@{
+    ViewData["Title"] = $"Trade {Model.Trade?.Id.ToString()[..8]}";
+}
+@if (Model.Trade is null)
+{
+    <h1>Trade not found</h1>
+}
+else
+{
+    <h1>Trade @Model.Trade.Id.ToString()[..8]</h1>
+    <div class="grid">
+        <div class="card"><h2>Symbol</h2><div class="value">@Model.Trade.Symbol</div></div>
+        <div class="card"><h2>Direction</h2><div class="value">@Model.Trade.Direction</div></div>
+        <div class="card"><h2>Lots</h2><div class="value">@Model.Trade.Lots</div></div>
+        <div class="card"><h2>Net PnL</h2><div class="value @(Model.Trade.NetPnL.Amount >= 0 ? "positive" : "negative")">@Model.Trade.NetPnL.Amount:F2</div></div>
+    </div>
+    <div class="grid">
+        <div class="card"><h2>Entry</h2><div class="value">@Model.Trade.EntryPrice.Value:F5</div></div>
+        <div class="card"><h2>Exit</h2><div class="value">@Model.Trade.ExitPrice.Value:F5</div></div>
+        <div class="card"><h2>SL</h2><div class="value">@Model.Trade.StopLoss.Value:F5</div></div>
+        <div class="card"><h2>TP</h2><div class="value">@(Model.Trade.TakeProfit?.Value.ToString("F5") ?? "N/A")</div></div>
+    </div>
+    <div class="grid">
+        <div class="card"><h2>R Multiple</h2><div class="value">@Model.Trade.RMultiple:F2</div></div>
+        <div class="card"><h2>Exit Reason</h2><div class="value">@Model.Trade.ExitReason</div></div>
+        <div class="card"><h2>MAE</h2><div class="value">@Model.Trade.MaxAdverseExcursion.Value:F1 pips</div></div>
+        <div class="card"><h2>MFE</h2><div class="value">@Model.Trade.MaxFavorableExcursion.Value:F1 pips</div></div>
+    </div>
+    <div class="card">
+        <h2>Chart</h2>
+        <canvas id="tradeChart" height="300"></canvas>
+    </div>
+}

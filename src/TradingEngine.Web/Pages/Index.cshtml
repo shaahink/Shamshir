@@ -1,0 +1,44 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+<h1>Dashboard</h1>
+<div class="grid">
+    <div class="card">
+        <h2>Status</h2>
+        <div class="value @(Model.RiskState?.TradingAllowed == true ? "status-ok" : "status-critical")">
+            @(Model.RiskState?.TradingAllowed == true ? "Active" : "Halted")
+        </div>
+    </div>
+    <div class="card">
+        <h2>Daily Drawdown</h2>
+        <div class="value @(Model.RiskState?.DailyDrawdownUsed > 0.03m ? "status-warn" : "status-ok")">
+            @(Model.RiskState?.DailyDrawdownUsed.ToString("P1") ?? "0%")
+        </div>
+    </div>
+    <div class="card">
+        <h2>Max Drawdown</h2>
+        <div class="value @(Model.RiskState?.MaxDrawdownUsed > 0.05m ? "status-warn" : "status-ok")">
+            @(Model.RiskState?.MaxDrawdownUsed.ToString("P1") ?? "0%")
+        </div>
+    </div>
+    <div class="card">
+        <h2>Open Positions</h2>
+        <div class="value">@Model.OpenPositionCount</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Equity Curve</h2>
+    <canvas id="equityChart" height="300"></canvas>
+</div>
+
+@section Scripts {
+    <script>
+        fetch('/api/equity')
+            .then(r => r.json())
+            .then(data => renderEquityCurve('equityChart', data))
+            .catch(() => {});
+    </script>
+}
