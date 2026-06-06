@@ -19,4 +19,5 @@ public record PropFirmRuleSet(
     string WeekendCloseUtc,
     string WeekendNoOpenUtc,
     string ProtectionResetPolicy,
-    bool ForceCloseOnBreach);
+    bool ForceCloseOnBreach,
+    DailyDdBase DailyDdBase = DailyDdBase.InitialBalance);

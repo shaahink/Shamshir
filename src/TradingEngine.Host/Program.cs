@@ -119,7 +119,9 @@ public static class Program
             builder.Services.AddSingleton<PositionTracker>();
 
             var registry = new StrategyRegistry();
-            var strategies = registry.CreateStrategies(["trend-breakout"], loadedConfig, builder.Services.BuildServiceProvider());
+            var activeStrategyIds = builder.Configuration.GetValue<string>("Engine:ActiveStrategyIds")?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                ?? ["trend-breakout", "ema-alignment", "mean-reversion", "session-breakout"];
+            var strategies = registry.CreateStrategies(activeStrategyIds, loadedConfig, builder.Services.BuildServiceProvider());
             foreach (var strategy in strategies)
                 builder.Services.AddSingleton(strategy);
 

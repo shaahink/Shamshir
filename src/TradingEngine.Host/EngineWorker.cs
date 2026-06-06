@@ -34,6 +34,7 @@ public sealed class EngineWorker : BackgroundService
 
     private AccountUpdate? _latestAccountUpdate;
     private decimal _latestRiskAmount;
+    private const int MaxBarHistory = 500;
     private long _tickCount;
     private long _barCount;
 
@@ -117,6 +118,13 @@ public sealed class EngineWorker : BackgroundService
                 while (_executionEventChannel.Reader.TryRead(out var execEvent))
                     HandleExecutionEvent(execEvent);
 
+                if (_riskManager.ConsumeForceClosePending())
+                {
+                    _logger.LogCritical("Force-close triggered. Closing {Count} open positions", _openPositionsMap.Count);
+                    foreach (var (_, pos) in _openPositionsMap.ToList())
+                        await _broker.ClosePositionAsync(pos.Id, ct);
+                }
+
                 var accountUpdate = Interlocked.Exchange(ref _latestAccountUpdate, null);
                 if (accountUpdate is not null)
                     HandleAccountUpdate(accountUpdate);
@@ -184,7 +192,12 @@ public sealed class EngineWorker : BackgroundService
                 Interlocked.Increment(ref _barCount);
                 var byTf = _bars.GetOrAdd(bar.Symbol, _ => new());
                 var list = byTf.GetOrAdd(bar.Timeframe, _ => new());
-                lock (list) { list.Add(bar); }
+                lock (list)
+                {
+                    list.Add(bar);
+                    if (list.Count > MaxBarHistory)
+                        list.RemoveAt(0);
+                }
                 await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe);
             }
         }

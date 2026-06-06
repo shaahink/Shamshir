@@ -14,15 +14,25 @@ public sealed class RiskManager(
 
     private PropFirmRuleSet? _activeRuleSet;
     private ProtectionCause _protectionCause = ProtectionCause.None;
+    private bool _forceClosePending;
     private readonly Dictionary<Guid, (string StrategyId, decimal Risk)> _openPositionRisk = new();
 
-    public void SetActiveRuleSet(PropFirmRuleSet ruleSet) => _activeRuleSet = ruleSet;
+    public void SetActiveRuleSet(PropFirmRuleSet ruleSet)
+    {
+        _activeRuleSet = ruleSet;
+        drawdownTracker.DailyDdBaseMode = ruleSet.DailyDdBase;
+    }
 
     public void EnterProtectionMode(string reason, ProtectionCause cause)
     {
         _protectionCause = cause;
         CurrentState = CurrentState with { InProtectionMode = true, ProtectionReason = reason, TradingAllowed = false };
+
+        if (cause == ProtectionCause.MaxDrawdown && _activeRuleSet?.ForceCloseOnBreach == true)
+            _forceClosePending = true;
     }
+
+    public bool ConsumeForceClosePending() => Interlocked.Exchange(ref _forceClosePending, false);
 
     public void RegisterPosition(Guid positionId, string strategyId, decimal openRiskAmount)
         => _openPositionRisk[positionId] = (strategyId, openRiskAmount);

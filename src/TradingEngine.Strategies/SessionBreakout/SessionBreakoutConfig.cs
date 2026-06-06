@@ -16,7 +16,4 @@ public sealed record SessionBreakoutConfig(
     string DisplayName,
     IReadOnlyList<string> Symbols,
     string RiskProfileId,
-    SessionBreakoutParameters Parameters)
-{
-    public string PropFirmRuleSetId { get; init; } = "ftmo-standard";
-}
+    SessionBreakoutParameters Parameters) : IStrategyConfig;

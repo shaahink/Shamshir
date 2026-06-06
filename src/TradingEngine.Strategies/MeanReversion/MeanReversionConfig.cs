@@ -15,7 +15,4 @@ public sealed record MeanReversionConfig(
     string DisplayName,
     IReadOnlyList<string> Symbols,
     string RiskProfileId,
-    MeanReversionParameters Parameters)
-{
-    public string PropFirmRuleSetId { get; init; } = "ftmo-standard";
-}
+    MeanReversionParameters Parameters) : IStrategyConfig;

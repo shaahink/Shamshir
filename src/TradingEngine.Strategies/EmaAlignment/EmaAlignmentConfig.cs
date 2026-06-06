@@ -16,7 +16,4 @@ public sealed record EmaAlignmentConfig(
     string DisplayName,
     IReadOnlyList<string> Symbols,
     string RiskProfileId,
-    EmaAlignmentParameters Parameters)
-{
-    public string PropFirmRuleSetId { get; init; } = "ftmo-standard";
-}
+    EmaAlignmentParameters Parameters) : IStrategyConfig;

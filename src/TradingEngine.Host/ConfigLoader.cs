@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace TradingEngine.Host;
@@ -14,7 +15,7 @@ public sealed record StrategyConfigEntry(
     bool Enabled,
     IReadOnlyList<string> Symbols,
     string RiskProfileId,
-    TrendBreakoutParameters Parameters);
+    JsonElement Parameters);
 
 public sealed class ConfigLoader
 {
@@ -77,17 +78,7 @@ public sealed class ConfigLoader
             if (doc is null) continue;
 
             var root = doc.RootElement;
-            var p = root.GetProperty("parameters");
-            var parameters = new TrendBreakoutParameters
-            {
-                LookbackBars = p.GetProperty("lookbackBars").GetInt32(),
-                MaPeriod = p.GetProperty("maPeriod").GetInt32(),
-                AtrPeriod = p.GetProperty("atrPeriod").GetInt32(),
-                SlAtrMultiple = p.GetProperty("slAtrMultiple").GetDouble(),
-                TpRrMultiple = p.GetProperty("tpRrMultiple").GetDouble(),
-                TrailingMethod = p.TryGetProperty("trailingMethod", out var tm) ? tm.GetString() ?? "AtrMultiple" : "AtrMultiple",
-                TrailingAtrMultiple = p.TryGetProperty("trailingAtrMultiple", out var ta) ? ta.GetDouble() : 1.0,
-            };
+            var parameters = root.TryGetProperty("parameters", out var p) ? p.Clone() : default;
 
             results.Add(new StrategyConfigEntry(
                 root.GetProperty("id").GetString()!,

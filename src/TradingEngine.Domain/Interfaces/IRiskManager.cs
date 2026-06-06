@@ -9,4 +9,5 @@ public interface IRiskManager
     void OnDailyReset(decimal currentEquity);
     void RegisterPosition(Guid positionId, string strategyId, decimal openRiskAmount);
     void DeregisterPosition(Guid positionId);
+    bool ConsumeForceClosePending();
 }

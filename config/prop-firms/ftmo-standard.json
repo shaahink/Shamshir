@@ -17,5 +17,6 @@
   "weekendCloseUtc": "21:00:00",
   "weekendNoOpenUtc": "20:00:00",
   "protectionResetPolicy": "NextTradingDay",
-  "forceCloseOnBreach": false
+  "forceCloseOnBreach": false,
+  "dailyDdBase": "InitialBalance"
 }

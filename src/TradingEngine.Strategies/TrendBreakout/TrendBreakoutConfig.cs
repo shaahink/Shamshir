@@ -1,6 +1,6 @@
 namespace TradingEngine.Strategies.TrendBreakout;
 
-public sealed record TrendBreakoutConfig
+public sealed record TrendBreakoutConfig : IStrategyConfig
 {
     public string Id { get; init; } = "trend-breakout";
     public string DisplayName { get; init; } = "Trend Breakout v1";

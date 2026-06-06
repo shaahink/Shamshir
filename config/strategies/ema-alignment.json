@@ -1,0 +1,16 @@
+{
+  "id": "ema-alignment",
+  "displayName": "EMA Alignment v1",
+  "enabled": true,
+  "symbols": ["EURUSD", "GBPUSD"],
+  "riskProfileId": "standard",
+  "parameters": {
+    "fastPeriod": 20,
+    "slowPeriod": 50,
+    "atrPeriod": 14,
+    "slAtrMultiple": 1.5,
+    "tpRrMultiple": 2.0,
+    "trailingMethod": "AtrMultiple",
+    "trailingAtrMultiple": 1.0
+  }
+}

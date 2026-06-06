@@ -11,9 +11,10 @@ public sealed class PositionTracker(
     IEngineClock clock,
     ILogger<PositionTracker> logger)
 {
-    private readonly Dictionary<Guid, OrderRequest> _pendingOrders = new();
+    private readonly Dictionary<Guid, (OrderRequest Request, decimal FilledLots)> _pendingOrders = new();
     private readonly Dictionary<Guid, Position> _openPositions = new();
-    private decimal _latestRiskAmount;
+    private readonly Dictionary<Guid, decimal> _pendingRisk = new();
+    private readonly HashSet<Guid> _processedExecutionIds = [];
 
     public IReadOnlyDictionary<Guid, Position> OpenPositions => _openPositions;
 
@@ -22,35 +23,65 @@ public sealed class PositionTracker(
 
     public void TrackOrder(Guid orderId, OrderRequest request, decimal riskAmount)
     {
-        _pendingOrders[orderId] = request;
-        _latestRiskAmount = riskAmount;
+        _pendingOrders[orderId] = (request, 0m);
+        _pendingRisk[orderId] = riskAmount;
     }
 
     public void OnExecution(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
     {
+        if (_processedExecutionIds.Contains(evt.OrderId))
+        {
+            logger.LogWarning("Duplicate execution event skipped. OrderId={OrderId}", evt.OrderId);
+            return;
+        }
+        _processedExecutionIds.Add(evt.OrderId);
+
+        if (evt.NewState == OrderState.Rejected)
+        {
+            _pendingOrders.Remove(evt.OrderId);
+            _pendingRisk.Remove(evt.OrderId);
+            logger.LogWarning("Order rejected. Id={Id} Reason={Reason}", evt.OrderId, evt.RejectionReason ?? "unknown");
+            return;
+        }
+
         if (evt.NewState != OrderState.Filled || evt.FillPrice is null) return;
         var fillPrice = evt.FillPrice.Value.Value;
 
-        if (!_pendingOrders.TryGetValue(evt.OrderId, out var order))
+        if (!_pendingOrders.TryGetValue(evt.OrderId, out var entry))
         {
             ClosePosition(evt, fillPrice, strategies);
             return;
         }
 
-        _pendingOrders.Remove(evt.OrderId);
+        var (order, currentFilled) = entry;
+        var newFilled = currentFilled + evt.FilledLots;
+
+        if (newFilled >= order.Lots)
+        {
+            _pendingOrders.Remove(evt.OrderId);
+            _pendingRisk.Remove(evt.OrderId);
+        }
+        else
+        {
+            _pendingOrders[evt.OrderId] = (order, newFilled);
+            logger.LogInformation("Partial fill. OrderId={OrderId} Filled={Filled}/{Requested}", evt.OrderId, newFilled, order.Lots);
+            return;
+        }
+
         var position = new Position(
             Guid.NewGuid(), evt.OrderId, order.Intent.Symbol, order.Intent.Direction,
-            evt.FilledLots, new Price(fillPrice), order.Intent.StopLoss, order.Intent.TakeProfit,
+            order.Lots, new Price(fillPrice), order.Intent.StopLoss, order.Intent.TakeProfit,
             clock.UtcNow, order.Intent.StrategyId);
 
         _openPositions[evt.OrderId] = position;
-        riskManager.RegisterPosition(position.Id, position.StrategyId, _latestRiskAmount);
+        var riskAmount = _pendingRisk.GetValueOrDefault(evt.OrderId, 0m);
+        riskManager.RegisterPosition(position.Id, position.StrategyId, riskAmount);
 
         var posConfig = new PositionManagementConfig(
             position.StrategyId,
             new TrailingConfig(TrailingMethod.AtrMultiple, 0, 1.0, 1.0),
             true, 1.0, new Pips(1),
-            new Money(_latestRiskAmount, "USD"));
+            new Money(riskAmount, "USD"));
         positionManager.RegisterPosition(position, posConfig);
 
         logger.LogInformation("Opened. Id={Id} Symbol={Symbol} Dir={Dir} Lots={Lots} Entry={Entry:F5}",

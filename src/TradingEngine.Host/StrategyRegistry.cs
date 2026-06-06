@@ -1,16 +1,81 @@
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Strategies.EmaAlignment;
+using TradingEngine.Strategies.MeanReversion;
+using TradingEngine.Strategies.SessionBreakout;
 
 namespace TradingEngine.Host;
 
 public sealed class StrategyRegistry
 {
     private readonly Dictionary<string, Type> _strategyTypes = [];
+    private readonly Dictionary<string, Func<StrategyConfigEntry, IServiceProvider, IStrategy>> _factories = [];
 
     public StrategyRegistry()
     {
         ScanAssembly(typeof(TrendBreakoutStrategy).Assembly);
+        RegisterFactories();
+    }
+
+    private void RegisterFactories()
+    {
+        _factories["trend-breakout"] = (entry, sp) =>
+        {
+            var config = new TrendBreakoutConfig
+            {
+                Id = entry.Id,
+                DisplayName = entry.DisplayName,
+                Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(),
+                RiskProfileId = entry.RiskProfileId,
+                Parameters = DeserializeParams<TrendBreakoutParameters>(entry.Parameters),
+            };
+            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
+            var logger = sp.GetRequiredService<ILogger<TrendBreakoutStrategy>>();
+            return new TrendBreakoutStrategy(config, registry, logger);
+        };
+
+        _factories["ema-alignment"] = (entry, sp) =>
+        {
+            var config = new EmaAlignmentConfig(
+                entry.Id,
+                entry.DisplayName,
+                entry.Symbols.ToList(),
+                entry.RiskProfileId,
+                DeserializeParams<EmaAlignmentParameters>(entry.Parameters));
+            return new EmaAlignmentStrategy(config);
+        };
+
+        _factories["mean-reversion"] = (entry, sp) =>
+        {
+            var config = new MeanReversionConfig(
+                entry.Id,
+                entry.DisplayName,
+                entry.Symbols.ToList(),
+                entry.RiskProfileId,
+                DeserializeParams<MeanReversionParameters>(entry.Parameters));
+            return new MeanReversionStrategy(config);
+        };
+
+        _factories["session-breakout"] = (entry, sp) =>
+        {
+            var config = new SessionBreakoutConfig(
+                entry.Id,
+                entry.DisplayName,
+                entry.Symbols.ToList(),
+                entry.RiskProfileId,
+                DeserializeParams<SessionBreakoutParameters>(entry.Parameters));
+            return new SessionBreakoutStrategy(config);
+        };
+    }
+
+    private static T DeserializeParams<T>(JsonElement element) where T : new()
+    {
+        if (element.ValueKind == JsonValueKind.Undefined) return new T();
+        var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        return JsonSerializer.Deserialize<T>(element.GetRawText(), opts) ?? new T();
     }
 
     private void ScanAssembly(Assembly assembly)
@@ -34,11 +99,10 @@ public sealed class StrategyRegistry
         IServiceProvider services)
     {
         var strategies = new List<IStrategy>();
-        var loggerFactory = services.GetRequiredService<ILoggerFactory>();
 
         foreach (var id in activeIds)
         {
-            if (!_strategyTypes.TryGetValue(id, out var type))
+            if (!_strategyTypes.TryGetValue(id, out var type) && !_factories.ContainsKey(id))
             {
                 throw new InvalidOperationException(
                     $"Active strategy ID '{id}' has no matching [StrategyId] class. " +
@@ -52,20 +116,19 @@ public sealed class StrategyRegistry
                     $"Strategy '{id}' has no config file in config/strategies/.");
             }
 
-            var trendConfig = new TrendBreakoutConfig
+            if (_factories.TryGetValue(id, out var factory))
             {
-                Id = configEntry.Id,
-                DisplayName = configEntry.DisplayName,
-                Enabled = configEntry.Enabled,
-                Symbols = configEntry.Symbols.ToList(),
-                RiskProfileId = configEntry.RiskProfileId,
-                Parameters = configEntry.Parameters,
-            };
-
-            var symbolRegistry = services.GetRequiredService<ISymbolInfoRegistry>();
-            var logger = loggerFactory.CreateLogger(type);
-            var strategy = (IStrategy)Activator.CreateInstance(type, trendConfig, symbolRegistry, logger)!;
-            strategies.Add(strategy);
+                var strategy = factory(configEntry, services);
+                strategies.Add(strategy);
+            }
+            else
+            {
+                var symbolRegistry = services.GetRequiredService<ISymbolInfoRegistry>();
+                var loggerFactory = services.GetRequiredService<ILoggerFactory>();
+                var logger = loggerFactory.CreateLogger(type!);
+                var strategy = (IStrategy)Activator.CreateInstance(type!, configEntry, symbolRegistry, logger)!;
+                strategies.Add(strategy);
+            }
         }
 
         return strategies;

@@ -43,21 +43,46 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     public async Task ConnectAsync(CancellationToken ct)
     {
-        _pipeServer = new NamedPipeServerStream(
-            _pipeName, PipeDirection.InOut, 1,
-            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        var delays = new[] { 2000, 4000, 8000 };
+        var attempt = 0;
 
-        await _pipeServer.WaitForConnectionAsync(ct);
-        _ = ReadLoopAsync(_cts.Token);
+        while (attempt <= delays.Length)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                _pipeServer?.Dispose();
+                _pipeServer = new NamedPipeServerStream(
+                    _pipeName, PipeDirection.InOut, 1,
+                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+
+                await _pipeServer.WaitForConnectionAsync(ct);
+                _logger?.LogInformation("Pipe connected. PipeName={PipeName}", _pipeName);
+                _ = ReadLoopAsync(_cts.Token);
+                return;
+            }
+            catch (Exception ex) when (attempt < delays.Length)
+            {
+                attempt++;
+                _logger?.LogWarning(ex, "Pipe connect attempt {Attempt}/{Max} failed. Retrying in {Delay}ms",
+                    attempt, delays.Length, delays[attempt - 1]);
+                await Task.Delay(delays[attempt - 1], ct);
+            }
+        }
+
+        throw new InvalidOperationException($"Failed to connect pipe '{_pipeName}' after {delays.Length} attempts.");
     }
 
-    public Task DisconnectAsync(CancellationToken ct)
+    public async Task DisconnectAsync(CancellationToken ct)
     {
         _cts.Cancel();
-        _pipeServer?.Disconnect();
-        _pipeServer?.Dispose();
+        if (_pipeServer is not null)
+        {
+            try { _pipeServer.Disconnect(); } catch { }
+            await _pipeServer.DisposeAsync();
+        }
         _pipeServer = null;
-        return Task.CompletedTask;
     }
 
     public async Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
@@ -77,12 +102,22 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     private async Task ReadLoopAsync(CancellationToken ct)
     {
-        try
+        while (!ct.IsCancellationRequested)
         {
-            while (!ct.IsCancellationRequested && _pipeServer!.IsConnected)
+            try
             {
+                if (_pipeServer is null || !_pipeServer.IsConnected)
+                {
+                    await TryReconnectAsync(ct);
+                    continue;
+                }
+
                 var length = await ReadLengthPrefixAsync(ct);
-                if (length <= 0) break;
+                if (length <= 0)
+                {
+                    await TryReconnectAsync(ct);
+                    continue;
+                }
 
                 var messageBytes = new byte[length];
                 var totalRead = 0;
@@ -93,17 +128,62 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                     totalRead += bytesRead;
                 }
 
-                if (totalRead < length) break;
+                if (totalRead < length)
+                {
+                    await TryReconnectAsync(ct);
+                    continue;
+                }
 
                 var json = Encoding.UTF8.GetString(messageBytes, 0, totalRead);
                 ProcessMessage(json);
             }
+            catch (OperationCanceledException) { break; }
+            catch (IOException ex)
+            {
+                _logger?.LogWarning(ex, "Pipe read error — attempting reconnect");
+                await TryReconnectAsync(ct);
+            }
         }
-        catch (OperationCanceledException) { }
-        catch (IOException ex)
+    }
+
+    private async Task TryReconnectAsync(CancellationToken ct)
+    {
+        var delays = new[] { 2000, 4000, 8000 };
+
+        CleanupPipe();
+
+        for (var attempt = 0; attempt < delays.Length; attempt++)
         {
-            _logger?.LogWarning(ex, "Pipe read error");
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                _pipeServer = new NamedPipeServerStream(
+                    _pipeName, PipeDirection.InOut, 1,
+                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+
+                await _pipeServer.WaitForConnectionAsync(ct);
+                _logger?.LogInformation("Pipe reconnected on attempt {Attempt}", attempt + 1);
+
+                _accountChannel.Writer.TryWrite(new AccountUpdate(0, 0, 0, DateTime.UtcNow));
+                return;
+            }
+            catch (Exception ex) when (attempt < delays.Length - 1)
+            {
+                _logger?.LogWarning(ex, "Reconnect attempt {Attempt}/{Max} failed", attempt + 1, delays.Length);
+                await Task.Delay(delays[attempt], ct);
+            }
         }
+
+        _logger?.LogCritical("All reconnect attempts failed. Pipe = {PipeName}", _pipeName);
+        CleanupPipe();
+    }
+
+    private void CleanupPipe()
+    {
+        try { _pipeServer?.Disconnect(); } catch { }
+        try { _pipeServer?.Dispose(); } catch { }
+        _pipeServer = null;
     }
 
     private async Task<int> ReadLengthPrefixAsync(CancellationToken ct)
@@ -164,7 +244,7 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
                 case "ExecutionEvent":
                     var execPayload = doc.RootElement.GetProperty("Payload");
-                    var fillPrice = execPayload.TryGetProperty("FillPrice", out var fp) && fp.ValueKind == System.Text.Json.JsonValueKind.Number
+                    var fillPrice = execPayload.TryGetProperty("FillPrice", out var fp) && fp.ValueKind == JsonValueKind.Number
                         ? new Price(fp.GetDecimal()) : (Price?)null;
                     var exec = new ExecutionEvent(
                         execPayload.GetProperty("OrderId").GetGuid(),
@@ -186,7 +266,7 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private async Task SendCommandAsync(string type, object payload, CancellationToken ct)
     {
         if (_pipeServer is null || !_pipeServer.IsConnected) return;
-        var json = System.Text.Json.JsonSerializer.Serialize(new { Type = type, Payload = payload });
+        var json = JsonSerializer.Serialize(new { Type = type, Payload = payload });
         var bytes = Encoding.UTF8.GetBytes(json);
         var lengthBytes = BitConverter.GetBytes(bytes.Length);
         await _pipeServer.WriteAsync(lengthBytes, 0, 4, ct);
@@ -198,9 +278,6 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     {
         _cts.Cancel();
         _cts.Dispose();
-        if (_pipeServer is not null)
-        {
-            await _pipeServer.DisposeAsync();
-        }
+        CleanupPipe();
     }
 }

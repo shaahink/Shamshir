@@ -21,6 +21,8 @@ public sealed class DrawdownTracker
         _initialized = true;
     }
 
+    public DailyDdBase DailyDdBaseMode { get; set; } = DailyDdBase.InitialBalance;
+
     public void OnEquityUpdate(decimal equity)
     {
         if (!_initialized) return;
@@ -28,9 +30,15 @@ public sealed class DrawdownTracker
         if (equity > PeakEquity)
             PeakEquity = equity;
 
-        CurrentDailyDrawdown = InitialAccountBalance > 0
-            ? Math.Max(0m, (InitialAccountBalance - equity) / InitialAccountBalance)
-            : 0m;
+        CurrentDailyDrawdown = DailyDdBaseMode switch
+        {
+            DailyDdBase.DailyStart => DailyStartEquity > 0
+                ? Math.Max(0m, (DailyStartEquity - equity) / DailyStartEquity)
+                : 0m,
+            _ => InitialAccountBalance > 0
+                ? Math.Max(0m, (InitialAccountBalance - equity) / InitialAccountBalance)
+                : 0m,
+        };
 
         var equityBase = DrawdownType == "Trailing" ? PeakEquity : InitialAccountBalance;
         CurrentMaxDrawdown = equityBase > 0
