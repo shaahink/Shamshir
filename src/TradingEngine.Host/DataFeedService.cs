@@ -5,17 +5,21 @@ public sealed class DataFeedService(
     SimulatedBrokerAdapter simulatedBroker,
     ILogger<DataFeedService> logger) : BackgroundService
 {
+    public IReadOnlyList<Symbol> Symbols { get; init; } = [Symbol.Parse("EURUSD")];
+
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         try
         {
-            var symbol = Symbol.Parse("EURUSD");
-            logger.LogInformation("Data feed started for {Symbol}", symbol);
+            foreach (var symbol in Symbols)
+            {
+                logger.LogInformation("Data feed started for {Symbol}", symbol);
 
-            var barTask = FeedBarsAsync(symbol, ct);
-            var tickTask = FeedTicksAsync(symbol, ct);
+                var barTask = FeedBarsAsync(symbol, ct);
+                var tickTask = FeedTicksAsync(symbol, ct);
 
-            await Task.WhenAll(barTask, tickTask);
+                await Task.WhenAll(barTask, tickTask);
+            }
 
             logger.LogInformation("Data feed completed");
         }
@@ -38,9 +42,7 @@ public sealed class DataFeedService(
     private async Task FeedBarsAsync(Symbol symbol, CancellationToken ct)
     {
         await foreach (var bar in marketData.StreamBarsAsync(symbol, Timeframe.H1, ct))
-        {
             await simulatedBroker.BarWriter.WriteAsync(bar, ct);
-        }
     }
 
     private async Task FeedTicksAsync(Symbol symbol, CancellationToken ct)
