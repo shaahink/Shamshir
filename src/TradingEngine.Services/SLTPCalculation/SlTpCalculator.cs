@@ -1,6 +1,6 @@
 namespace TradingEngine.Services.SLTPCalculation;
 
-public sealed class SlTpCalculator(ISymbolInfoRegistry symbolRegistry) : ISlTpCalculator
+public sealed class SlTpCalculator : ISlTpCalculator
 {
     public Price CalculateStopLoss(
         Price entryPrice,
@@ -9,8 +9,12 @@ public sealed class SlTpCalculator(ISymbolInfoRegistry symbolRegistry) : ISlTpCa
         SlParameters parameters,
         IReadOnlyList<Bar> recentBars)
     {
-        var symbol = recentBars.Count > 0 ? recentBars[0].Symbol : Symbol.Parse("EURUSD");
-        var symbolInfo = symbolRegistry.Get(symbol);
+        if (recentBars.Count == 0)
+            throw new ArgumentException("recentBars must not be empty", nameof(recentBars));
+
+        var symbol = recentBars[0].Symbol;
+        var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
 
         return method switch
         {
@@ -32,7 +36,8 @@ public sealed class SlTpCalculator(ISymbolInfoRegistry symbolRegistry) : ISlTpCa
         TpMethod method,
         TpParameters parameters)
     {
-        var symbolInfo = symbolRegistry.Get(Symbol.Parse("EURUSD"));
+        var symbolInfo = new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
 
         if (method == TpMethod.None) return null;
 
