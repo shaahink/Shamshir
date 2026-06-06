@@ -1,0 +1,57 @@
+@page
+@model TradingEngine.Web.Pages.Backtests.RunModel
+@{
+    ViewData["Title"] = "New Backtest";
+}
+
+<h1>New Backtest</h1>
+
+<form method="post" class="backtest-form">
+    <div class="form-group">
+        <label for="Symbol">Symbol</label>
+        <select id="Symbol" asp-for="Symbol">
+            <option>EURUSD</option>
+            <option>GBPUSD</option>
+            <option>USDJPY</option>
+            <option>GBPJPY</option>
+            <option>XAUUSD</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="Period">Period</label>
+        <select id="Period" asp-for="Period">
+            <option value="h1">H1</option>
+            <option value="m15">M15</option>
+            <option value="m5">M5</option>
+            <option value="m1">M1</option>
+            <option value="d1">D1</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="StartDate">Start Date</label>
+        <input type="date" id="StartDate" asp-for="StartDate" />
+    </div>
+
+    <div class="form-group">
+        <label for="EndDate">End Date</label>
+        <input type="date" id="EndDate" asp-for="EndDate" />
+    </div>
+
+    <div class="form-group">
+        <label for="Balance">Initial Balance ($)</label>
+        <input type="number" id="Balance" asp-for="Balance" step="1000" />
+    </div>
+
+    <button type="submit" class="btn" style="padding:0.5rem 1rem;background:#1a73e8;color:#fff;border:none;border-radius:4px;cursor:pointer;">
+        Run Backtest
+    </button>
+</form>
+
+<style>
+    .backtest-form { max-width: 500px; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; margin-bottom: 0.3rem; font-weight: bold; }
+    .form-group select, .form-group input { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+</style>
