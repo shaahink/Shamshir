@@ -55,5 +55,5 @@ public sealed class DrawdownTracker
             : InitialAccountBalance * (1 - (decimal)maxTotalLossPercent);
 
     public decimal GetDailyLossLimit(decimal maxDailyLossPercent) =>
-        DailyStartEquity * (1 - (decimal)maxDailyLossPercent);
+        InitialAccountBalance * (1 - (decimal)maxDailyLossPercent);
 }

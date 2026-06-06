@@ -3,6 +3,7 @@ global using System.Threading.Channels;
 global using Serilog;
 global using TradingEngine.Domain;
 global using TradingEngine.Risk;
+global using TradingEngine.Risk.Filters;
 global using TradingEngine.Services;
 global using TradingEngine.Infrastructure;
 global using TradingEngine.Infrastructure.Indicators;

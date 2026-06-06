@@ -5,12 +5,12 @@ public sealed class TrendBreakoutStrategyTests
 {
     private static TrendBreakoutConfig CreateConfig() => new();
 
-    private static IIndicatorService CreateIndicatorService(double atr = 0.0021, double ema = 1.0830)
+    private static ISymbolInfoRegistry CreateRegistry()
     {
-        var mock = Substitute.For<IIndicatorService>();
-        mock.Atr(Arg.Any<IReadOnlyList<Bar>>(), Arg.Any<int>()).Returns(atr);
-        mock.Ema(Arg.Any<IReadOnlyList<Bar>>(), Arg.Any<int>()).Returns(ema);
-        return mock;
+        var reg = new SymbolInfoRegistry();
+        reg.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
+        return reg;
     }
 
     private static MarketContext CreateContext(Symbol symbol, Bar latestBar, decimal bid, decimal ask, int barCount = 100)
@@ -41,9 +41,9 @@ public sealed class TrendBreakoutStrategyTests
     public void Evaluate_InsufficientBars_ReturnsNull()
     {
         var config = CreateConfig();
-        var indicators = CreateIndicatorService();
+        var registry = CreateRegistry();
         var logger = Substitute.For<ILogger<TrendBreakoutStrategy>>();
-        var strategy = new TrendBreakoutStrategy(config, indicators, logger);
+        var strategy = new TrendBreakoutStrategy(config, registry, logger);
 
         var bars = new List<Bar> { new(Symbol.Parse("EURUSD"), Timeframe.H1, DateTime.UtcNow, 1.0m, 1.0m, 1.0m, 1.0m, 100) };
         var tick = new Tick(Symbol.Parse("EURUSD"), 1.0m, 1.0m, DateTime.UtcNow);
@@ -60,9 +60,9 @@ public sealed class TrendBreakoutStrategyTests
     public void Evaluate_NeverThrowsOnBadInput()
     {
         var config = CreateConfig();
-        var indicators = CreateIndicatorService();
+        var registry = CreateRegistry();
         var logger = Substitute.For<ILogger<TrendBreakoutStrategy>>();
-        var strategy = new TrendBreakoutStrategy(config, indicators, logger);
+        var strategy = new TrendBreakoutStrategy(config, registry, logger);
 
         var context = CreateContext(Symbol.Parse("EURUSD"),
             new Bar(Symbol.Parse("EURUSD"), Timeframe.H1, DateTime.UtcNow, 1.0850m, 1.0860m, 1.0840m, 1.0855m, 1000),
@@ -76,9 +76,9 @@ public sealed class TrendBreakoutStrategyTests
     public void Reset_ClearsInternalState()
     {
         var config = CreateConfig();
-        var indicators = CreateIndicatorService();
+        var registry = CreateRegistry();
         var logger = Substitute.For<ILogger<TrendBreakoutStrategy>>();
-        var strategy = new TrendBreakoutStrategy(config, indicators, logger);
+        var strategy = new TrendBreakoutStrategy(config, registry, logger);
 
         strategy.Reset();
         strategy.Evaluate(CreateContext(Symbol.Parse("EURUSD"),

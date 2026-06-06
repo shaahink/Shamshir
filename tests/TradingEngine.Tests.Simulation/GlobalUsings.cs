@@ -5,6 +5,7 @@ global using Microsoft.Extensions.Logging;
 global using TradingEngine.Domain;
 global using TradingEngine.Infrastructure;
 global using TradingEngine.Infrastructure.Adapters;
+global using TradingEngine.Infrastructure.Indicators;
 global using TradingEngine.Services.Helpers;
 global using TradingEngine.Services.SLTPCalculation;
 global using TradingEngine.Strategies.TrendBreakout;

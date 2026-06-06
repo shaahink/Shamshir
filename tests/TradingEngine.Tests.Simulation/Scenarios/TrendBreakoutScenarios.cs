@@ -6,12 +6,13 @@ public sealed class TrendBreakoutScenarios
     public async Task TrendBreakout_BullishData_GeneratesAtLeastOneTrade()
     {
         var config = new TrendBreakoutConfig();
-        var indicators = Substitute.For<IIndicatorService>();
-        indicators.Atr(Arg.Any<IReadOnlyList<Bar>>(), Arg.Any<int>()).Returns(0.0021);
-        indicators.Ema(Arg.Any<IReadOnlyList<Bar>>(), Arg.Any<int>()).Returns(1.0800);
+
+        var registry = new SymbolInfoRegistry();
+        registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
 
         var logger = Substitute.For<ILogger<TrendBreakoutStrategy>>();
-        var strategy = new TrendBreakoutStrategy(config, indicators, logger);
+        var strategy = new TrendBreakoutStrategy(config, registry, logger);
 
         var tempDir = Path.Combine(Path.GetTempPath(), $"shamshir-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
@@ -30,7 +31,7 @@ public sealed class TrendBreakoutScenarios
         await foreach (var bar in provider.StreamBarsAsync(symbol, Timeframe.H1, CancellationToken.None))
             allBars.Add(bar);
 
-        allBars.Should().HaveCountGreaterThan(0, "Historical data should be loaded");
+        allBars.Should().HaveCountGreaterThan(0);
 
         var trades = new List<TradeResult>();
         var accumulatedBars = new List<Bar>();
@@ -45,10 +46,16 @@ public sealed class TrendBreakoutScenarios
             if (accumulatedBars.Count < strategy.RequiredBarCount)
                 continue;
 
+            var indicators = new Dictionary<string, double>
+            {
+                [$"ATR_{config.Parameters.AtrPeriod}"] = 0.0021,
+                [$"EMA_{config.Parameters.MaPeriod}"] = 1.0800,
+            };
+
             var context = new MarketContext(
                 symbol, tick,
                 new Dictionary<Timeframe, IReadOnlyList<Bar>> { [Timeframe.H1] = accumulatedBars.ToList() },
-                new Dictionary<string, double>(),
+                indicators,
                 DateTime.UtcNow);
 
             var intent = strategy.Evaluate(context);

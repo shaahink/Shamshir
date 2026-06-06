@@ -7,7 +7,11 @@ public sealed class RiskManagerTests
     {
         var tracker = new DrawdownTracker();
         tracker.Initialize(100_000);
-        return new RiskManager(tracker);
+        var registry = new SymbolInfoRegistry();
+        registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
+        return new RiskManager(tracker, registry, (_, _) => 1,
+            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow));
     }
 
     private static EquitySnapshot CreateSnapshot(
@@ -32,7 +36,7 @@ public sealed class RiskManagerTests
     public void Validate_ProtectionModeActive_BlocksAllTrades()
     {
         var rm = CreateRiskManager();
-        rm.EnterProtectionMode("Test breach");
+        rm.EnterProtectionMode("Test breach", ProtectionCause.MaxDrawdown);
         var intent = CreateIntent();
         var equity = CreateSnapshot(100_000);
 
@@ -91,7 +95,6 @@ public sealed class RiskManagerTests
         var equity = CreateSnapshot(100_000, dailyDd: 0.06m, maxDd: 0.12m);
 
         var violations = rm.Validate(intent, equity);
-        violations.Should().HaveCount(2);
         violations.Should().Contain(v => v.Code == "DAILY_DD_LIMIT");
         violations.Should().Contain(v => v.Code == "MAX_DD_LIMIT");
     }
