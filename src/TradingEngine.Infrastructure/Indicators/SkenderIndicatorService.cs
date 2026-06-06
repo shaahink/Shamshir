@@ -2,7 +2,7 @@ using Skender.Stock.Indicators;
 
 namespace TradingEngine.Infrastructure.Indicators;
 
-internal sealed class SkenderIndicatorService : IIndicatorService
+public sealed class SkenderIndicatorService : IIndicatorService
 {
     private readonly IndicatorCache _cache = new();
 

@@ -1,7 +1,7 @@
 namespace TradingEngine.Host;
 
 public sealed class DailyResetService(
-    RiskManager riskManager,
+    IRiskManager riskManager,
     IEngineClock clock,
     ILogger<DailyResetService> logger) : BackgroundService
 {

@@ -6,4 +6,5 @@ public interface IRiskManager
     IReadOnlyList<RiskViolation> Validate(TradeIntent intent, EquitySnapshot equity);
     RiskState CurrentState { get; }
     void OnEquityUpdate(EquitySnapshot snapshot);
+    void OnDailyReset(decimal currentEquity);
 }

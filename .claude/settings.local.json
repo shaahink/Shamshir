@@ -3,7 +3,10 @@
     "allow": [
       "Bash(Get-ChildItem -Recurse \"C:\\\\code\\\\Shamshir\")",
       "Bash(Select-Object FullName, Length)",
-      "Bash(Sort-Object FullName)"
+      "Bash(Sort-Object FullName)",
+      "Bash(Get-ChildItem -Path \"C:\\\\code\\\\Shamshir\" -Recurse -Force)",
+      "Bash(Measure-Object)",
+      "Bash(Select-Object Count)"
     ]
   }
 }
