@@ -7,4 +7,6 @@ public interface IRiskManager
     RiskState CurrentState { get; }
     void OnEquityUpdate(EquitySnapshot snapshot);
     void OnDailyReset(decimal currentEquity);
+    void RegisterPosition(Guid positionId, decimal openRiskAmount);
+    void DeregisterPosition(Guid positionId);
 }

@@ -6,6 +6,7 @@ public interface IStrategy
     string DisplayName { get; }
     IReadOnlyList<Timeframe> RequiredTimeframes { get; }
     int RequiredBarCount { get; }
+    IReadOnlyList<IndicatorRequest> RequiredIndicators { get; }
 
     TradeIntent? Evaluate(MarketContext context);
     void OnTradeResult(TradeResult result);

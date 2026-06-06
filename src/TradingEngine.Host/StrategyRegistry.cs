@@ -62,9 +62,9 @@ public sealed class StrategyRegistry
                 Parameters = configEntry.Parameters,
             };
 
-            var indicators = services.GetRequiredService<IIndicatorService>();
+            var symbolRegistry = services.GetRequiredService<ISymbolInfoRegistry>();
             var logger = loggerFactory.CreateLogger(type);
-            var strategy = (IStrategy)Activator.CreateInstance(type, trendConfig, indicators, logger)!;
+            var strategy = (IStrategy)Activator.CreateInstance(type, trendConfig, symbolRegistry, logger)!;
             strategies.Add(strategy);
         }
 

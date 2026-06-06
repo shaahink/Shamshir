@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using TradingEngine.Services.SLTPCalculation;
 
 namespace TradingEngine.Strategies.TrendBreakout;
@@ -8,7 +7,7 @@ public sealed class TrendBreakoutStrategy : IStrategy
 {
     private readonly TrendBreakoutConfig _config;
     private readonly ILogger<TrendBreakoutStrategy> _logger;
-    private readonly IIndicatorService _indicators;
+    private readonly ISymbolInfoRegistry _symbolRegistry;
     private int? _lastSignalDirection;
     private int _winStreak;
     private int _lossStreak;
@@ -22,10 +21,19 @@ public sealed class TrendBreakoutStrategy : IStrategy
         Math.Max(_config.Parameters.LookbackBars, _config.Parameters.MaPeriod),
         _config.Parameters.AtrPeriod) + 5;
 
-    public TrendBreakoutStrategy(TrendBreakoutConfig config, IIndicatorService indicators, ILogger<TrendBreakoutStrategy> logger)
+    public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
+    [
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"EMA_{_config.Parameters.MaPeriod}", IndicatorType.Ema, _config.Parameters.MaPeriod),
+    ];
+
+    public TrendBreakoutStrategy(
+        TrendBreakoutConfig config,
+        ISymbolInfoRegistry symbolRegistry,
+        ILogger<TrendBreakoutStrategy> logger)
     {
         _config = config;
-        _indicators = indicators;
+        _symbolRegistry = symbolRegistry;
         _logger = logger;
     }
 
@@ -38,11 +46,10 @@ public sealed class TrendBreakoutStrategy : IStrategy
                 return null;
 
             var latestBar = h1Bars[^1];
-            var latestTick = context.LatestTick;
             var p = _config.Parameters;
 
-            var atr = _indicators.Atr(h1Bars, p.AtrPeriod);
-            var ema = _indicators.Ema(h1Bars, p.MaPeriod);
+            var atr = context.IndicatorValues.GetValueOrDefault($"ATR_{p.AtrPeriod}");
+            var ema = context.IndicatorValues.GetValueOrDefault($"EMA_{p.MaPeriod}");
 
             if (atr <= 0 || ema <= 0)
                 return null;
@@ -51,7 +58,7 @@ public sealed class TrendBreakoutStrategy : IStrategy
             var highestHigh = priorBars.Count > 0 ? priorBars.Max(b => b.High) : h1Bars[^1].High;
             var lowestLow = priorBars.Count > 0 ? priorBars.Min(b => b.Low) : h1Bars[^1].Low;
 
-            var currentPrice = latestTick.Mid;
+            var currentPrice = context.LatestTick.Mid;
             var entryPrice = new Price(currentPrice);
             var entryDirection = (TradeDirection?)null;
 
@@ -69,15 +76,9 @@ public sealed class TrendBreakoutStrategy : IStrategy
 
             _lastSignalDirection = entryDirection == TradeDirection.Long ? 1 : -1;
 
-            var sl = SlTpHelpers.AtrBased(
-                entryPrice, entryDirection.Value, atr, p.SlAtrMultiple,
-                new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
-                    0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
-
-            var tp = SlTpHelpers.RRMultiple(
-                entryPrice, sl, entryDirection.Value, p.TpRrMultiple,
-                new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
-                    0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
+            var symbolInfo = _symbolRegistry.Get(context.Symbol);
+            var sl = SlTpHelpers.AtrBased(entryPrice, entryDirection.Value, atr, p.SlAtrMultiple, symbolInfo);
+            var tp = SlTpHelpers.RRMultiple(entryPrice, sl, entryDirection.Value, p.TpRrMultiple, symbolInfo);
 
             var reason = entryDirection == TradeDirection.Long
                 ? $"Break of {p.LookbackBars}-bar high {highestHigh}, above EMA{p.MaPeriod}"

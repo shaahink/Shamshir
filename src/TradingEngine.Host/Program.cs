@@ -44,6 +44,27 @@ public static class Program
             var tracker = new DrawdownTracker();
             tracker.Initialize(100_000);
             builder.Services.AddSingleton(tracker);
+
+            builder.Services.AddSingleton<ISymbolInfoRegistry>(sp =>
+            {
+                var reg = new SymbolInfoRegistry();
+                reg.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
+                    0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
+                reg.Register(new SymbolInfo(Symbol.Parse("GBPUSD"), SymbolCategory.Forex, "GBP", "USD",
+                    0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.00012m));
+                reg.Register(new SymbolInfo(Symbol.Parse("USDJPY"), SymbolCategory.Forex, "USD", "JPY",
+                    0.01m, 0.001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.01m));
+                return reg;
+            });
+            builder.Services.AddSingleton<INewsFilter>(_ => new NewsFilter());
+            builder.Services.AddSingleton<SessionFilter>();
+            builder.Services.AddSingleton<Func<string, string, decimal>>(_ => (from, to) =>
+            {
+                if (from == "JPY" && to == "USD") return 1m / 149.50m;
+                if (from == "GBP" && to == "USD") return 1.2650m;
+                return 1;
+            });
+
             builder.Services.AddSingleton<RiskManager>();
             builder.Services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
 
