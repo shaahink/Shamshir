@@ -19,7 +19,8 @@ public static class Program
             var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder(args);
             builder.Services.AddSerilog(Log.Logger);
 
-            var configLoader = new ConfigLoader();
+            var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+            var configLoader = new ConfigLoader(solutionRoot);
             var loadedConfig = configLoader.Load();
             builder.Services.AddSingleton(loadedConfig);
 

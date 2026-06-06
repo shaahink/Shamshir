@@ -11,6 +11,8 @@ var dbPath = builder.Configuration.GetValue<string>("Persistence:DbPath")
 
 builder.Services.AddDbContext<TradingDbContext>(opt =>
     opt.UseSqlite($"Data Source={dbPath}"));
+builder.Services.AddDbContext<ReportingDbContext>(opt =>
+    opt.UseSqlite($"Data Source={dbPath}"));
 
 builder.Services.AddScoped<IBacktestRunRepository, SqliteBacktestRunRepository>();
 builder.Services.AddSingleton<BacktestOrchestrator>();
