@@ -1,11 +1,15 @@
 global using System.Text.Json;
 global using System.Threading.Channels;
+global using Microsoft.EntityFrameworkCore;
+global using Microsoft.Data.Sqlite;
 global using Serilog;
 global using TradingEngine.Domain;
 global using TradingEngine.Risk;
 global using TradingEngine.Risk.Filters;
 global using TradingEngine.Services;
 global using TradingEngine.Infrastructure;
+global using TradingEngine.Infrastructure.Persistence;
+global using TradingEngine.Infrastructure.Persistence.Repositories;
 global using TradingEngine.Infrastructure.Indicators;
 global using TradingEngine.Infrastructure.Events;
 global using TradingEngine.Infrastructure.Adapters;
