@@ -1,0 +1,13 @@
+global using System.Data;
+global using Microsoft.Data.Sqlite;
+global using Microsoft.EntityFrameworkCore;
+global using Microsoft.EntityFrameworkCore.Metadata.Builders;
+global using Dapper;
+global using TradingEngine.Domain;
+global using TradingEngine.Infrastructure.Persistence.Entities;
+global using TradingEngine.Infrastructure.Persistence.Mappings;
+global using TradingEngine.Infrastructure.Persistence.Repositories;
+global using TradingEngine.Infrastructure.Persistence.Reporting;
+global using TradingEngine.Infrastructure.Adapters;
+global using TradingEngine.Infrastructure.Indicators;
+global using TradingEngine.Infrastructure.Caching;

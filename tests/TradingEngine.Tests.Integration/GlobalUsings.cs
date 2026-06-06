@@ -1,0 +1,11 @@
+global using FluentAssertions;
+global using NSubstitute;
+global using Xunit;
+global using TradingEngine.Domain;
+global using TradingEngine.Infrastructure;
+global using TradingEngine.Infrastructure.Persistence;
+global using TradingEngine.Infrastructure.Persistence.Entities;
+global using TradingEngine.Infrastructure.Persistence.Repositories;
+global using TradingEngine.Infrastructure.Adapters;
+global using TradingEngine.Infrastructure.Indicators;
+global using TradingEngine.Infrastructure.Caching;
