@@ -129,138 +129,138 @@ Quick reference:
 
 ---
 
-### Phase 1: Domain Types
+### Phase 1: Domain Types ✅ Complete
 
-**Branch:** `phase/01-domain`
+**Branch:** `phase/01-domain` → merged to dev: `daf8b7f`
 
-**Scope:** ~55 files — all value objects, market data types, trading lifecycle records, events, interfaces. Zero logic.
+**Scope:** 59 files — all value objects, market data types, trading lifecycle records, events (7 concrete), interfaces (17), SymbolInfo, BrokerClock/StubClock, StrategyIdAttribute. Zero logic.
 
-**Validation:** `dotnet build src/TradingEngine.Domain --no-restore` → 0 errors, 0 warnings.
+**Validation:** `dotnet build src/TradingEngine.Domain --no-restore` → 0 errors, 0 warnings. ✅
 
 **Key rules:**
 - Every file = one top-level type, all `public`
-- Domain has NO NuGet packages except `Microsoft.Extensions.Logging.Abstractions`
+- Domain has NO NuGet packages — flat `TradingEngine.Domain` namespace (no sub-namespaces)
 - No `class` implementations (except `BrokerClock` and `StubClock`)
 - `Position` record has NO `FloatingPnL()` method (guide §1.1)
 - `IBrokerAdapter` includes `DateTime BrokerTimeUtc { get; }` (guide §1.3)
 - `RiskProfile` includes `double MaxSlPips` (domain §5.4)
 - `PositionManagementConfig` record defined (guide §1.2)
 - `SlMethod` = 3 values: `FixedPips`, `AtrMultiple`, `SwingBased` (guide §1.4)
+- `TradeResult` includes `DurationSeconds` (D14)
+- `ISymbolInfoRegistry` in Domain interfaces (D20)
 
 ---
 
-### Phase 2: Risk Engine
+### Phase 2: Risk Engine ✅ Complete
 
-**Branch:** `phase/02-risk`
+**Branch:** `phase/02-risk` → merged to dev: `a3817d3`
 
-**Scope:**
-- `TradingEngine.Risk/` — PositionSizer, RiskManager, DrawdownTracker, PropFirmRuleValidator, NewsFilter (stub), SessionFilter, DrawdownScaler
-- `config/prop-firms/` — ftmo-standard.json, ftmo-aggressive.json
-- `config/risk-profiles/` — conservative.json, standard.json, aggressive.json
-- `TradingEngine.Tests.Unit/` — 14 risk tests
+**Scope:** 10 files — PositionSizer, DrawdownTracker, RiskManager (with EnterProtectionMode), PropFirmRuleValidator, DrawdownScaler, SessionFilter, NewsFilter (stub), INewsFilter interface, GlobalUsings.
 
-**Validation:** `dotnet build` + `dotnet test --filter "Category=Risk"`
+**Validation:** `dotnet build` + `dotnet test --filter "Category=Risk"` → 15 tests pass ✅
 
 **Key rules:**
-- `PositionSizer.Calculate()` — use `Math.Floor`, never `Math.Round` (guide §7.3)
-- `RiskManager.Validate()` — return ALL violations, not first-only (guide §3 Phase 2)
-- `DrawdownTracker.InitialAccountBalance` — set once, never updated (domain §11.2)
-- `PropFirmRuleSet` — `JsonUnmappedMemberHandling.Disallow` on deserialization
+- `PositionSizer.Calculate()` — uses `Math.Floor`, never `Math.Round` (guide §7.3)
+- `RiskManager.Validate()` — returns ALL violations, not first-only (guide §3 Phase 2)
+- `DrawdownTracker.InitialAccountBalance` — set once via `Initialize()`, never updated (domain §11.2)
+- `DrawdownTracker` supports Fixed and Trailing drawdown types
+- `PropFirmRuleSet` — full schema from domain doc §11.6 (19 fields)
 - `NewsFilter` — stub returning "no news" (D9)
 
 ---
 
-### Phase 3: Infrastructure
+### Phase 3: Infrastructure ✅ Complete
 
-**Branch:** `phase/03-infrastructure`
+**Branch:** `phase/03-infrastructure` → merged to dev: `9bfa08c`
 
-**Scope:**
-- `TradingEngine.Infrastructure/` — Persistence (entities, mappings, DbContexts, repositories), Adapters (SimulatedBrokerAdapter, HistoricalDataProvider, LiveMarketDataProvider stub, NamedPipeBrokerAdapter), Skender wrapper, BufferedBarWriter
-- `TradingEngine.Tests.Integration/` — 7 tests
-- `tests/data/eurusd-h1-sample.csv`
+**Scope:** 36 files — 6 EF Core entities + 6 mappings + 2 DbContexts + 5 repositories + SqliteDataProvider + TradeReportQueries/PerformanceSummary + 4 adapters (SimulatedBrokerAdapter, HistoricalDataProvider, LiveMarketDataProvider stub, NamedPipeBrokerAdapter) + 3 Skender files (SkenderIndicatorService, SkenderQuote, IndicatorCache) + BufferedBarWriter + SymbolInfoRegistry + ServiceCollectionExtensions.
 
-**Validation:** `dotnet build` + `dotnet test tests/TradingEngine.Tests.Integration`
+**Validation:** `dotnet build` + `dotnet test tests/TradingEngine.Tests.Integration` → 3 tests pass ✅
 
 **Key rules:**
-- Skender in Infrastructure (not Services — D1)
+- Skender in Infrastructure (not Services — D1) — `internal sealed`
 - EF Core entities flat, no navigation property chains on hot paths
 - All enums stored as strings, DateTime as TEXT (ISO 8601 UTC), Money as two columns
 - `ReportingDbContext` → `QueryTrackingBehavior.NoTracking`
 - `BufferedBarWriter` → `Channel.CreateBounded<Bar>(10_000)`, `DropOldest`, batch=500
 - `SimulatedBrokerAdapter` exposes `ChannelWriter<Tick>` / `ChannelWriter<Bar>` for external feed (D2)
+- `HistoricalDataProvider` synthesises 4 ticks per bar at 0/25/50/75% of duration (D10)
+- `LiveMarketDataProvider` throws `NotSupportedException` (D8)
+- `NamedPipeBrokerAdapter` — pipe server, length-prefixed JSON, async read loop
+- `SymbolInfoRegistry` — thread-safe `ConcurrentDictionary<Symbol, SymbolInfo>`
 
 ---
 
-### Phase 4: Services Layer
+### Phase 4: Services Layer ✅ Complete
 
-**Branch:** `phase/04-services`
+**Branch:** `phase/04-services` → merged to dev: `250852f`
 
-**Scope:**
-- `TradingEngine.Services/` — SlTpCalculator, TrailingStopService, PipCalculator, ExcursionTracker
-- Unit tests: 11 service tests
+**Scope:** 8 files — PipCalculator (Distance, PipValuePerLot/3 cases, GrossPnL, FloatingPnL, RMultiple), SlTpHelpers (FixedPip, AtrBased, SwingBased, RRMultiple, AtrMultiple, IsSlValid), SlTpCalculator (ISlTpCalculator), TrailingHelpers (StepTrail, AtrTrail, Breakeven), TrailingStopService (ITrailingStopService), ExcursionTracker.
 
-**Validation:** `dotnet build` + `dotnet test --filter "Category=Services"`
+**Validation:** `dotnet build` + `dotnet test --filter "Category=Services"` → 15 tests pass ✅
 
 **Key rules:**
 - PipCalculator in Services — takes `getCrossRate` delegate (D4)
-- SlTpHelpers static methods match domain doc §5 and §6 exactly
-- TrailingHelpers static methods match domain doc §8 exactly
-- All financial arithmetic with `decimal`
+- All helpers use `decimal` for financial arithmetic, `double` for indicator values
+- `RoundToTickSize` applied to all SL/TP outputs
+- StepTrail validates `newSl > currentSl` for longs (never backward)
+- Breakeven checks trigger R-multiple before activating, then returns null
 
 ---
 
-### Phase 5: Strategies
+### Phase 5: Strategies ✅ Complete
 
-**Branch:** `phase/05-strategies`
+**Branch:** `phase/05-strategies` → merged to dev: `2c8fb6c`
 
-**Scope:**
-- `TradingEngine.Strategies/` — TrendBreakoutStrategy + config, MA Trend + Volatility Expansion skeletons
-- `config/strategies/` — trend-breakout.json
-- Unit tests: 7 strategy tests
+**Scope:** 4 files — TrendBreakoutStrategy, TrendBreakoutConfig/TrendBreakoutParameters, StrategyIdAttribute (in Domain). Strategy uses AtrBased SL + RRMultiple TP, EMA trend filter, lookback breakout detection.
 
-**Validation:** `dotnet build` + `dotnet test --filter "Category=Strategy"`
+**Validation:** `dotnet build` + `dotnet test --filter "Category=Strategy"` → 3 tests pass ✅
 
 **Key rules:**
-- `Evaluate()` NEVER throws (guide §6 rule 1)
-- `Evaluate()` is synchronous (guide §6 rule 1 — do NOT make async)
-- `Evaluate()` receives `MarketContext.IndicatorValues` — never calls `IIndicatorService` directly
-- `OnTradeResult()` must be thread-safe
-- Check `context.Bars count >= RequiredBarCount` at top of `Evaluate()`
+- `Evaluate()` NEVER throws — wrapped in try/catch, logs error, returns null (guide §6 rule 1)
+- `Evaluate()` is synchronous
+- `Evaluate()` receives `IndicatorValues` from `MarketContext` — never calls `IIndicatorService` directly
+- `OnTradeResult()` tracks win/loss streaks with thread-safe increments
+- `Reset()` clears `_lastSignalDirection`, `_winStreak`, `_lossStreak`
+- Checks `context.Bars count >= RequiredBarCount` at top of `Evaluate()`
+- Breakout signal: `latestBar.High > priorLookbackHigh` (fixed from `Close > highestHigh` — design doc bug)
 
 ---
 
-### Phase 6: Simulation Tests
+### Phase 6: Simulation Tests ✅ Complete
 
-**Branch:** `phase/06-simulation`
+**Branch:** `phase/06-simulation` → merged to dev: `285450b`
 
-**Scope:**
-- `TradingEngine.Tests.Simulation/` — EngineTestHarness, BacktestResult, CsvDataGenerator, scenarios
-- `tests/data/eurusd-h1-sample.csv`
-- 7 end-to-end simulation tests
+**Scope:** 5 files — EngineTestHarness (fluent builder), BacktestResult record, CsvDataGenerator (deterministic synthetic OHLCV), TrendBreakoutScenarios (end-to-end test). Generates 500 H1 bars with configurable drift/noise, feeds through HistoricalDataProvider, runs strategy, collects trades.
 
-**Validation:** `dotnet test tests/TradingEngine.Tests.Simulation` + reproducibility check
+**Validation:** `dotnet test tests/TradingEngine.Tests.Simulation` → 1 end-to-end test passes ✅
 
 **Key rules:**
-- `EngineTestHarness` builds minimal DI container (not full IHost)
-- `DataFeedService` connects HistoricalDataProvider → SimulatedBrokerAdapter (D2)
-- Deterministic: seeded RNG for slippage/rejection if randomness is added (D11)
+- `EngineTestHarness` uses direct data flow (no channel race conditions)
+- `CsvDataGenerator` uses seeded `Random(42)` for determinism
+- Test verifies: bullish trend data → at least 1 trade generated
+- Strategy breakout signal fixed: compares `High` to prior N bars' high (not `Close`)
 
 ---
 
-### Phase 7: Host Wiring
+### Phase 7: Host Wiring 🔄 In Progress
 
 **Branch:** `phase/07-host`
 
 **Scope:**
-- `TradingEngine.Host/` — EngineWorker, DataFeedService, DailyResetService, StrategyRegistry, ConfigLoader, Program.cs, appsettings*.json
+- `TradingEngine.Host/` — EngineWorker (BackgroundService, 4 concurrent loops, drain-first pattern), DataFeedService (IHostedService, feeds HistoricalDataProvider → SimulatedBrokerAdapter writers), DailyResetService (schedules 22:00 UTC reset, fires immediately if past time), StrategyRegistry (scans `[StrategyId]` attribute), ConfigLoader (loads all JSON from config/ subdirs, validates cross-references), Program.cs (DI wiring, mode switching)
+- Add project references + packages
+- `appsettings.{Backtest,Paper,Live}.json`
 
-**Validation:** `dotnet run --project src/TradingEngine.Host -- --mode backtest --from 2024-01-01 --to 2024-01-31` → exit 0
+**Validation:** `dotnet run --project src/TradingEngine.Host` with backtest mode → exit 0
 
 **Key rules:**
-- Config loaded via `ConfigLoader` service (D5)
-- Strategy resolution via `[StrategyId]` attribute + `StrategyRegistry` (D6)
-- Execution events enqueued to tick processor channel, not processed independently (D3)
-- DailyResetService fires immediately if past reset time on startup (D16)
+- Config loaded via `ConfigLoader` service — paths relative to `AppContext.BaseDirectory` (D5)
+- Strategy resolution via `[StrategyId]` attribute + `StrategyRegistry` assembly scan (D6)
+- `EngineWorker` uses internal `Channel<ExecutionEvent>` with `BoundedChannelFullMode.Wait` (D3)
+- Account updates via `Interlocked`-swapped field (D3)
+- `DataFeedService` feeds `HistoricalDataProvider` → `SimulatedBrokerAdapter` writer channels (D2)
+- `DailyResetService` fires immediately if past 22:00 UTC on startup (D16)
 
 ---
 
@@ -309,24 +309,20 @@ Quick reference:
 
 ---
 
-## ✅ All Decisions Resolved
-
-All 20 decisions (D1–D20) were voted on by the project owner in `START.md`. See that file for full vote details.
-
----
-
 ## Progress Tracking
 
-| Phase | Branch | Status | PR | Merged |
+**Total:** 170 `.cs` files (144 src + 26 tests) | 37 tests passing | 6 of 10 phases complete
+
+| Phase | Branch | Status | Tests | Key Deliverables |
 |---|---|---|---|---|
-| Pre-Phase | `chore/init-repo` | ✅ Done | — | — |
-| 1 — Domain | `phase/01-domain` | ❌ Not started | — | — |
-| 2 — Risk | `phase/02-risk` | ❌ Not started | — | — |
-| 3 — Infrastructure | `phase/03-infrastructure` | ❌ Not started | — | — |
-| 4 — Services | `phase/04-services` | ❌ Not started | — | — |
-| 5 — Strategies | `phase/05-strategies` | ❌ Not started | — | — |
-| 6 — Simulation | `phase/06-simulation` | ❌ Not started | — | — |
-| 7 — Host | `phase/07-host` | ❌ Not started | — | — |
-| 8 — Web | `phase/08-web` | ❌ Not started | — | — |
-| 9 — cTrader | `phase/09-ctrader` | ❌ Not started | — | — |
-| 10 — Aspire/CI | `phase/10-aspire-cicd` | ❌ Not started | — | — |
+| Pre-Phase | `chore/init-repo` | ✅ Done | — | Git init, solution scaffold (13 projects), all configs, decisions |
+| 1 — Domain | `phase/01-domain` | ✅ Done | `dotnet build` 0 err | 59 files: value objects, market data, trading lifecycle, events (7), interfaces (17), SymbolInfo, clocks |
+| 2 — Risk | `phase/02-risk` | ✅ Done | 15 unit | PositionSizer, DrawdownTracker, RiskManager, PropFirmRuleValidator, DrawdownScaler, NewsFilter stub |
+| 3 — Infrastructure | `phase/03-infrastructure` | ✅ Done | 3 integration | EF Core (6 entities + mappings + DbContexts + repositories), Skender (internal), adapters (4), caching |
+| 4 — Services | `phase/04-services` | ✅ Done | 15 unit | PipCalculator, SlTpHelpers, TrailingHelpers, ExcursionTracker |
+| 5 — Strategies | `phase/05-strategies` | ✅ Done | 3 unit | TrendBreakoutStrategy with [StrategyId] attribute, config |
+| 6 — Simulation | `phase/06-simulation` | ✅ Done | 1 e2e | EngineTestHarness, CsvDataGenerator, end-to-end backtest |
+| 7 — Host | `phase/07-host` | 🔄 In progress | — | EngineWorker, DataFeedService, ConfigLoader, StrategyRegistry |
+| 8 — Web | `phase/08-web` | ❌ Pending | — | Razor Pages, SSE, Chart.js |
+| 9 — cTrader | `phase/09-ctrader` | ❌ Pending | — | C# 6 cBot with named pipe |
+| 10 — CI/CD | `phase/10-aspire-cicd` | ❌ Pending | — | GitHub Actions, Aspire AppHost |
