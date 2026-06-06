@@ -6,6 +6,10 @@ public sealed class EngineTestHarness
     private RiskProfile? _riskProfile;
     private string? _dataPath;
     private PropFirmRuleSet? _propFirmRules;
+    private ISymbolInfoRegistry? _registry;
+
+    private sealed record TrackedOrder(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price StopLoss, Price? TakeProfit, string StrategyId);
+    private sealed record TrackedPosition(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price StopLoss, Price? TakeProfit, DateTime OpenedAtUtc, string StrategyId);
 
     public static EngineTestHarness Create() => new();
 
@@ -33,111 +37,154 @@ public sealed class EngineTestHarness
         return this;
     }
 
+    public EngineTestHarness WithSymbolRegistry(ISymbolInfoRegistry registry)
+    {
+        _registry = registry;
+        return this;
+    }
+
     public async Task<BacktestResult> RunBacktestAsync(
         DateTime from, DateTime to, CancellationToken ct = default)
     {
+        var clock = new StubClock(from);
         var symbol = Symbol.Parse("EURUSD");
         var broker = new SimulatedBrokerAdapter();
         var dataProvider = new HistoricalDataProvider(_dataPath!);
 
+        var registry = _registry ?? CreateDefaultRegistry();
+        var symbolInfo = registry.Get(symbol);
+        var trades = new List<TradeResult>();
+        var equityCurve = new List<EquitySnapshot>();
+        var bars = new List<Bar>();
+        var pendingOrders = new List<TrackedOrder>();
+        var openPositions = new Dictionary<Guid, TrackedPosition>();
+
         await dataProvider.SeekAsync(from, to, ct);
 
-        var bars = new List<Bar>();
-
-        _ = Task.Run(async () =>
+        await foreach (var bar in dataProvider.StreamBarsAsync(symbol, Timeframe.H1, ct))
         {
-            try
-            {
-                await foreach (var bar in dataProvider.StreamBarsAsync(symbol, Timeframe.H1, ct))
-                {
-                    await broker.BarWriter.WriteAsync(bar, ct);
-                    var barDuration = TimeSpan.FromHours(1);
-                    var quarter = TimeSpan.FromTicks(barDuration.Ticks / 4);
-                    var halfSpread = 0.0001m;
+            bars.Add(bar);
 
-                    var ticks = new[]
+            var halfSpread = 0.0001m;
+            var ticks = new[]
+            {
+                new Tick(symbol, bar.Open, bar.Open + halfSpread, bar.OpenTimeUtc),
+                new Tick(symbol, bar.High, bar.High + halfSpread, bar.OpenTimeUtc.AddMinutes(15)),
+                new Tick(symbol, bar.Low, bar.Low + halfSpread, bar.OpenTimeUtc.AddMinutes(30)),
+                new Tick(symbol, bar.Close, bar.Close + halfSpread, bar.OpenTimeUtc.AddMinutes(45)),
+            };
+
+            foreach (var tick in ticks)
+            {
+                broker.OnTickReceived(tick);
+                clock.Advance(TimeSpan.FromMinutes(15));
+
+                var pendingExecs = new List<ExecutionEvent>();
+                while (broker.ExecutionStream.TryRead(out var execEvt))
+                    pendingExecs.Add(execEvt);
+
+                foreach (var execEvt in pendingExecs)
+                {
+                    if (execEvt.FillPrice is null || execEvt.NewState != OrderState.Filled) continue;
+                    var fillPrice = execEvt.FillPrice.Value.Value;
+
+                    var pendingOrder = pendingOrders.FirstOrDefault(o => o.OrderId == execEvt.OrderId);
+                    if (pendingOrder is not null)
                     {
-                        new Tick(symbol, bar.Open, bar.Open + halfSpread, bar.OpenTimeUtc),
-                        new Tick(symbol, bar.High, bar.High + halfSpread, bar.OpenTimeUtc + quarter),
-                        new Tick(symbol, bar.Low, bar.Low + halfSpread, bar.OpenTimeUtc + 2 * quarter),
-                        new Tick(symbol, bar.Close, bar.Close + halfSpread, bar.OpenTimeUtc + 3 * quarter),
+                        pendingOrders.Remove(pendingOrder);
+                        var pos = new TrackedPosition(
+                            execEvt.OrderId, pendingOrder.Symbol, pendingOrder.Direction,
+                            execEvt.FilledLots, new Price(fillPrice),
+                            pendingOrder.StopLoss, pendingOrder.TakeProfit,
+                            clock.UtcNow, pendingOrder.StrategyId);
+                        openPositions[execEvt.OrderId] = pos;
+                    }
+                    else if (openPositions.TryGetValue(execEvt.OrderId, out var existingPos))
+                    {
+                        var pnl = PipCalculator.GrossPnL(
+                            existingPos.Direction, existingPos.EntryPrice, new Price(fillPrice),
+                            existingPos.Lots, symbolInfo, (_, _) => 1);
+
+                        var exitReason = existingPos.Direction == TradeDirection.Long
+                            ? (fillPrice <= existingPos.StopLoss.Value ? "SL" : "TP")
+                            : (fillPrice >= existingPos.StopLoss.Value ? "SL" : "TP");
+
+                        trades.Add(new TradeResult(
+                            Guid.NewGuid(), existingPos.OrderId, existingPos.Symbol,
+                            existingPos.Direction, existingPos.Lots,
+                            existingPos.EntryPrice, new Price(fillPrice),
+                            existingPos.StopLoss, existingPos.TakeProfit,
+                            existingPos.OpenedAtUtc, clock.UtcNow,
+                            pnl, Money.Zero(pnl.Currency), Money.Zero(pnl.Currency),
+                            pnl, new Pips(0), (double)(pnl.Amount / (pnl.Amount != 0 ? pnl.Amount : 1)),
+                            new Pips(0), new Pips(0),
+                            exitReason, existingPos.StrategyId, "standard", EngineMode.Backtest));
+
+                        openPositions.Remove(execEvt.OrderId);
+                    }
+                }
+
+                foreach (var strategy in _strategies)
+                {
+                    if (bars.Count < strategy.RequiredBarCount) continue;
+
+                    var indicators = new Dictionary<string, double>
+                    {
+                        ["ATR_14"] = 0.0021,
+                        ["EMA_50"] = 1.0800,
                     };
 
-                    foreach (var t in ticks)
-                        await broker.TickWriter.WriteAsync(t, ct);
+                    var context = new MarketContext(
+                        symbol, tick,
+                        new Dictionary<Timeframe, IReadOnlyList<Bar>> { [Timeframe.H1] = [.. bars] },
+                        indicators, clock.UtcNow);
 
-                    await broker.AccountWriter.WriteAsync(
-                        new AccountUpdate(100_000, 100_000, 0, ticks[^1].TimestampUtc), ct);
+                    var intent = strategy.Evaluate(context);
+                    if (intent is null) continue;
+
+                    var lots = 0.1m;
+                    var orderReq = new OrderRequest(intent, lots, intent.Symbol, intent.Direction, OrderType.Market, null);
+                    var orderId = Guid.NewGuid();
+                    pendingOrders.Add(new TrackedOrder(orderId, intent.Symbol, intent.Direction, lots, intent.StopLoss, intent.TakeProfit, strategy.Id));
+                    await broker.SubmitOrderAsync(orderReq, ct);
                 }
             }
-            finally
-            {
-                broker.TickWriter.Complete();
-                broker.BarWriter.Complete();
-                broker.AccountWriter.Complete();
-            }
-        }, ct);
 
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await foreach (var bar in broker.BarStream.ReadAllAsync(ct))
-                {
-                    lock (bars) { bars.Add(bar); }
-                }
-            }
-            catch (OperationCanceledException) { }
-        }, ct);
-
-        var strategy = _strategies.FirstOrDefault();
-        var trades = new List<TradeResult>();
-
-        try
-        {
-            await foreach (var tick in broker.TickStream.ReadAllAsync(ct))
-            {
-                if (strategy is null) continue;
-
-                List<Bar> snapshot;
-                lock (bars) { snapshot = [.. bars]; }
-
-                if (snapshot.Count < strategy.RequiredBarCount)
-                    continue;
-
-                var context = new MarketContext(
-                    symbol, tick,
-                    new Dictionary<Timeframe, IReadOnlyList<Bar>> { [Timeframe.H1] = snapshot },
-                    new Dictionary<string, double>(),
-                    DateTime.UtcNow);
-
-                var intent = strategy.Evaluate(context);
-                if (intent is not null)
-                {
-                    var entryPrice = new Price(tick.Mid);
-                    var exitPrice = tick.Bid;
-
-                    trades.Add(new TradeResult(
-                        Guid.NewGuid(), Guid.NewGuid(), symbol,
-                        intent.Direction, 0.1m,
-                        entryPrice, new Price(exitPrice),
-                        intent.StopLoss, intent.TakeProfit,
-                        DateTime.UtcNow, DateTime.UtcNow,
-                        new Money(50, "USD"), new Money(1, "USD"),
-                        new Money(0, "USD"), new Money(49, "USD"),
-                        new Pips(20), 2.0, new Pips(5), new Pips(25),
-                        "TP", strategy.Id, "standard", EngineMode.Backtest));
-                }
-            }
+            equityCurve.Add(new EquitySnapshot(
+                clock.UtcNow, 100_000, 0, 100_000, 100_000, 100_000, 0, 0, EngineMode.Backtest));
         }
-        catch (OperationCanceledException) { }
+
+        var maxDrawdown = ComputeMaxDrawdown(equityCurve);
+        var totalPnl = trades.Sum(t => t.NetPnL.Amount);
 
         return new BacktestResult(
-            trades.Sum(t => t.NetPnL.Amount),
-            0.05m,
+            totalPnl,
+            maxDrawdown,
             trades.Count,
-            trades.Any() ? (double)trades.Count(t => t.NetPnL.Amount > 0) / trades.Count : 0,
+            trades.Count > 0 ? (double)trades.Count(t => t.NetPnL.Amount > 0) / trades.Count : 0,
             trades,
             []);
+    }
+
+    private static decimal ComputeMaxDrawdown(List<EquitySnapshot> curve)
+    {
+        if (curve.Count == 0) return 0;
+        var peak = curve[0].Equity;
+        var maxDd = 0m;
+        foreach (var snap in curve)
+        {
+            if (snap.Equity > peak) peak = snap.Equity;
+            var dd = peak > 0 ? (peak - snap.Equity) / peak : 0;
+            if (dd > maxDd) maxDd = dd;
+        }
+        return maxDd;
+    }
+
+    private static ISymbolInfoRegistry CreateDefaultRegistry()
+    {
+        var reg = new SymbolInfoRegistry();
+        reg.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
+        return reg;
     }
 }
