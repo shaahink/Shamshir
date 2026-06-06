@@ -1,3 +1,3 @@
 namespace TradingEngine.Domain;
 
-public sealed record EquityUpdated(EquitySnapshot Snapshot, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+public sealed record EquityUpdated(EquitySnapshot Snapshot, RiskState RiskState, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);

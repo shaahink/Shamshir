@@ -13,12 +13,16 @@ public sealed class EngineWorker : BackgroundService
     private readonly IEngineClock _clock;
     private readonly DataFeedService? _dataFeed;
     private readonly ISymbolInfoRegistry _symbolRegistry;
+    private readonly IRiskProfileResolver _riskProfileResolver;
+    private readonly Func<string, string, decimal> _crossRateProvider;
+    private readonly PersistenceService _persistence;
     private readonly ILogger<EngineWorker> _logger;
 
     private readonly ConcurrentDictionary<Symbol, ConcurrentDictionary<Timeframe, List<Bar>>> _bars = new();
     private readonly ConcurrentDictionary<string, double> _indicatorValues = new();
     private readonly Dictionary<Guid, OrderRequest> _pendingOrdersMap = new();
     private readonly Dictionary<Guid, Position> _openPositionsMap = new();
+    private EquitySnapshot _currentEquity = new(DateTime.MinValue, 0, 0, 0, 0, 0, 0, 0, EngineMode.Backtest);
 
     private readonly Channel<ExecutionEvent> _executionEventChannel =
         Channel.CreateBounded<ExecutionEvent>(new BoundedChannelOptions(1000)
@@ -42,6 +46,9 @@ public sealed class EngineWorker : BackgroundService
         IEventBus eventBus,
         IEngineClock clock,
         ISymbolInfoRegistry symbolRegistry,
+        IRiskProfileResolver riskProfileResolver,
+        Func<string, string, decimal> crossRateProvider,
+        PersistenceService persistence,
         ILogger<EngineWorker> logger,
         DataFeedService? dataFeed = null)
     {
@@ -53,6 +60,9 @@ public sealed class EngineWorker : BackgroundService
         _eventBus = eventBus;
         _clock = clock;
         _symbolRegistry = symbolRegistry;
+        _riskProfileResolver = riskProfileResolver;
+        _crossRateProvider = crossRateProvider;
+        _persistence = persistence;
         _dataFeed = dataFeed;
         _logger = logger;
     }
@@ -110,8 +120,9 @@ public sealed class EngineWorker : BackgroundService
                     var intent = strategy.Evaluate(context);
                     if (intent is null) continue;
 
-                    var equity = new EquitySnapshot(_clock.UtcNow, 0, 0, 0, 0, 0, 0, 0, EngineMode.Backtest);
-                    var violations = _riskManager.Validate(intent, equity);
+                    var equity = Volatile.Read(ref _currentEquity);
+                    var profile = _riskProfileResolver.Resolve(intent.RiskProfileId);
+                    var violations = _riskManager.Validate(intent, equity, profile);
 
                     if (violations.Count > 0)
                     {
@@ -123,7 +134,7 @@ public sealed class EngineWorker : BackgroundService
                     var symbolInfo = _symbolRegistry.Get(intent.Symbol);
                     var entryPrice = intent.LimitPrice ?? new Price(tick.Mid);
                     var slPips = PipCalculator.Distance(entryPrice, intent.StopLoss, symbolInfo);
-                    var pipValue = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, (from, to) => 1);
+                    var pipValue = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, _crossRateProvider);
 
                     var lots = _riskManager.CalculateLotSize(intent, equity,
                         new RiskProfile("standard", "Standard", 0.01, 0.04, 0.08, 100, 0.05, 0.5, 0.5, 3, false, "ftmo-standard"));
@@ -198,19 +209,20 @@ public sealed class EngineWorker : BackgroundService
             if (_openPositionsMap.TryGetValue(evt.OrderId, out var pos))
             {
                 var symbolInfo = _symbolRegistry.Get(pos.Symbol);
-                var pnl = PipCalculator.GrossPnL(pos.Direction, pos.EntryPrice, new Price(fillPrice), pos.Lots, symbolInfo, (_, _) => 1);
+                var pnl = PipCalculator.GrossPnL(pos.Direction, pos.EntryPrice, new Price(fillPrice), pos.Lots, symbolInfo, _crossRateProvider);
 
                 _openPositionsMap.Remove(evt.OrderId);
                 _riskManager.DeregisterPosition(pos.Id);
                 _positionManager.DeregisterPosition(pos.Id);
 
-                var exitPrice = new Price(fillPrice);
                 foreach (var s in _strategies.Where(s => s.Id == pos.StrategyId))
                 {
-                    s.OnTradeResult(new TradeResult(Guid.NewGuid(), pos.Id, pos.Symbol, pos.Direction, pos.Lots,
-                        pos.EntryPrice, exitPrice, pos.CurrentStopLoss, pos.TakeProfit,
+                    var tradeResult = new TradeResult(Guid.NewGuid(), pos.Id, pos.Symbol, pos.Direction, pos.Lots,
+                        pos.EntryPrice, new Price(fillPrice), pos.CurrentStopLoss, pos.TakeProfit,
                         pos.OpenedAtUtc, _clock.UtcNow, pnl, Money.Zero(pnl.Currency), Money.Zero(pnl.Currency),
-                        pnl, new Pips(0), 0, new Pips(0), new Pips(0), "TP", pos.StrategyId, "standard", EngineMode.Backtest));
+                        pnl, new Pips(0), 0, new Pips(0), new Pips(0), "TP", pos.StrategyId, "standard", EngineMode.Backtest);
+                    s.OnTradeResult(tradeResult);
+                    _ = _persistence.SaveTradeAsync(tradeResult, CancellationToken.None);
                 }
 
                 _logger.LogInformation("Trade closed. TradeId={Id} Exit={Exit:F5} PnL={PnL:F2}",
@@ -228,7 +240,7 @@ public sealed class EngineWorker : BackgroundService
             _clock.UtcNow, order.Intent.StrategyId);
 
         _openPositionsMap[evt.OrderId] = position;
-        _riskManager.RegisterPosition(position.Id, _latestRiskAmount);
+        _riskManager.RegisterPosition(position.Id, position.StrategyId, _latestRiskAmount);
 
         var posConfig = new PositionManagementConfig(
             position.StrategyId,
@@ -246,7 +258,10 @@ public sealed class EngineWorker : BackgroundService
         var equity = new EquitySnapshot(
             update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
             update.Equity, update.Equity, 0, 0, EngineMode.Backtest);
+        Volatile.Write(ref _currentEquity, equity);
         _riskManager.OnEquityUpdate(equity);
+        _ = _persistence.SaveEquitySnapshotAsync(equity, CancellationToken.None);
+        _ = _eventBus.PublishAsync(new EquityUpdated(equity, _riskManager.CurrentState, _clock.UtcNow), CancellationToken.None);
     }
 
     private IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>? BuildBarSnapshot(Symbol symbol)

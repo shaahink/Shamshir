@@ -51,9 +51,6 @@ public sealed class DataFeedService(
         {
             await simulatedBroker.TickWriter.WriteAsync(tick, ct);
             simulatedBroker.OnTickReceived(tick);
-
-            simulatedBroker.AccountWriter.TryWrite(new AccountUpdate(
-                100_000, 100_000, 0, tick.TimestampUtc));
         }
     }
 }
