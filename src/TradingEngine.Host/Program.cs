@@ -86,7 +86,8 @@ public static class Program
             builder.Services.AddSingleton<IStrategy>(sp => sp.GetServices<IStrategy>().First());
             builder.Services.AddSingleton<DataFeedService>();
             builder.Services.AddHostedService<DataFeedService>();
-            builder.Services.AddHostedService<EngineWorker>();
+            builder.Services.AddSingleton<EngineWorker>();
+            builder.Services.AddHostedService<EngineWorker>(sp => sp.GetRequiredService<EngineWorker>());
             builder.Services.AddHostedService<DailyResetService>();
 
             var app = builder.Build();

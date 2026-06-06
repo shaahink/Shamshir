@@ -3,6 +3,19 @@ namespace TradingEngine.Web.Api;
 [ApiController]
 public sealed class RiskSseController : ControllerBase
 {
+    private static readonly Channel<RiskState> _riskChannel =
+        Channel.CreateBounded<RiskState>(new BoundedChannelOptions(100)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleWriter = true,
+            SingleReader = false
+        });
+
+    public static void PushRiskState(RiskState state)
+    {
+        _riskChannel.Writer.TryWrite(state);
+    }
+
     [HttpGet("/sse/risk")]
     public async Task StreamRisk(CancellationToken ct)
     {
@@ -10,9 +23,11 @@ public sealed class RiskSseController : ControllerBase
         Response.Headers.Append("Cache-Control", "no-cache");
         Response.Headers.Append("Connection", "keep-alive");
 
-        var state = new RiskState(true, false, null, 0, 0, 0.05m, 0.10m, null);
-        var json = JsonSerializer.Serialize(state);
-        await Response.WriteAsync($"data: {json}\n\n", ct);
-        await Response.Body.FlushAsync(ct);
+        await foreach (var state in _riskChannel.Reader.ReadAllAsync(ct))
+        {
+            var json = JsonSerializer.Serialize(state);
+            await Response.WriteAsync($"data: {json}\n\n", ct);
+            await Response.Body.FlushAsync(ct);
+        }
     }
 }
