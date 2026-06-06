@@ -360,7 +360,6 @@ Lives in `TradingEngine.Host/EngineWorker.cs`.
 ```csharp
 public sealed class EngineWorker(
     IBrokerAdapter broker,
-    IMarketDataProvider marketData,
     IRiskManager riskManager,
     IPositionManager positionManager,
     IEnumerable<IStrategy> strategies,
@@ -369,6 +368,20 @@ public sealed class EngineWorker(
     IEngineClock clock,
     ILogger<EngineWorker> logger) : BackgroundService
 {
+    // Internal channel: execution events from the broker stream are re-queued here
+    // and drained by the tick processor — single-threaded position state, no locks.
+    private readonly Channel<ExecutionEvent> _executionEventChannel =
+        Channel.CreateBounded<ExecutionEvent>(new BoundedChannelOptions(1000)
+        {
+            FullMode = BoundedChannelFullMode.Wait,  // never drop execution events
+            SingleWriter = true,
+            SingleReader = true
+        });
+
+    // Latest AccountUpdate — swapped atomically from the account stream processor,
+    // read by the tick processor on each cycle. No channel needed.
+    private AccountUpdate? _latestAccountUpdate;
+
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         await broker.ConnectAsync(ct);
@@ -389,12 +402,34 @@ public sealed class EngineWorker(
     {
         await foreach (var tick in broker.TickStream.ReadAllAsync(ct))
         {
-            // 1. Update equity snapshot
-            // 2. Notify risk manager
-            // 3. Evaluate each strategy → collect intents
-            // 4. For each intent: validate → size → submit order
-            // 5. Evaluate position manager for each open position
+            // 1. Drain pending execution events first (all that arrived since last tick)
+            while (_executionEventChannel.Reader.TryRead(out var execEvent))
+                HandleExecutionEvent(execEvent);
+
+            // 2. Read latest AccountUpdate (Interlocked-swapped from account stream)
+            var accountUpdate = Interlocked.Exchange(ref _latestAccountUpdate, null);
+            if (accountUpdate != null)
+                HandleAccountUpdate(accountUpdate.Value);
+
+            // 3. Update equity snapshot, notify risk manager
+            // 4. Evaluate each strategy → collect intents
+            // 5. For each intent: validate → size → submit order
+            // 6. Evaluate position manager for each open position
         }
+    }
+
+    private async Task ProcessExecutionEventsAsync(CancellationToken ct)
+    {
+        // Pure relay: broker execution stream → internal channel
+        await foreach (var evt in broker.ExecutionStream.ReadAllAsync(ct))
+            await _executionEventChannel.Writer.WriteAsync(evt, ct);
+    }
+
+    private async Task ProcessAccountUpdatesAsync(CancellationToken ct)
+    {
+        // Pure relay: broker account stream → Interlocked-swapped field
+        await foreach (var update in broker.AccountStream.ReadAllAsync(ct))
+            Interlocked.Exchange(ref _latestAccountUpdate, update);
     }
 
     private async Task WarmUpIndicatorsAsync(CancellationToken ct)
@@ -403,10 +438,18 @@ public sealed class EngineWorker(
         // Compute initial indicator values
         // Do NOT call strategy.Evaluate() during warm-up
     }
+
+    private void HandleExecutionEvent(ExecutionEvent evt) { /* order/position lifecycle */ }
+    private void HandleAccountUpdate(AccountUpdate update) { /* equity tracking */ }
 }
 ```
 
-**Important:** All four stream readers run concurrently via `Task.WhenAll`. They each loop independently. The tick processor is the primary decision loop; others are reactive.
+**Concurrency model (D3 — single-threaded tick processor):**
+- `ProcessTicksAsync` is the **primary decision loop** — only it touches position state
+- `ProcessExecutionEventsAsync` relays broker events to an internal `Channel<ExecutionEvent>` (never touches position state directly)
+- `ProcessAccountUpdatesAsync` writes the latest update to an `Interlocked`-swapped field (no channel)
+- At the top of each tick cycle, `ProcessTicksAsync` drains all pending execution events before evaluating strategies or positions
+- No locks required. No shared mutable state between concurrent loops.
 
 ### 2.8 DI Registration in Host
 
@@ -498,10 +541,13 @@ public sealed class EngineTestHarness
         // Build a minimal service collection with:
         // - SimulatedBrokerAdapter
         // - HistoricalDataProvider pointing to _dataPath
+        // - DataFeedService: wires HistoricalDataProvider → SimulatedBrokerAdapter writers
         // - RiskManager configured with _riskProfile and _propFirmRules
         // - StubClock starting at `from`
         // - All registered strategies
+        // - SymbolInfoRegistry with defaults
         // Run the engine loop until data is exhausted
+        // DataFeedService completes a TaskCompletionSource when data stream ends
         // Return BacktestResult
     }
 }
@@ -638,6 +684,7 @@ src/TradingEngine.Domain/
     IEventHandler.cs
     IIndicatorService.cs
     ISlTpCalculator.cs
+    ISymbolInfoRegistry.cs      # Get(Symbol), Register(SymbolInfo), TryGet(Symbol)
     ITrailingStopService.cs
   SymbolInfo/
     SymbolInfo.cs
@@ -782,6 +829,10 @@ src/TradingEngine.Infrastructure/
   Caching/
     BufferedBarWriter.cs
     BufferedTickWriter.cs       # if needed
+  Indicators/
+    SkenderIndicatorService.cs  # internal sealed, implements IIndicatorService
+    SkenderQuote.cs             # internal sealed, adapts Bar → IQuote
+    IndicatorCache.cs           # keyed cache (symbol, tf, name, period, barCount)
   ServiceCollectionExtensions.cs  # AddSqliteDataProvider(), AddInfrastructure()
   Migrations/                   # EF Core generated — do not hand-write
 ```
@@ -839,10 +890,6 @@ dotnet test tests/TradingEngine.Tests.Integration --no-build
 
 ```
 src/TradingEngine.Services/
-  Indicators/
-    SkenderIndicatorService.cs    # implements IIndicatorService
-    SkenderQuote.cs               # internal adapter type
-    IndicatorCache.cs             # keyed cache (symbol, tf, name, period, barCount)
   SLTPCalculation/
     SlTpCalculator.cs             # implements ISlTpCalculator
     SlParameters.cs               # record: { Pips, AtrMultiplier, LookbackBars, BufferPips }
@@ -857,8 +904,6 @@ src/TradingEngine.Services/
 #### Key rules
 
 **`PipCalculator`** — implement all methods from domain doc §2.2, §3.2, §9. Use `decimal` throughout. The `getCrossRate` delegate must be passed in — never hardcode.
-
-**`SkenderIndicatorService`** — Skender is referenced ONLY from this project. `SkenderQuote` is `internal sealed`. No Skender type leaks into any public method signature. Cache results per §2.10 of the design doc.
 
 **`SlTpCalculator`** — delegate to `PipCalculator` and the static helpers from domain doc §5 and §6. The three SL methods (`FixedPips`, `AtrMultiple`, `SwingBased`) must match the domain doc implementations exactly, including `RoundToTickSize`.
 
@@ -1031,7 +1076,10 @@ $r2 = dotnet test tests/TradingEngine.Tests.Simulation -v n 2>&1 | Select-String
 ```
 src/TradingEngine.Host/
   EngineWorker.cs             # BackgroundService (engine loop)
+  DataFeedService.cs          # IHostedService: reads IMarketDataProvider, writes to SimulatedBrokerAdapter writers
   DailyResetService.cs        # BackgroundService (schedules daily reset)
+  StrategyRegistry.cs         # Scans [StrategyId] attribute, resolves config to IStrategy instances
+  ConfigLoader.cs             # Loads all config directories, validates cross-references
   Program.cs                  # DI registration, mode switching
   appsettings.json
   appsettings.Development.json

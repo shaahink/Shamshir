@@ -1,0 +1,14 @@
+{
+  "id": "conservative",
+  "displayName": "Conservative",
+  "riskPerTradePercent": 0.005,
+  "maxDailyDrawdownPercent": 0.03,
+  "maxTotalDrawdownPercent": 0.06,
+  "maxSlPips": 50.0,
+  "maxExposurePercent": 0.03,
+  "drawdownScaleThreshold": 0.5,
+  "drawdownScaleFloor": 0.5,
+  "maxConcurrentPositions": 2,
+  "allowHedging": false,
+  "propFirmRuleSetId": "ftmo-standard"
+}

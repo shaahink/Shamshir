@@ -1,0 +1,16 @@
+{
+  "id": "trend-breakout",
+  "displayName": "Trend Breakout v1",
+  "enabled": true,
+  "symbols": ["EURUSD", "GBPUSD"],
+  "riskProfileId": "standard",
+  "parameters": {
+    "lookbackBars": 20,
+    "maPeriod": 50,
+    "atrPeriod": 14,
+    "slAtrMultiple": 1.5,
+    "tpRrMultiple": 2.0,
+    "trailingMethod": "AtrMultiple",
+    "trailingAtrMultiple": 1.0
+  }
+}

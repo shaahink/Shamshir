@@ -83,180 +83,34 @@ These are captured from the three design docs. Listed here for reference:
 
 ---
 
-## ❓ Decision Points for Your Review
-
-### D1 — Skender Placement
-
-**Conflict:** Arch rule §4.2 scans Infrastructure for Skender types. Guide Phase 4 places `SkenderIndicatorService` in Services. These cannot both be true.
-
-**Options:**
-- **A (recommended):** Put `SkenderIndicatorService` in Infrastructure. Update Phase 4 guide to reference Infrastructure. The arch checker stays as-is.
-- **B:** Put it in Services. Update arch rule §4.2 to scan Services instead. Move `SkenderQuote` to Services.
-- **C:** Create a dedicated `TradingEngine.Indicators` project.
-
----
-
-### D2 — Backtest Data Path
-
-**Conflict:** Engine loop reads `broker.TickStream`. In backtest, `SimulatedBrokerAdapter` is the broker but has no data unless fed. `HistoricalDataProvider` yields data but isn't connected to the adapter.
-
-**Options:**
-- **A (recommended):** `DataFeedService` — an `IHostedService` in the Host project that reads `IMarketDataProvider` and writes to `SimulatedBrokerAdapter`'s `TickWriter`/`BarWriter`.
-- **B:** `SimulatedBrokerAdapter` internally owns and reads from `IMarketDataProvider` (constructor injection).
-- **C:** `EngineWorker` directly reads both and bridges them.
-
----
-
-### D3 — Concurrency Model
-
-**Conflict:** `ProcessTicksAsync` and `ProcessExecutionEventsAsync` both touch `IPositionManager` state. Race condition risk.
-
-**Options:**
-- **A (recommended):** Single-threaded tick processor. `ProcessExecutionEventsAsync` enqueues events to a `Channel<ExecutionEvent>`. Tick processor drains this channel at the start of each tick cycle before evaluating strategies/positions. No locks.
-- **B:** Keep concurrent streams, add `ReaderWriterLockSlim` on position state.
-- **C:** Both streams run but position mutations go through an `ActionBlock` (Dataflow).
-
----
-
-### D4 — PipCalculator Location ✅ DECIDED
-
-**Status:** Placed in `TradingEngine.Services`. Domain stays pure data + interfaces. `PipCalculator` takes `Func<string, string, decimal> getCrossRate` delegate.
-
----
-
-### D5 — Config Loading Strategy
-
-**Unknown:** How `config/` JSON files are discovered, loaded, validated at runtime (no broker available in backtest, file paths relative to binary).
-
-**Options:**
-- **A (recommended):** `ConfigLoader` service. Given base path, scans subdirectories, deserializes with `System.Text.Json`, validates cross-references, returns typed config objects. Registered in DI as singleton.
-- **B:** `IConfiguration` + `AddJsonFile()` per directory. Standard .NET options pattern.
-- **C:** Embedded resources in the Host assembly.
-
----
-
-### D6 — Strategy ID → Type Resolution
-
-**Unknown:** How `"trend-breakout"` string from config maps to `TrendBreakoutStrategy` class.
-
-**Options:**
-- **A (recommended):** `[StrategyId("trend-breakout")]` attribute on strategy class. `StrategyRegistry` scans assembly at startup, builds `Dictionary<string, Type>`.
-- **B:** Convention: `"trend-breakout"` → `TrendBreakoutStrategy` via `Type.GetType()` with kebab-to-PascalCase mapping.
-- **C:** Manual `Dictionary<string, Type>` in `Program.cs`.
-
----
-
-### D7 — Application Project Content ✅ DECIDED
-
-**Status:** Keep `TradingEngine.Application` with an assembly marker (`public static class AssemblyMarker {}`). Referenced by Risk, Strategies, Services per dependency graph. Future use cases go here.
-
----
-
-### D8 — LiveMarketDataProvider Behavior
-
-**Unknown:** What happens in Paper/Live mode before cTrader adapter (Phase 9) is complete?
-
-**Options:**
-- **A (recommended):** `LiveMarketDataProvider` throws `NotSupportedException("Live mode requires cTrader Phase 9")` with clear message.
-- **B:** Silent stub — returns empty streams, no-ops on `SeekAsync()`. Engine runs with no data silently.
-- **C:** Register `SimulatedBrokerAdapter` as both `IBrokerAdapter` and `IMarketDataProvider` in paper mode.
-
----
-
-### D9 — NewsFilter Implementation
-
-**Unknown:** Needs external ForexFactory news calendar feed. Format? URL? Update frequency?
-
-**Options:**
-- **A (recommended):** Stub `NewsFilter` that always returns "no news window active". Real implementation deferred to future phase.
-- **B:** Hardcode a small set of known news events for testing only.
-
----
-
-### D10 — Tick Synthesis from Bars
-
-**Unknown:** `HistoricalDataProvider.StreamTicksAsync` "synthesises 4 ticks per bar" — exact timing?
-
-**Options:**
-- **A (recommended):** 4 ticks at `OpenTimeUtc + 0%, 25%, 50%, 75%` of bar duration. Order: Open → High → Low → Close (bullish) or Open → Low → High → Close (bearish). Bid = Close, Ask = Close + half typical spread.
-- **B:** 4 ticks at bar boundaries only (same timestamp).
-- **C:** Random timing within bar interval (breaks determinism).
-
----
-
-### D11 — Slippage Determinism
-
-**Unknown:** `SimulationOptions.SlippagePips` — fixed or randomized?
-
-**Options:**
-- **A (recommended):** Fixed offset = `SlippagePips`. No randomness. Reproducible.
-- **B:** `RngSeed` + uniform distribution `[-SlippagePips, +SlippagePips]`. Seed controls determinism.
-
----
-
-### D12 — FTMO dailyResetTimeUtc ✅ DECIDED
-
-**Status:** Use `"22:00:00" UTC` (= midnight Prague CET). Domain doc is authoritative for financial rules per guide §1.5.
-
----
-
-### D13 — SlMethod Enum ✅ DECIDED
-
-**Status:** Use 3-value enum: `FixedPips, AtrMultiple, SwingBased`. TradeDirection already on TradeIntent — SwingHigh/SwingLow are redundant per guide §1.4.
-
----
-
-### D14 — DurationSeconds in Schema ✅ DECIDED
-
-**Status:** Add `double DurationSeconds` to `TradeResult` and `TradeResultEntity`. Computed as `(ClosedAtUtc - OpenedAtUtc).TotalSeconds`.
-
----
-
-### D15 — MaxExposurePercent Metric
-
-**Open:** "Max exposure exceeded" check — what is the metric?
-
-**Options:**
-- **A (recommended):** Sum of `Position.Lots × PipValue × SlPips` (total open risk) across all positions / current equity. Must not exceed `RiskProfile.MaxExposurePercent`.
-- **B:** Sum of notional values (Lots × ContractSize × Price) / equity.
-- **C:** Number of open positions only.
-
----
-
-### D16 — Daily Reset Timer at Startup
-
-**Open:** If engine starts at 22:30 UTC (after 22:00 daily reset time), should reset fire immediately?
-
-**Options:**
-- **A (recommended):** Yes — fire `OnDailyReset()` immediately if current time > today's reset time. Otherwise DD tracking is wrong until next day.
-- **B:** No — wait until next scheduled reset time (22:00 next day).
-
----
-
-### D17 — LiveMarketDataProvider / cTrader Details
-
-**Open:** I need more info about the cTrader environment to design `LiveMarketDataProvider` and the cBot:
-- Does cTrader's API support pushing tick data programmatically, or does the cBot poll?
-- What is the cTrader API version / NuGet package? (cTrader API references?)
-- How does the cBot get notified of new ticks/bars — events? callbacks?
-- Will you provide access to a cTrader environment for testing?
-
----
-
-### D18 — Test Data Source
-
-**Open:** The plan needs `tests/data/eurusd-h1-sample.csv`. Options:
-- I generate synthetic data via `CsvDataGenerator` and commit it
-- You provide real historical data
-- We use a well-known public source (e.g., Dukascopy, OANDA)
-
----
-
-### D19 — # of Phases
-
-**Current:** 10 phases (per agent-implementation-guide). Each phase = 1 PR.
-- Too many? Should some merge?
-- Too few? Should any split?
+## ✅ All Decisions Resolved
+
+All 20 decisions (D1–D20) were voted on by the project owner in `START.md`. See that file for full votes and rationale.
+
+Quick reference:
+
+| ID | Decision | Vote |
+|---|---|---|
+| D1 | Skender placement | A — Infrastructure/Indicators/ |
+| D2 | Backtest data path | A — DataFeedService |
+| D3 | Concurrency model | A — Single-threaded tick processor |
+| D4 | PipCalculator location | Services |
+| D5 | Config loading | A — ConfigLoader |
+| D6 | Strategy resolution | A — [StrategyId] attribute |
+| D7 | Application project | Assembly marker only |
+| D8 | LiveMarketDataProvider | A — throw NotSupportedException |
+| D9 | NewsFilter | A — stub |
+| D10 | Tick synthesis | A — 4 ticks at 0/25/50/75% |
+| D11 | Slippage determinism | A — fixed offset |
+| D12 | FTMO daily reset time | 22:00 UTC |
+| D13 | SlMethod enum | 3 values |
+| D14 | DurationSeconds | Add to TradeResult |
+| D15 | MaxExposurePercent | A — sum of open risk / equity |
+| D16 | Daily reset on late start | A — fire immediately |
+| D17 | cTrader API | Info provided |
+| D18 | Test data source | Synthetic via CsvDataGenerator |
+| D19 | Number of phases | 10 phases, unchanged |
+| D20 | SymbolInfo registry | A — ISymbolInfoRegistry + defaults.json |
 
 ---
 
@@ -455,26 +309,9 @@ These are captured from the three design docs. Listed here for reference:
 
 ---
 
-## ⚠️ Open Questions Summary
+## ✅ All Decisions Resolved
 
-Please respond to these (D1–D19 above) before Phase 1 begins:
-
-| ID | Topic | My Recommendation |
-|---|---|---|
-| D1 | Skender placement | A — Infrastructure |
-| D2 | Backtest data path | A — DataFeedService |
-| D3 | Concurrency model | A — Single-threaded tick processor |
-| D5 | Config loading | A — ConfigLoader service |
-| D6 | Strategy resolution | A — [StrategyId] attribute |
-| D8 | LiveMarketDataProvider | A — throw NotSupportedException |
-| D9 | NewsFilter | A — stub (deferred) |
-| D10 | Tick synthesis | A — 4 ticks at 0/25/50/75% |
-| D11 | Slippage determinism | A — Fixed offset |
-| D15 | MaxExposurePercent metric | A — Sum of open risk / equity |
-| D16 | Daily reset on late start | A — Fire immediately |
-| D17 | cTrader API details | Awaiting your input |
-| D18 | Test data source | Awaiting your input |
-| D19 | Number of phases | Awaiting your input |
+All 20 decisions (D1–D20) were voted on by the project owner in `START.md`. See that file for full vote details.
 
 ---
 
@@ -482,7 +319,7 @@ Please respond to these (D1–D19 above) before Phase 1 begins:
 
 | Phase | Branch | Status | PR | Merged |
 |---|---|---|---|---|
-| Pre-Phase | `chore/init-repo` | ❌ Not started | — | — |
+| Pre-Phase | `chore/init-repo` | ✅ Done | — | — |
 | 1 — Domain | `phase/01-domain` | ❌ Not started | — | — |
 | 2 — Risk | `phase/02-risk` | ❌ Not started | — | — |
 | 3 — Infrastructure | `phase/03-infrastructure` | ❌ Not started | — | — |

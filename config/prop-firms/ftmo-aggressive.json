@@ -1,0 +1,21 @@
+{
+  "id": "ftmo-aggressive",
+  "displayName": "FTMO Aggressive Challenge",
+  "drawdownType": "Fixed",
+  "maxDailyLossPercent": 0.08,
+  "maxTotalLossPercent": 0.15,
+  "profitTargetPercent": 0.20,
+  "minTradingDays": 4,
+  "equityDefinition": "BalancePlusFloatingMinusFeesAndSwaps",
+  "dailyResetTimeUtc": "22:00:00",
+  "dailyResetTimezone": "Europe/Prague",
+  "allowTradesDuringNews": false,
+  "newsImpactFilter": "High",
+  "newsWindowMinutesBefore": 30,
+  "newsWindowMinutesAfter": 15,
+  "allowWeekendHolding": false,
+  "weekendCloseUtc": "21:00:00",
+  "weekendNoOpenUtc": "20:00:00",
+  "protectionResetPolicy": "NextTradingDay",
+  "forceCloseOnBreach": false
+}
