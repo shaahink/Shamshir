@@ -83,9 +83,9 @@ public sealed class BacktestRunner
         var baseDir = AppContext.BaseDirectory;
         var candidates = new[]
         {
-            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..",
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
                 "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "src.algo")),
-            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..",
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
                 "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "src.algo")),
         };
 
