@@ -23,12 +23,25 @@ public static class Program
             var loadedConfig = configLoader.Load();
             builder.Services.AddSingleton(loadedConfig);
 
-            var mode = EngineMode.Backtest;
+            var mode = builder.Configuration.GetValue<EngineMode?>("Engine:Mode") ?? EngineMode.Backtest;
+            Log.Information("Engine mode: {Mode}", mode);
+
+            var slipPips = mode == EngineMode.Backtest
+                ? builder.Configuration.GetValue<double?>("Simulation:SlippagePips") ?? 0.5
+                : 0.5;
 
             if (mode == EngineMode.Live || mode == EngineMode.Paper)
+            {
                 builder.Services.AddSingleton<IBrokerAdapter, NamedPipeBrokerAdapter>();
+            }
             else
-                builder.Services.AddSingleton<IBrokerAdapter, SimulatedBrokerAdapter>();
+            {
+                builder.Services.AddSingleton<IBrokerAdapter>(sp =>
+                    new SimulatedBrokerAdapter(
+                        sp.GetRequiredService<ISymbolInfoRegistry>(),
+                        sp.GetRequiredService<Func<string, string, decimal>>(),
+                        slippagePips: slipPips));
+            }
 
             if (mode == EngineMode.Backtest)
             {

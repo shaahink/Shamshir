@@ -22,9 +22,41 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
     public DateTime BrokerTimeUtc { get; private set; } = DateTime.UtcNow;
     public bool IsConnected => true;
 
+    private readonly ISymbolInfoRegistry _symbolRegistry;
+    private readonly Func<string, string, decimal> _crossRateProvider;
+    private readonly double _slippagePips;
+    #pragma warning disable IDE0044
+    private decimal _currentBalance;
+    #pragma warning restore IDE0044
     private readonly Dictionary<Guid, PendingOrder> _pendingOrders = new();
     private readonly Dictionary<Guid, SimPosition> _openPositions = new();
-    private readonly double _slippagePips = 0.5;
+
+    public SimulatedBrokerAdapter()
+    {
+        _symbolRegistry = new SymbolInfoRegistry();
+        _crossRateProvider = (_, _) => 1;
+        _slippagePips = 0.5;
+        _currentBalance = 100_000;
+        InitDefaults();
+    }
+
+    public SimulatedBrokerAdapter(
+        ISymbolInfoRegistry symbolRegistry,
+        Func<string, string, decimal> crossRateProvider,
+        double slippagePips = 0.5,
+        decimal initialBalance = 100_000)
+    {
+        _symbolRegistry = symbolRegistry;
+        _crossRateProvider = crossRateProvider;
+        _slippagePips = slippagePips;
+        _currentBalance = initialBalance;
+    }
+
+    private void InitDefaults()
+    {
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
+    }
 
     public Task ConnectAsync(CancellationToken ct) => Task.CompletedTask;
     public Task DisconnectAsync(CancellationToken ct) => Task.CompletedTask;
@@ -78,9 +110,10 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         {
             foreach (var (id, order) in _pendingOrders.ToList())
             {
+                var pipSize = ResolvePipSize(order.Symbol);
                 var fillPrice = order.Direction == TradeDirection.Long
-                    ? tick.Ask + (decimal)_slippagePips * 0.0001m
-                    : tick.Bid - (decimal)_slippagePips * 0.0001m;
+                    ? tick.Ask + (decimal)_slippagePips * pipSize
+                    : tick.Bid - (decimal)_slippagePips * pipSize;
 
                 var pos = new SimPosition
                 {
@@ -126,6 +159,12 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                 }
             }
         }
+    }
+
+    private decimal ResolvePipSize(Symbol symbol)
+    {
+        try { return _symbolRegistry.Get(symbol).PipSize; }
+        catch { return 0.0001m; }
     }
 
     private sealed class PendingOrder

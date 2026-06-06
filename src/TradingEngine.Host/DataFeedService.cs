@@ -2,7 +2,7 @@ namespace TradingEngine.Host;
 
 public sealed class DataFeedService(
     IMarketDataProvider marketData,
-    SimulatedBrokerAdapter simulatedBroker,
+    IBrokerAdapter broker,
     ILogger<DataFeedService> logger) : BackgroundService
 {
     public IReadOnlyList<Symbol> Symbols { get; init; } = [Symbol.Parse("EURUSD")];
@@ -33,24 +33,33 @@ public sealed class DataFeedService(
         }
         finally
         {
-            simulatedBroker.TickWriter.Complete();
-            simulatedBroker.BarWriter.Complete();
-            simulatedBroker.AccountWriter.Complete();
+            if (broker is SimulatedBrokerAdapter sim)
+            {
+                sim.TickWriter.Complete();
+                sim.BarWriter.Complete();
+                sim.AccountWriter.Complete();
+            }
         }
     }
 
     private async Task FeedBarsAsync(Symbol symbol, CancellationToken ct)
     {
         await foreach (var bar in marketData.StreamBarsAsync(symbol, Timeframe.H1, ct))
-            await simulatedBroker.BarWriter.WriteAsync(bar, ct);
+        {
+            if (broker is SimulatedBrokerAdapter sim)
+                await sim.BarWriter.WriteAsync(bar, ct);
+        }
     }
 
     private async Task FeedTicksAsync(Symbol symbol, CancellationToken ct)
     {
         await foreach (var tick in marketData.StreamTicksAsync(symbol, ct))
         {
-            await simulatedBroker.TickWriter.WriteAsync(tick, ct);
-            simulatedBroker.OnTickReceived(tick);
+            if (broker is SimulatedBrokerAdapter sim)
+            {
+                await sim.TickWriter.WriteAsync(tick, ct);
+                sim.OnTickReceived(tick);
+            }
         }
     }
 }
