@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\TradingEngine.Domain\TradingEngine.Domain.csproj" />
     <ProjectReference Include="..\..\src\TradingEngine.Risk\TradingEngine.Risk.csproj" />
+    <ProjectReference Include="..\..\src\TradingEngine.Services\TradingEngine.Services.csproj" />
   </ItemGroup>
 
 </Project>
