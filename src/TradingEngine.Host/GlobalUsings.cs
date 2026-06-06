@@ -1,0 +1,11 @@
+global using System.Text.Json;
+global using System.Threading.Channels;
+global using Serilog;
+global using TradingEngine.Domain;
+global using TradingEngine.Risk;
+global using TradingEngine.Infrastructure;
+global using TradingEngine.Infrastructure.Adapters;
+global using TradingEngine.Services.Helpers;
+global using TradingEngine.Services.SLTPCalculation;
+global using TradingEngine.Services.TrailingStop;
+global using TradingEngine.Strategies.TrendBreakout;

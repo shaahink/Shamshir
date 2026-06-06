@@ -1,0 +1,131 @@
+using System.Reflection;
+using System.Text.Json.Serialization;
+
+namespace TradingEngine.Host;
+
+public sealed record LoadedConfig(
+    IReadOnlyList<PropFirmRuleSet> PropFirms,
+    IReadOnlyList<RiskProfile> RiskProfiles,
+    IReadOnlyList<StrategyConfigEntry> StrategyConfigs);
+
+public sealed record StrategyConfigEntry(
+    string Id,
+    string DisplayName,
+    bool Enabled,
+    IReadOnlyList<string> Symbols,
+    string RiskProfileId,
+    TrendBreakoutParameters Parameters);
+
+public sealed class ConfigLoader
+{
+    private readonly string _basePath;
+
+    public ConfigLoader(string? basePath = null)
+    {
+        _basePath = basePath ?? AppContext.BaseDirectory;
+    }
+
+    public LoadedConfig Load()
+    {
+        var propFirms = LoadDirectory<PropFirmRuleSet>("prop-firms");
+        var riskProfiles = LoadDirectory<RiskProfile>("risk-profiles");
+        var strategyConfigs = LoadStrategyConfigs();
+
+        ValidateCrossReferences(riskProfiles, strategyConfigs, propFirms);
+
+        return new LoadedConfig(propFirms, riskProfiles, strategyConfigs);
+    }
+
+    private List<T> LoadDirectory<T>(string subDir)
+    {
+        var dir = Path.Combine(_basePath, "config", subDir);
+        if (!Directory.Exists(dir))
+            return [];
+
+        var results = new List<T>();
+        foreach (var file in Directory.GetFiles(dir, "*.json"))
+        {
+            var json = File.ReadAllText(file);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+            };
+            var item = JsonSerializer.Deserialize<T>(json, options);
+            if (item is not null)
+                results.Add(item);
+        }
+        return results;
+    }
+
+    private List<StrategyConfigEntry> LoadStrategyConfigs()
+    {
+        var dir = Path.Combine(_basePath, "config", "strategies");
+        if (!Directory.Exists(dir))
+            return [];
+
+        var results = new List<StrategyConfigEntry>();
+        foreach (var file in Directory.GetFiles(dir, "*.json"))
+        {
+            var json = File.ReadAllText(file);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+            };
+            var doc = JsonSerializer.Deserialize<JsonDocument>(json, options);
+            if (doc is null) continue;
+
+            var root = doc.RootElement;
+            var p = root.GetProperty("parameters");
+            var parameters = new TrendBreakoutParameters
+            {
+                LookbackBars = p.GetProperty("lookbackBars").GetInt32(),
+                MaPeriod = p.GetProperty("maPeriod").GetInt32(),
+                AtrPeriod = p.GetProperty("atrPeriod").GetInt32(),
+                SlAtrMultiple = p.GetProperty("slAtrMultiple").GetDouble(),
+                TpRrMultiple = p.GetProperty("tpRrMultiple").GetDouble(),
+                TrailingMethod = p.TryGetProperty("trailingMethod", out var tm) ? tm.GetString() ?? "AtrMultiple" : "AtrMultiple",
+                TrailingAtrMultiple = p.TryGetProperty("trailingAtrMultiple", out var ta) ? ta.GetDouble() : 1.0,
+            };
+
+            results.Add(new StrategyConfigEntry(
+                root.GetProperty("id").GetString()!,
+                root.GetProperty("displayName").GetString()!,
+                root.TryGetProperty("enabled", out var en) && en.GetBoolean(),
+                root.GetProperty("symbols").EnumerateArray().Select(s => s.GetString()!).ToList(),
+                root.GetProperty("riskProfileId").GetString()!,
+                parameters));
+        }
+        return results;
+    }
+
+    private static void ValidateCrossReferences(
+        IReadOnlyList<RiskProfile> riskProfiles,
+        IReadOnlyList<StrategyConfigEntry> strategies,
+        IReadOnlyList<PropFirmRuleSet> propFirms)
+    {
+        var profileIds = riskProfiles.Select(p => p.Id).ToHashSet();
+        var firmIds = propFirms.Select(f => f.Id).ToHashSet();
+
+        foreach (var strategy in strategies)
+        {
+            if (!profileIds.Contains(strategy.RiskProfileId))
+            {
+                throw new InvalidOperationException(
+                    $"Strategy '{strategy.Id}' references riskProfileId '{strategy.RiskProfileId}' " +
+                    $"which was not found in config/risk-profiles/. Available: [{string.Join(", ", profileIds)}]");
+            }
+        }
+
+        foreach (var profile in riskProfiles)
+        {
+            if (!firmIds.Contains(profile.PropFirmRuleSetId))
+            {
+                throw new InvalidOperationException(
+                    $"RiskProfile '{profile.Id}' references propFirmRuleSetId '{profile.PropFirmRuleSetId}' " +
+                    $"which was not found in config/prop-firms/. Available: [{string.Join(", ", firmIds)}]");
+            }
+        }
+    }
+}
