@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <ProjectReference Include="..\TradingEngine.Domain\TradingEngine.Domain.csproj" />
@@ -10,6 +10,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>4f0001f3-b718-44d5-9c48-28445b77f6ee</UserSecretsId>
   </PropertyGroup>
 
 </Project>

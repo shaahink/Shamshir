@@ -52,7 +52,7 @@ public sealed class BacktestRunner
         };
     }
 
-    private static string BuildArgs(BacktestConfig cfg, string algoPath, string pipeName, string reportJsonPath)
+    private string BuildArgs(BacktestConfig cfg, string algoPath, string pipeName, string reportJsonPath)
     {
         var sb = new StringBuilder();
         sb.Append($"backtest \"{algoPath}\"");
@@ -67,6 +67,9 @@ public sealed class BacktestRunner
         if (cfg.DataDir is not null) sb.Append($" --data-dir=\"{cfg.DataDir}\"");
         if (cfg.DataFile is not null) sb.Append($" --data-file=\"{cfg.DataFile}\"");
         sb.Append($" --report-json=\"{reportJsonPath}\"");
+        sb.Append($" --ctid={_config["CTrader:CtId"]}");
+        sb.Append($" --pwd-file=\"{_config["CTrader:PwdFile"]}\"");
+        sb.Append($" --account={_config["CTrader:Account"]}");
         sb.Append($" --PipeName={pipeName}");
         sb.Append(" --exit-on-stop");
         foreach (var (key, value) in cfg.CustomParams)
