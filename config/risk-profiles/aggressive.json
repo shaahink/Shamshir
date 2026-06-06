@@ -1,0 +1,14 @@
+{
+  "id": "aggressive",
+  "displayName": "Aggressive",
+  "riskPerTradePercent": 0.02,
+  "maxDailyDrawdownPercent": 0.05,
+  "maxTotalDrawdownPercent": 0.10,
+  "maxSlPips": 150.0,
+  "maxExposurePercent": 0.10,
+  "drawdownScaleThreshold": 0.75,
+  "drawdownScaleFloor": 0.25,
+  "maxConcurrentPositions": 5,
+  "allowHedging": false,
+  "propFirmRuleSetId": "ftmo-standard"
+}

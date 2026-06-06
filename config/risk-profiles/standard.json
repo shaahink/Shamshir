@@ -1,0 +1,14 @@
+{
+  "id": "standard",
+  "displayName": "Standard",
+  "riskPerTradePercent": 0.01,
+  "maxDailyDrawdownPercent": 0.04,
+  "maxTotalDrawdownPercent": 0.08,
+  "maxSlPips": 100.0,
+  "maxExposurePercent": 0.05,
+  "drawdownScaleThreshold": 0.5,
+  "drawdownScaleFloor": 0.5,
+  "maxConcurrentPositions": 3,
+  "allowHedging": false,
+  "propFirmRuleSetId": "ftmo-standard"
+}

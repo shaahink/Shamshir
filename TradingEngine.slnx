@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/aspire/">
+    <Project Path="aspire/TradingEngine.AppHost/TradingEngine.AppHost.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/TradingEngine.Adapters.CTrader/TradingEngine.Adapters.CTrader.csproj" />
+    <Project Path="src/TradingEngine.Application/TradingEngine.Application.csproj" />
+    <Project Path="src/TradingEngine.Domain/TradingEngine.Domain.csproj" />
+    <Project Path="src/TradingEngine.Host/TradingEngine.Host.csproj" />
+    <Project Path="src/TradingEngine.Infrastructure/TradingEngine.Infrastructure.csproj" />
+    <Project Path="src/TradingEngine.Risk/TradingEngine.Risk.csproj" />
+    <Project Path="src/TradingEngine.Services/TradingEngine.Services.csproj" />
+    <Project Path="src/TradingEngine.Strategies/TradingEngine.Strategies.csproj" />
+    <Project Path="src/TradingEngine.Web/TradingEngine.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TradingEngine.Tests.Integration/TradingEngine.Tests.Integration.csproj" />
+    <Project Path="tests/TradingEngine.Tests.Simulation/TradingEngine.Tests.Simulation.csproj" />
+    <Project Path="tests/TradingEngine.Tests.Unit/TradingEngine.Tests.Unit.csproj" />
+  </Folder>
+</Solution>
