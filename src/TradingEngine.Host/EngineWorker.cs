@@ -140,14 +140,32 @@ public sealed class EngineWorker : BackgroundService
                 foreach (var strategy in _strategies)
                 {
                     var barSnapshot = BuildBarSnapshot(tick.Symbol);
-                    if (barSnapshot is null) continue;
-                    if (barSnapshot.Values.Sum(b => b.Count) < strategy.RequiredBarCount) continue;
+                    if (barSnapshot is null)
+                    {
+                        _logger.LogTrace("No bars for Symbol={Symbol} Strategy={Strategy}", tick.Symbol, strategy.Id);
+                        continue;
+                    }
+                    var totalBars = barSnapshot.Values.Sum(b => b.Count);
+                    if (totalBars < strategy.RequiredBarCount)
+                    {
+                        _logger.LogTrace("Not enough bars. Symbol={Symbol} Strategy={Strategy} Have={Have} Need={Need}",
+                            tick.Symbol, strategy.Id, totalBars, strategy.RequiredBarCount);
+                        continue;
+                    }
 
                     BuildIndicatorSnapshot(tick.Symbol);
+                    _logger.LogDebug("Evaluating. Symbol={Symbol} Strategy={Strategy} Bars={Bars} Indicators={IndCount}",
+                        tick.Symbol, strategy.Id, totalBars, _reusableIndicatorDict.Count);
                     var context = new MarketContext(tick.Symbol, tick, barSnapshot, _reusableIndicatorDict, _clock.UtcNow);
 
                     var intent = strategy.Evaluate(context);
-                    if (intent is null) continue;
+                    if (intent is null)
+                    {
+                        _logger.LogDebug("No signal. Symbol={Symbol} Strategy={Strategy}", tick.Symbol, strategy.Id);
+                        continue;
+                    }
+                    _logger.LogInformation("Signal generated. Symbol={Symbol} Strategy={Strategy} Dir={Dir}",
+                        tick.Symbol, strategy.Id, intent.Direction);
 
                     var equity = Volatile.Read(ref _currentEquity);
 

@@ -1,8 +1,11 @@
+using Microsoft.Extensions.Logging;
+
 namespace TradingEngine.Strategies.MeanReversion;
 
 public sealed class MeanReversionStrategy : IStrategy
 {
     private readonly MeanReversionConfig _config;
+    private readonly ILogger<MeanReversionStrategy> _logger;
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
@@ -17,7 +20,11 @@ public sealed class MeanReversionStrategy : IStrategy
         new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
     ];
 
-    public MeanReversionStrategy(MeanReversionConfig config) => _config = config;
+    public MeanReversionStrategy(MeanReversionConfig config, ILogger<MeanReversionStrategy> logger)
+    {
+        _config = config;
+        _logger = logger;
+    }
 
     public TradeIntent? Evaluate(MarketContext context)
     {
@@ -60,7 +67,11 @@ public sealed class MeanReversionStrategy : IStrategy
                 $"Mean reversion: RSI={rsi:F1}",
                 context.EngineTimeUtc);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MeanReversionStrategy.Evaluate failed. StrategyId={StrategyId}", Id);
+            return null;
+        }
     }
 
     public void OnTradeResult(TradeResult result)

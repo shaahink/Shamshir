@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using TradingEngine.Services.Strategy;
 
 namespace TradingEngine.Strategies.EmaAlignment;
@@ -5,6 +6,7 @@ namespace TradingEngine.Strategies.EmaAlignment;
 public sealed class EmaAlignmentStrategy : IStrategy
 {
     private readonly EmaAlignmentConfig _config;
+    private readonly ILogger<EmaAlignmentStrategy> _logger;
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
@@ -19,9 +21,10 @@ public sealed class EmaAlignmentStrategy : IStrategy
         new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
     ];
 
-    public EmaAlignmentStrategy(EmaAlignmentConfig config)
+    public EmaAlignmentStrategy(EmaAlignmentConfig config, ILogger<EmaAlignmentStrategy> logger)
     {
         _config = config;
+        _logger = logger;
     }
 
     public TradeIntent? Evaluate(MarketContext context)
@@ -29,16 +32,30 @@ public sealed class EmaAlignmentStrategy : IStrategy
         try
         {
             if (!_config.Symbols.Contains(context.Symbol.Value))
+            {
+                _logger.LogTrace("Symbol not in config. Symbol={Symbol} Config={Config}", context.Symbol.Value, string.Join(",", _config.Symbols));
                 return null;
+            }
 
             var h1Bars = context.Bars.GetValueOrDefault(_config.Timeframe);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount) return null;
+            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            {
+                _logger.LogTrace("Not enough bars for timeframe. Symbol={Symbol} Tf={Tf} Count={Count} Need={Need}",
+                    context.Symbol.Value, _config.Timeframe, h1Bars?.Count ?? 0, RequiredBarCount);
+                return null;
+            }
 
             var p = _config.Parameters;
             var fastEma = context.IndicatorValues.GetValueOrDefault($"EMA_{p.FastPeriod}");
             var slowEma = context.IndicatorValues.GetValueOrDefault($"EMA_{p.SlowPeriod}");
             var atr = context.IndicatorValues.GetValueOrDefault($"ATR_{p.AtrPeriod}");
-            if (fastEma <= 0 || slowEma <= 0 || atr <= 0) return null;
+
+            if (fastEma <= 0 || slowEma <= 0 || atr <= 0)
+            {
+                _logger.LogTrace("Zero indicators. Symbol={Symbol} FastEma={F} SlowEma={S} Atr={A}",
+                    context.Symbol.Value, fastEma, slowEma, atr);
+                return null;
+            }
 
             var currentPrice = context.LatestTick.Mid;
             TradeDirection? dir = null;
@@ -65,8 +82,9 @@ public sealed class EmaAlignmentStrategy : IStrategy
                 $"EMA crossover: fast={fastEma:F5} slow={slowEma:F5}",
                 context.EngineTimeUtc);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "EmaAlignmentStrategy.Evaluate failed. StrategyId={StrategyId}", Id);
             return null;
         }
     }

@@ -47,7 +47,7 @@ public sealed class StrategyRegistry
                 entry.RiskProfileId,
                 DeserializeParams<EmaAlignmentParameters>(entry.Parameters),
                 Enum.Parse<Timeframe>(entry.Timeframe, true));
-            return new EmaAlignmentStrategy(config);
+            return new EmaAlignmentStrategy(config, sp.GetRequiredService<ILogger<EmaAlignmentStrategy>>());
         };
 
         _factories["mean-reversion"] = (entry, sp) =>
@@ -59,7 +59,7 @@ public sealed class StrategyRegistry
                 entry.RiskProfileId,
                 DeserializeParams<MeanReversionParameters>(entry.Parameters),
                 Enum.Parse<Timeframe>(entry.Timeframe, true));
-            return new MeanReversionStrategy(config);
+            return new MeanReversionStrategy(config, sp.GetRequiredService<ILogger<MeanReversionStrategy>>());
         };
 
         _factories["session-breakout"] = (entry, sp) =>
@@ -71,7 +71,7 @@ public sealed class StrategyRegistry
                 entry.RiskProfileId,
                 DeserializeParams<SessionBreakoutParameters>(entry.Parameters),
                 Enum.Parse<Timeframe>(entry.Timeframe, true));
-            return new SessionBreakoutStrategy(config);
+            return new SessionBreakoutStrategy(config, sp.GetRequiredService<ILogger<SessionBreakoutStrategy>>());
         };
     }
 

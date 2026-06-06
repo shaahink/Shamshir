@@ -1,8 +1,11 @@
+using Microsoft.Extensions.Logging;
+
 namespace TradingEngine.Strategies.SessionBreakout;
 
 public sealed class SessionBreakoutStrategy : IStrategy
 {
     private readonly SessionBreakoutConfig _config;
+    private readonly ILogger<SessionBreakoutStrategy> _logger;
     private decimal? _rangeHigh;
     private decimal? _rangeLow;
 
@@ -18,7 +21,11 @@ public sealed class SessionBreakoutStrategy : IStrategy
         new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
     ];
 
-    public SessionBreakoutStrategy(SessionBreakoutConfig config) => _config = config;
+    public SessionBreakoutStrategy(SessionBreakoutConfig config, ILogger<SessionBreakoutStrategy> logger)
+    {
+        _config = config;
+        _logger = logger;
+    }
 
     public TradeIntent? Evaluate(MarketContext context)
     {
@@ -71,7 +78,11 @@ public sealed class SessionBreakoutStrategy : IStrategy
                 $"Session breakout: range=[{_rangeLow:F5}, {_rangeHigh:F5}]",
                 context.EngineTimeUtc);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SessionBreakoutStrategy.Evaluate failed. StrategyId={StrategyId}", Id);
+            return null;
+        }
     }
 
     public void OnTradeResult(TradeResult result)
