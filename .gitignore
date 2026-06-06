@@ -1,0 +1,36 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.vs/
+*.DotSettings
+*.csproj.user
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# cTrader cBot artifacts
+*.algo
+
+# Test data generated
+tests/data/*.csv
+!tests/data/.gitkeep
+
+# Build outputs
+artifacts/
+publish/
