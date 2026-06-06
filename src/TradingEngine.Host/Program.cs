@@ -19,7 +19,7 @@ public static class Program
             var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder(args);
             builder.Services.AddSerilog(Log.Logger);
 
-            var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+            var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
             var configLoader = new ConfigLoader(solutionRoot);
             var loadedConfig = configLoader.Load();
             builder.Services.AddSingleton(loadedConfig);
@@ -138,7 +138,7 @@ public static class Program
                         .SelectMany(c => c.Symbols).Distinct().Select(Symbol.Parse).ToList();
                     return new DataFeedService(
                         sp.GetRequiredService<IMarketDataProvider>(),
-                        sp.GetRequiredService<SimulatedBrokerAdapter>(),
+                        sp.GetRequiredService<IBrokerAdapter>(),
                         sp.GetRequiredService<ILogger<DataFeedService>>())
                     { Symbols = symbols.Count > 0 ? symbols : [Symbol.Parse("EURUSD")] };
                 });

@@ -78,7 +78,7 @@ public sealed class StrategyRegistry
     private static T DeserializeParams<T>(JsonElement element) where T : new()
     {
         if (element.ValueKind == JsonValueKind.Undefined) return new T();
-        var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
         return JsonSerializer.Deserialize<T>(element.GetRawText(), opts) ?? new T();
     }
 

@@ -52,6 +52,7 @@ public sealed class ConfigLoader
             {
                 PropertyNameCaseInsensitive = true,
                 UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
             };
             var item = JsonSerializer.Deserialize<T>(json, options);
             if (item is not null)
