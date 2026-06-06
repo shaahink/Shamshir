@@ -1,5 +1,4 @@
 using System;
-using Newtonsoft.Json;
 
 namespace TradingEngine.Adapters.CTrader
 {
@@ -14,7 +13,7 @@ namespace TradingEngine.Adapters.CTrader
 
         public void Publish(double balance, double equity, double floatingPnl, DateTime timestamp)
         {
-            var payload = JsonConvert.SerializeObject(new
+            var payload = MessageSerializer.Serialize(new
             {
                 Balance = balance,
                 Equity = equity,

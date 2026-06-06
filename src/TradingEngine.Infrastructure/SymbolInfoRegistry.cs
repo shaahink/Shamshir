@@ -22,4 +22,9 @@ public sealed class SymbolInfoRegistry : ISymbolInfoRegistry
     {
         return _symbols.TryGetValue(symbol, out info!);
     }
+
+    public void Clear()
+    {
+        _symbols.Clear();
+    }
 }

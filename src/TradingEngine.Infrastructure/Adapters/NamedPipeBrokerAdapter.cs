@@ -204,57 +204,66 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         try
         {
             using var doc = JsonDocument.Parse(json);
-            var type = doc.RootElement.GetProperty("Type").GetString();
+            var type = GetCaseInsensitiveProperty(doc.RootElement, "Type").GetString();
 
             switch (type)
             {
                 case "Tick":
-                    var tickPayload = doc.RootElement.GetProperty("Payload");
+                {
+                    var tickPayload = GetCaseInsensitiveProperty(doc.RootElement, "Payload");
                     var tick = new Tick(
-                        Symbol.Parse(tickPayload.GetProperty("Symbol").GetString()!),
-                        tickPayload.GetProperty("Bid").GetDecimal(),
-                        tickPayload.GetProperty("Ask").GetDecimal(),
-                        tickPayload.GetProperty("TimestampUtc").GetDateTime());
+                        Symbol.Parse(CIProp(tickPayload, "Symbol").GetString()!),
+                        CIProp(tickPayload, "Bid").GetDecimal(),
+                        CIProp(tickPayload, "Ask").GetDecimal(),
+                        CIProp(tickPayload, "TimestampUtc").GetDateTime());
                     _tickChannel.Writer.TryWrite(tick);
                     break;
+                }
 
                 case "Bar":
-                    var barPayload = doc.RootElement.GetProperty("Payload");
+                {
+                    var barPayload = GetCaseInsensitiveProperty(doc.RootElement, "Payload");
                     var bar = new Bar(
-                        Symbol.Parse(barPayload.GetProperty("Symbol").GetString()!),
-                        Enum.Parse<Timeframe>(barPayload.GetProperty("Timeframe").GetString()!),
-                        barPayload.GetProperty("OpenTimeUtc").GetDateTime(),
-                        barPayload.GetProperty("Open").GetDecimal(),
-                        barPayload.GetProperty("High").GetDecimal(),
-                        barPayload.GetProperty("Low").GetDecimal(),
-                        barPayload.GetProperty("Close").GetDecimal(),
-                        barPayload.GetProperty("Volume").GetDouble());
+                        Symbol.Parse(CIProp(barPayload, "Symbol").GetString()!),
+                        Enum.Parse<Timeframe>(CIProp(barPayload, "Timeframe").GetString()!),
+                        CIProp(barPayload, "OpenTimeUtc").GetDateTime(),
+                        CIProp(barPayload, "Open").GetDecimal(),
+                        CIProp(barPayload, "High").GetDecimal(),
+                        CIProp(barPayload, "Low").GetDecimal(),
+                        CIProp(barPayload, "Close").GetDecimal(),
+                        CIProp(barPayload, "Volume").GetDouble());
                     _barChannel.Writer.TryWrite(bar);
                     break;
+                }
 
                 case "AccountUpdate":
-                    var acctPayload = doc.RootElement.GetProperty("Payload");
+                {
+                    var acctPayload = GetCaseInsensitiveProperty(doc.RootElement, "Payload");
                     var acct = new AccountUpdate(
-                        acctPayload.GetProperty("Balance").GetDecimal(),
-                        acctPayload.GetProperty("Equity").GetDecimal(),
-                        acctPayload.GetProperty("FloatingPnL").GetDecimal(),
-                        acctPayload.GetProperty("TimestampUtc").GetDateTime());
+                        CIProp(acctPayload, "Balance").GetDecimal(),
+                        CIProp(acctPayload, "Equity").GetDecimal(),
+                        CIProp(acctPayload, "FloatingPnL").GetDecimal(),
+                        CIProp(acctPayload, "TimestampUtc").GetDateTime());
                     _accountChannel.Writer.TryWrite(acct);
                     break;
+                }
 
                 case "ExecutionEvent":
-                    var execPayload = doc.RootElement.GetProperty("Payload");
-                    var fillPrice = execPayload.TryGetProperty("FillPrice", out var fp) && fp.ValueKind == JsonValueKind.Number
-                        ? new Price(fp.GetDecimal()) : (Price?)null;
+                {
+                    var execPayload = GetCaseInsensitiveProperty(doc.RootElement, "Payload");
+                    var fpElem = GetCaseInsensitivePropertyOrNull(execPayload, "FillPrice");
+                    var fillPrice = fpElem.HasValue && fpElem.Value.ValueKind == JsonValueKind.Number
+                        ? new Price(fpElem.Value.GetDecimal()) : (Price?)null;
                     var exec = new ExecutionEvent(
-                        execPayload.GetProperty("OrderId").GetGuid(),
-                        Enum.Parse<OrderState>(execPayload.GetProperty("NewState").GetString()!),
+                        CIProp(execPayload, "OrderId").GetGuid(),
+                        Enum.Parse<OrderState>(CIProp(execPayload, "NewState").GetString()!),
                         fillPrice,
-                        execPayload.GetProperty("FilledLots").GetDecimal(),
-                        execPayload.GetProperty("RejectionReason").GetString(),
-                        execPayload.GetProperty("TimestampUtc").GetDateTime());
+                        CIProp(execPayload, "FilledLots").GetDecimal(),
+                        CIPropOrNull(execPayload, "RejectionReason"),
+                        GetDateTimeUtc(execPayload));
                     _executionChannel.Writer.TryWrite(exec);
                     break;
+                }
             }
         }
         catch (Exception ex)
@@ -272,6 +281,43 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         await _pipeServer.WriteAsync(lengthBytes, 0, 4, ct);
         await _pipeServer.WriteAsync(bytes, 0, bytes.Length, ct);
         await _pipeServer.FlushAsync(ct);
+    }
+
+    private static JsonElement GetCaseInsensitiveProperty(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var result))
+            return result;
+        var camelName = char.ToLowerInvariant(propertyName[0]) + propertyName.Substring(1);
+        if (element.TryGetProperty(camelName, out result))
+            return result;
+        throw new KeyNotFoundException($"Property '{propertyName}' not found in JSON element.");
+    }
+
+    private static JsonElement? GetCaseInsensitivePropertyOrNull(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var result))
+            return result;
+        var camelName = char.ToLowerInvariant(propertyName[0]) + propertyName.Substring(1);
+        if (element.TryGetProperty(camelName, out result))
+            return result;
+        return null;
+    }
+
+    private static JsonElement CIProp(JsonElement e, string name) => GetCaseInsensitiveProperty(e, name);
+
+    private static string? CIPropOrNull(JsonElement e, string name)
+    {
+        var prop = GetCaseInsensitivePropertyOrNull(e, name);
+        return prop?.GetString();
+    }
+
+    private static DateTime GetDateTimeUtc(JsonElement e)
+    {
+        var tsProp = GetCaseInsensitiveProperty(e, "TimestampUtc");
+        var str = tsProp.GetString();
+        if (DateTime.TryParse(str, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+            return dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+        return tsProp.GetDateTime();
     }
 
     public async ValueTask DisposeAsync()

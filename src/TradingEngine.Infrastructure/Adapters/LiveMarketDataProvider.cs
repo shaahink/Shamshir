@@ -1,17 +1,45 @@
+using System.Runtime.CompilerServices;
+
 namespace TradingEngine.Infrastructure.Adapters;
 
 public sealed class LiveMarketDataProvider : IMarketDataProvider
 {
-    public IAsyncEnumerable<Tick> StreamTicksAsync(Symbol symbol, CancellationToken ct)
-        => throw new NotSupportedException(
-            "LiveMarketDataProvider is not implemented until Phase 9 (cTrader adapter). " +
-            "Use EngineMode.Backtest or EngineMode.Paper with SimulatedBrokerAdapter.");
+    private readonly IBrokerAdapter _adapter;
 
-    public IAsyncEnumerable<Bar> StreamBarsAsync(Symbol symbol, Timeframe tf, CancellationToken ct)
-        => throw new NotSupportedException(
-            "LiveMarketDataProvider is not implemented until Phase 9 (cTrader adapter).");
+    public LiveMarketDataProvider(IBrokerAdapter adapter)
+    {
+        _adapter = adapter;
+    }
+
+    public DateTime LastTickTimeUtc { get; private set; }
+
+    public IAsyncEnumerable<Tick> StreamTicksAsync(Symbol symbol, CancellationToken ct)
+        => StreamTicksAsync(symbol, ct, Timeframe.H1);
+
+    public async IAsyncEnumerable<Tick> StreamTicksAsync(
+        Symbol symbol,
+        [EnumeratorCancellation] CancellationToken ct,
+        Timeframe tf)
+    {
+        await foreach (var tick in _adapter.TickStream.ReadAllAsync(ct))
+        {
+            LastTickTimeUtc = tick.TimestampUtc;
+            if (tick.Symbol.Equals(symbol))
+                yield return tick;
+        }
+    }
+
+    public async IAsyncEnumerable<Bar> StreamBarsAsync(
+        Symbol symbol, Timeframe tf,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var bar in _adapter.BarStream.ReadAllAsync(ct))
+        {
+            if (bar.Symbol.Equals(symbol) && bar.Timeframe == tf)
+                yield return bar;
+        }
+    }
 
     public Task SeekAsync(DateTime from, DateTime to, CancellationToken ct)
-        => throw new NotSupportedException(
-            "LiveMarketDataProvider is not implemented until Phase 9 (cTrader adapter).");
+        => Task.CompletedTask;
 }

@@ -126,17 +126,21 @@ public static class Program
                 builder.Services.AddSingleton(strategy);
 
             builder.Services.AddSingleton<IStrategy>(sp => sp.GetServices<IStrategy>().First());
-            builder.Services.AddSingleton<DataFeedService>(sp =>
+
+            if (mode == EngineMode.Backtest)
             {
-                var symbols = loadedConfig.StrategyConfigs
-                    .SelectMany(c => c.Symbols).Distinct().Select(Symbol.Parse).ToList();
-                return new DataFeedService(
-                    sp.GetRequiredService<IMarketDataProvider>(),
-                    sp.GetRequiredService<SimulatedBrokerAdapter>(),
-                    sp.GetRequiredService<ILogger<DataFeedService>>())
-                { Symbols = symbols.Count > 0 ? symbols : [Symbol.Parse("EURUSD")] };
-            });
-            builder.Services.AddHostedService<DataFeedService>(sp => sp.GetRequiredService<DataFeedService>());
+                builder.Services.AddSingleton<DataFeedService>(sp =>
+                {
+                    var symbols = loadedConfig.StrategyConfigs
+                        .SelectMany(c => c.Symbols).Distinct().Select(Symbol.Parse).ToList();
+                    return new DataFeedService(
+                        sp.GetRequiredService<IMarketDataProvider>(),
+                        sp.GetRequiredService<SimulatedBrokerAdapter>(),
+                        sp.GetRequiredService<ILogger<DataFeedService>>())
+                    { Symbols = symbols.Count > 0 ? symbols : [Symbol.Parse("EURUSD")] };
+                });
+                builder.Services.AddHostedService<DataFeedService>(sp => sp.GetRequiredService<DataFeedService>());
+            }
             builder.Services.AddSingleton<EngineWorker>();
             builder.Services.AddHostedService<EngineWorker>(sp => sp.GetRequiredService<EngineWorker>());
             builder.Services.AddHostedService<DailyResetService>();

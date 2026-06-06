@@ -29,6 +29,11 @@ namespace TradingEngine.Adapters.CTrader
         public static PipeMessage FromByteArray(byte[] data)
         {
             var json = Encoding.UTF8.GetString(data);
+            return FromJson(json);
+        }
+
+        public static PipeMessage FromJson(string json)
+        {
             return JsonConvert.DeserializeObject<PipeMessage>(json);
         }
     }

@@ -1,18 +1,24 @@
 using System;
 using System.Threading;
+using cAlgo.API;
 
 namespace TradingEngine.Adapters.CTrader
 {
-    public class TradingEngineCBot
+    [Robot(AccessRights = AccessRights.None)]
+    public class TradingEngineCBot : Robot
     {
         private PipeClient _pipe;
         private TickPublisher _tickPublisher;
         private BarPublisher _barPublisher;
         private AccountUpdatePublisher _accountPublisher;
+        private ExecutionEventPublisher _executionPublisher;
         private OrderCommandHandler _commandHandler;
+        private Thread _readThread;
         private volatile bool _running;
 
-        public void Start()
+        private static readonly string[] DefaultSymbols = new[] { "EURUSD", "GBPUSD", "USDJPY", "GBPJPY", "XAUUSD" };
+
+        protected override void OnStart()
         {
             _pipe = new PipeClient("trading-engine");
             _pipe.OnMessageReceived += OnPipeMessage;
@@ -21,21 +27,77 @@ namespace TradingEngine.Adapters.CTrader
             _tickPublisher = new TickPublisher(_pipe);
             _barPublisher = new BarPublisher(_pipe);
             _accountPublisher = new AccountUpdatePublisher(_pipe);
-            _commandHandler = new OrderCommandHandler(_pipe);
+            _executionPublisher = new ExecutionEventPublisher(_pipe);
+            _commandHandler = new OrderCommandHandler(_pipe, this, _executionPublisher, _accountPublisher);
 
-            Console.WriteLine("Connecting to engine...");
+            Print("Shamshir engine cBot starting. Connecting to pipe...");
+
             if (_pipe.Connect(5000))
             {
-                Console.WriteLine("Connected to Shamshir engine.");
                 _running = true;
+                _readThread = new Thread(ReadLoop);
+                _readThread.IsBackground = true;
+                _readThread.Start();
+
+                SendInitialState();
+                Print("Connected to Shamshir engine.");
             }
             else
             {
-                Console.WriteLine("Failed to connect to engine. Retrying in 10s...");
+                Print("Failed to connect to Shamshir engine. Retrying...");
+                _pipe.RetryConnect();
             }
         }
 
-        public void Stop()
+        private void SendInitialState()
+        {
+            _accountPublisher.Publish(Account.Balance, Account.Equity, Account.Equity - Account.Balance, Server.TimeInUtc);
+
+            foreach (var pos in Positions)
+            {
+                _executionPublisher.Publish(
+                    new Guid(),
+                    "Filled",
+                    pos.EntryPrice,
+                    pos.VolumeInUnits,
+                    null,
+                    pos.EntryTime);
+            }
+        }
+
+        protected override void OnTick()
+        {
+            if (!_running) return;
+
+            _tickPublisher.Publish(SymbolName, Symbol.Bid, Symbol.Ask, Server.TimeInUtc);
+
+            _accountPublisher.Publish(
+                Account.Balance,
+                Account.Equity,
+                Account.Equity - Account.Balance,
+                Server.TimeInUtc);
+        }
+
+        protected override void OnBar()
+        {
+            if (!_running) return;
+
+            var bars = MarketData.GetBars(TimeFrame.Hour, SymbolName);
+            if (bars == null || bars.Count == 0) return;
+
+            var lastBar = bars.Last(1);
+            _barPublisher.Publish(
+                SymbolName,
+                "H1",
+                lastBar.OpenTime,
+                lastBar.Open,
+                lastBar.High,
+                lastBar.Low,
+                lastBar.Close,
+                lastBar.TickVolume);
+        }
+
+        protected override void OnStop()
         {
             _running = false;
             if (_pipe != null)
@@ -44,21 +106,11 @@ namespace TradingEngine.Adapters.CTrader
             }
         }
 
-        public void OnTick(string symbol, double bid, double ask, DateTime timestamp)
+        private void ReadLoop()
         {
-            if (_running && _pipe != null)
+            while (_running)
             {
-                _tickPublisher.Publish(symbol, bid, ask, timestamp);
-                _accountPublisher.Publish(100000, 100000, 0, timestamp);
-            }
-        }
-
-        public void OnBar(string symbol, string timeframe, DateTime openTime,
-            double open, double high, double low, double close, double volume)
-        {
-            if (_running && _pipe != null)
-            {
-                _barPublisher.Publish(symbol, timeframe, openTime, open, high, low, close, volume);
+                _pipe.ReadMessage();
             }
         }
 
@@ -72,8 +124,9 @@ namespace TradingEngine.Adapters.CTrader
 
         private void OnPipeDisconnected()
         {
-            Console.WriteLine("Disconnected from engine. Attempting reconnect...");
+            Print("Disconnected from Shamshir engine. Attempting reconnect...");
             _running = false;
+            _pipe.RetryConnect();
         }
     }
 }

@@ -1,5 +1,4 @@
 using System;
-using Newtonsoft.Json;
 
 namespace TradingEngine.Adapters.CTrader
 {
@@ -15,7 +14,7 @@ namespace TradingEngine.Adapters.CTrader
         public void Publish(string symbol, string timeframe, DateTime openTime,
             double open, double high, double low, double close, double volume)
         {
-            var payload = JsonConvert.SerializeObject(new
+            var payload = MessageSerializer.Serialize(new
             {
                 Symbol = symbol,
                 Timeframe = timeframe,

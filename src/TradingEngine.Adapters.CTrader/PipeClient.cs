@@ -1,17 +1,17 @@
 using System;
 using System.IO;
 using System.IO.Pipes;
-using System.Text;
 using System.Threading;
 
 namespace TradingEngine.Adapters.CTrader
 {
     public class PipeClient
     {
+        private const int MaxRetries = 3;
+        private static readonly int[] RetryDelays = new[] { 2000, 4000, 8000 };
+
         private readonly string _pipeName;
         private NamedPipeClientStream _pipe;
-        private Thread _readThread;
-        private volatile bool _running;
 
         public event Action<PipeMessage> OnMessageReceived;
         public event Action OnDisconnected;
@@ -26,11 +26,8 @@ namespace TradingEngine.Adapters.CTrader
         {
             try
             {
+                _pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
                 _pipe.Connect(timeoutMs);
-                _running = true;
-                _readThread = new Thread(ReadLoop);
-                _readThread.IsBackground = true;
-                _readThread.Start();
                 return true;
             }
             catch
@@ -39,20 +36,38 @@ namespace TradingEngine.Adapters.CTrader
             }
         }
 
+        public void RetryConnect()
+        {
+            for (var i = 0; i < MaxRetries; i++)
+            {
+                Thread.Sleep(RetryDelays[i]);
+                try
+                {
+                    _pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                    _pipe.Connect(5000);
+                    return;
+                }
+                catch
+                {
+                }
+            }
+        }
+
         public void Disconnect()
         {
-            _running = false;
             if (_pipe != null && _pipe.IsConnected)
             {
-                _pipe.Dispose();
+                try { _pipe.Dispose(); }
+                catch { }
             }
-            _pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         }
 
         public void Send(PipeMessage message)
         {
             if (_pipe == null || !_pipe.IsConnected)
+            {
                 return;
+            }
 
             try
             {
@@ -62,47 +77,58 @@ namespace TradingEngine.Adapters.CTrader
             }
             catch
             {
-                OnDisconnected?.Invoke();
+                if (OnDisconnected != null)
+                {
+                    OnDisconnected();
+                }
             }
         }
 
-        private void ReadLoop()
+        public void ReadMessage()
         {
-            var lengthBuffer = new byte[4];
-
-            while (_running)
+            try
             {
-                try
+                var lengthBuffer = new byte[4];
+                var bytesRead = _pipe.Read(lengthBuffer, 0, 4);
+                if (bytesRead < 4)
                 {
-                    var bytesRead = _pipe.Read(lengthBuffer, 0, 4);
-                    if (bytesRead < 4)
+                    if (OnDisconnected != null)
                     {
-                        OnDisconnected?.Invoke();
-                        break;
+                        OnDisconnected();
                     }
-
-                    var length = BitConverter.ToInt32(lengthBuffer, 0);
-                    var messageBuffer = new byte[length];
-                    var totalRead = 0;
-
-                    while (totalRead < length)
-                    {
-                        bytesRead = _pipe.Read(messageBuffer, totalRead, length - totalRead);
-                        if (bytesRead == 0)
-                        {
-                            OnDisconnected?.Invoke();
-                            return;
-                        }
-                        totalRead += bytesRead;
-                    }
-
-                    var message = PipeMessage.FromByteArray(messageBuffer);
-                    OnMessageReceived?.Invoke(message);
+                    return;
                 }
-                catch
+
+                var length = BitConverter.ToInt32(lengthBuffer, 0);
+                var messageBuffer = new byte[length];
+                var totalRead = 0;
+
+                while (totalRead < length)
                 {
-                    OnDisconnected?.Invoke();
-                    break;
+                    bytesRead = _pipe.Read(messageBuffer, totalRead, length - totalRead);
+                    if (bytesRead == 0)
+                    {
+                        if (OnDisconnected != null)
+                        {
+                            OnDisconnected();
+                        }
+                        return;
+                    }
+                    totalRead += bytesRead;
+                }
+
+                var json = System.Text.Encoding.UTF8.GetString(messageBuffer, 0, totalRead);
+                var message = PipeMessage.FromJson(json);
+                if (OnMessageReceived != null)
+                {
+                    OnMessageReceived(message);
+                }
+            }
+            catch
+            {
+                if (OnDisconnected != null)
+                {
+                    OnDisconnected();
                 }
             }
         }
