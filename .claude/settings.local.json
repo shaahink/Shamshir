@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Recurse \"C:\\\\code\\\\Shamshir\")",
+      "Bash(Select-Object FullName, Length)",
+      "Bash(Sort-Object FullName)"
+    ]
+  }
+}
