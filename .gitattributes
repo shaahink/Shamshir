@@ -1,0 +1,17 @@
+* text=auto eol=crlf
+
+*.cs text diff=csharp
+*.cshtml text
+*.json text
+*.xml text
+*.yml text
+*.yaml text
+*.md text
+*.sh text eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.db binary
+*.db-shm binary
+*.db-wal binary
