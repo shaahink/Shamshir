@@ -52,8 +52,22 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
 
     private void InitDefaults()
     {
-        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
-            0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("GBPUSD"), SymbolCategory.Forex, "GBP", "USD", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.00012m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("USDJPY"), SymbolCategory.Forex, "USD", "JPY", 0.01m, 0.001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.010m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("USDCHF"), SymbolCategory.Forex, "USD", "CHF", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.00011m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("AUDUSD"), SymbolCategory.Forex, "AUD", "USD", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.00011m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("USDCAD"), SymbolCategory.Forex, "USD", "CAD", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.00013m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("NZDUSD"), SymbolCategory.Forex, "NZD", "USD", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.00014m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("EURGBP"), SymbolCategory.Forex, "EUR", "GBP", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.00013m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("EURJPY"), SymbolCategory.Forex, "EUR", "JPY", 0.01m, 0.001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.012m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("GBPJPY"), SymbolCategory.Forex, "GBP", "JPY", 0.01m, 0.001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.018m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("XAUUSD"), SymbolCategory.Metal, "XAU", "USD", 0.01m, 0.001m, 100, 0.01m, 100m, 0.01m, 0.03333m, 0.30m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("XAGUSD"), SymbolCategory.Metal, "XAG", "USD", 0.001m, 0.0001m, 5_000, 0.01m, 100m, 0.01m, 0.03333m, 0.030m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("BTCUSD"), SymbolCategory.Crypto, "BTC", "USD", 1.0m, 0.1m, 1, 0.001m, 100m, 0.001m, 0.5m, 50.0m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("ETHUSD"), SymbolCategory.Crypto, "ETH", "USD", 0.01m, 0.001m, 1, 0.001m, 100m, 0.001m, 0.5m, 2.0m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("US30"), SymbolCategory.Index, "US30", "USD", 1.0m, 0.1m, 1, 0.1m, 100m, 0.1m, 0.03333m, 3.0m));
+        _symbolRegistry.Register(new SymbolInfo(Symbol.Parse("NAS100"), SymbolCategory.Index, "NAS100", "USD", 0.25m, 0.01m, 1, 0.1m, 100m, 0.1m, 0.03333m, 1.0m));
     }
 
     public Task<AccountState> GetAccountStateAsync(CancellationToken ct)

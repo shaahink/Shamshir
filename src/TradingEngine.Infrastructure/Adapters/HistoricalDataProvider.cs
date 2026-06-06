@@ -49,15 +49,18 @@ public sealed class HistoricalDataProvider : IMarketDataProvider
         }
     }
 
+    public IAsyncEnumerable<Tick> StreamTicksAsync(Symbol symbol, CancellationToken ct)
+        => StreamTicksAsync(symbol, ct, Timeframe.H1);
+
     public async IAsyncEnumerable<Tick> StreamTicksAsync(
         Symbol symbol,
-        [EnumeratorCancellation] CancellationToken ct)
+        [EnumeratorCancellation] CancellationToken ct,
+        Timeframe tf)
     {
-        var defaultTf = Timeframe.H1;
-        var barDuration = GetBarDuration(defaultTf);
+        var barDuration = GetBarDuration(tf);
         var halfSpread = ResolveHalfSpread(symbol);
 
-        await foreach (var bar in StreamBarsAsync(symbol, defaultTf, ct))
+        await foreach (var bar in StreamBarsAsync(symbol, tf, ct))
         {
             var ticks = SynthesizeTicks(bar, barDuration, halfSpread);
             foreach (var tick in ticks)

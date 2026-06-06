@@ -10,6 +10,8 @@ public sealed class TrendBreakoutScenarios
         var registry = new SymbolInfoRegistry();
         registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
             0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
+        registry.Register(new SymbolInfo(Symbol.Parse("USDJPY"), SymbolCategory.Forex, "USD", "JPY",
+            0.01m, 0.001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.010m));
 
         var logger = Substitute.For<ILogger<TrendBreakoutStrategy>>();
         var strategy = new TrendBreakoutStrategy(config, registry, logger);
@@ -33,7 +35,7 @@ public sealed class TrendBreakoutScenarios
 
         allBars.Should().HaveCountGreaterThan(0);
 
-        var trades = new List<TradeResult>();
+        var signalCount = 0;
         var accumulatedBars = new List<Bar>();
 
         foreach (var bar in allBars)
@@ -58,24 +60,12 @@ public sealed class TrendBreakoutScenarios
                 indicators,
                 DateTime.UtcNow);
 
-            var intent = strategy.Evaluate(context);
-            if (intent is not null)
-            {
-                trades.Add(new TradeResult(
-                    Guid.NewGuid(), Guid.NewGuid(), symbol,
-                    intent.Direction, 0.1m,
-                    new Price(tick.Mid), new Price(tick.Bid),
-                    intent.StopLoss, intent.TakeProfit,
-                    DateTime.UtcNow, DateTime.UtcNow,
-                    new Money(50, "USD"), new Money(1, "USD"),
-                    new Money(0, "USD"), new Money(49, "USD"),
-                    new Pips(20), 2.0, new Pips(5), new Pips(25),
-                    "TP", strategy.Id, "standard", EngineMode.Backtest));
-            }
+            if (strategy.Evaluate(context) is not null)
+                signalCount++;
         }
 
         try { Directory.Delete(tempDir, true); } catch { }
 
-        trades.Should().HaveCountGreaterThan(0);
+        signalCount.Should().BeGreaterThan(0);
     }
 }

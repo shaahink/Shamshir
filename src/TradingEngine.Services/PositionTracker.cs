@@ -9,11 +9,12 @@ public sealed class PositionTracker(
     IPositionManager positionManager,
     PersistenceService persistence,
     IEngineClock clock,
-    ILogger<PositionTracker> logger)
+    ILogger<PositionTracker> logger,
+    EngineMode engineMode = EngineMode.Backtest)
 {
     private readonly Dictionary<Guid, (OrderRequest Request, decimal FilledLots)> _pendingOrders = new();
     private readonly Dictionary<Guid, Position> _openPositions = new();
-    private readonly Dictionary<Guid, decimal> _pendingRisk = new();
+    private readonly Dictionary<Guid, (decimal RiskAmount, string RiskProfileId)> _pendingRisk = new();
     private readonly HashSet<Guid> _processedExecutionIds = [];
 
     public IReadOnlyDictionary<Guid, Position> OpenPositions => _openPositions;
@@ -21,10 +22,10 @@ public sealed class PositionTracker(
     public IReadOnlyList<PositionModification> EvaluatePosition(Position position, Tick tick, IReadOnlyList<Bar> bars)
         => positionManager.Evaluate(position, tick, bars);
 
-    public void TrackOrder(Guid orderId, OrderRequest request, decimal riskAmount)
+    public void TrackOrder(Guid orderId, OrderRequest request, decimal riskAmount, string? riskProfileId = null)
     {
         _pendingOrders[orderId] = (request, 0m);
-        _pendingRisk[orderId] = riskAmount;
+        _pendingRisk[orderId] = (riskAmount, riskProfileId ?? "standard");
     }
 
     public void OnExecution(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
@@ -74,7 +75,7 @@ public sealed class PositionTracker(
             clock.UtcNow, order.Intent.StrategyId);
 
         _openPositions[evt.OrderId] = position;
-        var riskAmount = _pendingRisk.GetValueOrDefault(evt.OrderId, 0m);
+        var (riskAmount, riskProfileId) = _pendingRisk.GetValueOrDefault(evt.OrderId, (0m, "standard"));
         riskManager.RegisterPosition(position.Id, position.StrategyId, riskAmount);
 
         var posConfig = new PositionManagementConfig(
@@ -102,13 +103,15 @@ public sealed class PositionTracker(
         riskManager.DeregisterPosition(pos.Id);
         positionManager.DeregisterPosition(pos.Id);
 
+        var (_, riskProfileId) = _pendingRisk.GetValueOrDefault(evt.OrderId, (0m, "standard"));
+
         foreach (var s in strategies.Where(s => s.Id == pos.StrategyId))
         {
             var tradeResult = new TradeResult(Guid.NewGuid(), pos.Id, pos.Symbol, pos.Direction, pos.Lots,
                 pos.EntryPrice, new Price(fillPrice), pos.CurrentStopLoss, pos.TakeProfit,
                 pos.OpenedAtUtc, clock.UtcNow, pnl, Money.Zero(pnl.Currency), Money.Zero(pnl.Currency),
                 pnl, new Pips(0), 0, new Pips(0), new Pips(0),
-                exitReason, pos.StrategyId, "standard", EngineMode.Backtest);
+                exitReason, pos.StrategyId, riskProfileId, engineMode);
             s.OnTradeResult(tradeResult);
             _ = persistence.SaveTradeAsync(tradeResult, CancellationToken.None);
         }
