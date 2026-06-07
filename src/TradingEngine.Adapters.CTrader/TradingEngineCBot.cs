@@ -13,6 +13,7 @@ public class TradingEngineCBot : Robot
     [Parameter("Transport", DefaultValue = "pipe")]
     public string Transport { get; set; } = "pipe";
 
+    private readonly Queue<Guid> _pendingClientOrderIds = new();
     private PipeClient? _pipe;
     private TickPublisher? _tickPublisher;
     private BarPublisher? _barPublisher;
@@ -33,7 +34,7 @@ public class TradingEngineCBot : Robot
         _barPublisher = new BarPublisher(_pipe);
         _accountPublisher = new AccountUpdatePublisher(_pipe);
         _executionPublisher = new ExecutionEventPublisher(_pipe);
-        _commandHandler = new OrderCommandHandler(_pipe, this, _executionPublisher, _accountPublisher);
+        _commandHandler = new OrderCommandHandler(_pipe, this, _executionPublisher, _accountPublisher, _pendingClientOrderIds);
 
         Positions.Opened += OnPositionOpened;
         Positions.Closed += OnPositionClosed;
@@ -120,8 +121,9 @@ public class TradingEngineCBot : Robot
     {
         if (!_running) return;
         var pos = args.Position;
+        var clientOrderId = _pendingClientOrderIds.Count > 0 ? _pendingClientOrderIds.Dequeue() : Guid.NewGuid();
         _executionPublisher?.Publish(
-            Guid.Parse(pos.Id.ToString()), "Filled",
+            clientOrderId, "Filled",
             pos.EntryPrice, pos.VolumeInUnits / 100000.0,
             null, pos.EntryTime);
         _accountPublisher?.Publish(Account.Balance, Account.Equity,

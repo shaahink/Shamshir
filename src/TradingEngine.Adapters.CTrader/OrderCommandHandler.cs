@@ -9,15 +9,18 @@ public class OrderCommandHandler
     private readonly Robot _robot;
     private readonly ExecutionEventPublisher _executionPublisher;
     private readonly AccountUpdatePublisher _accountPublisher;
+    private readonly Queue<Guid> _pendingClientOrderIds;
 
     public OrderCommandHandler(PipeClient pipe, Robot robot,
         ExecutionEventPublisher executionPublisher,
-        AccountUpdatePublisher accountPublisher)
+        AccountUpdatePublisher accountPublisher,
+        Queue<Guid> pendingClientOrderIds)
     {
         _pipe = pipe;
         _robot = robot;
         _executionPublisher = executionPublisher;
         _accountPublisher = accountPublisher;
+        _pendingClientOrderIds = pendingClientOrderIds;
     }
 
     public void Handle(PipeMessage message)
@@ -44,10 +47,12 @@ public class OrderCommandHandler
         try
         {
             var data = MessageSerializer.Deserialize<SubmitOrderData>(payload);
+            _pendingClientOrderIds.Enqueue(data.ClientOrderId);
+
             var symbol = _robot.Symbols.GetSymbol(data.Symbol);
             if (symbol is null)
             {
-                _executionPublisher.Publish(data.CorrelationId, "Rejected", null, 0,
+                _executionPublisher.Publish(data.ClientOrderId, "Rejected", null, 0,
                     "Unknown symbol: " + data.Symbol, DateTime.UtcNow);
                 return;
             }
@@ -64,7 +69,7 @@ public class OrderCommandHandler
             {
                 var pos = result.Position;
                 _executionPublisher.Publish(
-                    data.CorrelationId, "Filled", pos.EntryPrice, pos.VolumeInUnits, null, pos.EntryTime);
+                    data.ClientOrderId, "Filled", pos.EntryPrice, pos.VolumeInUnits, null, pos.EntryTime);
 
                 _accountPublisher.Publish(
                     _robot.Account.Balance, _robot.Account.Equity,
@@ -73,13 +78,13 @@ public class OrderCommandHandler
             else
             {
                 var error = result?.Error.ToString() ?? "Null result";
-                _executionPublisher.Publish(data.CorrelationId, "Rejected", null, 0, error, DateTime.UtcNow);
+                _executionPublisher.Publish(data.ClientOrderId, "Rejected", null, 0, error, DateTime.UtcNow);
             }
         }
         catch (Exception ex)
         {
             var d = MessageSerializer.Deserialize<SubmitOrderData>(payload);
-            _executionPublisher.Publish(d.CorrelationId, "Rejected", null, 0, ex.Message, DateTime.UtcNow);
+            _executionPublisher.Publish(d.ClientOrderId, "Rejected", null, 0, ex.Message, DateTime.UtcNow);
         }
     }
 
@@ -172,7 +177,7 @@ public class OrderCommandHandler
 
     private class SubmitOrderData
     {
-        public Guid CorrelationId { get; set; }
+        public Guid ClientOrderId { get; set; }
         public string Symbol { get; set; } = "";
         public string Direction { get; set; } = "";
         public double Lots { get; set; }

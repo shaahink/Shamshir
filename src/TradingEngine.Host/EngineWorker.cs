@@ -17,6 +17,7 @@ public sealed class EngineWorker : BackgroundService
     private readonly PersistenceService _persistence;
     private readonly OrderDispatcher _orderDispatcher;
     private readonly PositionTracker _positionTracker;
+    private readonly DrawdownTracker _drawdownTracker;
     private readonly EngineMode _engineMode;
     private readonly ILogger<EngineWorker> _logger;
 
@@ -42,6 +43,7 @@ public sealed class EngineWorker : BackgroundService
     public EngineWorker(
         IBrokerAdapter broker,
         IRiskManager riskManager,
+        DrawdownTracker drawdownTracker,
         IEnumerable<IStrategy> strategies,
         IIndicatorService indicators,
         IEventBus eventBus,
@@ -67,6 +69,7 @@ public sealed class EngineWorker : BackgroundService
         _persistence = persistence;
         _orderDispatcher = orderDispatcher;
         _positionTracker = positionTracker;
+        _drawdownTracker = drawdownTracker;
         _engineMode = _broker is SimulatedBrokerAdapter ? EngineMode.Backtest : EngineMode.Live;
         _dataFeed = dataFeed;
         _logger = logger;
@@ -136,6 +139,8 @@ public sealed class EngineWorker : BackgroundService
 
                 if (_dataFeed is not null && _broker is SimulatedBrokerAdapter sim)
                     sim.OnTickReceived(tick);
+
+                await Task.Yield();
 
                 foreach (var strategy in _strategies)
                 {
@@ -244,6 +249,7 @@ public sealed class EngineWorker : BackgroundService
 
     private void HandleAccountUpdate(AccountUpdate update)
     {
+        _drawdownTracker.InitializeIfNeeded(update.Balance);
         _riskManager.UpdateEquityLevels(update.Equity);
 
         var riskState = _riskManager.CurrentState;

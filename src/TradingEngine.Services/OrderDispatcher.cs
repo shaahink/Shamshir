@@ -29,7 +29,7 @@ public sealed class OrderDispatcher(
         var entryPrice = intent.LimitPrice ?? new Price(currentMid);
         var slDistance = PipCalculator.Distance(entryPrice, intent.StopLoss, symbolInfo);
         var pipValue = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, crossRateProvider);
-        var lots = riskManager.CalculateLotSize(intent, equity, profile);
+        var lots = riskManager.CalculateLotSize(intent, equity, profile, currentMid);
         var riskAmount = (decimal)slDistance.Value * pipValue * lots;
 
         logger.LogInformation("Order: Strategy={Strategy} Symbol={Symbol} Dir={Dir} Lots={Lots} Entry={Entry:F5} SL={SL:F5}",

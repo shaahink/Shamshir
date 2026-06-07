@@ -16,10 +16,10 @@ public sealed class RunModel : PageModel
     public string Period { get; set; } = "h1";
 
     [BindProperty]
-    public DateTime StartDate { get; set; } = new(2024, 1, 1);
+    public DateTime StartDate { get; set; } = new(2024, 1, 15);
 
     [BindProperty]
-    public DateTime EndDate { get; set; } = new(2024, 1, 31);
+    public DateTime EndDate { get; set; } = new(2024, 4, 15);
 
     [BindProperty]
     public decimal Balance { get; set; } = 100_000;

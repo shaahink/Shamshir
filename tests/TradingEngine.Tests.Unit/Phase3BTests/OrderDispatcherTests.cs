@@ -9,7 +9,7 @@ public sealed class OrderDispatcherTests
         var rm = Substitute.For<IRiskManager>();
         rm.Validate(Arg.Any<TradeIntent>(), Arg.Any<EquitySnapshot>(), Arg.Any<RiskProfile>())
             .Returns([]);
-        rm.CalculateLotSize(Arg.Any<TradeIntent>(), Arg.Any<EquitySnapshot>(), Arg.Any<RiskProfile>())
+        rm.CalculateLotSize(Arg.Any<TradeIntent>(), Arg.Any<EquitySnapshot>(), Arg.Any<RiskProfile>(), Arg.Any<decimal>())
             .Returns(0.1m);
 
         var resolver = Substitute.For<IRiskProfileResolver>();

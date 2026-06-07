@@ -9,9 +9,11 @@ public static class Program
     public static void Main(string[] args)
     {
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Information()
-            .WriteTo.Console()
-            .WriteTo.File("logs/engine-.log", rollingInterval: RollingInterval.Day)
+            .ReadFrom.Configuration(new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json", optional: true)
+                .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json", optional: true)
+                .AddEnvironmentVariables()
+                .Build())
             .CreateLogger();
 
         try
@@ -56,9 +58,7 @@ public static class Program
                 builder.Services.AddSingleton<IMarketDataProvider, LiveMarketDataProvider>();
             }
 
-            var tracker = new DrawdownTracker();
-            tracker.Initialize(100_000);
-            builder.Services.AddSingleton(tracker);
+            builder.Services.AddSingleton<DrawdownTracker>();
 
             builder.Services.AddSingleton<ISymbolInfoRegistry>(sp =>
             {

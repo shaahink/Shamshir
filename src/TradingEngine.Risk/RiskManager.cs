@@ -80,10 +80,10 @@ public sealed class RiskManager(
         return violations;
     }
 
-    public decimal CalculateLotSize(TradeIntent intent, EquitySnapshot equity, RiskProfile profile)
+    public decimal CalculateLotSize(TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid)
     {
         var symbolInfo = symbolRegistry.Get(intent.Symbol);
-        var entryPrice = intent.LimitPrice ?? new Price(equity.Equity);
+        var entryPrice = intent.LimitPrice ?? new Price(currentMid);
         var slDistance = PipCalculator.Distance(entryPrice, intent.StopLoss, symbolInfo);
         var pipValue = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, getCrossRate);
         var drawdownScale = DrawdownScaler.ComputeScaleFactor(

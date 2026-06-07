@@ -21,6 +21,12 @@ public sealed class DrawdownTracker
         _initialized = true;
     }
 
+    public void InitializeIfNeeded(decimal initialBalance, string drawdownType = "Fixed")
+    {
+        if (_initialized) return;
+        Initialize(initialBalance, drawdownType);
+    }
+
     public DailyDdBase DailyDdBaseMode { get; set; } = DailyDdBase.InitialBalance;
 
     public void OnEquityUpdate(decimal equity)

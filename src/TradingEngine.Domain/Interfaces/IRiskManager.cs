@@ -2,7 +2,7 @@ namespace TradingEngine.Domain;
 
 public interface IRiskManager
 {
-    decimal CalculateLotSize(TradeIntent intent, EquitySnapshot equity, RiskProfile profile);
+    decimal CalculateLotSize(TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid);
     IReadOnlyList<RiskViolation> Validate(TradeIntent intent, EquitySnapshot equity, RiskProfile profile);
     RiskState CurrentState { get; }
     void UpdateEquityLevels(decimal rawEquity);

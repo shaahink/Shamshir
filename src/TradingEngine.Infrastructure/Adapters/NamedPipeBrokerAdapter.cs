@@ -87,8 +87,18 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     public async Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
-        await SendCommandAsync("SubmitOrder", request, ct);
-        return Guid.NewGuid();
+        var clientOrderId = Guid.NewGuid();
+        var payload = new
+        {
+            ClientOrderId = clientOrderId,
+            Symbol = request.Symbol.Value,
+            Direction = request.Direction.ToString(),
+            Lots = (double)request.Lots,
+            SlPrice = (double)request.Intent.StopLoss.Value,
+            TpPrice = request.Intent.TakeProfit.HasValue ? (double)request.Intent.TakeProfit.Value.Value : 0.0,
+        };
+        await SendCommandAsync("SubmitOrder", payload, ct);
+        return clientOrderId;
     }
 
     public Task ModifyOrderAsync(Guid orderId, Price newStopLoss, Price? newTakeProfit, CancellationToken ct)
