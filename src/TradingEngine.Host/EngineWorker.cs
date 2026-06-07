@@ -75,10 +75,25 @@ public sealed class EngineWorker : BackgroundService
         _logger = logger;
     }
 
+    private void ResetState()
+    {
+        _bars.Clear();
+        _indicatorValues.Clear();
+        _reusableIndicatorDict.Clear();
+        Interlocked.Exchange(ref _latestAccountUpdate, null);
+        Volatile.Write(ref _currentEquity, new EquitySnapshot(DateTime.MinValue, 0, 0, 0, 0, 0, 0, 0, _engineMode));
+        Interlocked.Exchange(ref _tickCount, 0);
+        Interlocked.Exchange(ref _barCount, 0);
+        _logger.LogInformation("Engine state reset for new connection");
+    }
+
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         _logger.LogInformation("Engine starting. Mode={Mode} Strategies={Count}",
             _engineMode, _strategies.Count());
+
+        if (_broker is NamedPipeBrokerAdapter pipeAdapter)
+            pipeAdapter.OnClientConnected = ResetState;
 
         await _broker.ConnectAsync(ct);
 
@@ -142,35 +157,42 @@ public sealed class EngineWorker : BackgroundService
 
                 await Task.Yield();
 
+                var allBars = BuildBarSnapshot(tick.Symbol);
+                var totalBarsAll = allBars?.Values.Sum(b => b.Count) ?? 0;
+                var prefix = $"{tick.Symbol}:";
+                var symIndCount = _indicatorValues.Count(kv => kv.Key.StartsWith(prefix));
+                _logger.LogInformation("TICK|{Symbol}|{Bid:F5}|{Ask:F5}|{Bars}|{Ind}|{Total}",
+                    tick.Symbol.Value, tick.Bid, tick.Ask, totalBarsAll, symIndCount, Interlocked.Read(ref _tickCount));
+
                 foreach (var strategy in _strategies)
                 {
-                    var barSnapshot = BuildBarSnapshot(tick.Symbol);
+                    var barSnapshot = allBars;
                     if (barSnapshot is null)
                     {
-                        _logger.LogTrace("No bars for Symbol={Symbol} Strategy={Strategy}", tick.Symbol, strategy.Id);
+                        _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|NO_BARS|||", strategy.Id, tick.Symbol.Value);
                         continue;
                     }
                     var totalBars = barSnapshot.Values.Sum(b => b.Count);
                     if (totalBars < strategy.RequiredBarCount)
                     {
-                        _logger.LogTrace("Not enough bars. Symbol={Symbol} Strategy={Strategy} Have={Have} Need={Need}",
-                            tick.Symbol, strategy.Id, totalBars, strategy.RequiredBarCount);
+                        _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|NEED_BARS|{Have}|{Need}|",
+                            strategy.Id, tick.Symbol.Value, totalBars, strategy.RequiredBarCount);
                         continue;
                     }
 
                     BuildIndicatorSnapshot(tick.Symbol);
-                    _logger.LogDebug("Evaluating. Symbol={Symbol} Strategy={Strategy} Bars={Bars} Indicators={IndCount}",
-                        tick.Symbol, strategy.Id, totalBars, _reusableIndicatorDict.Count);
                     var context = new MarketContext(tick.Symbol, tick, barSnapshot, _reusableIndicatorDict, _clock.UtcNow);
 
                     var intent = strategy.Evaluate(context);
                     if (intent is null)
                     {
-                        _logger.LogDebug("No signal. Symbol={Symbol} Strategy={Strategy}", tick.Symbol, strategy.Id);
+                        _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|NO||{Ind}",
+                            strategy.Id, tick.Symbol.Value, _reusableIndicatorDict.Count);
                         continue;
                     }
-                    _logger.LogInformation("Signal generated. Symbol={Symbol} Strategy={Strategy} Dir={Dir}",
-                        tick.Symbol, strategy.Id, intent.Direction);
+                    _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|YES|{Dir}|{Bars}|{Ind}",
+                        strategy.Id, tick.Symbol.Value, intent.Direction, totalBars, _reusableIndicatorDict.Count);
+                    _logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
 
                     var equity = Volatile.Read(ref _currentEquity);
 
@@ -212,12 +234,16 @@ public sealed class EngineWorker : BackgroundService
                 Interlocked.Increment(ref _barCount);
                 var byTf = _bars.GetOrAdd(bar.Symbol, _ => new());
                 var list = byTf.GetOrAdd(bar.Timeframe, _ => new());
+                int barCount;
                 lock (list)
                 {
                     list.Add(bar);
                     if (list.Count > MaxBarHistory)
                         list.RemoveAt(0);
+                    barCount = list.Count;
                 }
+                _logger.LogInformation("BAR|{Symbol}|{Tf}|{Close:F5}|{Count}|{Total}",
+                    bar.Symbol.Value, bar.Timeframe, bar.Close, barCount, Interlocked.Read(ref _barCount));
                 await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe);
             }
         }

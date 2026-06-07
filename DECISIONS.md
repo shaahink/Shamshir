@@ -412,8 +412,13 @@ Quick reference:
  | D57 | Web UI backtest page scope | ✅ A — table only, no charts, no detail page. Charts deferred |
  | D58 | Auto-deploy mechanism | ✅ A — MSBuild `AfterTargets="Build"` target, gated by `-p:AutoDeploy=true`; off by default |
  | D59 | Phase 4D merged into 4C | ✅ A — lot sizing variants implemented in same branch as strategy composition |
- | D60 | BacktestRunner starts engine subprocess | ✅ A — BacktestRunner.RunAsync starts engine with Engine:Mode=Live, waits for pipe, kills on completion; engine is not persistent for backtest |
+ | D60 | BacktestRunner starts engine subprocess | ~~A — BacktestRunner.RunAsync starts engine with Engine:Mode=Live~~ **Superseded by D66** |
  | D61 | Serilog uses ReadFrom.Configuration | ✅ A — no hardcoded MinimumLevel in Program.cs; appsettings.json controls level; Debug in Development |
  | D62 | DrawdownTracker initialized from first AccountUpdate | ✅ A — no hardcoded $100k; InitializeIfNeeded(balance) called from HandleAccountUpdate |
  | D63 | CalculateLotSize takes currentMid parameter | ✅ A — entry price for SL distance = market price (currentMid), not equity.Equity |
  | D64 | ClientOrderId correlates engine↔cBot | ✅ A — engine generates Guid, sends in SubmitOrder payload; cBot echoes in ExecutionEvent |
+ | D65 | PipeExists() removed permanently | ✅ A — `NamedPipeClientStream.Connect()` inside a probe consumed the engine's one connection slot; deleted, no replacement in the Aspire path |
+ | D66 | BacktestRunner is a CLI launcher only under Aspire | ✅ A — `CTrader:StartEngineSubprocess=false` by default; Aspire owns engine lifecycle; `StartEngine()` only called when explicitly opted in |
+ | D67 | Pipe name coordinated via Aspire env vars | ✅ A — AppHost sets `Engine__Broker__PipeName` on both engine and web; BacktestRunner reads `_config["Engine:Broker:PipeName"]`; no hardcoded strings |
+ | D68 | Engine state reset on new pipe connection | ✅ A — `NamedPipeBrokerAdapter.OnClientConnected` callback; `EngineWorker.ResetState()` clears bars, indicators, equity, counters on every new cBot connection |
+ | D69 | WebSmokeTests won't spawn engine subprocesses | ✅ A — `WebApplicationFactory` overrides `CTrader:StartEngineSubprocess=false`; fire-and-forget BacktestRunner never starts engine subprocess in tests |

@@ -31,10 +31,17 @@ public sealed class MeanReversionStrategy : IStrategy
         try
         {
             if (!_config.Symbols.Contains(context.Symbol.Value))
+            {
+                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
                 return null;
+            }
 
             var h1Bars = context.Bars.GetValueOrDefault(_config.Timeframe);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount) return null;
+            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            {
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
+                return null;
+            }
 
             var p = _config.Parameters;
             var rsi = context.IndicatorValues.GetValueOrDefault($"RSI_{p.RsiPeriod}");

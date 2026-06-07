@@ -23,6 +23,8 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     public ChannelReader<AccountUpdate> AccountStream => _accountChannel.Reader;
     public ChannelReader<ExecutionEvent> ExecutionStream => _executionChannel.Reader;
 
+    public Action? OnClientConnected { get; set; }
+
     public DateTime BrokerTimeUtc { get; private set; } = DateTime.UtcNow;
     public bool IsConnected => _pipeServer?.IsConnected ?? false;
 
@@ -59,6 +61,7 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
                 await _pipeServer.WaitForConnectionAsync(ct);
                 _logger?.LogInformation("Pipe connected. PipeName={PipeName}", _pipeName);
+                OnClientConnected?.Invoke();
                 _ = ReadLoopAsync(_cts.Token);
                 return;
             }
@@ -174,7 +177,7 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
                 await _pipeServer.WaitForConnectionAsync(ct);
                 _logger?.LogInformation("Pipe reconnected on attempt {Attempt}", attempt + 1);
-
+                OnClientConnected?.Invoke();
                 _accountChannel.Writer.TryWrite(new AccountUpdate(0, 0, 0, DateTime.UtcNow));
                 return;
             }

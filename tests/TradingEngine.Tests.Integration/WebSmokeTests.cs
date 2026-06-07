@@ -18,6 +18,7 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
         _client = factory.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Persistence:DbPath", tempDb);
+            builder.UseSetting("CTrader:StartEngineSubprocess", "false");
         }).CreateClient();
     }
 

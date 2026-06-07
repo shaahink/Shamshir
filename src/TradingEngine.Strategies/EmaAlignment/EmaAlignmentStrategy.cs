@@ -33,15 +33,14 @@ public sealed class EmaAlignmentStrategy : IStrategy
         {
             if (!_config.Symbols.Contains(context.Symbol.Value))
             {
-                _logger.LogTrace("Symbol not in config. Symbol={Symbol} Config={Config}", context.Symbol.Value, string.Join(",", _config.Symbols));
+                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
                 return null;
             }
 
             var h1Bars = context.Bars.GetValueOrDefault(_config.Timeframe);
             if (h1Bars is null || h1Bars.Count < RequiredBarCount)
             {
-                _logger.LogTrace("Not enough bars for timeframe. Symbol={Symbol} Tf={Tf} Count={Count} Need={Need}",
-                    context.Symbol.Value, _config.Timeframe, h1Bars?.Count ?? 0, RequiredBarCount);
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
@@ -52,8 +51,7 @@ public sealed class EmaAlignmentStrategy : IStrategy
 
             if (fastEma <= 0 || slowEma <= 0 || atr <= 0)
             {
-                _logger.LogTrace("Zero indicators. Symbol={Symbol} FastEma={F} SlowEma={S} Atr={A}",
-                    context.Symbol.Value, fastEma, slowEma, atr);
+                _logger.LogTrace("SKIP|{Id}|ZeroIndicators|fe={F} se={S} atr={A}", Id, fastEma, slowEma, atr);
                 return null;
             }
 

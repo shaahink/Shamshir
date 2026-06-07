@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.IO.Pipes;
 
 namespace TradingEngine.CTraderRunner;
 
@@ -17,34 +16,31 @@ public sealed class BacktestRunner
     public async Task<BacktestResult> RunAsync(BacktestConfig cfg, CancellationToken ct = default)
     {
         var runId = Guid.NewGuid().ToString("N")[..8];
-        var pipeName = "trading-engine";
+        var pipeName = _config["Engine:Broker:PipeName"] ?? "trading-engine";
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
         var reportJsonPath = Path.Combine(resultsDir, "report.json");
 
-        // 1. Start engine subprocess only if no pipe exists
         Process? engineProcess = null;
-        if (PipeExists(pipeName, 200))
+        var startSubprocess = string.Equals(_config["CTrader:StartEngineSubprocess"], "true", StringComparison.OrdinalIgnoreCase);
+        if (startSubprocess)
         {
-            _logger.LogInformation("Engine pipe already exists at {PipeName} — using existing engine", pipeName);
+            engineProcess = StartEngine(pipeName, runId);
+            _logger.LogInformation("Engine subprocess started. PID={Pid}", engineProcess?.Id ?? -1);
+            await WaitForEngineReadyAsync(pipeName, TimeSpan.FromSeconds(30), ct);
         }
         else
         {
-            engineProcess = StartEngine(pipeName, runId);
-            _logger.LogInformation("Engine started. PID={Pid} Pipe={PipeName} RunId={RunId}",
-                engineProcess?.Id ?? -1, pipeName, runId);
-            await WaitForPipeAsync(pipeName, TimeSpan.FromSeconds(30), ct);
+            _logger.LogInformation("Using Aspire-managed engine. Pipe={Pipe}", pipeName);
         }
 
         try
         {
-
-            // 3. Start ctrader-cli
             var cliPath = CTraderCliLocator.Locate(_config);
             var algoPath = ResolveAlgoPath();
             var args = BuildArgs(cfg, algoPath, pipeName, reportJsonPath);
 
-            _logger.LogInformation("Starting ctrader-cli backtest. RunId={RunId}", runId);
+            _logger.LogInformation("Launching ctrader-cli. RunId={RunId}", runId);
             using var cliProcess = Process.Start(new ProcessStartInfo(cliPath, args)
             {
                 RedirectStandardOutput = true,
@@ -59,6 +55,7 @@ public sealed class BacktestRunner
             var stdout = await stdoutTask;
             var stderr = await stderrTask;
 
+            _logger.LogInformation("ctrader-cli exited. Code={Code} RunId={RunId}", cliProcess.ExitCode, runId);
             if (!string.IsNullOrWhiteSpace(stderr))
                 _logger.LogWarning("ctrader-cli stderr: {Stderr}", stderr);
 
@@ -71,12 +68,11 @@ public sealed class BacktestRunner
         }
         finally
         {
-            // 4. Kill engine subprocess
             if (engineProcess is not null && !engineProcess.HasExited)
             {
                 engineProcess.Kill(entireProcessTree: true);
                 await engineProcess.WaitForExitAsync(CancellationToken.None);
-                _logger.LogInformation("Engine process killed. PID={Pid}", engineProcess.Id);
+                _logger.LogInformation("Engine subprocess killed. PID={Pid}", engineProcess.Id);
             }
         }
     }
@@ -89,11 +85,11 @@ public sealed class BacktestRunner
 
         if (!File.Exists(engineProjPath))
         {
-            _logger.LogWarning("Engine project not found at {Path} — starting engine subprocess skipped", engineProjPath);
+            _logger.LogWarning("Engine project not found at {Path} — engine subprocess skipped", engineProjPath);
             return null;
         }
 
-        var psi = new ProcessStartInfo("dotnet", $"run --project \"{engineProjPath}\" --no-build -- --Engine:Mode Live --Engine:Broker:PipeName {pipeName}")
+        var psi = new ProcessStartInfo("dotnet", $"run --project \"{engineProjPath}\" --no-build")
         {
             RedirectStandardOutput = false,
             RedirectStandardError = false,
@@ -112,32 +108,18 @@ public sealed class BacktestRunner
         return process;
     }
 
-    private static async Task WaitForPipeAsync(string pipeName, TimeSpan timeout, CancellationToken ct)
+    private static async Task WaitForEngineReadyAsync(string pipeName, TimeSpan timeout, CancellationToken ct)
     {
+        var pipePath = Path.Combine(@"\\.\pipe", pipeName);
         var deadline = DateTime.UtcNow.Add(timeout);
-
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
-            if (PipeExists(pipeName, 100))
+            if (File.Exists(pipePath))
                 return;
             await Task.Delay(300, ct);
         }
-
-        throw new TimeoutException($"Engine did not become ready within {timeout.TotalSeconds}s — pipe '{pipeName}' not found");
-    }
-
-    private static bool PipeExists(string pipeName, int timeoutMs = 200)
-    {
-        try
-        {
-            using var client = new NamedPipeClientStream(".", pipeName,
-                PipeDirection.InOut, PipeOptions.Asynchronous);
-            client.Connect(timeoutMs);
-            return true;
-        }
-        catch (TimeoutException) { return false; }
-        catch (FileNotFoundException) { return false; }
+        throw new TimeoutException($"Engine not ready after {timeout.TotalSeconds}s — pipe '{pipeName}' not visible");
     }
 
     private string BuildArgs(BacktestConfig cfg, string algoPath, string pipeName, string reportJsonPath)

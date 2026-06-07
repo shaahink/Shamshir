@@ -47,11 +47,17 @@ public sealed class TrendBreakoutStrategy : IStrategy
         try
         {
             if (!_config.Symbols.Contains(context.Symbol.Value))
+            {
+                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
                 return null;
+            }
 
             var h1Bars = context.Bars.GetValueOrDefault(_timeframe);
             if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            {
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
                 return null;
+            }
 
             var latestBar = h1Bars[^1];
             var p = _config.Parameters;
@@ -60,7 +66,10 @@ public sealed class TrendBreakoutStrategy : IStrategy
             var ema = context.IndicatorValues.GetValueOrDefault($"EMA_{p.MaPeriod}");
 
             if (atr <= 0 || ema <= 0)
+            {
+                _logger.LogTrace("SKIP|{Id}|ZeroIndicators|atr={Atr} ema={Ema}", Id, atr, ema);
                 return null;
+            }
 
             var priorBars = h1Bars.TakeLast(p.LookbackBars + 1).SkipLast(1).ToList();
             var highestHigh = priorBars.Count > 0 ? priorBars.Max(b => b.High) : latestBar.High;
