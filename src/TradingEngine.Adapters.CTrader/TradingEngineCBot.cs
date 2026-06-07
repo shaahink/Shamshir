@@ -60,6 +60,7 @@ public class TradingEngineCBot : Robot
 
         var bars = MarketData.GetBars(TimeFrame, SymbolName);
         bars.BarClosed += OnBarClosed;
+        bars.BarOpened += OnBarOpened;
         bars.Tick += OnBarsTick;
 
         Print($"CBOT|START|symbol={SymbolName}|tf={TimeFrame.ShortName}");
@@ -100,9 +101,13 @@ public class TradingEngineCBot : Robot
     private void OnBarsTick(BarsTickEventArgs args)
     {
         if (!_running) return;
-        _tickPublisher?.Publish(SymbolName, Symbol.Bid, Symbol.Ask, Server.TimeInUtc);
+        _tickPublisher?.Publish(args.Bars.SymbolName, Symbol.Bid, Symbol.Ask, Server.TimeInUtc);
         _accountPublisher?.Publish(Account.Balance, Account.Equity,
             Account.Equity - Account.Balance, Server.TimeInUtc);
+    }
+
+    private void OnBarOpened(BarOpenedEventArgs args)
+    {
     }
 
     private void OnBarClosed(BarClosedEventArgs args)
@@ -111,7 +116,7 @@ public class TradingEngineCBot : Robot
         var bars = args.Bars;
         var last = bars.Last(1);
         _barPublisher?.Publish(
-            SymbolName,
+            bars.SymbolName,
             TimeFrame.ShortName,
             last.OpenTime,
             last.Open,
