@@ -412,3 +412,8 @@ Quick reference:
  | D57 | Web UI backtest page scope | ✅ A — table only, no charts, no detail page. Charts deferred |
  | D58 | Auto-deploy mechanism | ✅ A — MSBuild `AfterTargets="Build"` target, gated by `-p:AutoDeploy=true`; off by default |
  | D59 | Phase 4D merged into 4C | ✅ A — lot sizing variants implemented in same branch as strategy composition |
+ | D60 | BacktestRunner starts engine subprocess | ✅ A — BacktestRunner.RunAsync starts engine with Engine:Mode=Live, waits for pipe, kills on completion; engine is not persistent for backtest |
+ | D61 | Serilog uses ReadFrom.Configuration | ✅ A — no hardcoded MinimumLevel in Program.cs; appsettings.json controls level; Debug in Development |
+ | D62 | DrawdownTracker initialized from first AccountUpdate | ✅ A — no hardcoded $100k; InitializeIfNeeded(balance) called from HandleAccountUpdate |
+ | D63 | CalculateLotSize takes currentMid parameter | ✅ A — entry price for SL distance = market price (currentMid), not equity.Equity |
+ | D64 | ClientOrderId correlates engine↔cBot | ✅ A — engine generates Guid, sends in SubmitOrder payload; cBot echoes in ExecutionEvent |
