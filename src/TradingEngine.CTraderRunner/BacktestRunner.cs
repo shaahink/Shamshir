@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Pipes;
 
 namespace TradingEngine.CTraderRunner;
 
@@ -23,8 +24,7 @@ public sealed class BacktestRunner
 
         // 1. Start engine subprocess only if no pipe exists
         Process? engineProcess = null;
-        var pipePath = $@"\\.\pipe\{pipeName}";
-        if (File.Exists(pipePath))
+        if (PipeExists(pipeName, 200))
         {
             _logger.LogInformation("Engine pipe already exists at {PipeName} — using existing engine", pipeName);
         }
@@ -33,13 +33,11 @@ public sealed class BacktestRunner
             engineProcess = StartEngine(pipeName, runId);
             _logger.LogInformation("Engine started. PID={Pid} Pipe={PipeName} RunId={RunId}",
                 engineProcess?.Id ?? -1, pipeName, runId);
+            await WaitForPipeAsync(pipeName, TimeSpan.FromSeconds(30), ct);
         }
 
         try
         {
-            // 2. Wait for pipe to be ready
-            if (engineProcess is not null)
-                await WaitForPipeAsync(pipeName, TimeSpan.FromSeconds(30), ct);
 
             // 3. Start ctrader-cli
             var cliPath = CTraderCliLocator.Locate(_config);
@@ -116,18 +114,30 @@ public sealed class BacktestRunner
 
     private static async Task WaitForPipeAsync(string pipeName, TimeSpan timeout, CancellationToken ct)
     {
-        var pipePath = $@"\\.\pipe\{pipeName}";
         var deadline = DateTime.UtcNow.Add(timeout);
 
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
-            if (File.Exists(pipePath))
+            if (PipeExists(pipeName, 100))
                 return;
             await Task.Delay(300, ct);
         }
 
         throw new TimeoutException($"Engine did not become ready within {timeout.TotalSeconds}s — pipe '{pipeName}' not found");
+    }
+
+    private static bool PipeExists(string pipeName, int timeoutMs = 200)
+    {
+        try
+        {
+            using var client = new NamedPipeClientStream(".", pipeName,
+                PipeDirection.InOut, PipeOptions.Asynchronous);
+            client.Connect(timeoutMs);
+            return true;
+        }
+        catch (TimeoutException) { return false; }
+        catch (FileNotFoundException) { return false; }
     }
 
     private string BuildArgs(BacktestConfig cfg, string algoPath, string pipeName, string reportJsonPath)
