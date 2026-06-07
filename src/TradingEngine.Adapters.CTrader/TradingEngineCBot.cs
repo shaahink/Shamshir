@@ -47,6 +47,9 @@ public class TradingEngineCBot : Robot
         _dealer.SendFrame(Serialize("hello", new { }));
 
         var bars = MarketData.GetBars(TimeFrame, SymbolName);
+        Print($"CBOT|BARS_INIT|count={bars.Count}");
+        _lastKnownBarCount = bars.Count;
+
         bars.BarClosed += OnBarClosed;
 
         PublishAccount();
@@ -57,6 +60,8 @@ public class TradingEngineCBot : Robot
     protected override void OnTick()
     {
         _tickCounter++;
+
+        PollMissingBars();
 
         while (_mainActions.TryDequeue(out var action))
         {
@@ -78,25 +83,79 @@ public class TradingEngineCBot : Robot
         }
     }
 
+    private DateTime _lastPublishedBarOpen = DateTime.MinValue;
+    private int _lastKnownBarCount;
+
+    private void PollMissingBars()
+    {
+        // BarClosed/OnBar may not fire for every bar in ctrader-cli backtest.
+        // Poll the bars collection on each tick to catch any we missed.
+        var bars = MarketData.GetBars(TimeFrame, SymbolName);
+        if (bars is null || bars.Count <= _lastKnownBarCount) return;
+
+        // New bars appeared — publish them oldest-first
+        for (var i = bars.Count - 1; i > _lastKnownBarCount; i--)
+        {
+            var bar = bars.Last(i);
+            if (bar.Open == 0 && bar.High == 0) continue;
+            PublishBarInternal(
+                SymbolName, TimeFrame.ShortName,
+                bar.OpenTime, bar.Open, bar.High, bar.Low, bar.Close,
+                (long)bar.TickVolume);
+        }
+        _lastKnownBarCount = bars.Count;
+    }
+
+    private void PublishBarInternal(string symbol, string period, DateTime openTime, double open, double high, double low, double close, long volume)
+    {
+        // Deduplicate: skip if we already published this bar's open time
+        if (openTime <= _lastPublishedBarOpen) return;
+        _lastPublishedBarOpen = openTime;
+
+        Publish("bar", new
+        {
+            symbol,
+            period,
+            openTime = openTime.ToString("o"),
+            open,
+            high,
+            low,
+            close,
+            volume
+        });
+
+        Print($"CBOT|BAR|{symbol}|{period}|openTime={openTime:yyyy-MM-dd HH:mm}|close={close:F5}");
+    }
+
+    protected override void OnBar()
+    {
+        // OnBar() fires for every completed bar during backtest replay
+        var bars = MarketData.GetBars(TimeFrame, SymbolName);
+        if (bars is null || bars.Count == 0) return;
+        var bar = bars.Last(1);
+        if (bar.Open == 0 && bar.High == 0) return;
+
+        PublishBarInternal(
+            SymbolName,
+            TimeFrame.ShortName,
+            bar.OpenTime,
+            bar.Open, bar.High, bar.Low, bar.Close,
+            (long)bar.TickVolume);
+    }
+
     private void OnBarClosed(BarClosedEventArgs args)
     {
+        // bars.BarClosed as a secondary source — dedup handles overlap with OnBar()
         var bars = args.Bars;
         var bar = bars.Last(1);
         if (bar.Open == 0 && bar.High == 0) return;
 
-        Publish("bar", new
-        {
-            symbol = bars.SymbolName,
-            period = TimeFrame.ShortName,
-            openTime = bar.OpenTime.ToString("o"),
-            open = bar.Open,
-            high = bar.High,
-            low = bar.Low,
-            close = bar.Close,
-            volume = (long)bar.TickVolume
-        });
-
-        Print($"CBOT|BAR|{bars.SymbolName}|{TimeFrame.ShortName}|{bar.OpenTime:yyyy-MM-dd HH:mm}|close={bar.Close:F5}");
+        PublishBarInternal(
+            bars.SymbolName,
+            TimeFrame.ShortName,
+            bar.OpenTime,
+            bar.Open, bar.High, bar.Low, bar.Close,
+            (long)bar.TickVolume);
     }
 
     private void OnDealerReceive(object? sender, NetMQSocketEventArgs e)

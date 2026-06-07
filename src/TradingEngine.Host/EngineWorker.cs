@@ -190,8 +190,8 @@ public sealed class EngineWorker : BackgroundService
 
                 await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe);
 
-                _logger.LogInformation("BAR_EVAL|{Symbol}|{Tf}|{Close:F5}|bars={Count}|total={Total}",
-                    bar.Symbol.Value, bar.Timeframe, bar.Close, barCount, Interlocked.Read(ref _barCount));
+                _logger.LogInformation("BAR_EVAL|{Symbol}|{Tf}|openTime={OpenTime:yyyy-MM-dd HH:mm}|close={Close:F5}|bars={Count}|total={Total}",
+                    bar.Symbol.Value, bar.Timeframe, bar.OpenTimeUtc, bar.Close, barCount, Interlocked.Read(ref _barCount));
 
                 var halfSpread = ResolveHalfSpread(bar.Symbol);
                 var closeTick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread,
