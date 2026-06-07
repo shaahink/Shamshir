@@ -13,18 +13,16 @@ public class AccountUpdatePublisher
 
     public void Publish(double balance, double equity, double floatingPnl, DateTime timestamp)
     {
-        var payload = MessageSerializer.Serialize(new
-        {
-            Balance = balance,
-            Equity = equity,
-            FloatingPnL = floatingPnl,
-            TimestampUtc = timestamp.ToString("o")
-        });
-
         _pipe.Send(new PipeMessage
         {
             Type = "AccountUpdate",
-            Payload = payload
+            Payload = new
+            {
+                Balance = balance,
+                Equity = equity,
+                FloatingPnL = floatingPnl,
+                TimestampUtc = timestamp.ToString("o")
+            }
         });
     }
 }

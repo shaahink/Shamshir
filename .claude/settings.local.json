@@ -6,7 +6,25 @@
       "Bash(Sort-Object FullName)",
       "Bash(Get-ChildItem -Path \"C:\\\\code\\\\Shamshir\" -Recurse -Force)",
       "Bash(Measure-Object)",
-      "Bash(Select-Object Count)"
+      "Bash(Select-Object Count)",
+      "Bash(Get-ChildItem -Path \"C:\\\\code\\\\Shamshir\" -Recurse -Directory)",
+      "Bash(Select-Object FullName)",
+      "Bash(xargs grep -l \"record ExecutionEvent\\\\|class ExecutionEvent\\\\|record OrderRequest\\\\|class OrderRequest\\\\|record AccountUpdate\\\\|class AccountUpdate\")",
+      "Bash(xargs grep -l \"NotImplementedException\\\\|throw new NotImplemented\")",
+      "Bash(xargs grep -A 1 \"{ }$\\\\|{ }\\\\$\")",
+      "Bash(xargs grep -i \"TODO\\\\|FIXME\\\\|BUG\\\\|HACK\")",
+      "Bash(xargs grep -l \"return\\\\s*$\\\\|{.*}\\\\s*$\")",
+      "Bash(xargs grep -l \"public\\\\|internal\")",
+      "Bash(New-Item -ItemType File -Path \"C:\\\\code\\\\Shamshir\\\\ITERATION-3-FINAL.md\" -Force)",
+      "Bash(Out-Null)",
+      "PowerShell(New-Item *)",
+      "PowerShell(Get-Command *)",
+      "WebFetch(domain:help.ctrader.com)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(Select-String -Path \"C:\\\\code\\\\Shamshir\\\\DECISIONS.md\" -Pattern \"^\\\\| D6\")",
+      "Bash(Select-Object -Last 10)",
+      "Bash(git *)"
     ]
   }
 }

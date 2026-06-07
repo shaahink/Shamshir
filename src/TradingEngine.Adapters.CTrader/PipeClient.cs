@@ -13,10 +13,13 @@ public class PipeClient
     private readonly string _pipeName;
     private NamedPipeClientStream _pipe;
     private volatile bool _running;
+    private string? _lastConnectError;
 
     public event Action<PipeMessage>? OnMessageReceived;
     public event Action? OnDisconnected;
     public event Action? OnReconnected;
+
+    public string? LastConnectError => _lastConnectError;
 
     public PipeClient(string pipeName = "trading-engine")
     {
@@ -35,25 +38,31 @@ public class PipeClient
             _pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
             _pipe.Connect(timeoutMs);
             _running = true;
+            _lastConnectError = null;
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            _lastConnectError = $"{ex.GetType().Name}: {ex.Message} | Win32={System.Runtime.InteropServices.Marshal.GetLastWin32Error()}";
             return false;
         }
     }
 
     public void RetryConnect()
     {
+        Console.Error.WriteLine($"PIPE_DIAG|RETRY_START|pipe={_pipeName}|maxRetries={MaxRetries}");
         for (var i = 0; i < MaxRetries; i++)
         {
             Thread.Sleep(RetryDelays[i]);
             if (Connect(5000))
             {
+                Console.Error.WriteLine($"PIPE_DIAG|RETRY_SUCCESS|pipe={_pipeName}|attempt={i+1}");
                 OnReconnected?.Invoke();
                 return;
             }
+            Console.Error.WriteLine($"PIPE_DIAG|RETRY_FAILED|pipe={_pipeName}|attempt={i+1}|error={_lastConnectError}");
         }
+        Console.Error.WriteLine($"PIPE_DIAG|GIVE_UP|pipe={_pipeName}|allAttemptsFailed");
     }
 
     public void Disconnect()

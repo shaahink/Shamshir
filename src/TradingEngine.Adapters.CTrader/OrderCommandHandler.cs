@@ -25,19 +25,20 @@ public class OrderCommandHandler
 
     public void Handle(PipeMessage message)
     {
+        var payload = message.Payload is string s ? s : MessageSerializer.Serialize(message.Payload);
         switch (message.Type)
         {
             case "SubmitOrder":
-                HandleSubmitOrder(message.Payload);
+                HandleSubmitOrder(payload);
                 break;
             case "ModifyOrder":
-                HandleModifyOrder(message.Payload);
+                HandleModifyOrder(payload);
                 break;
             case "CancelOrder":
-                HandleCancelOrder(message.Payload);
+                HandleCancelOrder(payload);
                 break;
             case "ClosePosition":
-                HandleClosePosition(message.Payload);
+                HandleClosePosition(payload);
                 break;
         }
     }

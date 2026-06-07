@@ -6,7 +6,7 @@ namespace TradingEngine.Adapters.CTrader;
 public class PipeMessage
 {
     public string Type { get; set; } = "";
-    public string Payload { get; set; } = "";
+    public object Payload { get; set; } = new object();
 
     public byte[] ToByteArray()
     {

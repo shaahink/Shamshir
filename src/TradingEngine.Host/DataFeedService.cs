@@ -56,10 +56,7 @@ public sealed class DataFeedService(
         await foreach (var tick in marketData.StreamTicksAsync(symbol, ct))
         {
             if (broker is SimulatedBrokerAdapter sim)
-            {
                 await sim.TickWriter.WriteAsync(tick, ct);
-                sim.OnTickReceived(tick);
-            }
         }
     }
 }

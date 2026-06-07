@@ -1,4 +1,6 @@
 using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -13,10 +15,14 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private NamedPipeServerStream? _pipeServer;
     private readonly CancellationTokenSource _cts = new();
 
-    private readonly Channel<Tick> _tickChannel = Channel.CreateUnbounded<Tick>();
-    private readonly Channel<Bar> _barChannel = Channel.CreateUnbounded<Bar>();
-    private readonly Channel<AccountUpdate> _accountChannel = Channel.CreateUnbounded<AccountUpdate>();
-    private readonly Channel<ExecutionEvent> _executionChannel = Channel.CreateUnbounded<ExecutionEvent>();
+    private readonly Channel<Tick> _tickChannel =
+        Channel.CreateBounded<Tick>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleWriter = true });
+    private readonly Channel<Bar> _barChannel =
+        Channel.CreateBounded<Bar>(new BoundedChannelOptions(2_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleWriter = true });
+    private readonly Channel<AccountUpdate> _accountChannel =
+        Channel.CreateBounded<AccountUpdate>(new BoundedChannelOptions(1_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleWriter = true });
+    private readonly Channel<ExecutionEvent> _executionChannel =
+        Channel.CreateBounded<ExecutionEvent>(new BoundedChannelOptions(1_000) { FullMode = BoundedChannelFullMode.Wait, SingleWriter = true });
 
     public ChannelReader<Tick> TickStream => _tickChannel.Reader;
     public ChannelReader<Bar> BarStream => _barChannel.Reader;
@@ -55,12 +61,12 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             try
             {
                 _pipeServer?.Dispose();
-                _pipeServer = new NamedPipeServerStream(
-                    _pipeName, PipeDirection.InOut, 1,
-                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                _pipeServer = CreatePipeServer();
+                _logger?.LogInformation("PIPE_SERVER|CREATED|pipe={PipeName}|path=\\\\.\\pipe\\{PipeName}|pid={Pid}",
+                    _pipeName, _pipeName, Environment.ProcessId);
 
                 await _pipeServer.WaitForConnectionAsync(ct);
-                _logger?.LogInformation("Pipe connected. PipeName={PipeName}", _pipeName);
+                _logger?.LogInformation("PIPE_SERVER|CLIENT_CONNECTED|pipe={PipeName}", _pipeName);
                 OnClientConnected?.Invoke();
                 _ = ReadLoopAsync(_cts.Token);
                 return;
@@ -115,6 +121,7 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     private async Task ReadLoopAsync(CancellationToken ct)
     {
+        var readTimeout = TimeSpan.FromSeconds(30);
         while (!ct.IsCancellationRequested)
         {
             try
@@ -125,9 +132,16 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                     continue;
                 }
 
-                var length = await ReadLengthPrefixAsync(ct);
+                // Use a per-read timeout to detect stale connections where
+                // the client has disconnected but ReadAsync hangs indefinitely.
+                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                readCts.CancelAfter(readTimeout);
+                var readCt = readCts.Token;
+
+                var length = await ReadLengthPrefixAsync(readCt);
                 if (length <= 0)
                 {
+                    _logger?.LogWarning("Pipe read returned zero length — client disconnected");
                     await TryReconnectAsync(ct);
                     continue;
                 }
@@ -136,7 +150,7 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                 var totalRead = 0;
                 while (totalRead < length)
                 {
-                    var bytesRead = await _pipeServer.ReadAsync(messageBytes, totalRead, length - totalRead, ct);
+                    var bytesRead = await _pipeServer.ReadAsync(messageBytes, totalRead, length - totalRead, readCt);
                     if (bytesRead == 0) break;
                     totalRead += bytesRead;
                 }
@@ -151,7 +165,12 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                 _logger?.LogDebug("Pipe message received. Length={Length} Preview={Preview}", totalRead, json[..Math.Min(80, json.Length)]);
                 ProcessMessage(json);
             }
-            catch (OperationCanceledException) { break; }
+            catch (OperationCanceledException)
+            {
+                if (ct.IsCancellationRequested) break;
+                _logger?.LogWarning("Pipe read timed out — attempting reconnect");
+                await TryReconnectAsync(ct);
+            }
             catch (IOException ex)
             {
                 _logger?.LogWarning(ex, "Pipe read error — attempting reconnect");
@@ -162,6 +181,24 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                 _logger?.LogError(ex, "Pipe read loop unhandled error — continuing");
             }
         }
+    }
+
+    private NamedPipeServerStream CreatePipeServer()
+    {
+        var security = new PipeSecurity();
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+            PipeAccessRights.FullControl,
+            AccessControlType.Allow));
+        return NamedPipeServerStreamAcl.Create(
+            _pipeName,
+            PipeDirection.InOut,
+            maxNumberOfServerInstances: 1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous,
+            inBufferSize: 65536,
+            outBufferSize: 65536,
+            security);
     }
 
     private async Task TryReconnectAsync(CancellationToken ct)
@@ -176,12 +213,10 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
             try
             {
-                _pipeServer = new NamedPipeServerStream(
-                    _pipeName, PipeDirection.InOut, 1,
-                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                _pipeServer = CreatePipeServer();
 
                 await _pipeServer.WaitForConnectionAsync(ct);
-                _logger?.LogInformation("Pipe reconnected on attempt {Attempt}", attempt + 1);
+                _logger?.LogInformation("PIPE_SERVER|RECONNECTED|pipe={PipeName}|attempt={Attempt}", _pipeName, attempt + 1);
                 OnClientConnected?.Invoke();
                 _accountChannel.Writer.TryWrite(new AccountUpdate(0, 0, 0, DateTime.UtcNow));
                 return;
@@ -217,68 +252,76 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         return BitConverter.ToInt32(buffer, 0);
     }
 
+    private static JsonElement ResolvePayload(JsonDocument doc)
+    {
+        var payloadElem = GetCaseInsensitiveProperty(doc.RootElement, "Payload");
+        if (payloadElem.ValueKind == JsonValueKind.String)
+        {
+            using var inner = JsonDocument.Parse(payloadElem.GetString()!);
+            return inner.RootElement.Clone();
+        }
+        return payloadElem;
+    }
+
     private void ProcessMessage(string json)
     {
         try
         {
             using var doc = JsonDocument.Parse(json);
             var type = GetCaseInsensitiveProperty(doc.RootElement, "Type").GetString();
+            var payload = ResolvePayload(doc);
 
             switch (type)
             {
                 case "Tick":
                 {
-                    var tickPayload = GetCaseInsensitiveProperty(doc.RootElement, "Payload");
                     var tick = new Tick(
-                        Symbol.Parse(CIProp(tickPayload, "Symbol").GetString()!),
-                        CIProp(tickPayload, "Bid").GetDecimal(),
-                        CIProp(tickPayload, "Ask").GetDecimal(),
-                        CIProp(tickPayload, "TimestampUtc").GetDateTime());
+                        Symbol.Parse(CIProp(payload, "Symbol").GetString()!),
+                        CIProp(payload, "Bid").GetDecimal(),
+                        CIProp(payload, "Ask").GetDecimal(),
+                        CIProp(payload, "TimestampUtc").GetDateTime());
                     _tickChannel.Writer.TryWrite(tick);
                     break;
                 }
 
                 case "Bar":
                 {
-                    var barPayload = GetCaseInsensitiveProperty(doc.RootElement, "Payload");
                     var bar = new Bar(
-                        Symbol.Parse(CIProp(barPayload, "Symbol").GetString()!),
-                        Enum.Parse<Timeframe>(CIProp(barPayload, "Timeframe").GetString()!, ignoreCase: true),
-                        CIProp(barPayload, "OpenTimeUtc").GetDateTime(),
-                        CIProp(barPayload, "Open").GetDecimal(),
-                        CIProp(barPayload, "High").GetDecimal(),
-                        CIProp(barPayload, "Low").GetDecimal(),
-                        CIProp(barPayload, "Close").GetDecimal(),
-                        CIProp(barPayload, "Volume").GetDouble());
+                        Symbol.Parse(CIProp(payload, "Symbol").GetString()!),
+                        Enum.Parse<Timeframe>(CIProp(payload, "Timeframe").GetString()!, ignoreCase: true),
+                        CIProp(payload, "OpenTimeUtc").GetDateTime(),
+                        CIProp(payload, "Open").GetDecimal(),
+                        CIProp(payload, "High").GetDecimal(),
+                        CIProp(payload, "Low").GetDecimal(),
+                        CIProp(payload, "Close").GetDecimal(),
+                        CIProp(payload, "Volume").GetDouble());
                     _barChannel.Writer.TryWrite(bar);
                     break;
                 }
 
                 case "AccountUpdate":
                 {
-                    var acctPayload = GetCaseInsensitiveProperty(doc.RootElement, "Payload");
                     var acct = new AccountUpdate(
-                        CIProp(acctPayload, "Balance").GetDecimal(),
-                        CIProp(acctPayload, "Equity").GetDecimal(),
-                        CIProp(acctPayload, "FloatingPnL").GetDecimal(),
-                        CIProp(acctPayload, "TimestampUtc").GetDateTime());
+                        CIProp(payload, "Balance").GetDecimal(),
+                        CIProp(payload, "Equity").GetDecimal(),
+                        CIProp(payload, "FloatingPnL").GetDecimal(),
+                        CIProp(payload, "TimestampUtc").GetDateTime());
                     _accountChannel.Writer.TryWrite(acct);
                     break;
                 }
 
                 case "ExecutionEvent":
                 {
-                    var execPayload = GetCaseInsensitiveProperty(doc.RootElement, "Payload");
-                    var fpElem = GetCaseInsensitivePropertyOrNull(execPayload, "FillPrice");
+                    var fpElem = GetCaseInsensitivePropertyOrNull(payload, "FillPrice");
                     var fillPrice = fpElem.HasValue && fpElem.Value.ValueKind == JsonValueKind.Number
                         ? new Price(fpElem.Value.GetDecimal()) : (Price?)null;
                     var exec = new ExecutionEvent(
-                        CIProp(execPayload, "OrderId").GetGuid(),
-                        Enum.Parse<OrderState>(CIProp(execPayload, "NewState").GetString()!),
+                        CIProp(payload, "OrderId").GetGuid(),
+                        Enum.Parse<OrderState>(CIProp(payload, "NewState").GetString()!),
                         fillPrice,
-                        CIProp(execPayload, "FilledLots").GetDecimal(),
-                        CIPropOrNull(execPayload, "RejectionReason"),
-                        GetDateTimeUtc(execPayload));
+                        CIProp(payload, "FilledLots").GetDecimal(),
+                        CIPropOrNull(payload, "RejectionReason"),
+                        GetDateTimeUtc(payload));
                     _executionChannel.Writer.TryWrite(exec);
                     break;
                 }

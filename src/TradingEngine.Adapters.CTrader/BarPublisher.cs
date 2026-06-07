@@ -14,22 +14,20 @@ public class BarPublisher
     public void Publish(string symbol, string timeframe, DateTime openTime,
         double open, double high, double low, double close, double volume)
     {
-        var payload = MessageSerializer.Serialize(new
-        {
-            Symbol = symbol,
-            Timeframe = timeframe,
-            OpenTimeUtc = openTime.ToString("o"),
-            Open = open,
-            High = high,
-            Low = low,
-            Close = close,
-            Volume = volume
-        });
-
         _pipe.Send(new PipeMessage
         {
             Type = "Bar",
-            Payload = payload
+            Payload = new
+            {
+                Symbol = symbol,
+                Timeframe = timeframe,
+                OpenTimeUtc = openTime.ToString("o"),
+                Open = open,
+                High = high,
+                Low = low,
+                Close = close,
+                Volume = volume
+            }
         });
     }
 }

@@ -102,10 +102,7 @@ public static class Program
             builder.Services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
             builder.Services.AddSingleton<IRiskProfileResolver>(sp => new RiskProfileResolver(loadedConfig.RiskProfiles));
 
-            if (mode == EngineMode.Backtest)
-                builder.Services.AddSingleton<IEngineClock>(new StubClock(DateTime.UtcNow));
-            else
-                builder.Services.AddSingleton<IEngineClock, BrokerClock>();
+            builder.Services.AddSingleton<IEngineClock, BrokerClock>();
 
             var dbPath = builder.Configuration.GetValue<string>("Persistence:DbPath")
                 ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));

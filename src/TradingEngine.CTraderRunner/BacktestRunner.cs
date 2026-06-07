@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Pipes;
 
 namespace TradingEngine.CTraderRunner;
 
@@ -58,6 +59,15 @@ public sealed class BacktestRunner
             _logger.LogInformation("ctrader-cli exited. Code={Code} RunId={RunId}", cliProcess.ExitCode, runId);
             if (!string.IsNullOrWhiteSpace(stderr))
                 _logger.LogWarning("ctrader-cli stderr: {Stderr}", stderr);
+            if (!string.IsNullOrWhiteSpace(stdout))
+            {
+                _logger.LogDebug("ctrader-cli stdout: {Stdout}", stdout);
+                foreach (var line in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (line.Contains("PIPE_DIAG|"))
+                        _logger.LogInformation("cBot: {Line}", line.Trim());
+                }
+            }
 
             return new BacktestResult
             {
@@ -110,16 +120,22 @@ public sealed class BacktestRunner
 
     private static async Task WaitForEngineReadyAsync(string pipeName, TimeSpan timeout, CancellationToken ct)
     {
-        var pipePath = Path.Combine(@"\\.\pipe", pipeName);
-        var deadline = DateTime.UtcNow.Add(timeout);
+        var deadline = DateTime.UtcNow + timeout;
+        var attempt = 0;
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
-            if (File.Exists(pipePath))
+            try
+            {
+                using var probe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                probe.Connect(300);
                 return;
-            await Task.Delay(300, ct);
+            }
+            catch { }
+            attempt++;
+            await Task.Delay(200, ct);
         }
-        throw new TimeoutException($"Engine not ready after {timeout.TotalSeconds}s — pipe '{pipeName}' not visible");
+        throw new TimeoutException($"Engine pipe '{pipeName}' not ready after {timeout.TotalSeconds:F0}s ({attempt} probes)");
     }
 
     private string BuildArgs(BacktestConfig cfg, string algoPath, string pipeName, string reportJsonPath)
@@ -141,6 +157,7 @@ public sealed class BacktestRunner
         sb.Append($" --pwd-file=\"{_config["CTrader:PwdFile"]}\"");
         sb.Append($" --account={_config["CTrader:Account"]}");
         sb.Append($" --PipeName={pipeName}");
+        sb.Append(" --full-access");
         sb.Append(" --exit-on-stop");
         foreach (var (key, value) in cfg.CustomParams)
             sb.Append($" --{key}={value}");

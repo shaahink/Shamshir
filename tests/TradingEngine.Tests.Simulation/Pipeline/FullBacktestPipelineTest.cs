@@ -44,35 +44,21 @@ public sealed class FullBacktestPipelineTest
         engineProcess.Start();
         Console.WriteLine($"[TEST] Engine started. PID={engineProcess.Id} Log={logPath}");
 
-        // ─── Wait for pipe to be created ────────────────────────────────
-        var pipePath = Path.Combine(@"\\.\pipe", pipeName);
-        var readyDeadline = DateTime.UtcNow.AddSeconds(60);
-        var pipeFound = false;
-        while (DateTime.UtcNow < readyDeadline)
-        {
-            if (engineProcess.HasExited)
-            {
-                Console.WriteLine($"[TEST] Engine exited prematurely. ExitCode={engineProcess.ExitCode}");
-                break;
-            }
-            if (File.Exists(pipePath)) { pipeFound = true; break; }
-            await Task.Delay(500);
-        }
-
-        if (!pipeFound)
+        // ─── Wait for engine to initialize ────────────────────────────
+        await Task.Delay(3000);
+        if (engineProcess.HasExited)
         {
             engineProcess.Kill(entireProcessTree: true);
             await engineProcess.WaitForExitAsync(CancellationToken.None);
-
             var logFiles = Directory.GetFiles(workDir, "*.log");
             var logContent = logFiles.Length > 0 ? await File.ReadAllTextAsync(logFiles[0]) : "(no log file)";
-            var output = $"[TEST] Engine pipe not found within 60s. Exited={(engineProcess.HasExited ? "yes" : "no")}\n\nEngine log:\n{logContent}";
+            var output = $"[TEST] Engine exited prematurely. ExitCode={engineProcess.ExitCode}\n\nEngine log:\n{logContent}";
             File.WriteAllText(Path.Combine(workDir, "test-output.txt"), output);
             Console.WriteLine(output);
-            Assert.Fail($"Engine pipe '{pipeName}' not found within 60s. See {workDir}\\test-output.txt");
+            Assert.Fail($"Engine exited during startup. See {workDir}\\test-output.txt");
             return;
         }
-        Console.WriteLine($"[TEST] Pipe ready after ~{(DateTime.UtcNow.AddSeconds(-60)).ToString()}");
+        Console.WriteLine($"[TEST] Engine initialized");
         // ─── Run backtest ────────────────────────────────────────────────
         try
         {
@@ -188,7 +174,129 @@ public sealed class FullBacktestPipelineTest
             Console.WriteLine("=== END ===");
         }
 
+        if (pipeConnected.Count == 0)
+        {
+            Assert.Fail($"Pipe never connected. Check PIPE_DIAG lines:\n{string.Join('\n', allLines.Where(l => l.Contains("PIPE_DIAG")))}");
+            return;
+        }
+        if (tickLines.Count == 0)
+        {
+            Assert.Fail($"No ticks received. Pipe connected but no data flowed. BAR lines={barLines.Count}");
+            return;
+        }
+        barLines.Should().NotBeEmpty("bars must arrive before strategies can evaluate");
         signalYes.Should().NotBeEmpty("at least one strategy should generate a signal over 3 months of H1 EURUSD data");
+    }
+
+    [Trait("Category", "Fast")]
+    [Fact(Timeout = 120_000)]
+    public async Task EurUsdH1_ThreeDays_VerifiesPipeAndDataFlow()
+    {
+        var ctid = Environment.GetEnvironmentVariable("CTrader__CtId");
+        var pwdFile = Environment.GetEnvironmentVariable("CTrader__PwdFile");
+        var account = Environment.GetEnvironmentVariable("CTrader__Account");
+
+        if (string.IsNullOrEmpty(ctid) || string.IsNullOrEmpty(pwdFile) || string.IsNullOrEmpty(account))
+            throw new InvalidOperationException("Set CTrader__CtId, CTrader__PwdFile, CTrader__Account env vars first");
+
+        var runId = Guid.NewGuid().ToString("N")[..8];
+        var workDir = Path.Combine(Path.GetTempPath(), "shamshir-pipe", runId);
+        Directory.CreateDirectory(workDir);
+        var logPath = Path.Combine(workDir, "engine.log");
+        var pipeName = $"shamshir-{runId}";
+        var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var engineProj = Path.Combine(solutionRoot, "src", "TradingEngine.Host", "TradingEngine.Host.csproj");
+
+        var psi = new ProcessStartInfo("dotnet", $"run --project \"{engineProj}\" --no-build")
+        {
+            UseShellExecute = false, CreateNoWindow = true,
+            Environment =
+            {
+                ["Engine__Mode"] = "Live",
+                ["Engine__Broker__PipeName"] = pipeName,
+                ["ASPNETCORE_ENVIRONMENT"] = "Development",
+                ["SERILOG_FILE_PATH"] = logPath,
+            },
+        };
+
+        using var engineProcess = new Process { StartInfo = psi };
+        engineProcess.Start();
+
+        await Task.Delay(3000);
+        if (engineProcess.HasExited)
+        {
+            engineProcess.Kill(entireProcessTree: true);
+            await engineProcess.WaitForExitAsync(CancellationToken.None);
+            var logFiles = Directory.GetFiles(workDir, "*.log");
+            var logContent = logFiles.Length > 0 ? await File.ReadAllTextAsync(logFiles[0]) : "(no log file)";
+            Console.WriteLine($"[TEST] Engine exited prematurely. ExitCode={engineProcess.ExitCode}\n\nEngine log:\n{logContent}");
+            Assert.Fail($"Engine exited during startup");
+            return;
+        }
+
+        try
+        {
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["CTrader:CtId"] = ctid,
+                    ["CTrader:PwdFile"] = pwdFile,
+                    ["CTrader:Account"] = account,
+                    ["Engine:Broker:PipeName"] = pipeName,
+                })
+                .AddEnvironmentVariables()
+                .Build();
+
+            var runnerLogger = new SimpleLogger<BacktestRunner>();
+            var runner = new BacktestRunner(config, runnerLogger);
+
+            var cfg = new BacktestConfig
+            {
+                Symbol = "EURUSD",
+                Period = "h1",
+                Start = new DateTime(2024, 1, 15),
+                End = new DateTime(2024, 1, 18),
+                Balance = 100_000,
+            };
+
+            Console.WriteLine($"[TEST] Launching backtest (3 days)...");
+            var result = await runner.RunAsync(cfg);
+            Console.WriteLine($"[TEST] CLI done. ExitCode={result.ExitCode} RunId={result.RunId}");
+        }
+        finally
+        {
+            if (!engineProcess.HasExited)
+            {
+                engineProcess.Kill(entireProcessTree: true);
+                await engineProcess.WaitForExitAsync(CancellationToken.None);
+            }
+        }
+
+        var foundLogs = Directory.GetFiles(workDir, "*.log");
+        if (foundLogs.Length == 0) { Assert.Fail($"Engine log not found in {workDir}"); return; }
+
+        string[] allLines = [];
+        for (var retry = 0; retry < 5; retry++)
+        {
+            try
+            {
+                using var fs = new FileStream(foundLogs[0], FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var sr = new StreamReader(fs);
+                allLines = (await sr.ReadToEndAsync()).Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+                break;
+            }
+            catch (IOException) when (retry < 4) { await Task.Delay(500); }
+        }
+
+        var barLines = allLines.Where(l => l.Contains("BAR|")).ToList();
+        var tickLines = allLines.Where(l => l.Contains("TICK|")).ToList();
+        var pipeConnected = allLines.Where(l => l.Contains("PIPE_SERVER|CLIENT_CONNECTED") || l.Contains("Pipe connected")).ToList();
+
+        Console.WriteLine($"[TEST] 3-day test — Pipe connected: {pipeConnected.Count}, TICK: {tickLines.Count}, BAR: {barLines.Count}");
+
+        pipeConnected.Should().NotBeEmpty("engine should connect to pipe");
+        tickLines.Should().NotBeEmpty("ticks should flow through pipe");
+        barLines.Should().NotBeEmpty("at least one bar should arrive");
     }
 }
 

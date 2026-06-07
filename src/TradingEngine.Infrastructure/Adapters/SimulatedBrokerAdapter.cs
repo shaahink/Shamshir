@@ -4,10 +4,14 @@ namespace TradingEngine.Infrastructure.Adapters;
 
 public sealed class SimulatedBrokerAdapter : IBrokerAdapter
 {
-    private readonly Channel<Tick> _tickChannel = Channel.CreateUnbounded<Tick>();
-    private readonly Channel<Bar> _barChannel = Channel.CreateUnbounded<Bar>();
-    private readonly Channel<AccountUpdate> _accountChannel = Channel.CreateUnbounded<AccountUpdate>();
-    private readonly Channel<ExecutionEvent> _executionChannel = Channel.CreateUnbounded<ExecutionEvent>();
+    private readonly Channel<Tick> _tickChannel =
+        Channel.CreateBounded<Tick>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleWriter = true });
+    private readonly Channel<Bar> _barChannel =
+        Channel.CreateBounded<Bar>(new BoundedChannelOptions(2_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleWriter = true });
+    private readonly Channel<AccountUpdate> _accountChannel =
+        Channel.CreateBounded<AccountUpdate>(new BoundedChannelOptions(1_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleWriter = true });
+    private readonly Channel<ExecutionEvent> _executionChannel =
+        Channel.CreateBounded<ExecutionEvent>(new BoundedChannelOptions(1_000) { FullMode = BoundedChannelFullMode.Wait, SingleWriter = true });
 
     public ChannelReader<Tick> TickStream => _tickChannel.Reader;
     public ChannelReader<Bar> BarStream => _barChannel.Reader;
