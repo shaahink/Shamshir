@@ -160,7 +160,8 @@ public sealed class BacktestRunner
         sb.Append($" --account={_config["CTrader:Account"]}");
         sb.Append($" --DataPort={dataPort}");
         sb.Append($" --CommandPort={commandPort}");
-        sb.Append(" --full-access");
+        if (cfg.UseFullAccess)
+            sb.Append(" --full-access");
         sb.Append(" --exit-on-stop");
         foreach (var (key, value) in cfg.CustomParams)
             sb.Append($" --{key}={value}");

@@ -12,5 +12,6 @@ public sealed record BacktestConfig
     public string DataMode { get; init; } = "m1";
     public string? DataFile { get; init; }
     public string? DataDir { get; init; }
+    public bool UseFullAccess { get; init; } = true;
     public Dictionary<string, string> CustomParams { get; init; } = new();
 }
