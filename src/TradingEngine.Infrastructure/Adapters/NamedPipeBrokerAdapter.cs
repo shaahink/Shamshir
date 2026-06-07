@@ -148,6 +148,7 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                 }
 
                 var json = Encoding.UTF8.GetString(messageBytes, 0, totalRead);
+                _logger?.LogDebug("Pipe message received. Length={Length} Preview={Preview}", totalRead, json[..Math.Min(80, json.Length)]);
                 ProcessMessage(json);
             }
             catch (OperationCanceledException) { break; }
@@ -155,6 +156,10 @@ public sealed class NamedPipeBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             {
                 _logger?.LogWarning(ex, "Pipe read error — attempting reconnect");
                 await TryReconnectAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Pipe read loop unhandled error — continuing");
             }
         }
     }

@@ -8,6 +8,9 @@ public static class Program
 {
     public static void Main(string[] args)
     {
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SERILOG_FILE_PATH")))
+            Environment.SetEnvironmentVariable("SERILOG_FILE_PATH", "logs/engine-.log");
+
         Log.Logger = new LoggerConfiguration()
             .ReadFrom.Configuration(new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json", optional: true)
@@ -125,11 +128,17 @@ public static class Program
             var registry = new StrategyRegistry();
             var activeStrategyIds = builder.Configuration.GetValue<string>("Engine:ActiveStrategyIds")?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
                 ?? ["trend-breakout", "ema-alignment", "mean-reversion", "session-breakout"];
-            var strategies = registry.CreateStrategies(activeStrategyIds, loadedConfig, builder.Services.BuildServiceProvider());
-            foreach (var strategy in strategies)
-                builder.Services.AddSingleton(strategy);
 
-            builder.Services.AddSingleton<IStrategy>(sp => sp.GetServices<IStrategy>().First());
+            builder.Services.AddSingleton(registry);
+            builder.Services.AddSingleton<IReadOnlyList<string>>(activeStrategyIds);
+            builder.Services.AddSingleton<IEnumerable<IStrategy>>(sp =>
+            {
+                var reg = sp.GetRequiredService<StrategyRegistry>();
+                var ids = sp.GetRequiredService<IReadOnlyList<string>>();
+                var cfg = sp.GetRequiredService<LoadedConfig>();
+                return reg.CreateStrategies(ids, cfg, sp);
+            });
+            builder.Services.AddSingleton<IStrategy>(sp => sp.GetRequiredService<IEnumerable<IStrategy>>().First());
 
             if (mode == EngineMode.Backtest)
             {

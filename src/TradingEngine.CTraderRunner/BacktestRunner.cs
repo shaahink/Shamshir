@@ -40,7 +40,7 @@ public sealed class BacktestRunner
             var algoPath = ResolveAlgoPath();
             var args = BuildArgs(cfg, algoPath, pipeName, reportJsonPath);
 
-            _logger.LogInformation("Launching ctrader-cli. RunId={RunId}", runId);
+            _logger.LogInformation("Launching ctrader-cli. RunId={RunId} Cmd={CliPath} {Args}", runId, cliPath, args);
             using var cliProcess = Process.Start(new ProcessStartInfo(cliPath, args)
             {
                 RedirectStandardOutput = true,
