@@ -92,8 +92,8 @@ public sealed class EngineWorker : BackgroundService
         _logger.LogInformation("Engine starting. Mode={Mode} Strategies={Count}",
             _engineMode, _strategies.Count());
 
-        if (_broker is NamedPipeBrokerAdapter pipeAdapter)
-            pipeAdapter.OnClientConnected = ResetState;
+        if (_broker is NetMQBrokerAdapter mqAdapter)
+            mqAdapter.OnConnected = ResetState;
 
         await _broker.ConnectAsync(ct);
 
@@ -138,13 +138,19 @@ public sealed class EngineWorker : BackgroundService
                 Interlocked.Increment(ref _tickCount);
 
                 while (_executionEventChannel.Reader.TryRead(out var execEvent))
+                {
                     _positionTracker.OnExecution(execEvent, _strategies);
+                    _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
+                        execEvent.OrderId, execEvent.NewState,
+                        execEvent.FillPrice?.Value.ToString("F5") ?? "none",
+                        execEvent.FilledLots);
+                }
 
                 if (_riskManager.ConsumeForceClosePending())
                 {
-                    var openPosis = _positionTracker.OpenPositions;
-                    _logger.LogCritical("Force-close triggered. Closing {Count} open positions", openPosis.Count);
-                    foreach (var (_, pos) in openPosis.ToList())
+                    _logger.LogCritical("Force-close triggered. Closing {Count} open positions",
+                        _positionTracker.OpenPositions.Count);
+                    foreach (var (_, pos) in _positionTracker.OpenPositions.ToList())
                         await _broker.ClosePositionAsync(pos.Id, ct);
                 }
 
@@ -155,73 +161,12 @@ public sealed class EngineWorker : BackgroundService
                 if (_dataFeed is not null && _broker is SimulatedBrokerAdapter sim)
                     sim.OnTickReceived(tick);
 
-                await Task.Yield();
-
-                var allBars = BuildBarSnapshot(tick.Symbol);
-                var totalBarsAll = allBars?.Values.Sum(b => b.Count) ?? 0;
-                var prefix = $"{tick.Symbol}:";
-                var symIndCount = _indicatorValues.Count(kv => kv.Key.StartsWith(prefix));
-                _logger.LogInformation("TICK|{Symbol}|{Bid:F5}|{Ask:F5}|{Bars}|{Ind}|{Total}",
-                    tick.Symbol.Value, tick.Bid, tick.Ask, totalBarsAll, symIndCount, Interlocked.Read(ref _tickCount));
-
-                foreach (var strategy in _strategies)
-                {
-                    var barSnapshot = allBars;
-                    if (barSnapshot is null)
-                    {
-                        _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|NO_BARS|||", strategy.Id, tick.Symbol.Value);
-                        continue;
-                    }
-                    var totalBars = barSnapshot.Values.Sum(b => b.Count);
-                    if (totalBars < strategy.RequiredBarCount)
-                    {
-                        _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|NEED_BARS|{Have}|{Need}|",
-                            strategy.Id, tick.Symbol.Value, totalBars, strategy.RequiredBarCount);
-                        continue;
-                    }
-
-                    BuildIndicatorSnapshot(tick.Symbol);
-                    var context = new MarketContext(tick.Symbol, tick, barSnapshot, _reusableIndicatorDict, _clock.UtcNow);
-
-                    var intent = strategy.Evaluate(context);
-                    if (intent is null)
-                    {
-                        _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|NO||{Ind}",
-                            strategy.Id, tick.Symbol.Value, _reusableIndicatorDict.Count);
-                        continue;
-                    }
-                    _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|YES|{Dir}|{Bars}|{Ind}",
-                        strategy.Id, tick.Symbol.Value, intent.Direction, totalBars, _reusableIndicatorDict.Count);
-                    _logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
-
-                    var equity = Volatile.Read(ref _currentEquity);
-
-                    var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, tick.Mid, _broker, ct);
-                    if (orderCtx is null) continue;
-
-                    var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol, intent.Direction, OrderType.Market, intent.LimitPrice);
-                    _positionTracker.TrackOrder(orderCtx.OrderId, orderReq, orderCtx.RiskAmount);
-
-                    _logger.LogInformation("Trade opened. Strategy={Strategy} Symbol={Symbol} Dir={Dir} Lots={Lots} Entry={Entry} SL={SL} TP={TP}",
-                        strategy.Id, intent.Symbol, intent.Direction, orderCtx.Lots, tick.Mid,
-                        intent.StopLoss.Value, intent.TakeProfit?.Value);
-                }
+                _logger.LogDebug("TICK|{Symbol}|{Bid:F5}|{Ask:F5}|{Total}",
+                    tick.Symbol.Value, tick.Bid, tick.Ask, Interlocked.Read(ref _tickCount));
             }
         }
         catch (OperationCanceledException) { }
         _logger.LogDebug("Tick processor stopped");
-    }
-
-    private void BuildIndicatorSnapshot(Symbol symbol)
-    {
-        _reusableIndicatorDict.Clear();
-        var prefix = $"{symbol}:";
-        var prefixLen = prefix.Length;
-        foreach (var (key, value) in _indicatorValues)
-        {
-            if (key.StartsWith(prefix))
-                _reusableIndicatorDict[key[prefixLen..]] = value;
-        }
     }
 
     private async Task ProcessBarsAsync(CancellationToken ct)
@@ -242,13 +187,76 @@ public sealed class EngineWorker : BackgroundService
                         list.RemoveAt(0);
                     barCount = list.Count;
                 }
-                _logger.LogInformation("BAR|{Symbol}|{Tf}|{Close:F5}|{Count}|{Total}",
-                    bar.Symbol.Value, bar.Timeframe, bar.Close, barCount, Interlocked.Read(ref _barCount));
+
                 await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe);
+
+                _logger.LogInformation("BAR_EVAL|{Symbol}|{Tf}|{Close:F5}|bars={Count}|total={Total}",
+                    bar.Symbol.Value, bar.Timeframe, bar.Close, barCount, Interlocked.Read(ref _barCount));
+
+                var halfSpread = ResolveHalfSpread(bar.Symbol);
+                var closeTick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread,
+                    bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
+                var barSnapshot = BuildBarSnapshot(bar.Symbol);
+                if (barSnapshot is null) continue;
+
+                BuildIndicatorSnapshot(bar.Symbol);
+
+                foreach (var strategy in _strategies)
+                {
+                    var totalBars = barSnapshot.Values.Sum(b => b.Count);
+                    if (totalBars < strategy.RequiredBarCount)
+                    {
+                        _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NEED_BARS|have={Have}|need={Need}",
+                            strategy.Id, bar.Symbol.Value, totalBars, strategy.RequiredBarCount);
+                        continue;
+                    }
+
+                    var context = new MarketContext(bar.Symbol, closeTick, barSnapshot,
+                        _reusableIndicatorDict, _clock.UtcNow);
+                    var intent = strategy.Evaluate(context);
+
+                    if (intent is null)
+                    {
+                        _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NO_SIGNAL", strategy.Id, bar.Symbol.Value);
+                        continue;
+                    }
+
+                    _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|{Dir}|sl={SL:F5}|tp={TP}",
+                        strategy.Id, bar.Symbol.Value, intent.Direction,
+                        intent.StopLoss.Value, intent.TakeProfit?.Value.ToString("F5") ?? "none");
+                    _logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
+
+                    var equity = Volatile.Read(ref _currentEquity);
+                    var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, bar.Close, _broker, ct);
+                    if (orderCtx is null) continue;
+
+                    var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,
+                        intent.Direction, OrderType.Market, intent.LimitPrice);
+                    _positionTracker.TrackOrder(orderCtx.OrderId, orderReq, orderCtx.RiskAmount);
+
+                    _logger.LogInformation("ORDER|{Strategy}|{OrderId}|{Dir}|lots={Lots}|entry={Entry:F5}",
+                        strategy.Id, orderCtx.OrderId, intent.Direction, orderCtx.Lots, bar.Close);
+                }
             }
         }
         catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Bar processor crashed");
+        }
         _logger.LogDebug("Bar processor stopped");
+    }
+
+    private void BuildIndicatorSnapshot(Symbol symbol)
+    {
+        _reusableIndicatorDict.Clear();
+        var prefix = $"{symbol}:";
+        var prefixLen = prefix.Length;
+        foreach (var (key, value) in _indicatorValues)
+        {
+            if (key.StartsWith(prefix))
+                _reusableIndicatorDict[key[prefixLen..]] = value;
+        }
     }
 
     private async Task ProcessAccountUpdatesAsync(CancellationToken ct)
@@ -286,6 +294,8 @@ public sealed class EngineWorker : BackgroundService
         if (_engineMode != EngineMode.Backtest)
             _ = _persistence.SaveEquitySnapshotAsync(equity, CancellationToken.None);
         _ = _eventBus.PublishAsync(new EquityUpdated(equity, riskState, _clock.UtcNow), CancellationToken.None);
+        _logger.LogInformation("ACCOUNT|balance={Balance:F2}|equity={Equity:F2}|dd={DD:P1}",
+            update.Balance, update.Equity, riskState.DailyDrawdownUsed);
     }
 
     private IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>? BuildBarSnapshot(Symbol symbol)
@@ -318,6 +328,7 @@ public sealed class EngineWorker : BackgroundService
                     IndicatorType.Ema => _indicators.Ema(bars, req.Period),
                     IndicatorType.Rsi => _indicators.Rsi(bars, req.Period),
                     IndicatorType.Sma => _indicators.Sma(bars, req.Period),
+                    IndicatorType.BollingerBands => _indicators.BollingerBands(bars, req.Period, req.StdDev).Middle,
                     _ => throw new NotSupportedException($"Indicator {req.Type} not supported for recompute")
                 };
             }
@@ -335,4 +346,22 @@ public sealed class EngineWorker : BackgroundService
         }
         await Task.CompletedTask;
     }
+
+    private decimal ResolveHalfSpread(Symbol symbol)
+    {
+        try { return _symbolRegistry.Get(symbol).TypicalSpread / 2m; }
+        catch { return 0.00005m; }
+    }
+
+    private static TimeSpan GetBarDuration(Timeframe tf) => tf switch
+    {
+        Timeframe.M1 => TimeSpan.FromMinutes(1),
+        Timeframe.M5 => TimeSpan.FromMinutes(5),
+        Timeframe.M15 => TimeSpan.FromMinutes(15),
+        Timeframe.M30 => TimeSpan.FromMinutes(30),
+        Timeframe.H1 => TimeSpan.FromHours(1),
+        Timeframe.H4 => TimeSpan.FromHours(4),
+        Timeframe.D1 => TimeSpan.FromDays(1),
+        _ => TimeSpan.FromHours(1),
+    };
 }

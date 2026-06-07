@@ -38,9 +38,12 @@ public static class Program
 
             if (mode == EngineMode.Live || mode == EngineMode.Paper)
             {
-                var pipeName = builder.Configuration.GetValue<string>("Engine:Broker:PipeName") ?? "trading-engine";
-                builder.Services.AddSingleton<IBrokerAdapter>(sp =>
-                    new NamedPipeBrokerAdapter(pipeName, sp.GetRequiredService<ILogger<NamedPipeBrokerAdapter>>()));
+                var dataPort = int.TryParse(builder.Configuration["Engine:Broker:NetMQ:DataPort"], out var dp) ? dp : 15555;
+                var commandPort = int.TryParse(builder.Configuration["Engine:Broker:NetMQ:CommandPort"], out var cp) ? cp : 15556;
+                builder.Services.AddSingleton<IBrokerAdapter>(sp => new NetMQBrokerAdapter(
+                    $"tcp://127.0.0.1:{dataPort}",
+                    $"tcp://*:{commandPort}",
+                    sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()));
             }
             else
             {

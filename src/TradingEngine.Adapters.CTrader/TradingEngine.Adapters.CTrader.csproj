@@ -7,7 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="cTrader.Automate" Version="*" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.*" />
+    <PackageReference Include="NetMQ" Version="4.*" />
   </ItemGroup>
 
   <Target Name="AutoDeployAlgo" AfterTargets="Build"

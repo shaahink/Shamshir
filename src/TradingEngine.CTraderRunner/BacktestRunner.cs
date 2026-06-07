@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.IO.Pipes;
+using System.Net.Sockets;
 
 namespace TradingEngine.CTraderRunner;
 
@@ -17,7 +17,8 @@ public sealed class BacktestRunner
     public async Task<BacktestResult> RunAsync(BacktestConfig cfg, CancellationToken ct = default)
     {
         var runId = Guid.NewGuid().ToString("N")[..8];
-        var pipeName = _config["Engine:Broker:PipeName"] ?? "trading-engine";
+        var dataPort = int.TryParse(_config["Engine:Broker:NetMQ:DataPort"], out var dp) ? dp : 15555;
+        var commandPort = int.TryParse(_config["Engine:Broker:NetMQ:CommandPort"], out var cp) ? cp : 15556;
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
         var reportJsonPath = Path.Combine(resultsDir, "report.json");
@@ -26,20 +27,20 @@ public sealed class BacktestRunner
         var startSubprocess = string.Equals(_config["CTrader:StartEngineSubprocess"], "true", StringComparison.OrdinalIgnoreCase);
         if (startSubprocess)
         {
-            engineProcess = StartEngine(pipeName, runId);
+            engineProcess = StartEngine(dataPort, commandPort, runId);
             _logger.LogInformation("Engine subprocess started. PID={Pid}", engineProcess?.Id ?? -1);
-            await WaitForEngineReadyAsync(pipeName, TimeSpan.FromSeconds(30), ct);
+            await WaitForEngineReadyAsync(commandPort, TimeSpan.FromSeconds(30), ct);
         }
         else
         {
-            _logger.LogInformation("Using Aspire-managed engine. Pipe={Pipe}", pipeName);
+            _logger.LogInformation("Using Aspire-managed engine. DataPort={DataPort} CommandPort={CommandPort}", dataPort, commandPort);
         }
 
         try
         {
             var cliPath = CTraderCliLocator.Locate(_config);
             var algoPath = ResolveAlgoPath();
-            var args = BuildArgs(cfg, algoPath, pipeName, reportJsonPath);
+            var args = BuildArgs(cfg, algoPath, dataPort, commandPort, reportJsonPath);
 
             _logger.LogInformation("Launching ctrader-cli. RunId={RunId} Cmd={CliPath} {Args}", runId, cliPath, args);
             using var cliProcess = Process.Start(new ProcessStartInfo(cliPath, args)
@@ -64,7 +65,7 @@ public sealed class BacktestRunner
                 _logger.LogDebug("ctrader-cli stdout: {Stdout}", stdout);
                 foreach (var line in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
                 {
-                    if (line.Contains("PIPE_DIAG|"))
+                    if (line.Contains("CBOT|"))
                         _logger.LogInformation("cBot: {Line}", line.Trim());
                 }
             }
@@ -87,7 +88,7 @@ public sealed class BacktestRunner
         }
     }
 
-    private Process? StartEngine(string pipeName, string runId)
+    private Process? StartEngine(int dataPort, int commandPort, string runId)
     {
         var baseDir = AppContext.BaseDirectory;
         var engineProjPath = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
@@ -108,7 +109,8 @@ public sealed class BacktestRunner
             Environment =
             {
                 ["Engine__Mode"] = "Live",
-                ["Engine__Broker__PipeName"] = pipeName,
+                ["Engine__Broker__NetMQ__DataPort"] = dataPort.ToString(),
+                ["Engine__Broker__NetMQ__CommandPort"] = commandPort.ToString(),
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
             },
         };
@@ -118,7 +120,7 @@ public sealed class BacktestRunner
         return process;
     }
 
-    private static async Task WaitForEngineReadyAsync(string pipeName, TimeSpan timeout, CancellationToken ct)
+    private static async Task WaitForEngineReadyAsync(int commandPort, TimeSpan timeout, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow + timeout;
         var attempt = 0;
@@ -127,18 +129,18 @@ public sealed class BacktestRunner
             ct.ThrowIfCancellationRequested();
             try
             {
-                using var probe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-                probe.Connect(300);
+                using var tcp = new TcpClient();
+                await tcp.ConnectAsync("127.0.0.1", commandPort);
                 return;
             }
             catch { }
             attempt++;
-            await Task.Delay(200, ct);
+            await Task.Delay(300, ct);
         }
-        throw new TimeoutException($"Engine pipe '{pipeName}' not ready after {timeout.TotalSeconds:F0}s ({attempt} probes)");
+        throw new TimeoutException($"Engine command port {commandPort} not ready after {timeout.TotalSeconds:F0}s ({attempt} probes)");
     }
 
-    private string BuildArgs(BacktestConfig cfg, string algoPath, string pipeName, string reportJsonPath)
+    private string BuildArgs(BacktestConfig cfg, string algoPath, int dataPort, int commandPort, string reportJsonPath)
     {
         var sb = new StringBuilder();
         sb.Append($"backtest \"{algoPath}\"");
@@ -156,7 +158,8 @@ public sealed class BacktestRunner
         sb.Append($" --ctid={_config["CTrader:CtId"]}");
         sb.Append($" --pwd-file=\"{_config["CTrader:PwdFile"]}\"");
         sb.Append($" --account={_config["CTrader:Account"]}");
-        sb.Append($" --PipeName={pipeName}");
+        sb.Append($" --DataPort={dataPort}");
+        sb.Append($" --CommandPort={commandPort}");
         sb.Append(" --full-access");
         sb.Append(" --exit-on-stop");
         foreach (var (key, value) in cfg.CustomParams)

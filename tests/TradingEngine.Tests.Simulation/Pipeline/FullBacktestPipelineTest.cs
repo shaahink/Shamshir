@@ -142,22 +142,16 @@ public sealed class FullBacktestPipelineTest
         }
         File.WriteAllLines(Path.Combine(workDir, "full-engine-log.txt"), allLines);
 
-        var barLines = allLines.Where(l => l.Contains("BAR|")).ToList();
+        var barLines = allLines.Where(l => l.Contains("BAR_EVAL|")).ToList();
         var tickLines = allLines.Where(l => l.Contains("TICK|")).ToList();
-        var signalYes = allLines.Where(l => l.Contains("SIGNAL|") && l.Contains("|YES|")).ToList();
-        var signalNo = allLines.Where(l => l.Contains("SIGNAL|") && l.Contains("|NO|")).ToList();
-        var needBars = allLines.Where(l => l.Contains("NEED_BARS")).ToList();
-        var skips = allLines.Where(l => l.Contains("SKIP|")).ToList();
-        var pipeConnected = allLines.Where(l => l.Contains("Pipe connected")).ToList();
+        var signalYes = allLines.Where(l => l.Contains("SIGNAL|") && !l.Contains("SIGNAL_REASON|")).ToList();
+        var netmqConnected = allLines.Where(l => l.Contains("NETMQ|")).ToList();
 
         Console.WriteLine($"[TEST] Log analysis:");
-        Console.WriteLine($"  Pipe connected: {pipeConnected.Count}");
-        Console.WriteLine($"  BAR lines: {barLines.Count}");
+        Console.WriteLine($"  NETMQ connected: {netmqConnected.Count}");
+        Console.WriteLine($"  BAR_EVAL lines: {barLines.Count}");
         Console.WriteLine($"  TICK lines: {tickLines.Count}");
-        Console.WriteLine($"  SIGNAL|YES: {signalYes.Count}");
-        Console.WriteLine($"  SIGNAL|NO: {signalNo.Count}");
-        Console.WriteLine($"  NEED_BARS: {needBars.Count}");
-        Console.WriteLine($"  SKIP: {skips.Count}");
+        Console.WriteLine($"  SIGNAL|: {signalYes.Count}");
         Console.WriteLine($"  Total lines: {allLines.Length}");
         Console.WriteLine($"  Full log saved to: {workDir}\\full-engine-log.txt");
 
@@ -175,14 +169,14 @@ public sealed class FullBacktestPipelineTest
             Console.WriteLine("=== END ===");
         }
 
-        if (pipeConnected.Count == 0)
+        if (netmqConnected.Count == 0)
         {
-            Assert.Fail($"Pipe never connected. Check PIPE_DIAG lines:\n{string.Join('\n', allLines.Where(l => l.Contains("PIPE_DIAG")))}");
+            Assert.Fail($"cBot never connected via NetMQ. Check CBOT| lines in ctrader-cli stdout");
             return;
         }
         if (tickLines.Count == 0)
         {
-            Assert.Fail($"No ticks received. Pipe connected but no data flowed. BAR lines={barLines.Count}");
+            Assert.Fail($"No ticks received. NetMQ connected but no data flowed. BAR_EVAL lines={barLines.Count}");
             return;
         }
         barLines.Should().NotBeEmpty("bars must arrive before strategies can evaluate");
@@ -289,14 +283,14 @@ public sealed class FullBacktestPipelineTest
             catch (IOException) when (retry < 4) { await Task.Delay(500); }
         }
 
-        var barLines = allLines.Where(l => l.Contains("BAR|")).ToList();
+        var barLines = allLines.Where(l => l.Contains("BAR_EVAL|")).ToList();
         var tickLines = allLines.Where(l => l.Contains("TICK|")).ToList();
-        var pipeConnected = allLines.Where(l => l.Contains("PIPE_SERVER|CLIENT_CONNECTED") || l.Contains("Pipe connected")).ToList();
+        var netmqConnected = allLines.Where(l => l.Contains("NETMQ|")).ToList();
 
-        Console.WriteLine($"[TEST] 3-day test — Pipe connected: {pipeConnected.Count}, TICK: {tickLines.Count}, BAR: {barLines.Count}");
+        Console.WriteLine($"[TEST] 3-day test — NetMQ connected: {netmqConnected.Count}, TICK: {tickLines.Count}, BAR: {barLines.Count}");
 
-        pipeConnected.Should().NotBeEmpty("engine should connect to pipe");
-        tickLines.Should().NotBeEmpty("ticks should flow through pipe");
+        netmqConnected.Should().NotBeEmpty("engine should connect via NetMQ");
+        tickLines.Should().NotBeEmpty("ticks should flow through NetMQ");
         barLines.Should().NotBeEmpty("at least one bar should arrive");
     }
 }
