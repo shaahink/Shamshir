@@ -283,7 +283,8 @@ public sealed class EngineWorker : BackgroundService
             update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
             update.Equity, update.Equity, riskState.DailyDrawdownUsed, riskState.MaxDrawdownUsed, _engineMode);
         Volatile.Write(ref _currentEquity, equity);
-        _ = _persistence.SaveEquitySnapshotAsync(equity, CancellationToken.None);
+        if (_engineMode != EngineMode.Backtest)
+            _ = _persistence.SaveEquitySnapshotAsync(equity, CancellationToken.None);
         _ = _eventBus.PublishAsync(new EquityUpdated(equity, riskState, _clock.UtcNow), CancellationToken.None);
     }
 

@@ -34,4 +34,18 @@ public sealed class PersistenceService(
             logger.LogError(ex, "Failed to save equity snapshot");
         }
     }
+
+    public async Task SaveEquitySnapshotsBatchAsync(IReadOnlyList<EquitySnapshot> snapshots, CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IEquityRepository>();
+            await repo.SaveBatchAsync(snapshots, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save {Count} equity snapshots", snapshots.Count);
+        }
+    }
 }

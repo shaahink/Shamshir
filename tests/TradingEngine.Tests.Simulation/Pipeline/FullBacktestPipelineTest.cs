@@ -8,6 +8,7 @@ namespace TradingEngine.Tests.Simulation.Pipeline;
 [Trait("Category", "Pipeline")]
 public sealed class FullBacktestPipelineTest
 {
+    [Trait("Category", "Slow")]
     [Fact(Timeout = 600_000)]
     public async Task EurUsdH1_ThreeMonth_GeneratesAtLeastOneTrade()
     {

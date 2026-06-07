@@ -118,6 +118,7 @@ public static class Program
 
             builder.Services.AddSingleton<IPositionManager, PositionManager>();
             builder.Services.AddSingleton<IEventBus, TypedEventBus>();
+            builder.Services.AddSingleton<EquityPersistenceHandler>();
             builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
             builder.Services.AddSingleton<OrderDispatcher>();
             builder.Services.AddSingleton<PositionTracker>();
@@ -156,6 +157,10 @@ public static class Program
             builder.Services.AddHostedService<DailyResetService>();
 
             var app = builder.Build();
+
+            var eventBus = app.Services.GetRequiredService<IEventBus>();
+            var equityHandler = app.Services.GetRequiredService<EquityPersistenceHandler>();
+            eventBus.Subscribe<EquityUpdated>(equityHandler);
 
             var rm = app.Services.GetRequiredService<RiskManager>();
             var activeRiskProfileId = loadedConfig.StrategyConfigs

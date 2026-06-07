@@ -1,3 +1,6 @@
+using System.Data.Common;
+using Microsoft.Data.Sqlite;
+
 namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
 public sealed class SqliteEquityRepository(TradingDbContext db) : IEquityRepository
@@ -18,6 +21,27 @@ public sealed class SqliteEquityRepository(TradingDbContext db) : IEquityReposit
             Mode = snapshot.Mode.ToString(),
         };
         db.EquitySnapshots.Add(entity);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task SaveBatchAsync(IReadOnlyList<EquitySnapshot> snapshots, CancellationToken ct)
+    {
+        foreach (var snapshot in snapshots)
+        {
+            db.EquitySnapshots.Add(new EquitySnapshotEntity
+            {
+                Id = Guid.NewGuid(),
+                TimestampUtc = snapshot.TimestampUtc,
+                Balance = snapshot.Balance,
+                FloatingPnL = snapshot.FloatingPnL,
+                Equity = snapshot.Equity,
+                PeakEquity = snapshot.PeakEquity,
+                DailyStartEquity = snapshot.DailyStartEquity,
+                CurrentDailyDrawdown = snapshot.CurrentDailyDrawdown,
+                CurrentMaxDrawdown = snapshot.CurrentMaxDrawdown,
+                Mode = snapshot.Mode.ToString(),
+            });
+        }
         await db.SaveChangesAsync(ct);
     }
 
