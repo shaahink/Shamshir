@@ -24,6 +24,10 @@ public class TradingEngineCBot : Robot
     private NetMQPoller? _poller;
     private readonly ConcurrentQueue<Action> _mainActions = new();
     private int _tickCounter;
+    private int _barEventCount;
+    private DateTime _prevBarOpen = DateTime.MinValue;
+    private double _prevBarClose;
+    private int _duplicateCount;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -47,8 +51,11 @@ public class TradingEngineCBot : Robot
         _dealer.SendFrame(Serialize("hello", new { }));
 
         var bars = MarketData.GetBars(TimeFrame, SymbolName);
-        Print($"CBOT|BARS_INIT|count={bars.Count}");
-        _lastKnownBarCount = bars.Count;
+        Print($"CBOT|BARS_INIT|count={bars.Count}|firstIdx0={bars.Last(0).OpenTime:yyyy-MM-dd HH:mm}|closeIdx0={bars.Last(0).Close:F5}");
+        if (bars.Count > 1)
+            Print($"CBOT|BARS_INIT|lastCompletedIdx1={bars.Last(1).OpenTime:yyyy-MM-dd HH:mm}|closeIdx1={bars.Last(1).Close:F5}");
+        if (bars.Count > 2)
+            Print($"CBOT|BARS_INIT|prevIdx2={bars.Last(2).OpenTime:yyyy-MM-dd HH:mm}|closeIdx2={bars.Last(2).Close:F5}");
 
         bars.BarClosed += OnBarClosed;
 
@@ -60,8 +67,6 @@ public class TradingEngineCBot : Robot
     protected override void OnTick()
     {
         _tickCounter++;
-
-        PollMissingBars();
 
         while (_mainActions.TryDequeue(out var action))
         {
@@ -83,79 +88,44 @@ public class TradingEngineCBot : Robot
         }
     }
 
-    private DateTime _lastPublishedBarOpen = DateTime.MinValue;
-    private int _lastKnownBarCount;
-
-    private void PollMissingBars()
-    {
-        // BarClosed/OnBar may not fire for every bar in ctrader-cli backtest.
-        // Poll the bars collection on each tick to catch any we missed.
-        var bars = MarketData.GetBars(TimeFrame, SymbolName);
-        if (bars is null || bars.Count <= _lastKnownBarCount) return;
-
-        // New bars appeared — publish them oldest-first
-        for (var i = bars.Count - 1; i > _lastKnownBarCount; i--)
-        {
-            var bar = bars.Last(i);
-            if (bar.Open == 0 && bar.High == 0) continue;
-            PublishBarInternal(
-                SymbolName, TimeFrame.ShortName,
-                bar.OpenTime, bar.Open, bar.High, bar.Low, bar.Close,
-                (long)bar.TickVolume);
-        }
-        _lastKnownBarCount = bars.Count;
-    }
-
-    private void PublishBarInternal(string symbol, string period, DateTime openTime, double open, double high, double low, double close, long volume)
-    {
-        // Deduplicate: skip if we already published this bar's open time
-        if (openTime <= _lastPublishedBarOpen) return;
-        _lastPublishedBarOpen = openTime;
-
-        Publish("bar", new
-        {
-            symbol,
-            period,
-            openTime = openTime.ToString("o"),
-            open,
-            high,
-            low,
-            close,
-            volume
-        });
-
-        Print($"CBOT|BAR|{symbol}|{period}|openTime={openTime:yyyy-MM-dd HH:mm}|close={close:F5}");
-    }
-
-    protected override void OnBar()
-    {
-        // OnBar() fires for every completed bar during backtest replay
-        var bars = MarketData.GetBars(TimeFrame, SymbolName);
-        if (bars is null || bars.Count == 0) return;
-        var bar = bars.Last(1);
-        if (bar.Open == 0 && bar.High == 0) return;
-
-        PublishBarInternal(
-            SymbolName,
-            TimeFrame.ShortName,
-            bar.OpenTime,
-            bar.Open, bar.High, bar.Low, bar.Close,
-            (long)bar.TickVolume);
-    }
-
     private void OnBarClosed(BarClosedEventArgs args)
     {
-        // bars.BarClosed as a secondary source — dedup handles overlap with OnBar()
+        _barEventCount++;
         var bars = args.Bars;
         var bar = bars.Last(1);
         if (bar.Open == 0 && bar.High == 0) return;
 
-        PublishBarInternal(
-            bars.SymbolName,
-            TimeFrame.ShortName,
-            bar.OpenTime,
-            bar.Open, bar.High, bar.Low, bar.Close,
-            (long)bar.TickVolume);
+        // index comparison: Last(1) = most recently completed, Last(2) = prior
+        var hat2Open = bars.Count > 2 ? bars.Last(2).OpenTime : DateTime.MinValue;
+        var isDuplicate = bar.OpenTime == _prevBarOpen && bar.Close == _prevBarClose;
+        if (isDuplicate) _duplicateCount++;
+
+        Print($"CBOT|BAR_EVENT|seq={_barEventCount}|" +
+              $"count={bars.Count}|" +
+              $"openTime={bar.OpenTime:yyyy-MM-dd HH:mm}|" +
+              $"open={bar.Open:F5}|high={bar.High:F5}|low={bar.Low:F5}|close={bar.Close:F5}|" +
+              $"hat2OpenTime={hat2Open:yyyy-MM-dd HH:mm}|" +
+              $"firstIdx0={bars.Last(0).OpenTime:yyyy-MM-dd HH:mm}|" +
+              $"dup={isDuplicate}");
+
+        // Publish only unique bars (by openTime)
+        if (bar.OpenTime > _prevBarOpen)
+        {
+            _prevBarOpen = bar.OpenTime;
+            _prevBarClose = bar.Close;
+
+            Publish("bar", new
+            {
+                symbol = bars.SymbolName,
+                period = TimeFrame.ShortName,
+                openTime = bar.OpenTime.ToString("o"),
+                open = bar.Open,
+                high = bar.High,
+                low = bar.Low,
+                close = bar.Close,
+                volume = (long)bar.TickVolume
+            });
+        }
     }
 
     private void OnDealerReceive(object? sender, NetMQSocketEventArgs e)
@@ -268,7 +238,7 @@ public class TradingEngineCBot : Robot
 
     protected override void OnStop()
     {
-        Print($"CBOT|STOP|ticks={_tickCounter}");
+        Print($"CBOT|STOP|ticks={_tickCounter}|barEvents={_barEventCount}|dup={_duplicateCount}");
         _poller?.StopAsync();
         _dealer?.Dispose();
         _pub?.Dispose();
