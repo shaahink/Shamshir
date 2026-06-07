@@ -21,15 +21,25 @@ public sealed class BacktestRunner
         Directory.CreateDirectory(resultsDir);
         var reportJsonPath = Path.Combine(resultsDir, "report.json");
 
-        // 1. Start engine subprocess
-        var engineProcess = StartEngine(pipeName, runId);
-        _logger.LogInformation("Engine started. PID={Pid} Pipe={PipeName} RunId={RunId}",
-            engineProcess?.Id ?? -1, pipeName, runId);
+        // 1. Start engine subprocess only if no pipe exists
+        Process? engineProcess = null;
+        var pipePath = $@"\\.\pipe\{pipeName}";
+        if (File.Exists(pipePath))
+        {
+            _logger.LogInformation("Engine pipe already exists at {PipeName} — using existing engine", pipeName);
+        }
+        else
+        {
+            engineProcess = StartEngine(pipeName, runId);
+            _logger.LogInformation("Engine started. PID={Pid} Pipe={PipeName} RunId={RunId}",
+                engineProcess?.Id ?? -1, pipeName, runId);
+        }
 
         try
         {
             // 2. Wait for pipe to be ready
-            await WaitForPipeAsync(pipeName, TimeSpan.FromSeconds(10), ct);
+            if (engineProcess is not null)
+                await WaitForPipeAsync(pipeName, TimeSpan.FromSeconds(30), ct);
 
             // 3. Start ctrader-cli
             var cliPath = CTraderCliLocator.Locate(_config);
