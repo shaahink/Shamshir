@@ -1,4 +1,5 @@
 using TradingEngine.Domain;
+using TradingEngine.Infrastructure.Persistence;
 
 namespace TradingEngine.Web.Services;
 
@@ -38,5 +39,60 @@ public sealed class BacktestQueryService : IBacktestQueryService
             s.InitialBalance, s.NetProfit, s.MaxDrawdownPct,
             s.TotalTrades, s.WinningTrades, s.WinRatePct,
             s.AlgoHash, s.ErrorMessage);
+    }
+
+    public async Task<IReadOnlyList<StrategyPerformance>> GetStrategyBreakdownAsync(
+        string runId, CancellationToken ct)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+
+        var evals = await db.BarEvaluations
+            .Where(e => e.RunId == runId)
+            .GroupBy(e => new { e.StrategyId, e.Reason, e.SignalFired })
+            .Select(g => new
+            {
+                g.Key.StrategyId,
+                g.Key.Reason,
+                g.Key.SignalFired,
+                Count = g.Count()
+            })
+            .ToListAsync(ct);
+
+        var trades = await db.Trades
+            .Where(t => t.RunId == runId)
+            .GroupBy(t => t.StrategyId)
+            .Select(g => new
+            {
+                StrategyId = g.Key,
+                Total = g.Count(),
+                Wins = g.Count(t => t.NetPnLAmount > 0)
+            })
+            .ToListAsync(ct);
+
+        var tradeIndex = trades.ToDictionary(t => t.StrategyId);
+        var strategyIds = evals.Select(e => e.StrategyId).Distinct().ToList();
+
+        return strategyIds.Select(sid =>
+        {
+            var stratEvals = evals.Where(e => e.StrategyId == sid).ToList();
+            var total   = stratEvals.Sum(e => e.Count);
+            var signals = stratEvals.Where(e => e.SignalFired).Sum(e => e.Count);
+            var noSignal = stratEvals
+                .Where(e => !e.SignalFired)
+                .OrderByDescending(e => e.Count)
+                .Take(5)
+                .Select(e => (e.Reason, e.Count))
+                .ToList();
+
+            var t = tradeIndex.GetValueOrDefault(sid);
+            var wins   = t?.Wins ?? 0;
+            var opened = t?.Total ?? 0;
+            var losses = opened - wins;
+            var wr = opened > 0 ? (double)wins / opened : 0d;
+
+            return new StrategyPerformance(sid, total, signals, opened, wins, losses, wr,
+                noSignal.AsReadOnly());
+        }).ToList();
     }
 }

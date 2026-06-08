@@ -9,6 +9,7 @@ public sealed class DetailModel : PageModel
 
     public BacktestRunView? Run { get; private set; }
     public bool IsActive { get; private set; }
+    public IReadOnlyList<StrategyPerformance> StrategyBreakdown { get; private set; } = [];
 
     public DetailModel(IBacktestQueryService query, BacktestOrchestrator orchestrator)
     {
@@ -31,5 +32,11 @@ public sealed class DetailModel : PageModel
 
         Run = await _query.GetRunAsync(runId, HttpContext.RequestAborted);
         IsActive = false;
+
+        if (!IsActive && Run is not null)
+        {
+            StrategyBreakdown = await _query.GetStrategyBreakdownAsync(
+                runId, HttpContext.RequestAborted);
+        }
     }
 }

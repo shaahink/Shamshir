@@ -42,8 +42,12 @@ else
     }
 </div>
 
+<div id="counters" style="font-size:0.9rem;color:#888;margin-bottom:0.5rem;">
+    Bars: 0 | Signals: 0 | Trades: 0
+</div>
+
 <h3>Log</h3>
-<pre id="log" style="background:#1e1e1e;color:#d4d4d4;padding:1rem;border-radius:4px;max-height:400px;overflow-y:auto;font-size:0.85rem;"></pre>
+<div id="log" style="background:#1e1e1e;color:#d4d4d4;padding:1rem;border-radius:4px;max-height:400px;overflow-y:auto;font-size:0.85rem;"></div>
 
 @section Scripts {
 <script>
@@ -53,19 +57,37 @@ else
     const resultDiv = document.getElementById('result');
     const errorBox = document.getElementById('errorBox');
     const errorText = document.getElementById('errorText');
+    const countersEl = document.getElementById('counters');
+
+    let barCount = 0, signalCount = 0, tradeCount = 0;
 
     const evtSource = new EventSource(`/api/backtest/${runId}/stream`);
     evtSource.onmessage = function(e) {
         const data = JSON.parse(e.data);
+
+        if (data.eventType) {
+            const el = document.createElement('div');
+            el.style.cssText = eventStyle(data.eventType);
+            el.textContent = data.message;
+            logEl.appendChild(el);
+            logEl.scrollTop = logEl.scrollHeight;
+
+            if (data.eventType === 'BAR') barCount++;
+            if (data.eventType === 'SIGNAL') signalCount++;
+            if (data.eventType === 'TRADE') tradeCount++;
+            if (countersEl) countersEl.textContent =
+                `Bars: ${barCount.toLocaleString()} | Signals: ${signalCount} | Trades: ${tradeCount}`;
+            return;
+        }
+
         if (data.line) {
             logEl.textContent += data.line + '\n';
             logEl.scrollTop = logEl.scrollHeight;
         }
+
         if (data.done) {
             statusText.textContent = data.status;
-            if (data.status === 'completed') {
-                resultDiv.style.display = 'block';
-            }
+            if (data.status === 'completed') resultDiv.style.display = 'block';
             if (data.status === 'failed') {
                 logEl.textContent += '\n[Backtest failed. See error above.]\n';
                 if (data.error) {
@@ -73,7 +95,6 @@ else
                     errorText.textContent = data.error;
                 }
             }
-            // Fetch status to get result with report path
             fetch(`/api/backtest/${runId}/status`)
                 .then(r => r.json())
                 .then(s => {
@@ -91,10 +112,19 @@ else
             evtSource.close();
         }
     };
+
     evtSource.onerror = function() {
         if (evtSource.readyState === EventSource.CLOSED) {
             logEl.textContent += '\n[Connection closed. Backtest has finished.]\n';
         }
     };
+
+    function eventStyle(type) {
+        const base = 'padding:1px 0;font-size:0.82rem;font-family:monospace;';
+        if (type === 'SIGNAL') return base + 'color:#58a6ff;';
+        if (type === 'ORDER')  return base + 'color:#3fb950;';
+        if (type === 'TRADE')  return base + 'color:#ffa657;font-weight:bold;';
+        return base + 'color:#8b949e;';
+    }
 </script>
 }

@@ -19,8 +19,19 @@ public sealed record BacktestRunView(
 
 public sealed record EquityPoint(DateTime TimestampUtc, decimal Equity, decimal Balance);
 
+public sealed record StrategyPerformance(
+    string StrategyId,
+    int TotalBarsEvaluated,
+    int SignalsFired,
+    int TradesOpened,
+    int Wins,
+    int Losses,
+    double WinRatePct,
+    IReadOnlyList<(string Reason, int Count)> TopRejections);
+
 public interface IBacktestQueryService
 {
     Task<IReadOnlyList<BacktestRunView>> GetAllRunsAsync(CancellationToken ct);
     Task<BacktestRunView?> GetRunAsync(string runId, CancellationToken ct);
+    Task<IReadOnlyList<StrategyPerformance>> GetStrategyBreakdownAsync(string runId, CancellationToken ct);
 }

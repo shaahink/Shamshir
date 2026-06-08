@@ -21,6 +21,7 @@ public sealed class EngineWorker : BackgroundService
     private readonly EngineMode _engineMode;
     private readonly EngineRunContext _runContext;
     private readonly ILogger<EngineWorker> _logger;
+    private readonly IProgress<BacktestProgressEvent>? _progress;
 
     private readonly ConcurrentDictionary<Symbol, ConcurrentDictionary<Timeframe, List<Bar>>> _bars = new();
     private readonly ConcurrentDictionary<string, double> _indicatorValues = new();
@@ -57,7 +58,8 @@ public sealed class EngineWorker : BackgroundService
         PositionTracker positionTracker,
         ILogger<EngineWorker> logger,
         EngineRunContext runContext,
-        DataFeedService? dataFeed = null)
+        DataFeedService? dataFeed = null,
+        IProgress<BacktestProgressEvent>? progress = null)
     {
         _broker = broker;
         _riskManager = riskManager;
@@ -77,6 +79,7 @@ public sealed class EngineWorker : BackgroundService
             ? EngineMode.Backtest : EngineMode.Live;
         _dataFeed = dataFeed;
         _logger = logger;
+        _progress = progress;
     }
 
     private void ResetState()
@@ -196,8 +199,13 @@ public sealed class EngineWorker : BackgroundService
 
                     await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe);
 
-                    _logger.LogInformation("BAR_EVAL|{Symbol}|{Tf}|openTime={OpenTime:yyyy-MM-dd HH:mm}|close={Close:F5}|bars={Count}|total={Total}",
+                    _logger.LogDebug("BAR_EVAL|{Symbol}|{Tf}|openTime={OpenTime:yyyy-MM-dd HH:mm}|close={Close:F5}|bars={Count}|total={Total}",
                         bar.Symbol.Value, bar.Timeframe, bar.OpenTimeUtc, bar.Close, barCount, Interlocked.Read(ref _barCount));
+
+                    _progress?.Report(new BacktestProgressEvent(
+                        _runContext.RunId, "BAR",
+                        $"Bar {bar.OpenTimeUtc:yyyy-MM-dd HH:mm} | close={bar.Close:F5} | total={Interlocked.Read(ref _barCount)}",
+                        _clock.UtcNow));
 
                     var halfSpread = ResolveHalfSpread(bar.Symbol);
                     var closeTick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread,
@@ -244,6 +252,11 @@ public sealed class EngineWorker : BackgroundService
                             intent.StopLoss.Value, intent.TakeProfit?.Value.ToString("F5") ?? "none");
                         _logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
 
+                        _progress?.Report(new BacktestProgressEvent(
+                            _runContext.RunId, "SIGNAL",
+                            $"SIGNAL {strategy.Id} {intent.Direction} sl={intent.StopLoss.Value:F5} tp={intent.TakeProfit?.Value.ToString("F5") ?? "none"} reason={intent.Reason}",
+                            _clock.UtcNow));
+
                         var equity = Volatile.Read(ref _currentEquity);
                         if (equity.Balance == 0)
                         {
@@ -260,6 +273,11 @@ public sealed class EngineWorker : BackgroundService
 
                         _logger.LogInformation("ORDER|{Strategy}|{OrderId}|{Dir}|lots={Lots}|entry={Entry:F5}",
                             strategy.Id, orderCtx.OrderId, intent.Direction, orderCtx.Lots, bar.Close);
+
+                        _progress?.Report(new BacktestProgressEvent(
+                            _runContext.RunId, "ORDER",
+                            $"ORDER {strategy.Id} {intent.Direction} lots={orderCtx.Lots:F2} entry≈{bar.Close:F5}",
+                            _clock.UtcNow));
                     }
                 }
                 catch (OperationCanceledException) { throw; }

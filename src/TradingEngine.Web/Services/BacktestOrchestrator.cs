@@ -54,6 +54,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         _progressStore.GetWriter(runId).TryWrite(json);
     }
 
+    private void PushProgressEvent(string runId, string eventType, string message)
+    {
+        var json = JsonSerializer.Serialize(new { eventType, message });
+        _progressStore.GetWriter(runId).TryWrite(json);
+    }
+
     private void EnqueueLog(string runId, ConcurrentQueue<string> queue, string msg)
     {
         queue.Enqueue(msg);
@@ -285,6 +291,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
 
+                var progressCallback = new Progress<BacktestProgressEvent>(evt =>
+                {
+                    PushProgressEvent(runId, evt.EventType, evt.Message);
+                });
+                services.AddSingleton<IProgress<BacktestProgressEvent>>(_ => progressCallback);
+
                 var registry = new StrategyRegistry();
                 services.AddSingleton(registry);
                 services.AddSingleton<IEnumerable<IStrategy>>(sp =>
@@ -295,7 +307,24 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     return reg.CreateStrategies(activeIds, loaded, sp);
                 });
 
-                services.AddSingleton<EngineWorker>();
+                services.AddSingleton<EngineWorker>(sp => new EngineWorker(
+                    sp.GetRequiredService<IBrokerAdapter>(),
+                    sp.GetRequiredService<IRiskManager>(),
+                    sp.GetRequiredService<DrawdownTracker>(),
+                    sp.GetRequiredService<IEnumerable<IStrategy>>(),
+                    sp.GetRequiredService<IIndicatorService>(),
+                    sp.GetRequiredService<IEventBus>(),
+                    sp.GetRequiredService<IEngineClock>(),
+                    sp.GetRequiredService<ISymbolInfoRegistry>(),
+                    sp.GetRequiredService<IRiskProfileResolver>(),
+                    sp.GetRequiredService<Func<string, string, decimal>>(),
+                    sp.GetRequiredService<PersistenceService>(),
+                    sp.GetRequiredService<OrderDispatcher>(),
+                    sp.GetRequiredService<PositionTracker>(),
+                    sp.GetRequiredService<ILogger<EngineWorker>>(),
+                    sp.GetRequiredService<EngineRunContext>(),
+                    dataFeed: null,
+                    progress: sp.GetRequiredService<IProgress<BacktestProgressEvent>>()));
                 services.AddHostedService<EngineWorker>(sp =>
                     sp.GetRequiredService<EngineWorker>());
             })

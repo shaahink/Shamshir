@@ -33,5 +33,37 @@ else
             <tr><td>Winning Trades</td><td>@Model.Run.WinningTrades</td></tr>
             <tr><td>Win Rate</td><td>@Model.Run.WinRatePct.ToString("P1")</td></tr>
         </table>
+
+        @if (Model.StrategyBreakdown.Count > 0)
+        {
+            <h3>Strategy Breakdown</h3>
+            <table class="table">
+                <thead>
+                    <tr><th>Strategy</th><th>Bars</th><th>Signals</th><th>Trades</th><th>W</th><th>L</th><th>Win%</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var s in Model.StrategyBreakdown)
+                {
+                    <tr>
+                        <td>@s.StrategyId</td>
+                        <td>@s.TotalBarsEvaluated.ToString("N0")</td>
+                        <td>@s.SignalsFired</td>
+                        <td>@s.TradesOpened</td>
+                        <td>@s.Wins</td>
+                        <td>@s.Losses</td>
+                        <td>@s.WinRatePct.ToString("P0")</td>
+                    </tr>
+                    @if (s.TopRejections.Count > 0)
+                    {
+                        <tr>
+                            <td colspan="7" style="padding-left:2rem;color:#888;font-size:0.85rem;">
+                                Top rejections: @string.Join(" | ", s.TopRejections.Select(r => $"\"{r.Reason}\" x{r.Count}"))
+                            </td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
+        }
     }
 }
