@@ -13,5 +13,7 @@ public sealed record BacktestConfig
     public string? DataFile { get; init; }
     public string? DataDir { get; init; }
     public bool UseFullAccess { get; init; } = true;
+    public string[] Symbols { get; init; } = ["EURUSD"];
+    public string[] Periods { get; init; } = ["H1"];
     public Dictionary<string, string> CustomParams { get; init; } = new();
 }

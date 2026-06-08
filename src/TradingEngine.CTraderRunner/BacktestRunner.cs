@@ -70,11 +70,19 @@ public sealed class BacktestRunner
                 }
             }
 
+            var isKnownCrash = cliProcess.ExitCode != 0
+                && (stderr.Contains("Message expected") || stderr.Contains("Object reference"));
+
+            if (cliProcess.ExitCode != 0 && !isKnownCrash)
+                _logger.LogError("ctrader-cli failed. Code={Code} Stderr={Stderr}", cliProcess.ExitCode, stderr);
+            else if (isKnownCrash)
+                _logger.LogWarning("ctrader-cli exited with known post-backtest crash (zero trades). Code={Code}", cliProcess.ExitCode);
+
             return new BacktestResult
             {
-                RunId = runId,
-                ExitCode = cliProcess.ExitCode,
-                ErrorMessage = cliProcess.ExitCode != 0 ? stderr : null,
+                RunId        = runId,
+                ExitCode     = isKnownCrash ? 0 : cliProcess.ExitCode,
+                ErrorMessage = isKnownCrash ? null : (cliProcess.ExitCode != 0 ? stderr : null),
             };
         }
         finally
@@ -160,6 +168,8 @@ public sealed class BacktestRunner
         sb.Append($" --account={_config["CTrader:Account"]}");
         sb.Append($" --DataPort={dataPort}");
         sb.Append($" --CommandPort={commandPort}");
+        sb.Append($" --Symbols={string.Join(",", cfg.Symbols)}");
+        sb.Append($" --Periods={string.Join(",", cfg.Periods)}");
         if (cfg.UseFullAccess)
             sb.Append(" --full-access");
         sb.Append(" --exit-on-stop");

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Text.Json;
 using cAlgo.API;
 using NetMQ;
@@ -19,18 +20,30 @@ public class TradingEngineCBot : Robot
     [Parameter("Tick Every N", DefaultValue = "10")]
     public int TickEveryN { get; set; } = 10;
 
+    [Parameter("Symbols", DefaultValue = "EURUSD")]
+    public string SymbolString { get; set; } = "EURUSD";
+
+    [Parameter("Periods", DefaultValue = "H1")]
+    public string Periods { get; set; } = "H1";
+
     private PublisherSocket? _pub;
     private DealerSocket? _dealer;
     private NetMQPoller? _poller;
     private readonly ConcurrentQueue<Action> _mainActions = new();
     private int _tickCounter;
     private int _barEventCount;
-    private DateTime _prevBarOpen = DateTime.MinValue;
-    private double _prevBarClose;
     private int _duplicateCount;
+    private readonly HashSet<(string symbol, string tf, DateTime openTime)> _publishedBars = new();
+    private readonly List<Bars> _subscriptions = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    private void Diag(string msg)
+    {
+        if (_pub is null) return;
+        _pub.SendMoreFrame("diag").SendFrame(msg);
+    }
 
     protected override void OnStart()
     {
@@ -50,14 +63,7 @@ public class TradingEngineCBot : Robot
 
         _dealer.SendFrame(Serialize("hello", new { }));
 
-        var bars = MarketData.GetBars(TimeFrame, SymbolName);
-        Print($"CBOT|BARS_INIT|count={bars.Count}|firstIdx0={bars.Last(0).OpenTime:yyyy-MM-dd HH:mm}|closeIdx0={bars.Last(0).Close:F5}");
-        if (bars.Count > 1)
-            Print($"CBOT|BARS_INIT|lastCompletedIdx1={bars.Last(1).OpenTime:yyyy-MM-dd HH:mm}|closeIdx1={bars.Last(1).Close:F5}");
-        if (bars.Count > 2)
-            Print($"CBOT|BARS_INIT|prevIdx2={bars.Last(2).OpenTime:yyyy-MM-dd HH:mm}|closeIdx2={bars.Last(2).Close:F5}");
-
-        bars.BarClosed += OnBarClosed;
+        SubscribeAll();
 
         PublishAccount();
 
@@ -95,10 +101,10 @@ public class TradingEngineCBot : Robot
         var bar = bars.Last(1);
         if (bar.Open == 0 && bar.High == 0) return;
 
-        // index comparison: Last(1) = most recently completed, Last(2) = prior
+        var key = (bars.SymbolName, bars.TimeFrame.ShortName, bar.OpenTime);
+        if (!_publishedBars.Add(key)) { _duplicateCount++; return; }
+
         var hat2Open = bars.Count > 2 ? bars.Last(2).OpenTime : DateTime.MinValue;
-        var isDuplicate = bar.OpenTime == _prevBarOpen && bar.Close == _prevBarClose;
-        if (isDuplicate) _duplicateCount++;
 
         Print($"CBOT|BAR_EVENT|seq={_barEventCount}|" +
               $"count={bars.Count}|" +
@@ -106,26 +112,23 @@ public class TradingEngineCBot : Robot
               $"open={bar.Open:F5}|high={bar.High:F5}|low={bar.Low:F5}|close={bar.Close:F5}|" +
               $"hat2OpenTime={hat2Open:yyyy-MM-dd HH:mm}|" +
               $"firstIdx0={bars.Last(0).OpenTime:yyyy-MM-dd HH:mm}|" +
-              $"dup={isDuplicate}");
+              $"dup=false");
 
-        // Publish only unique bars (by openTime)
-        if (bar.OpenTime > _prevBarOpen)
+        var openTimeUtc = DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc).ToString("o");
+
+        Diag($"BAR_SENT|{bars.SymbolName}|{bars.TimeFrame.ShortName}|{openTimeUtc}|close={bar.Close:F5}|seq={_barEventCount}");
+
+        Publish("bar", new
         {
-            _prevBarOpen = bar.OpenTime;
-            _prevBarClose = bar.Close;
-
-            Publish("bar", new
-            {
-                symbol = bars.SymbolName,
-                period = TimeFrame.ShortName,
-                openTime = bar.OpenTime.ToString("o"),
-                open = bar.Open,
-                high = bar.High,
-                low = bar.Low,
-                close = bar.Close,
-                volume = (long)bar.TickVolume
-            });
-        }
+            symbol = bars.SymbolName,
+            period = bars.TimeFrame.ShortName,
+            openTime = openTimeUtc,
+            open = bar.Open,
+            high = bar.High,
+            low = bar.Low,
+            close = bar.Close,
+            volume = (long)bar.TickVolume
+        });
     }
 
     private void OnDealerReceive(object? sender, NetMQSocketEventArgs e)
@@ -166,10 +169,13 @@ public class TradingEngineCBot : Robot
         var slPrice       = cmd.GetProperty("slPrice").GetDouble();
         var tpPrice       = cmd.GetProperty("tpPrice").GetDouble();
 
+        Diag($"CMD_RECV|submit_order|{clientOrderId}|{symbol}|{direction}|lots={lots:F4}");
+
         var sym = Symbols.GetSymbol(symbol);
         if (sym is null)
         {
             PublishExec(clientOrderId, "Rejected", 0, 0, "Unknown symbol: " + symbol);
+            Diag($"EXEC_SENT|{clientOrderId}|Rejected|reason=Unknown symbol");
             return;
         }
 
@@ -183,11 +189,13 @@ public class TradingEngineCBot : Robot
         {
             var pos = result.Position;
             PublishExec(clientOrderId, "Filled", pos.EntryPrice, pos.VolumeInUnits / sym.LotSize, null);
+            Diag($"EXEC_SENT|{clientOrderId}|Filled|fill={pos.EntryPrice:F5}|lots={pos.VolumeInUnits / sym.LotSize:F4}");
             PublishAccount();
         }
         else
         {
             PublishExec(clientOrderId, "Rejected", 0, 0, result?.Error.ToString() ?? "Null result");
+            Diag($"EXEC_SENT|{clientOrderId}|Rejected|reason={result?.Error}");
         }
     }
 
@@ -238,6 +246,7 @@ public class TradingEngineCBot : Robot
 
     protected override void OnStop()
     {
+        Diag($"STOP|ticks={_tickCounter}|barEvents={_barEventCount}|dup={_duplicateCount}");
         Print($"CBOT|STOP|ticks={_tickCounter}|barEvents={_barEventCount}|dup={_duplicateCount}");
         _poller?.StopAsync();
         _dealer?.Dispose();
@@ -245,6 +254,35 @@ public class TradingEngineCBot : Robot
         _poller?.Dispose();
         NetMQConfig.Cleanup(false);
     }
+
+    private void SubscribeAll()
+    {
+        var symbols = SymbolString.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var periods  = Periods.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var sym in symbols)
+        foreach (var period in periods)
+        {
+            var tf   = ParseTimeFrame(period);
+            var bars = MarketData.GetBars(tf, sym);
+            bars.BarClosed += OnBarClosed;
+            _subscriptions.Add(bars);
+            Diag($"SUBSCRIBED|{sym}|{period}|loaded={bars.Count}");
+        }
+    }
+
+    private static TimeFrame ParseTimeFrame(string s) => s.ToUpperInvariant() switch
+    {
+        "M1"  => TimeFrame.Minute,
+        "M5"  => TimeFrame.Minute5,
+        "M15" => TimeFrame.Minute15,
+        "M30" => TimeFrame.Minute30,
+        "H1"  => TimeFrame.Hour,
+        "H4"  => TimeFrame.Hour4,
+        "D1"  => TimeFrame.Daily,
+        "W1"  => TimeFrame.Weekly,
+        _     => throw new ArgumentException($"Unknown timeframe: {s}")
+    };
 
     private void Publish(string topic, object payload)
     {

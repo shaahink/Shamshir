@@ -78,8 +78,15 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         try
         {
             var topic = e.Socket.ReceiveFrameString();
-            var json = e.Socket.ReceiveFrameString();
-            using var doc = JsonDocument.Parse(json);
+            var frame = e.Socket.ReceiveFrameString();
+
+            if (topic == "diag")
+            {
+                _logger.LogInformation("CBOT|{Msg}", frame);
+                return;
+            }
+
+            using var doc = JsonDocument.Parse(frame);
             DispatchMessage(topic, doc.RootElement);
         }
         catch (Exception ex)

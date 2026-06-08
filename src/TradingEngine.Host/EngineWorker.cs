@@ -229,6 +229,12 @@ public sealed class EngineWorker : BackgroundService
                         _logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
 
                         var equity = Volatile.Read(ref _currentEquity);
+                        if (equity.Balance == 0)
+                        {
+                            _logger.LogWarning("DISPATCH_SKIP|{Strategy}|{Symbol}|reason=equity not initialized",
+                                strategy.Id, bar.Symbol.Value);
+                            continue;
+                        }
                         var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, bar.Close, _broker, ct);
                         if (orderCtx is null) continue;
 

@@ -19,6 +19,7 @@ public sealed class FullBacktestPipelineTest
         if (string.IsNullOrEmpty(ctid) || string.IsNullOrEmpty(pwdFile) || string.IsNullOrEmpty(account))
             throw new InvalidOperationException("Set CTrader__CtId, CTrader__PwdFile, CTrader__Account env vars first");
 
+        var (dataPort, commandPort) = PortHelper.AllocatePair();
         var runId = Guid.NewGuid().ToString("N")[..8];
         var workDir = Path.Combine(Path.GetTempPath(), "shamshir-pipe", runId);
         Directory.CreateDirectory(workDir);
@@ -34,8 +35,8 @@ public sealed class FullBacktestPipelineTest
             Environment =
             {
                 ["Engine__Mode"] = "Live",
-                ["Engine__Broker__NetMQ__DataPort"] = "15555",
-                ["Engine__Broker__NetMQ__CommandPort"] = "15556",
+                ["Engine__Broker__NetMQ__DataPort"] = dataPort.ToString(),
+                ["Engine__Broker__NetMQ__CommandPort"] = commandPort.ToString(),
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 ["SERILOG_FILE_PATH"] = logPath,
             },
@@ -69,8 +70,8 @@ public sealed class FullBacktestPipelineTest
                     ["CTrader:CtId"] = ctid,
                     ["CTrader:PwdFile"] = pwdFile,
                     ["CTrader:Account"] = account,
-                    ["Engine:Broker:NetMQ:DataPort"] = "15555",
-                    ["Engine:Broker:NetMQ:CommandPort"] = "15556",
+                    ["Engine:Broker:NetMQ:DataPort"] = dataPort.ToString(),
+                    ["Engine:Broker:NetMQ:CommandPort"] = commandPort.ToString(),
                 })
                 .AddEnvironmentVariables()
                 .Build();
@@ -147,12 +148,18 @@ public sealed class FullBacktestPipelineTest
         var tickLines = allLines.Where(l => l.Contains("TICK|")).ToList();
         var signalYes = allLines.Where(l => l.Contains("SIGNAL|") && !l.Contains("SIGNAL_REASON|")).ToList();
         var netmqConnected = allLines.Where(l => l.Contains("NETMQ|")).ToList();
+        var orderLines = allLines.Where(l => l.Contains("ORDER|")).ToList();
+        var execLines = allLines.Where(l => l.Contains("EXEC|") && !l.Contains("EXEC_SENT")).ToList();
+        var cbotDiag = allLines.Where(l => l.Contains("CBOT|")).ToList();
 
         Console.WriteLine($"[TEST] Log analysis:");
+        Console.WriteLine($"  CBOT| diag lines: {cbotDiag.Count}");
         Console.WriteLine($"  NETMQ connected: {netmqConnected.Count}");
         Console.WriteLine($"  BAR_EVAL lines: {barLines.Count}");
         Console.WriteLine($"  TICK lines: {tickLines.Count}");
         Console.WriteLine($"  SIGNAL|: {signalYes.Count}");
+        Console.WriteLine($"  ORDER lines: {orderLines.Count}");
+        Console.WriteLine($"  EXEC  lines: {execLines.Count}");
         Console.WriteLine($"  Total lines: {allLines.Length}");
         Console.WriteLine($"  Full log saved to: {workDir}\\full-engine-log.txt");
 
@@ -175,13 +182,21 @@ public sealed class FullBacktestPipelineTest
             Assert.Fail($"cBot never connected via NetMQ. Check CBOT| lines in ctrader-cli stdout");
             return;
         }
+        if (!barLines.Any())
+        {
+            Assert.Fail("No BAR_EVAL lines. Check CBOT|BAR_SENT and CBOT|BAR_INIT in log.");
+            return;
+        }
         if (tickLines.Count == 0)
         {
             Assert.Fail($"No ticks received. NetMQ connected but no data flowed. BAR_EVAL lines={barLines.Count}");
             return;
         }
-        barLines.Should().NotBeEmpty("bars must arrive before strategies can evaluate");
-        signalYes.Should().NotBeEmpty("at least one strategy should generate a signal over 3 months of H1 EURUSD data");
+        barLines.Count.Should().BeGreaterThan(50,
+            "strategies need warmup bars — if failing, check HistoryBars parameter and .cbotset cache");
+        signalYes.Should().NotBeEmpty("at least one strategy should signal over the test period");
+        orderLines.Should().NotBeEmpty("a signal must produce an ORDER — check equity guard and DispatchAsync");
+        execLines.Should().NotBeEmpty("an ORDER must produce an EXEC — check CBOT|EXEC_SENT in log");
     }
 
     [Trait("Category", "Fast")]
@@ -195,6 +210,7 @@ public sealed class FullBacktestPipelineTest
         if (string.IsNullOrEmpty(ctid) || string.IsNullOrEmpty(pwdFile) || string.IsNullOrEmpty(account))
             throw new InvalidOperationException("Set CTrader__CtId, CTrader__PwdFile, CTrader__Account env vars first");
 
+        var (dataPort, commandPort) = PortHelper.AllocatePair();
         var runId = Guid.NewGuid().ToString("N")[..8];
         var workDir = Path.Combine(Path.GetTempPath(), "shamshir-pipe", runId);
         Directory.CreateDirectory(workDir);
@@ -208,8 +224,8 @@ public sealed class FullBacktestPipelineTest
             Environment =
             {
                 ["Engine__Mode"] = "Live",
-                ["Engine__Broker__NetMQ__DataPort"] = "15555",
-                ["Engine__Broker__NetMQ__CommandPort"] = "15556",
+                ["Engine__Broker__NetMQ__DataPort"] = dataPort.ToString(),
+                ["Engine__Broker__NetMQ__CommandPort"] = commandPort.ToString(),
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 ["SERILOG_FILE_PATH"] = logPath,
             },
@@ -238,8 +254,8 @@ public sealed class FullBacktestPipelineTest
                     ["CTrader:CtId"] = ctid,
                     ["CTrader:PwdFile"] = pwdFile,
                     ["CTrader:Account"] = account,
-                    ["Engine:Broker:NetMQ:DataPort"] = "15555",
-                    ["Engine:Broker:NetMQ:CommandPort"] = "15556",
+                    ["Engine:Broker:NetMQ:DataPort"] = dataPort.ToString(),
+                    ["Engine:Broker:NetMQ:CommandPort"] = commandPort.ToString(),
                 })
                 .AddEnvironmentVariables()
                 .Build();
@@ -288,8 +304,9 @@ public sealed class FullBacktestPipelineTest
         var barLines = allLines.Where(l => l.Contains("BAR_EVAL|")).ToList();
         var tickLines = allLines.Where(l => l.Contains("TICK|")).ToList();
         var netmqConnected = allLines.Where(l => l.Contains("NETMQ|")).ToList();
+        var cbotDiag = allLines.Where(l => l.Contains("CBOT|")).ToList();
 
-        Console.WriteLine($"[TEST] 3-day test — NetMQ connected: {netmqConnected.Count}, TICK: {tickLines.Count}, BAR: {barLines.Count}");
+        Console.WriteLine($"[TEST] 3-day test — CBOT|: {cbotDiag.Count}, NetMQ: {netmqConnected.Count}, TICK: {tickLines.Count}, BAR: {barLines.Count}");
 
         netmqConnected.Should().NotBeEmpty("engine should connect via NetMQ");
         tickLines.Should().NotBeEmpty("ticks should flow through NetMQ");
