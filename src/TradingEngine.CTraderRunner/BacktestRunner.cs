@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace TradingEngine.CTraderRunner;
@@ -17,12 +18,16 @@ public sealed class BacktestRunner
 
     public async Task<BacktestResult> RunAsync(BacktestConfig cfg, CancellationToken ct = default)
     {
-        var runId = Guid.NewGuid().ToString("N")[..8];
+        var runId = string.IsNullOrEmpty(cfg.RunId) ? Guid.NewGuid().ToString("N")[..8] : cfg.RunId;
         var dataPort = int.TryParse(_config["Engine:Broker:NetMQ:DataPort"], out var dp) ? dp : 15555;
         var commandPort = int.TryParse(_config["Engine:Broker:NetMQ:CommandPort"], out var cp) ? cp : 15556;
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
         var reportJsonPath = Path.Combine(resultsDir, "report.json");
+
+        string algoPath;
+        try { algoPath = ResolveAlgoPath(); } catch { algoPath = ""; }
+        var algoHash = ComputeAlgoHash(algoPath);
 
         var ctid = _config["CTrader:CtId"];
         var pwdFile = _config["CTrader:PwdFile"];
@@ -33,6 +38,7 @@ public sealed class BacktestRunner
             {
                 RunId = runId,
                 ExitCode = 1,
+                AlgoHash = algoHash,
                 ErrorMessage = "CTrader credentials not configured. Set CTrader:CtId, CTrader:PwdFile, and CTrader:Account in appsettings or environment.",
             };
         }
@@ -53,7 +59,6 @@ public sealed class BacktestRunner
         try
         {
             var cliPath = CTraderCliLocator.Locate(_config);
-            var algoPath = ResolveAlgoPath();
             var args = BuildArgs(cfg, algoPath, dataPort, commandPort, reportJsonPath);
 
             _logger.LogInformation("Launching ctrader-cli. RunId={RunId} Cmd={CliPath} {Args}", runId, cliPath, args);
@@ -107,6 +112,7 @@ public sealed class BacktestRunner
                 TotalTrades     = report.TotalTrades,
                 WinningTrades   = report.WinningTrades,
                 WinRatePct      = report.WinRatePct,
+                AlgoHash        = algoHash,
             };
         }
         finally
@@ -141,6 +147,7 @@ public sealed class BacktestRunner
             Environment =
             {
                 ["Engine__Mode"] = "Live",
+                ["Engine__RunId"] = runId,
                 ["Engine__Broker__NetMQ__DataPort"] = dataPort.ToString(),
                 ["Engine__Broker__NetMQ__CommandPort"] = commandPort.ToString(),
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
@@ -219,6 +226,14 @@ public sealed class BacktestRunner
 
         return candidates.FirstOrDefault(File.Exists)
             ?? throw new FileNotFoundException("src.algo not found. Build TradingEngine.Adapters.CTrader first.");
+    }
+
+    private static string ComputeAlgoHash(string algoPath)
+    {
+        if (!File.Exists(algoPath)) return "missing";
+        using var sha = SHA256.Create();
+        using var fs = File.OpenRead(algoPath);
+        return Convert.ToHexString(sha.ComputeHash(fs))[..16].ToLowerInvariant();
     }
 
     private static (decimal NetProfit, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct)

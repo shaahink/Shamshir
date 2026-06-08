@@ -2,7 +2,7 @@ namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
 public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepository
 {
-    public async Task SaveAsync(TradeResult trade, CancellationToken ct)
+    public async Task SaveAsync(TradeResult trade, string runId, CancellationToken ct)
     {
         var entity = new TradeResultEntity
         {
@@ -34,6 +34,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             RiskProfileId = trade.RiskProfileId,
             Mode = trade.Mode.ToString(),
             DurationSeconds = trade.DurationSeconds,
+            RunId = string.IsNullOrEmpty(runId) ? null : runId,
         };
         db.Trades.Add(entity);
         await db.SaveChangesAsync(ct);

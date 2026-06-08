@@ -1,4 +1,4 @@
-using TradingEngine.Infrastructure.Persistence;
+using TradingEngine.CTraderRunner;
 using TradingEngine.Web.Services;
 
 namespace TradingEngine.Web.Pages.Backtests;
@@ -6,16 +6,14 @@ namespace TradingEngine.Web.Pages.Backtests;
 public sealed class IndexModel : PageModel
 {
     private readonly BacktestOrchestrator _orchestrator;
-    private readonly IBacktestRunRepository _repo;
+    private readonly IBacktestQueryService _query;
 
     public IReadOnlyList<BacktestOrchestrator.BacktestRunState> Runs { get; private set; } = [];
-    public int AllTimeTrades { get; private set; }
-    public decimal AllTimePnL { get; private set; }
 
-    public IndexModel(BacktestOrchestrator orchestrator, IBacktestRunRepository repo)
+    public IndexModel(BacktestOrchestrator orchestrator, IBacktestQueryService query)
     {
         _orchestrator = orchestrator;
-        _repo = repo;
+        _query = query;
     }
 
     public async Task OnGet()
@@ -23,7 +21,7 @@ public sealed class IndexModel : PageModel
         var activeRuns = _orchestrator.GetAll();
         var activeIds = new HashSet<string>(activeRuns.Select(r => r.RunId));
 
-        var persisted = await _repo.GetAllAsync(HttpContext.RequestAborted);
+        var persisted = await _query.GetAllRunsAsync(HttpContext.RequestAborted);
 
         var merged = new List<BacktestOrchestrator.BacktestRunState>();
         merged.AddRange(activeRuns);
@@ -35,10 +33,10 @@ public sealed class IndexModel : PageModel
             {
                 RunId = p.RunId,
                 Symbol = p.Symbol,
-                Period = "",
-                StartedAt = p.StartedAtUtc,
-                Status = "completed",
-                Result = new TradingEngine.CTraderRunner.BacktestResult
+                Period = p.Period,
+                StartedAt = p.StartedAt,
+                Status = p.Status,
+                Result = new BacktestResult
                 {
                     RunId = p.RunId,
                     NetProfit = p.NetProfit,

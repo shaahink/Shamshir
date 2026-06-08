@@ -7,7 +7,7 @@ namespace TradingEngine.Web.Pages.Backtests;
 
 public sealed class RunModel : PageModel
 {
-    private readonly BacktestOrchestrator _orchestrator;
+    private readonly IBacktestCommandService _command;
     private readonly IConfiguration _config;
 
     [BindProperty]
@@ -28,9 +28,9 @@ public sealed class RunModel : PageModel
     public string? RunId { get; set; }
     public bool CredentialsConfigured { get; set; } = true;
 
-    public RunModel(BacktestOrchestrator orchestrator, IConfiguration config)
+    public RunModel(IBacktestCommandService command, IConfiguration config)
     {
-        _orchestrator = orchestrator;
+        _command = command;
         _config = config;
     }
 
@@ -41,7 +41,7 @@ public sealed class RunModel : PageModel
             && !string.IsNullOrWhiteSpace(_config["CTrader:Account"]);
     }
 
-    public IActionResult OnPost()
+    public async Task<IActionResult> OnPost()
     {
         var cfg = new BacktestConfig
         {
@@ -52,7 +52,7 @@ public sealed class RunModel : PageModel
             Balance = Balance,
         };
 
-        var state = _orchestrator.Start(cfg);
-        return RedirectToPage("Progress", new { runId = state.RunId });
+        var runId = await _command.StartAsync(cfg, HttpContext.RequestAborted);
+        return RedirectToPage("Progress", new { runId });
     }
 }

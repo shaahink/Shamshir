@@ -8,6 +8,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<EngineEventEntity> Events => Set<EngineEventEntity>();
     public DbSet<EquitySnapshotEntity> EquitySnapshots => Set<EquitySnapshotEntity>();
     public DbSet<BarEntity> Bars => Set<BarEntity>();
+    public DbSet<BarEvaluationEntity> BarEvaluations => Set<BarEvaluationEntity>();
     public DbSet<BacktestRunEntity> BacktestRuns => Set<BacktestRunEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -23,6 +24,14 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
         {
             e.ToTable("BacktestRuns");
             e.HasKey(x => x.RunId);
+        });
+
+        modelBuilder.Entity<BarEvaluationEntity>(e =>
+        {
+            e.ToTable("BarEvaluations");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.RunId);
+            e.HasIndex(x => new { x.RunId, x.StrategyId, x.BarOpenTimeUtc });
         });
     }
 }

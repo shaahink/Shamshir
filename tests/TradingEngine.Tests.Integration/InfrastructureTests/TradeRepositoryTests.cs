@@ -30,7 +30,7 @@ public sealed class TradeRepositoryTests
             new Pips(28), 2.8, new Pips(5), new Pips(30),
             "TP", "test-strategy", "standard", EngineMode.Backtest);
 
-        await repo.SaveAsync(trade, CancellationToken.None);
+        await repo.SaveAsync(trade, "test-run", CancellationToken.None);
 
         var retrieved = await repo.GetByDateRangeAsync(
             new DateTime(2024, 1, 1), new DateTime(2024, 1, 2),

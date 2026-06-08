@@ -7,13 +7,13 @@ public sealed class PersistenceService(
     IServiceScopeFactory scopeFactory,
     ILogger<PersistenceService> logger)
 {
-    public async Task SaveTradeAsync(TradeResult trade, CancellationToken ct)
+    public async Task SaveTradeAsync(TradeResult trade, string runId, CancellationToken ct)
     {
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var repo = scope.ServiceProvider.GetRequiredService<ITradeRepository>();
-            await repo.SaveAsync(trade, ct);
+            await repo.SaveAsync(trade, runId, ct);
         }
         catch (Exception ex)
         {

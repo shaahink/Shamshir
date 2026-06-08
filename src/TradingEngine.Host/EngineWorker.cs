@@ -19,6 +19,7 @@ public sealed class EngineWorker : BackgroundService
     private readonly PositionTracker _positionTracker;
     private readonly DrawdownTracker _drawdownTracker;
     private readonly EngineMode _engineMode;
+    private readonly EngineRunContext _runContext;
     private readonly ILogger<EngineWorker> _logger;
 
     private readonly ConcurrentDictionary<Symbol, ConcurrentDictionary<Timeframe, List<Bar>>> _bars = new();
@@ -55,6 +56,7 @@ public sealed class EngineWorker : BackgroundService
         OrderDispatcher orderDispatcher,
         PositionTracker positionTracker,
         ILogger<EngineWorker> logger,
+        EngineRunContext runContext,
         DataFeedService? dataFeed = null)
     {
         _broker = broker;
@@ -70,7 +72,9 @@ public sealed class EngineWorker : BackgroundService
         _orderDispatcher = orderDispatcher;
         _positionTracker = positionTracker;
         _drawdownTracker = drawdownTracker;
-        _engineMode = _broker is SimulatedBrokerAdapter ? EngineMode.Backtest : EngineMode.Live;
+        _runContext = runContext;
+        _engineMode = _broker is SimulatedBrokerAdapter || _broker is BacktestReplayAdapter
+            ? EngineMode.Backtest : EngineMode.Live;
         _dataFeed = dataFeed;
         _logger = logger;
     }
@@ -210,12 +214,24 @@ public sealed class EngineWorker : BackgroundService
                         {
                             _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NEED_BARS|have={Have}|need={Need}",
                                 strategy.Id, bar.Symbol.Value, totalBars, strategy.RequiredBarCount);
+                            _ = _eventBus.PublishAsync(new BarEvaluated(
+                                _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
+                                strategy.Id, new Dictionary<string, double>(_reusableIndicatorDict),
+                                false, null, $"not enough bars (have {totalBars}, need {strategy.RequiredBarCount})",
+                                _clock.UtcNow), CancellationToken.None);
                             continue;
                         }
 
                         var context = new MarketContext(bar.Symbol, closeTick, barSnapshot,
                             _reusableIndicatorDict, _clock.UtcNow);
                         var intent = strategy.Evaluate(context);
+
+                        _ = _eventBus.PublishAsync(new BarEvaluated(
+                            _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
+                            strategy.Id, new Dictionary<string, double>(_reusableIndicatorDict),
+                            intent is not null, intent?.Direction,
+                            intent?.Reason ?? "no signal",
+                            _clock.UtcNow), CancellationToken.None);
 
                         if (intent is null)
                         {

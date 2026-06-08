@@ -32,6 +32,10 @@ public static class Program
             var mode = builder.Configuration.GetValue<EngineMode?>("Engine:Mode") ?? EngineMode.Backtest;
             Log.Information("Engine mode: {Mode}", mode);
 
+            var engineRunId = builder.Configuration["Engine:RunId"] ?? "";
+            builder.Services.AddSingleton(new EngineRunContext(engineRunId));
+            Log.Information("Engine RunId: {RunId}", string.IsNullOrEmpty(engineRunId) ? "(none)" : engineRunId);
+
             var slipPips = mode == EngineMode.Backtest
                 ? builder.Configuration.GetValue<double?>("Simulation:SlippagePips") ?? 0.5
                 : 0.5;
@@ -122,6 +126,8 @@ public static class Program
             builder.Services.AddSingleton<IPositionManager, PositionManager>();
             builder.Services.AddSingleton<IEventBus, TypedEventBus>();
             builder.Services.AddSingleton<EquityPersistenceHandler>();
+            builder.Services.AddSingleton<TradePersistenceHandler>();
+            builder.Services.AddSingleton<BarEvaluationHandler>();
             builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
             builder.Services.AddSingleton<OrderDispatcher>();
             builder.Services.AddSingleton<PositionTracker>();
@@ -164,6 +170,12 @@ public static class Program
             var eventBus = app.Services.GetRequiredService<IEventBus>();
             var equityHandler = app.Services.GetRequiredService<EquityPersistenceHandler>();
             eventBus.Subscribe<EquityUpdated>(equityHandler);
+
+            var tradeHandler = app.Services.GetRequiredService<TradePersistenceHandler>();
+            eventBus.Subscribe<TradeClosed>(tradeHandler);
+
+            var barEvalHandler = app.Services.GetRequiredService<BarEvaluationHandler>();
+            eventBus.Subscribe<BarEvaluated>(barEvalHandler);
 
             var rm = app.Services.GetRequiredService<RiskManager>();
             var activeRiskProfileId = loadedConfig.StrategyConfigs

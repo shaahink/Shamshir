@@ -10,5 +10,6 @@ public sealed record BacktestResult
     public int TotalTrades { get; init; }
     public int WinningTrades { get; init; }
     public double WinRatePct { get; init; }
+    public string AlgoHash { get; init; } = "";
     public string? ErrorMessage { get; init; }
 }

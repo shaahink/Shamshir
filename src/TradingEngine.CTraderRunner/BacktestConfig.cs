@@ -2,6 +2,7 @@ namespace TradingEngine.CTraderRunner;
 
 public sealed record BacktestConfig
 {
+    public string RunId { get; init; } = "";
     public required string Symbol { get; init; }
     public required string Period { get; init; }
     public required DateTime Start { get; init; }

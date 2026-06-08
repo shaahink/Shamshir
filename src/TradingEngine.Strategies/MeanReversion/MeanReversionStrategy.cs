@@ -52,9 +52,12 @@ public sealed class MeanReversionStrategy : IStrategy
             var latestBar = h1Bars[^1];
             TradeDirection? dir = null;
 
-            if (rsi < 30 && latestBar.Low <= currentPrice)
+            var nearLow = (double)(latestBar.Close - latestBar.Low) / (double)latestBar.Close < 0.002;
+            var nearHigh = (double)(latestBar.High - latestBar.Close) / (double)latestBar.Close < 0.002;
+
+            if (rsi < p.RsiOversold && nearLow)
                 dir = TradeDirection.Long;
-            else if (rsi > 70 && latestBar.High >= currentPrice)
+            else if (rsi > p.RsiOverbought && nearHigh)
                 dir = TradeDirection.Short;
 
             if (dir is null) return null;

@@ -30,6 +30,20 @@ else
     </div>
     <div class="card">
         <h2>Chart</h2>
-        <canvas id="tradeChart" height="300"></canvas>
+        <div style="position:relative;height:120px;background:#1e1e1e;border-radius:4px;overflow:hidden;display:flex;align-items:center;padding:0 1rem;">
+            <div style="position:absolute;left:1rem;top:50%;transform:translateY(-50%);font-size:0.8rem;color:#8b949e;">
+                Entry<br/><span style="color:#58a6ff;font-weight:bold;">@Model.Trade.EntryPrice:F5</span><br/>
+                <span style="font-size:0.7rem;">@Model.Trade.OpenedAtUtc.ToString("MMM dd HH:mm")</span>
+            </div>
+            <div style="flex:1;height:4px;margin:0 1rem;background:linear-gradient(to right, #58a6ff, @(Model.Trade.NetPnLAmount >= 0 ? "#3fb950" : "#f85149"));border-radius:2px;"></div>
+            <div style="font-size:0.8rem;color:#8b949e;">
+                Exit<br/><span style="color:@(Model.Trade.NetPnLAmount >= 0 ? "#3fb950" : "#f85149");font-weight:bold;">@Model.Trade.ExitPrice:F5</span><br/>
+                <span style="font-size:0.7rem;">@Model.Trade.ClosedAtUtc.ToString("MMM dd HH:mm")</span>
+            </div>
+        </div>
+        <div style="margin-top:0.5rem;text-align:right;font-size:0.8rem;">
+            PnL: <strong style="color:@(Model.Trade.NetPnLAmount >= 0 ? "#3fb950" : "#f85149")">@Model.Trade.NetPnLAmount:F2 @Model.Trade.NetPnLCurrency</strong>
+            &nbsp;|&nbsp; R: <strong style="color:@(Model.Trade.RMultiple >= 0 ? "#3fb950" : "#f85149")">@Model.Trade.RMultiple:F2</strong>
+        </div>
     </div>
 }

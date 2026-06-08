@@ -9,7 +9,7 @@ public sealed class PersistenceServiceTests
     public async Task SaveTradeAsync_DoesNotThrow()
     {
         var repo = Substitute.For<ITradeRepository>();
-        repo.SaveAsync(Arg.Any<TradeResult>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        repo.SaveAsync(Arg.Any<TradeResult>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
         var scope = Substitute.For<IServiceScope>();
         scope.ServiceProvider.GetService(typeof(ITradeRepository)).Returns(repo);
@@ -28,7 +28,7 @@ public sealed class PersistenceServiceTests
             new Money(0, "USD"), new Money(0, "USD"), new Money(0, "USD"), new Money(0, "USD"),
             new Pips(0), 0, new Pips(0), new Pips(0), "TP", "test", "standard", EngineMode.Backtest);
 
-        await svc.SaveTradeAsync(trade, CancellationToken.None);
-        await repo.Received(1).SaveAsync(Arg.Any<TradeResult>(), Arg.Any<CancellationToken>());
+        await svc.SaveTradeAsync(trade, "", CancellationToken.None);
+        await repo.Received(1).SaveAsync(Arg.Any<TradeResult>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 }

@@ -7,12 +7,20 @@ namespace TradingEngine.Web.Api;
 [Route("api/backtest")]
 public sealed class BacktestController : ControllerBase
 {
+    private readonly IBacktestCommandService _command;
     private readonly BacktestOrchestrator _orchestrator;
+    private readonly BacktestProgressStore _progressStore;
     private readonly ILogger<BacktestController> _logger;
 
-    public BacktestController(BacktestOrchestrator orchestrator, ILogger<BacktestController> logger)
+    public BacktestController(
+        IBacktestCommandService command,
+        BacktestOrchestrator orchestrator,
+        BacktestProgressStore progressStore,
+        ILogger<BacktestController> logger)
     {
+        _command = command;
         _orchestrator = orchestrator;
+        _progressStore = progressStore;
         _logger = logger;
     }
 
@@ -28,7 +36,7 @@ public sealed class BacktestController : ControllerBase
     }
 
     [HttpPost("start")]
-    public IActionResult Start([FromBody] StartRequest req)
+    public async Task<IActionResult> Start([FromBody] StartRequest req)
     {
         var cfg = new BacktestConfig
         {
@@ -41,11 +49,12 @@ public sealed class BacktestController : ControllerBase
             SpreadPips = req.SpreadPips,
         };
 
-        var state = _orchestrator.Start(cfg);
+        var runId = await _command.StartAsync(cfg, HttpContext.RequestAborted);
+        var state = _orchestrator.GetState(runId);
         _logger.LogInformation("Backtest started. RunId={RunId} Symbol={Symbol} Period={Period}",
-            state.RunId, cfg.Symbol, cfg.Period);
+            runId, cfg.Symbol, cfg.Period);
 
-        return Ok(new { runId = state.RunId, status = state.Status });
+        return Ok(new { runId, status = state?.Status ?? "unknown" });
     }
 
     [HttpGet("{runId}/status")]
@@ -86,37 +95,22 @@ public sealed class BacktestController : ControllerBase
     [HttpGet("{runId}/stream")]
     public async Task Stream(string runId, CancellationToken ct)
     {
-        var state = _orchestrator.GetState(runId);
-        if (state is null)
+        Response.Headers.Append("Content-Type", "text/event-stream");
+        Response.Headers.Append("Cache-Control", "no-cache");
+        Response.Headers.Append("X-Accel-Buffering", "no");
+
+        var reader = _progressStore.GetReader(runId);
+        if (reader is null)
         {
-            HttpContext.Response.StatusCode = 404;
+            await Response.WriteAsync("data: {\"status\":\"not_found\"}\n\n", ct);
             return;
         }
 
-        Response.Headers.Append("Content-Type", "text/event-stream");
-        Response.Headers.Append("Cache-Control", "no-cache");
-
-        var lastCount = 0;
-        while (!ct.IsCancellationRequested && state.Status is "starting" or "running")
+        await foreach (var line in reader.ReadAllAsync(ct))
         {
-            var logs = state.GetLogs();
-            for (var i = lastCount; i < logs.Count; i++)
-            {
-                var json = JsonSerializer.Serialize(new { line = logs[i] });
-                await Response.WriteAsync($"data: {json}\n\n", ct);
-                await Response.Body.FlushAsync(ct);
-            }
-            lastCount = logs.Count;
-            await Task.Delay(500, ct);
+            if (ct.IsCancellationRequested) break;
+            await Response.WriteAsync($"data: {line}\n\n", ct);
+            await Response.Body.FlushAsync(ct);
         }
-
-        var finalLogs = state.GetLogs();
-        for (var i = lastCount; i < finalLogs.Count; i++)
-        {
-            var json = JsonSerializer.Serialize(new { line = finalLogs[i] });
-            await Response.WriteAsync($"data: {json}\n\n", ct);
-        }
-        await Response.WriteAsync($"data: {JsonSerializer.Serialize(new { done = true, status = state.Status, error = state.Error })}\n\n", ct);
-        await Response.Body.FlushAsync(ct);
     }
 }
