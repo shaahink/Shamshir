@@ -30,7 +30,7 @@ public sealed class PositionTracker(
 
     public void OnExecution(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
     {
-        if (_processedExecutionIds.Contains(evt.OrderId))
+        if (_processedExecutionIds.Contains(evt.OrderId) && !_openPositions.ContainsKey(evt.OrderId))
         {
             logger.LogWarning("Duplicate execution event skipped. OrderId={OrderId}", evt.OrderId);
             return;

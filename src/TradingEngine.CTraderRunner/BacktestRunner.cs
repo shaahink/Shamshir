@@ -85,7 +85,8 @@ public sealed class BacktestRunner
             }
 
             var isKnownCrash = cliProcess.ExitCode != 0
-                && (stderr.Contains("Message expected") || stderr.Contains("Object reference"));
+                && (stderr.Contains("Message expected") || stderr.Contains("Object reference")
+                    || stdout.Contains("Message expected") || stdout.Contains("Object reference"));
 
             if (cliProcess.ExitCode != 0 && !isKnownCrash)
                 _logger.LogError("ctrader-cli failed. Code={Code} Stderr={Stderr}", cliProcess.ExitCode, stderr);

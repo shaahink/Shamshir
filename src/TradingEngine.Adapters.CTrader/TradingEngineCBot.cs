@@ -35,6 +35,7 @@ public class TradingEngineCBot : Robot
     private int _duplicateCount;
     private readonly HashSet<(string symbol, string tf, DateTime openTime)> _publishedBars = new();
     private readonly List<Bars> _subscriptions = new();
+    private readonly Dictionary<long, Guid> _positionMap = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -79,6 +80,8 @@ public class TradingEngineCBot : Robot
             try { action(); }
             catch (Exception ex) { Print($"CBOT|CMD_ERR|{ex.Message}"); }
         }
+
+        CheckClosedPositions();
 
         if (_tickCounter % TickEveryN == 0)
         {
@@ -188,6 +191,7 @@ public class TradingEngineCBot : Robot
         if (result?.IsSuccessful == true)
         {
             var pos = result.Position;
+            _positionMap[pos.Id] = clientOrderId;
             PublishExec(clientOrderId, "Filled", pos.EntryPrice, pos.VolumeInUnits / sym.LotSize, null);
             Diag($"EXEC_SENT|{clientOrderId}|Filled|fill={pos.EntryPrice:F5}|lots={pos.VolumeInUnits / sym.LotSize:F4}");
             PublishAccount();
@@ -242,6 +246,26 @@ public class TradingEngineCBot : Robot
                 return;
             }
         }
+    }
+
+    private void CheckClosedPositions()
+    {
+        var closedIds = new List<long>();
+        foreach (var (posId, clientOrderId) in _positionMap)
+        {
+            var stillOpen = false;
+            foreach (var p in Positions)
+                if (p.Id == posId) { stillOpen = true; break; }
+            if (stillOpen) continue;
+
+            closedIds.Add(posId);
+            var sym = Symbols.GetSymbol(SymbolName);
+            var lots = sym is not null ? 1.0 : 1.0;
+
+            PublishExec(clientOrderId, "Filled", Symbol.Bid, lots, null);
+            Diag($"EXEC_SENT|{clientOrderId}|Filled|fill={Symbol.Bid:F5}|lots={lots:F4}|reason=PositionClosed");
+        }
+        foreach (var id in closedIds) _positionMap.Remove(id);
     }
 
     protected override void OnStop()
