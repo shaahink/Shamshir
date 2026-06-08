@@ -4,6 +4,17 @@
     <ProjectReference Include="..\TradingEngine.Domain\TradingEngine.Domain.csproj" />
     <ProjectReference Include="..\TradingEngine.Infrastructure\TradingEngine.Infrastructure.csproj" />
     <ProjectReference Include="..\TradingEngine.CTraderRunner\TradingEngine.CTraderRunner.csproj" />
+    <ProjectReference Include="..\TradingEngine.Host\TradingEngine.Host.csproj" />
+    <ProjectReference Include="..\TradingEngine.Services\TradingEngine.Services.csproj" />
+    <ProjectReference Include="..\TradingEngine.Strategies\TradingEngine.Strategies.csproj" />
+    <ProjectReference Include="..\TradingEngine.Risk\TradingEngine.Risk.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.*">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
   <PropertyGroup>

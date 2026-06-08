@@ -43,6 +43,8 @@ when neither SL nor TP applies.
 ---
 
 ### BUG-04 — Max drawdown calculation is fabricated
+
+✅ **Fixed (Iteration 12)**. `GetTradeStatsAsync` now builds a cumulative equity curve from trades ordered by `ClosedAtUtc` and computes peak-to-trough drawdown: `dd = (peak - equity) / peak`.
 **Severity**: Critical — the stat shown in the UI is meaningless  
 **File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:64`
 
@@ -134,6 +136,8 @@ processed). The set's purpose is deduplication during the open→fill window, no
 ---
 
 ### DESIGN-05 — Failed backtests create orphaned trade records
+
+✅ **Fixed (Iteration 12)**. `WriteStartRecordAsync` writes an in-progress record (ExitCode=-1) at run start. `WriteEndRecordAsync` updates with final stats on completion or failure. Succeeded runs use `UpdateAsync`; failed runs still get a record.
 **File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:147`
 
 DB write to `BacktestRuns` only happens on `result.Success`. But `TradePersistenceHandler` saves

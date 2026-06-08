@@ -5,6 +5,12 @@ public sealed record BacktestRunSummary(
     DateTime StartedAtUtc,
     DateTime CompletedAtUtc,
     string Symbol,
+    string Period,
+    DateTime BacktestFrom,
+    DateTime BacktestTo,
+    decimal InitialBalance,
+    string AlgoHash,
+    string StrategyParamsJson,
     decimal NetProfit,
     decimal MaxDrawdownPct,
     int TotalTrades,
@@ -16,6 +22,7 @@ public sealed record BacktestRunSummary(
 public interface IBacktestRunRepository
 {
     Task SaveAsync(BacktestRunSummary run, CancellationToken ct);
+    Task UpdateAsync(BacktestRunSummary run, CancellationToken ct);
     Task<IReadOnlyList<BacktestRunSummary>> GetAllAsync(CancellationToken ct);
     Task<BacktestRunSummary?> GetByIdAsync(string runId, CancellationToken ct);
 }

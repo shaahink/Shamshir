@@ -12,6 +12,12 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             StartedAtUtc = run.StartedAtUtc,
             CompletedAtUtc = run.CompletedAtUtc,
             Symbol = run.Symbol,
+            Period = run.Period,
+            BacktestFrom = run.BacktestFrom,
+            BacktestTo = run.BacktestTo,
+            InitialBalance = run.InitialBalance,
+            AlgoHash = run.AlgoHash,
+            StrategyParamsJson = run.StrategyParamsJson,
             NetProfit = run.NetProfit,
             MaxDrawdownPct = run.MaxDrawdownPct,
             TotalTrades = run.TotalTrades,
@@ -24,13 +30,30 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         await db.SaveChangesAsync(ct);
     }
 
+    public async Task UpdateAsync(BacktestRunSummary run, CancellationToken ct)
+    {
+        var entity = await db.BacktestRuns.FindAsync([run.RunId], ct);
+        if (entity is null) return;
+        entity.CompletedAtUtc = run.CompletedAtUtc;
+        entity.NetProfit = run.NetProfit;
+        entity.MaxDrawdownPct = run.MaxDrawdownPct;
+        entity.TotalTrades = run.TotalTrades;
+        entity.WinningTrades = run.WinningTrades;
+        entity.WinRatePct = run.WinRatePct;
+        entity.ExitCode = run.ExitCode;
+        entity.ErrorMessage = run.ErrorMessage;
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task<IReadOnlyList<BacktestRunSummary>> GetAllAsync(CancellationToken ct)
     {
         return await db.BacktestRuns
             .OrderByDescending(r => r.StartedAtUtc)
             .Select(e => new BacktestRunSummary(
                 e.RunId, e.StartedAtUtc, e.CompletedAtUtc,
-                e.Symbol, e.NetProfit, e.MaxDrawdownPct,
+                e.Symbol, e.Period, e.BacktestFrom, e.BacktestTo,
+                e.InitialBalance, e.AlgoHash, e.StrategyParamsJson,
+                e.NetProfit, e.MaxDrawdownPct,
                 e.TotalTrades, e.WinningTrades, e.WinRatePct,
                 e.ExitCode, e.ErrorMessage))
             .ToListAsync(ct);
@@ -42,7 +65,9 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         if (e is null) return null;
         return new BacktestRunSummary(
             e.RunId, e.StartedAtUtc, e.CompletedAtUtc,
-            e.Symbol, e.NetProfit, e.MaxDrawdownPct,
+            e.Symbol, e.Period, e.BacktestFrom, e.BacktestTo,
+            e.InitialBalance, e.AlgoHash, e.StrategyParamsJson,
+            e.NetProfit, e.MaxDrawdownPct,
             e.TotalTrades, e.WinningTrades, e.WinRatePct,
             e.ExitCode, e.ErrorMessage);
     }
