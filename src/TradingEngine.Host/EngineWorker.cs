@@ -171,79 +171,83 @@ public sealed class EngineWorker : BackgroundService
 
     private async Task ProcessBarsAsync(CancellationToken ct)
     {
+        _logger.LogDebug("Bar processor started");
         try
         {
-            _logger.LogDebug("Bar processor started");
             await foreach (var bar in _broker.BarStream.ReadAllAsync(ct))
             {
-                Interlocked.Increment(ref _barCount);
-                var byTf = _bars.GetOrAdd(bar.Symbol, _ => new());
-                var list = byTf.GetOrAdd(bar.Timeframe, _ => new());
-                int barCount;
-                lock (list)
+                try
                 {
-                    list.Add(bar);
-                    if (list.Count > MaxBarHistory)
-                        list.RemoveAt(0);
-                    barCount = list.Count;
+                    Interlocked.Increment(ref _barCount);
+                    var byTf = _bars.GetOrAdd(bar.Symbol, _ => new());
+                    var list = byTf.GetOrAdd(bar.Timeframe, _ => new());
+                    int barCount;
+                    lock (list)
+                    {
+                        list.Add(bar);
+                        if (list.Count > MaxBarHistory)
+                            list.RemoveAt(0);
+                        barCount = list.Count;
+                    }
+
+                    await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe);
+
+                    _logger.LogInformation("BAR_EVAL|{Symbol}|{Tf}|openTime={OpenTime:yyyy-MM-dd HH:mm}|close={Close:F5}|bars={Count}|total={Total}",
+                        bar.Symbol.Value, bar.Timeframe, bar.OpenTimeUtc, bar.Close, barCount, Interlocked.Read(ref _barCount));
+
+                    var halfSpread = ResolveHalfSpread(bar.Symbol);
+                    var closeTick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread,
+                        bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
+                    var barSnapshot = BuildBarSnapshot(bar.Symbol);
+                    if (barSnapshot is null) continue;
+
+                    BuildIndicatorSnapshot(bar.Symbol);
+
+                    foreach (var strategy in _strategies)
+                    {
+                        var totalBars = barSnapshot.Values.Sum(b => b.Count);
+                        if (totalBars < strategy.RequiredBarCount)
+                        {
+                            _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NEED_BARS|have={Have}|need={Need}",
+                                strategy.Id, bar.Symbol.Value, totalBars, strategy.RequiredBarCount);
+                            continue;
+                        }
+
+                        var context = new MarketContext(bar.Symbol, closeTick, barSnapshot,
+                            _reusableIndicatorDict, _clock.UtcNow);
+                        var intent = strategy.Evaluate(context);
+
+                        if (intent is null)
+                        {
+                            _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NO_SIGNAL", strategy.Id, bar.Symbol.Value);
+                            continue;
+                        }
+
+                        _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|{Dir}|sl={SL:F5}|tp={TP}",
+                            strategy.Id, bar.Symbol.Value, intent.Direction,
+                            intent.StopLoss.Value, intent.TakeProfit?.Value.ToString("F5") ?? "none");
+                        _logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
+
+                        var equity = Volatile.Read(ref _currentEquity);
+                        var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, bar.Close, _broker, ct);
+                        if (orderCtx is null) continue;
+
+                        var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,
+                            intent.Direction, OrderType.Market, intent.LimitPrice);
+                        _positionTracker.TrackOrder(orderCtx.OrderId, orderReq, orderCtx.RiskAmount);
+
+                        _logger.LogInformation("ORDER|{Strategy}|{OrderId}|{Dir}|lots={Lots}|entry={Entry:F5}",
+                            strategy.Id, orderCtx.OrderId, intent.Direction, orderCtx.Lots, bar.Close);
+                    }
                 }
-
-                await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe);
-
-                _logger.LogInformation("BAR_EVAL|{Symbol}|{Tf}|openTime={OpenTime:yyyy-MM-dd HH:mm}|close={Close:F5}|bars={Count}|total={Total}",
-                    bar.Symbol.Value, bar.Timeframe, bar.OpenTimeUtc, bar.Close, barCount, Interlocked.Read(ref _barCount));
-
-                var halfSpread = ResolveHalfSpread(bar.Symbol);
-                var closeTick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread,
-                    bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
-                var barSnapshot = BuildBarSnapshot(bar.Symbol);
-                if (barSnapshot is null) continue;
-
-                BuildIndicatorSnapshot(bar.Symbol);
-
-                foreach (var strategy in _strategies)
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
                 {
-                    var totalBars = barSnapshot.Values.Sum(b => b.Count);
-                    if (totalBars < strategy.RequiredBarCount)
-                    {
-                        _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NEED_BARS|have={Have}|need={Need}",
-                            strategy.Id, bar.Symbol.Value, totalBars, strategy.RequiredBarCount);
-                        continue;
-                    }
-
-                    var context = new MarketContext(bar.Symbol, closeTick, barSnapshot,
-                        _reusableIndicatorDict, _clock.UtcNow);
-                    var intent = strategy.Evaluate(context);
-
-                    if (intent is null)
-                    {
-                        _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NO_SIGNAL", strategy.Id, bar.Symbol.Value);
-                        continue;
-                    }
-
-                    _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|{Dir}|sl={SL:F5}|tp={TP}",
-                        strategy.Id, bar.Symbol.Value, intent.Direction,
-                        intent.StopLoss.Value, intent.TakeProfit?.Value.ToString("F5") ?? "none");
-                    _logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
-
-                    var equity = Volatile.Read(ref _currentEquity);
-                    var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, bar.Close, _broker, ct);
-                    if (orderCtx is null) continue;
-
-                    var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,
-                        intent.Direction, OrderType.Market, intent.LimitPrice);
-                    _positionTracker.TrackOrder(orderCtx.OrderId, orderReq, orderCtx.RiskAmount);
-
-                    _logger.LogInformation("ORDER|{Strategy}|{OrderId}|{Dir}|lots={Lots}|entry={Entry:F5}",
-                        strategy.Id, orderCtx.OrderId, intent.Direction, orderCtx.Lots, bar.Close);
+                    _logger.LogError(ex, "BAR_PROC_ERR|{Symbol}|{OpenTime}", bar.Symbol, bar.OpenTimeUtc);
                 }
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Bar processor crashed");
-        }
         _logger.LogDebug("Bar processor stopped");
     }
 

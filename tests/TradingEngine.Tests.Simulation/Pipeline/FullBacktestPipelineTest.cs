@@ -23,7 +23,6 @@ public sealed class FullBacktestPipelineTest
         var workDir = Path.Combine(Path.GetTempPath(), "shamshir-pipe", runId);
         Directory.CreateDirectory(workDir);
         var logPath = Path.Combine(workDir, "engine.log");
-        var pipeName = $"shamshir-{runId}";
         var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         var engineProj = Path.Combine(solutionRoot, "src", "TradingEngine.Host", "TradingEngine.Host.csproj");
 
@@ -35,7 +34,8 @@ public sealed class FullBacktestPipelineTest
             Environment =
             {
                 ["Engine__Mode"] = "Live",
-                ["Engine__Broker__PipeName"] = pipeName,
+                ["Engine__Broker__NetMQ__DataPort"] = "15555",
+                ["Engine__Broker__NetMQ__CommandPort"] = "15556",
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 ["SERILOG_FILE_PATH"] = logPath,
             },
@@ -69,7 +69,8 @@ public sealed class FullBacktestPipelineTest
                     ["CTrader:CtId"] = ctid,
                     ["CTrader:PwdFile"] = pwdFile,
                     ["CTrader:Account"] = account,
-                    ["Engine:Broker:PipeName"] = pipeName,
+                    ["Engine:Broker:NetMQ:DataPort"] = "15555",
+                    ["Engine:Broker:NetMQ:CommandPort"] = "15556",
                 })
                 .AddEnvironmentVariables()
                 .Build();
@@ -198,7 +199,6 @@ public sealed class FullBacktestPipelineTest
         var workDir = Path.Combine(Path.GetTempPath(), "shamshir-pipe", runId);
         Directory.CreateDirectory(workDir);
         var logPath = Path.Combine(workDir, "engine.log");
-        var pipeName = $"shamshir-{runId}";
         var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         var engineProj = Path.Combine(solutionRoot, "src", "TradingEngine.Host", "TradingEngine.Host.csproj");
 
@@ -208,7 +208,8 @@ public sealed class FullBacktestPipelineTest
             Environment =
             {
                 ["Engine__Mode"] = "Live",
-                ["Engine__Broker__PipeName"] = pipeName,
+                ["Engine__Broker__NetMQ__DataPort"] = "15555",
+                ["Engine__Broker__NetMQ__CommandPort"] = "15556",
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 ["SERILOG_FILE_PATH"] = logPath,
             },
@@ -237,7 +238,8 @@ public sealed class FullBacktestPipelineTest
                     ["CTrader:CtId"] = ctid,
                     ["CTrader:PwdFile"] = pwdFile,
                     ["CTrader:Account"] = account,
-                    ["Engine:Broker:PipeName"] = pipeName,
+                    ["Engine:Broker:NetMQ:DataPort"] = "15555",
+                    ["Engine:Broker:NetMQ:CommandPort"] = "15556",
                 })
                 .AddEnvironmentVariables()
                 .Build();

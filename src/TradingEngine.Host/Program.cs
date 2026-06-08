@@ -69,7 +69,7 @@ public static class Program
             builder.Services.AddSingleton<ISymbolInfoRegistry>(sp =>
             {
                 var reg = new SymbolInfoRegistry();
-                var symbolsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "config", "symbols", "defaults.json"));
+                var symbolsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "config", "symbols", "defaults.json"));
                 if (File.Exists(symbolsPath))
                 {
                     var json = File.ReadAllText(symbolsPath);
