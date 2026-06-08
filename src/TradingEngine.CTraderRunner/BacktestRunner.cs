@@ -23,6 +23,7 @@ public sealed class BacktestRunner
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
         var reportJsonPath = Path.Combine(resultsDir, "report.json");
+        var reportHtmlPath = Path.Combine(resultsDir, "report.html");
 
         var ctid = _config["CTrader:CtId"];
         var pwdFile = _config["CTrader:PwdFile"];
@@ -54,7 +55,7 @@ public sealed class BacktestRunner
         {
             var cliPath = CTraderCliLocator.Locate(_config);
             var algoPath = ResolveAlgoPath();
-            var args = BuildArgs(cfg, algoPath, dataPort, commandPort, reportJsonPath);
+            var args = BuildArgs(cfg, algoPath, dataPort, commandPort, reportJsonPath, reportHtmlPath);
 
             _logger.LogInformation("Launching ctrader-cli. RunId={RunId} Cmd={CliPath} {Args}", runId, cliPath, args);
             using var cliProcess = Process.Start(new ProcessStartInfo(cliPath, args)
@@ -102,6 +103,7 @@ public sealed class BacktestRunner
                 RunId           = runId,
                 ExitCode        = isKnownCrash ? 0 : cliProcess.ExitCode,
                 ErrorMessage    = errorMessage,
+                ReportHtmlPath  = reportHtmlPath,
                 NetProfit       = report.NetProfit,
                 MaxDrawdownPct  = report.MaxDrawdownPct,
                 TotalTrades     = report.TotalTrades,
@@ -172,7 +174,7 @@ public sealed class BacktestRunner
         throw new TimeoutException($"Engine command port {commandPort} not ready after {timeout.TotalSeconds:F0}s ({attempt} probes)");
     }
 
-    private string BuildArgs(BacktestConfig cfg, string algoPath, int dataPort, int commandPort, string reportJsonPath)
+    private string BuildArgs(BacktestConfig cfg, string algoPath, int dataPort, int commandPort, string reportJsonPath, string reportHtmlPath)
     {
         var sb = new StringBuilder();
         sb.Append($"backtest \"{algoPath}\"");
@@ -187,6 +189,7 @@ public sealed class BacktestRunner
         if (cfg.DataDir is not null) sb.Append($" --data-dir=\"{cfg.DataDir}\"");
         if (cfg.DataFile is not null) sb.Append($" --data-file=\"{cfg.DataFile}\"");
         sb.Append($" --report-json=\"{reportJsonPath}\"");
+        sb.Append($" --report=\"{reportHtmlPath}\"");
         sb.Append($" --ctid={_config["CTrader:CtId"]}");
         sb.Append($" --pwd-file=\"{_config["CTrader:PwdFile"]}\"");
         sb.Append($" --account={_config["CTrader:Account"]}");

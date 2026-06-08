@@ -68,6 +68,7 @@ public sealed class BacktestController : ControllerBase
                 state.Result.WinningTrades,
                 state.Result.WinRatePct,
                 state.Result.Success,
+                state.Result.ReportHtmlPath,
             } : null,
             error = state.Error,
         });
