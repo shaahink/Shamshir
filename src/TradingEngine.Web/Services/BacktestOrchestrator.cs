@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using TradingEngine.CTraderRunner;
+using TradingEngine.Infrastructure.Persistence;
 
 namespace TradingEngine.Web.Services;
 
@@ -8,6 +9,8 @@ public sealed class BacktestOrchestrator
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BacktestOrchestrator> _logger;
     private readonly ConcurrentDictionary<string, BacktestRunState> _runs = new();
+
+    private sealed record TradeStats(decimal NetProfit, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
 
     public sealed record BacktestRunState
     {
@@ -27,6 +30,34 @@ public sealed class BacktestOrchestrator
         _scopeFactory = scopeFactory;
         _logger = logger;
         _ = LoadPersistedRunsAsync();
+    }
+
+    private async Task<TradeStats> GetTradeStatsAsync(DateTime from, DateTime to)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+            var trades = await db.Trades
+                .Where(t => t.ClosedAtUtc >= from && t.ClosedAtUtc <= to)
+                .ToListAsync();
+
+            if (trades.Count == 0) return new(0, 0, 0, 0, 0);
+
+            var netPnL = trades.Sum(t => t.NetPnLAmount);
+            var wins = trades.Count(t => t.NetPnLAmount > 0);
+            var winRate = (double)wins / trades.Count;
+            var maxDd = trades.Count > 0
+                ? Math.Abs(trades.Min(t => t.NetPnLAmount)) / 100_000m
+                : 0m;
+
+            return new(netPnL, maxDd, trades.Count, wins, winRate);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to query trade stats");
+            return new(0, 0, 0, 0, 0);
+        }
     }
 
     private async Task LoadPersistedRunsAsync()
@@ -98,6 +129,17 @@ public sealed class BacktestOrchestrator
             state.LogLines.Enqueue($"[{DateTime.UtcNow:HH:mm:ss}] Running backtest {cfg.Symbol} {cfg.Period}...");
 
             var result = await runner.RunAsync(cfg);
+
+            var tradeStats = await GetTradeStatsAsync(cfg.Start, cfg.End);
+
+            result = result with
+            {
+                NetProfit = tradeStats.NetProfit,
+                MaxDrawdownPct = tradeStats.MaxDrawdownPct,
+                TotalTrades = tradeStats.TotalTrades,
+                WinningTrades = tradeStats.WinningTrades,
+                WinRatePct = tradeStats.WinRatePct,
+            };
 
             state.Result = result;
             state.Status = result.Success ? "completed" : "failed";
