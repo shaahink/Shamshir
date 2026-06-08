@@ -38,7 +38,7 @@ public class TradingEngineCBot : Robot
     private readonly Dictionary<long, Guid> _positionMap = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
-        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     private void Diag(string msg)
     {
@@ -151,10 +151,10 @@ public class TradingEngineCBot : Robot
 
             switch (type)
             {
-                case "submit_order":   HandleSubmitOrder(doc.RootElement);   break;
+                case "submit_order": HandleSubmitOrder(doc.RootElement); break;
                 case "close_position": HandleClosePosition(doc.RootElement); break;
-                case "modify_order":   HandleModifyOrder(doc.RootElement);   break;
-                case "cancel_order":   HandleCancelOrder(doc.RootElement);   break;
+                case "modify_order": HandleModifyOrder(doc.RootElement); break;
+                case "cancel_order": HandleCancelOrder(doc.RootElement); break;
             }
         }
         catch (Exception ex)
@@ -166,11 +166,11 @@ public class TradingEngineCBot : Robot
     private void HandleSubmitOrder(JsonElement cmd)
     {
         var clientOrderId = cmd.GetProperty("clientOrderId").GetGuid();
-        var symbol        = cmd.GetProperty("symbol").GetString()!;
-        var direction     = cmd.GetProperty("direction").GetString()!;
-        var lots          = cmd.GetProperty("lots").GetDouble();
-        var slPrice       = cmd.GetProperty("slPrice").GetDouble();
-        var tpPrice       = cmd.GetProperty("tpPrice").GetDouble();
+        var symbol = cmd.GetProperty("symbol").GetString()!;
+        var direction = cmd.GetProperty("direction").GetString()!;
+        var lots = cmd.GetProperty("lots").GetDouble();
+        var slPrice = cmd.GetProperty("slPrice").GetDouble();
+        var tpPrice = cmd.GetProperty("tpPrice").GetDouble();
 
         Diag($"CMD_RECV|submit_order|{clientOrderId}|{symbol}|{direction}|lots={lots:F4}");
 
@@ -221,8 +221,8 @@ public class TradingEngineCBot : Robot
     private void HandleModifyOrder(JsonElement cmd)
     {
         var orderId = cmd.GetProperty("orderId").GetString();
-        var newSl   = cmd.GetProperty("newSl").GetDouble();
-        var newTp   = cmd.GetProperty("newTp").GetDouble();
+        var newSl = cmd.GetProperty("newSl").GetDouble();
+        var newTp = cmd.GetProperty("newTp").GetDouble();
         foreach (var pos in Positions)
         {
             if (pos.Id.ToString() == orderId)
@@ -279,30 +279,30 @@ public class TradingEngineCBot : Robot
     private void SubscribeAll()
     {
         var symbols = SymbolString.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        var periods  = Periods.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var periods = Periods.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
         foreach (var sym in symbols)
-        foreach (var period in periods)
-        {
-            var tf   = ParseTimeFrame(period);
-            var bars = MarketData.GetBars(tf, sym);
-            bars.BarClosed += OnBarClosed;
-            _subscriptions.Add(bars);
-            Diag($"SUBSCRIBED|{sym}|{period}|loaded={bars.Count}");
-        }
+            foreach (var period in periods)
+            {
+                var tf = ParseTimeFrame(period);
+                var bars = MarketData.GetBars(tf, sym);
+                bars.BarClosed += OnBarClosed;
+                _subscriptions.Add(bars);
+                Diag($"SUBSCRIBED|{sym}|{period}|loaded={bars.Count}");
+            }
     }
 
     private static TimeFrame ParseTimeFrame(string s) => s.ToUpperInvariant() switch
     {
-        "M1"  => TimeFrame.Minute,
-        "M5"  => TimeFrame.Minute5,
+        "M1" => TimeFrame.Minute,
+        "M5" => TimeFrame.Minute5,
         "M15" => TimeFrame.Minute15,
         "M30" => TimeFrame.Minute30,
-        "H1"  => TimeFrame.Hour,
-        "H4"  => TimeFrame.Hour4,
-        "D1"  => TimeFrame.Daily,
-        "W1"  => TimeFrame.Weekly,
-        _     => throw new ArgumentException($"Unknown timeframe: {s}")
+        "H1" => TimeFrame.Hour,
+        "H4" => TimeFrame.Hour4,
+        "D1" => TimeFrame.Daily,
+        "W1" => TimeFrame.Weekly,
+        _ => throw new ArgumentException($"Unknown timeframe: {s}")
     };
 
     private void Publish(string topic, object payload)
@@ -316,10 +316,10 @@ public class TradingEngineCBot : Robot
     {
         Publish("acct", new
         {
-            balance    = Account.Balance,
-            equity     = Account.Equity,
+            balance = Account.Balance,
+            equity = Account.Equity,
             floatingPnL = Account.Equity - Account.Balance,
-            time       = Server.TimeInUtc.ToString("o")
+            time = Server.TimeInUtc.ToString("o")
         });
     }
 
@@ -339,7 +339,7 @@ public class TradingEngineCBot : Robot
     private static string Serialize(string type, object payload)
     {
         var dict = new System.Collections.Generic.Dictionary<string, object>(8)
-            { ["type"] = type };
+        { ["type"] = type };
         using var payloadDoc = JsonDocument.Parse(JsonSerializer.Serialize(payload, payload.GetType(), JsonOpts));
         foreach (var prop in payloadDoc.RootElement.EnumerateObject())
             dict[prop.Name] = prop.Value.Clone();

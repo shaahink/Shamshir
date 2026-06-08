@@ -1,4 +1,4 @@
-@page "/backtest/{runId}"
+﻿@page "/backtest/{runId}"
 @model TradingEngine.Web.Pages.Backtests.ProgressModel
 @{
     ViewData["Title"] = $"Backtest {Model.RunId}";
@@ -39,7 +39,6 @@ else
             <tr><td>Win Rate</td><td>@Model.State.Result.WinRatePct.ToString("P1")</td></tr>
         </table>
         <a href="/trades" class="btn" style="display:inline-block;padding:0.5rem 1rem;background:#1a73e8;color:#fff;text-decoration:none;border-radius:4px;">View Trades</a>
-    }
     }
 </div>
 
