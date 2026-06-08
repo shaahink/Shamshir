@@ -11,5 +11,4 @@ public sealed record BacktestResult
     public int WinningTrades { get; init; }
     public double WinRatePct { get; init; }
     public string? ErrorMessage { get; init; }
-    public string? ReportHtmlPath { get; init; }
 }

@@ -24,7 +24,14 @@
       "Bash(dotnet test *)",
       "Bash(Select-String -Path \"C:\\\\code\\\\Shamshir\\\\DECISIONS.md\" -Pattern \"^\\\\| D6\")",
       "Bash(Select-Object -Last 10)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(Get-Content *)",
+      "PowerShell(Select-String -Path \"C:\\\\code\\\\Shamshir\\\\src\\\\TradingEngine.Host\\\\logs\\\\engine-20260607_012.log\" -Pattern \"BAR|SIGNAL|EVAL|cBot\" | Select-Object -First 80 | ForEach-Object { $_.Line })",
+      "PowerShell(Select-String -Path \"C:\\\\code\\\\Shamshir\\\\src\\\\TradingEngine.Host\\\\logs\\\\engine-20260607_012.log\" -Pattern \"BAR\\\\|\" | Select-Object -First 30 | ForEach-Object { $_.Line })",
+      "PowerShell(Select-String *)",
+      "PowerShell(Get-Content *)",
+      "Bash(node *)",
+      "Bash(python3 *)"
     ]
   }
 }

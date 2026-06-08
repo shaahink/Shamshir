@@ -1,3 +1,4 @@
+using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Web.Services;
 
 namespace TradingEngine.Web.Pages.Backtests;
@@ -8,6 +9,8 @@ public sealed class IndexModel : PageModel
     private readonly IBacktestRunRepository _repo;
 
     public IReadOnlyList<BacktestOrchestrator.BacktestRunState> Runs { get; private set; } = [];
+    public int AllTimeTrades { get; private set; }
+    public decimal AllTimePnL { get; private set; }
 
     public IndexModel(BacktestOrchestrator orchestrator, IBacktestRunRepository repo)
     {
