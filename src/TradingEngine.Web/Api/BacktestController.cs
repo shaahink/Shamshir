@@ -116,7 +116,7 @@ public sealed class BacktestController : ControllerBase
             var json = JsonSerializer.Serialize(new { line = finalLogs[i] });
             await Response.WriteAsync($"data: {json}\n\n", ct);
         }
-        await Response.WriteAsync($"data: {JsonSerializer.Serialize(new { done = true, status = state.Status })}\n\n", ct);
+        await Response.WriteAsync($"data: {JsonSerializer.Serialize(new { done = true, status = state.Status, error = state.Error })}\n\n", ct);
         await Response.Body.FlushAsync(ct);
     }
 }

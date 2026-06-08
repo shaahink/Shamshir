@@ -33,8 +33,8 @@ else
             {
                 <tr>
                     <td><a href="/backtest/@run.RunId">@run.RunId</a></td>
-                    <td>-</td>
-                    <td>-</td>
+                    <td>@run.Symbol</td>
+                    <td>@run.Period</td>
                     <td>
                         <span style="color:@(run.Status == "completed" ? "green" : run.Status == "failed" ? "red" : "orange")">
                             @run.Status
@@ -42,11 +42,11 @@ else
                     </td>
                     <td>@run.StartedAt.ToString("MM/dd HH:mm")</td>
                     <td style="color:@(run.Result?.NetProfit > 0 ? "green" : "red")">
-                        @run.Result?.NetProfit.ToString("N2")
+                        @(run.Result?.NetProfit.ToString("N2") ?? "-")
                     </td>
-                    <td>@(run.Result?.MaxDrawdownPct.ToString("P1"))</td>
-                    <td>@run.Result?.TotalTrades</td>
-                    <td>@(run.Result?.WinRatePct.ToString("P1"))</td>
+                    <td>@(run.Result?.MaxDrawdownPct.ToString("P1") ?? "-")</td>
+                    <td>@(run.Result?.TotalTrades.ToString() ?? "-")</td>
+                    <td>@(run.Result?.WinRatePct.ToString("P1") ?? "-")</td>
                 </tr>
             }
         </tbody>

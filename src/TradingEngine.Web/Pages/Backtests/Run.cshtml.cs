@@ -8,6 +8,7 @@ namespace TradingEngine.Web.Pages.Backtests;
 public sealed class RunModel : PageModel
 {
     private readonly BacktestOrchestrator _orchestrator;
+    private readonly IConfiguration _config;
 
     [BindProperty]
     public string Symbol { get; set; } = "EURUSD";
@@ -25,13 +26,20 @@ public sealed class RunModel : PageModel
     public decimal Balance { get; set; } = 100_000;
 
     public string? RunId { get; set; }
+    public bool CredentialsConfigured { get; set; } = true;
 
-    public RunModel(BacktestOrchestrator orchestrator)
+    public RunModel(BacktestOrchestrator orchestrator, IConfiguration config)
     {
         _orchestrator = orchestrator;
+        _config = config;
     }
 
-    public void OnGet() { }
+    public void OnGet()
+    {
+        CredentialsConfigured = !string.IsNullOrWhiteSpace(_config["CTrader:CtId"])
+            && !string.IsNullOrWhiteSpace(_config["CTrader:PwdFile"])
+            && !string.IsNullOrWhiteSpace(_config["CTrader:Account"]);
+    }
 
     public IActionResult OnPost()
     {

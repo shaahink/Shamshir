@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net.Sockets;
+using System.Text.Json;
 
 namespace TradingEngine.CTraderRunner;
 
@@ -22,6 +23,19 @@ public sealed class BacktestRunner
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
         var reportJsonPath = Path.Combine(resultsDir, "report.json");
+
+        var ctid = _config["CTrader:CtId"];
+        var pwdFile = _config["CTrader:PwdFile"];
+        var account = _config["CTrader:Account"];
+        if (string.IsNullOrWhiteSpace(ctid) || string.IsNullOrWhiteSpace(pwdFile) || string.IsNullOrWhiteSpace(account))
+        {
+            return new BacktestResult
+            {
+                RunId = runId,
+                ExitCode = 1,
+                ErrorMessage = "CTrader credentials not configured. Set CTrader:CtId, CTrader:PwdFile, and CTrader:Account in appsettings or environment.",
+            };
+        }
 
         Process? engineProcess = null;
         var startSubprocess = string.Equals(_config["CTrader:StartEngineSubprocess"], "true", StringComparison.OrdinalIgnoreCase);
@@ -78,11 +92,20 @@ public sealed class BacktestRunner
             else if (isKnownCrash)
                 _logger.LogWarning("ctrader-cli exited with known post-backtest crash (zero trades). Code={Code}", cliProcess.ExitCode);
 
+            var errorMessage = ResolveError(cliProcess.ExitCode, stderr, stdout, isKnownCrash);
+
+            var report = TryParseReport(reportJsonPath, _logger);
+
             return new BacktestResult
             {
-                RunId        = runId,
-                ExitCode     = isKnownCrash ? 0 : cliProcess.ExitCode,
-                ErrorMessage = isKnownCrash ? null : (cliProcess.ExitCode != 0 ? stderr : null),
+                RunId           = runId,
+                ExitCode        = isKnownCrash ? 0 : cliProcess.ExitCode,
+                ErrorMessage    = errorMessage,
+                NetProfit       = report.NetProfit,
+                MaxDrawdownPct  = report.MaxDrawdownPct,
+                TotalTrades     = report.TotalTrades,
+                WinningTrades   = report.WinningTrades,
+                WinRatePct      = report.WinRatePct,
             };
         }
         finally
@@ -168,7 +191,7 @@ public sealed class BacktestRunner
         sb.Append($" --account={_config["CTrader:Account"]}");
         sb.Append($" --DataPort={dataPort}");
         sb.Append($" --CommandPort={commandPort}");
-        sb.Append($" --Symbols={string.Join(",", cfg.Symbols)}");
+        sb.Append($" --SymbolString={string.Join(",", cfg.Symbols)}");
         sb.Append($" --Periods={string.Join(",", cfg.Periods)}");
         if (cfg.UseFullAccess)
             sb.Append(" --full-access");
@@ -195,5 +218,68 @@ public sealed class BacktestRunner
 
         return candidates.FirstOrDefault(File.Exists)
             ?? throw new FileNotFoundException("src.algo not found. Build TradingEngine.Adapters.CTrader first.");
+    }
+
+    private static (decimal NetProfit, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct)
+        TryParseReport(string reportJsonPath, ILogger logger)
+    {
+        try
+        {
+            if (!File.Exists(reportJsonPath))
+                return default;
+
+            using var doc = JsonDocument.Parse(File.ReadAllText(reportJsonPath));
+            var root = doc.RootElement;
+
+            decimal netProfit = 0;
+            if (root.TryGetProperty("NetProfit", out var np))
+                netProfit = np.ValueKind == JsonValueKind.Number ? np.GetDecimal() : 0;
+
+            var totalTrades = ReadInt(root, "TotalTrades");
+            var winningTrades = ReadInt(root, "WinningTrades");
+
+            decimal maxDd = 0;
+            if (root.TryGetProperty("MaxEquityDrawdownPercentages", out var mdd) && mdd.ValueKind == JsonValueKind.Number)
+                maxDd = mdd.GetDecimal() / 100m;
+
+            double winRate = totalTrades > 0 ? (double)winningTrades / totalTrades : 0;
+
+            return (netProfit, maxDd, totalTrades, winningTrades, winRate);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to parse ctrader-cli report JSON from {Path}", reportJsonPath);
+            return default;
+        }
+    }
+
+    private static int ReadInt(JsonElement root, string prop)
+    {
+        if (root.TryGetProperty(prop, out var el) && el.ValueKind == JsonValueKind.Number)
+            return el.GetInt32();
+        return 0;
+    }
+
+    private static string? ResolveError(int exitCode, string stderr, string stdout, bool isKnownCrash)
+    {
+        if (exitCode == 0 || isKnownCrash) return null;
+
+        if (!string.IsNullOrWhiteSpace(stderr))
+            return stderr.Trim();
+
+        if (!string.IsNullOrWhiteSpace(stdout))
+        {
+            foreach (var line in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith("Error:", StringComparison.OrdinalIgnoreCase))
+                    return trimmed;
+            }
+            var lines = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            if (lines.Length > 0)
+                return lines[^1].Trim();
+        }
+
+        return $"ctrader-cli exited with code {exitCode} (no error output captured)";
     }
 }

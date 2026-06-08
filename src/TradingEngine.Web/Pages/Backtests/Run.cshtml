@@ -6,6 +6,18 @@
 
 <h1>New Backtest</h1>
 
+@if (!Model.CredentialsConfigured)
+{
+    <div style="background:#fff3cd;border:1px solid #ffc107;color:#856404;padding:1rem;margin-bottom:1rem;border-radius:4px;">
+        <strong>Warning:</strong> CTrader credentials are not configured.
+        Set via <code>dotnet user-secrets set CTrader:CtId "your-ctid"</code>,
+        <code>CTrader:PwdFile "path\to\file.pwd"</code>, and
+        <code>CTrader:Account "your-account"</code> in the
+        <code>src/TradingEngine.Web</code> directory.
+        Backtests will fail without these.
+    </div>
+}
+
 <form method="post" class="backtest-form">
     <div class="form-group">
         <label for="Symbol">Symbol</label>

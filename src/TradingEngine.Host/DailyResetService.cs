@@ -14,8 +14,8 @@ public sealed class DailyResetService(
         if (now > nextReset)
         {
             logger.LogInformation("Daily reset: past 22:00 UTC, firing immediately");
-            riskManager.OnDailyReset(0);
-            riskManager.UpdateEquityLevels(0);
+            var currentEquity = riskManager.InitialBalance;
+            riskManager.OnDailyReset(currentEquity);
             nextReset = nextReset.AddDays(1);
         }
 
@@ -27,7 +27,7 @@ public sealed class DailyResetService(
             if (delay > TimeSpan.Zero)
                 await Task.Delay(delay, ct);
 
-            riskManager.OnDailyReset(0);
+            riskManager.OnDailyReset(riskManager.InitialBalance);
             logger.LogInformation("Daily reset executed at {Time:O}", clock.UtcNow);
 
             nextReset = nextReset.AddDays(1);

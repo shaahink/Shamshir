@@ -6,6 +6,24 @@
 
 <h1>Backtest @Model.RunId</h1>
 
+<div style="margin-bottom:0.5rem;color:#888;">
+    @Model.State?.Symbol @Model.State?.Period |
+    Started: @Model.State?.StartedAt.ToString("MMM dd, HH:mm UTC")
+</div>
+
+@if (Model.State?.Status == "failed" && !string.IsNullOrEmpty(Model.State?.Error))
+{
+    <div id="errorBox" style="background:#f8d7da;border:1px solid#f5c6cb;color:#721c24;padding:1rem;margin-bottom:1rem;border-radius:4px;">
+        <strong>Error:</strong> <span id="errorText">@Model.State.Error</span>
+    </div>
+}
+else
+{
+    <div id="errorBox" style="display:none;background:#f8d7da;border:1px solid#f5c6cb;color:#721c24;padding:1rem;margin-bottom:1rem;border-radius:4px;">
+        <strong>Error:</strong> <span id="errorText"></span>
+    </div>
+}
+
 <div id="status" style="font-size:1.2rem;margin-bottom:1rem;">
     Status: <span id="statusText">@Model.State?.Status</span>
 </div>
@@ -33,6 +51,8 @@
     const logEl = document.getElementById('log');
     const statusText = document.getElementById('statusText');
     const resultDiv = document.getElementById('result');
+    const errorBox = document.getElementById('errorBox');
+    const errorText = document.getElementById('errorText');
 
     const evtSource = new EventSource(`/api/backtest/${runId}/stream`);
     evtSource.onmessage = function(e) {
@@ -43,14 +63,23 @@
         }
         if (data.done) {
             statusText.textContent = data.status;
-            if (data.status === 'completed' || data.status === 'failed') {
+            if (data.status === 'completed') {
                 resultDiv.style.display = 'block';
-                evtSource.close();
             }
+            if (data.status === 'failed') {
+                logEl.textContent += '\n[Backtest failed. See error above.]\n';
+                if (data.error) {
+                    errorBox.style.display = 'block';
+                    errorText.textContent = data.error;
+                }
+            }
+            evtSource.close();
         }
     };
     evtSource.onerror = function() {
-        setTimeout(() => location.reload(), 2000);
+        if (evtSource.readyState === EventSource.CLOSED) {
+            logEl.textContent += '\n[Connection closed. Backtest has finished.]\n';
+        }
     };
 </script>
 }

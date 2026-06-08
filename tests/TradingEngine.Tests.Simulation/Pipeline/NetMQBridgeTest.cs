@@ -11,8 +11,7 @@ public sealed class NetMQBridgeTest
     [Fact(Timeout = 20_000)]
     public async Task EngineReceivesBarAndTickOverNetMQ()
     {
-        var dataPort = 15555;
-        var commandPort = 15556;
+        var (dataPort, commandPort) = PortHelper.AllocatePair();
         var workDir = Path.Combine(Path.GetTempPath(), "shamshir-mq", Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(workDir);
         var logPath = Path.Combine(workDir, "engine.log");
@@ -102,8 +101,8 @@ public sealed class NetMQBridgeTest
 
         lines.Should().Contain(l => l.Contains("NETMQ") && l.Contains("CONNECTED"),
             "engine should log identity capture");
-        lines.Should().Contain(l => l.Contains("BAR_DEBUG") && l.Contains("symbol=EURUSD"),
-            "adapter should receive and write bar to channel");
+        lines.Should().Contain(l => l.Contains("BAR_EVAL") && l.Contains("EURUSD"),
+            "engine should log BAR_EVAL after receiving bar");
         lines.Should().Contain(l => l.Contains("TICK|EURUSD"),
             "engine should log TICK after receiving tick");
     }

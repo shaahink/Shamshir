@@ -38,6 +38,7 @@ public sealed class DataFeedService(
                 sim.TickWriter.Complete();
                 sim.BarWriter.Complete();
                 sim.AccountWriter.Complete();
+                sim.ExecutionWriter.Complete();
             }
         }
     }
