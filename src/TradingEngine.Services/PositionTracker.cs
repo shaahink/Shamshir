@@ -7,7 +7,8 @@ public sealed class PositionTracker(
     Func<string, string, decimal> crossRateProvider,
     IRiskManager riskManager,
     IPositionManager positionManager,
-    PersistenceService persistence,
+    IEventBus eventBus,
+    EngineRunContext runContext,
     IEngineClock clock,
     ILogger<PositionTracker> logger,
     EngineMode engineMode = EngineMode.Backtest)
@@ -95,9 +96,7 @@ public sealed class PositionTracker(
 
         var symbolInfo = symbolRegistry.Get(pos.Symbol);
         var pnl = PipCalculator.GrossPnL(pos.Direction, pos.EntryPrice, new Price(fillPrice), pos.Lots, symbolInfo, crossRateProvider);
-        var exitReason = pos.Direction == TradeDirection.Long
-            ? (fillPrice <= pos.CurrentStopLoss.Value ? "SL" : "TP")
-            : (fillPrice >= pos.CurrentStopLoss.Value ? "SL" : "TP");
+        var exitReason = DetermineExitReason(pos, fillPrice);
 
         _openPositions.Remove(evt.OrderId);
         riskManager.DeregisterPosition(pos.Id);
@@ -113,9 +112,22 @@ public sealed class PositionTracker(
                 pnl, new Pips(0), 0, new Pips(0), new Pips(0),
                 exitReason, pos.StrategyId, riskProfileId, engineMode);
             s.OnTradeResult(tradeResult);
-            _ = persistence.SaveTradeAsync(tradeResult, CancellationToken.None);
+            _ = eventBus.PublishAsync(new TradeClosed(tradeResult, runContext.RunId, clock.UtcNow), CancellationToken.None);
         }
 
         logger.LogInformation("Closed. Id={Id} Exit={Exit:F5} PnL={PnL:F2} Reason={Reason}", pos.Id, fillPrice, pnl.Amount, exitReason);
+    }
+
+    private static string DetermineExitReason(Position pos, decimal fillPrice)
+    {
+        if (pos.Direction == TradeDirection.Long)
+        {
+            if (fillPrice <= pos.CurrentStopLoss.Value) return "SL";
+            if (pos.TakeProfit is not null && fillPrice >= pos.TakeProfit.Value.Value) return "TP";
+            return "FORCE";
+        }
+        if (fillPrice >= pos.CurrentStopLoss.Value) return "SL";
+        if (pos.TakeProfit is not null && fillPrice <= pos.TakeProfit.Value.Value) return "TP";
+        return "FORCE";
     }
 }
