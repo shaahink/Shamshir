@@ -66,6 +66,8 @@ public class TradingEngineCBot : Robot
 
         SubscribeAll();
 
+        Positions.Closed += OnPositionClosed;
+
         PublishAccount();
 
         Print($"CBOT|READY|dataPort={DataPort}|cmdPort={CommandPort}");
@@ -80,8 +82,6 @@ public class TradingEngineCBot : Robot
             try { action(); }
             catch (Exception ex) { Print($"CBOT|CMD_ERR|{ex.Message}"); }
         }
-
-        CheckClosedPositions();
 
         if (_tickCounter % TickEveryN == 0)
         {
@@ -248,24 +248,21 @@ public class TradingEngineCBot : Robot
         }
     }
 
-    private void CheckClosedPositions()
+    private void OnPositionClosed(PositionClosedEventArgs args)
     {
-        var closedIds = new List<long>();
-        foreach (var (posId, clientOrderId) in _positionMap)
+        var pos = args.Position;
+        if (_positionMap.TryGetValue(pos.Id, out var clientOrderId))
         {
-            var stillOpen = false;
-            foreach (var p in Positions)
-                if (p.Id == posId) { stillOpen = true; break; }
-            if (stillOpen) continue;
+            var sym = Symbols.GetSymbol(pos.SymbolName);
+            var lots = sym is not null ? pos.VolumeInUnits / sym.LotSize : pos.VolumeInUnits / 100_000.0;
+            var exitPrice = pos.EntryPrice + (pos.TradeType == TradeType.Buy ? 1 : -1)
+                * (pos.GrossProfit / (pos.VolumeInUnits > 0 ? pos.VolumeInUnits : 1));
 
-            closedIds.Add(posId);
-            var sym = Symbols.GetSymbol(SymbolName);
-            var lots = sym is not null ? 1.0 : 1.0;
-
-            PublishExec(clientOrderId, "Filled", Symbol.Bid, lots, null);
-            Diag($"EXEC_SENT|{clientOrderId}|Filled|fill={Symbol.Bid:F5}|lots={lots:F4}|reason=PositionClosed");
+            PublishExec(clientOrderId, "Filled", exitPrice, lots, null);
+            Diag($"EXEC_SENT|{clientOrderId}|Filled|fill={exitPrice:F5}|lots={lots:F4}|reason=PositionClosed");
+            PublishAccount();
+            _positionMap.Remove(pos.Id);
         }
-        foreach (var id in closedIds) _positionMap.Remove(id);
     }
 
     protected override void OnStop()
