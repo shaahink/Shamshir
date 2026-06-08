@@ -26,6 +26,40 @@ public sealed class BacktestOrchestrator
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _ = LoadPersistedRunsAsync();
+    }
+
+    private async Task LoadPersistedRunsAsync()
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IBacktestRunRepository>();
+            var persisted = await repo.GetAllAsync(CancellationToken.None);
+            foreach (var p in persisted)
+            {
+                _runs.TryAdd(p.RunId, new BacktestRunState
+                {
+                    RunId = p.RunId,
+                    Symbol = p.Symbol,
+                    StartedAt = p.StartedAtUtc,
+                    Status = "completed",
+                    Result = new BacktestResult
+                    {
+                        RunId = p.RunId,
+                        NetProfit = p.NetProfit,
+                        MaxDrawdownPct = p.MaxDrawdownPct,
+                        TotalTrades = p.TotalTrades,
+                        WinningTrades = p.WinningTrades,
+                        WinRatePct = p.WinRatePct,
+                    },
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load persisted backtest runs");
+        }
     }
 
     public BacktestRunState Start(BacktestConfig cfg)
