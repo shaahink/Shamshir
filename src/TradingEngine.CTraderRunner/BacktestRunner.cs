@@ -233,15 +233,21 @@ public sealed class BacktestRunner
             var root = doc.RootElement;
 
             decimal netProfit = 0;
-            if (root.TryGetProperty("NetProfit", out var np))
+            if (root.TryGetProperty("main", out var main) && main.TryGetProperty("netProfit", out var np))
                 netProfit = np.ValueKind == JsonValueKind.Number ? np.GetDecimal() : 0;
 
-            var totalTrades = ReadInt(root, "TotalTrades");
-            var winningTrades = ReadInt(root, "WinningTrades");
+            int totalTrades = 0, winningTrades = 0;
+            if (root.TryGetProperty("tradeStatistics", out var stats))
+            {
+                if (stats.TryGetProperty("totalTrades", out var tt) && tt.TryGetProperty("all", out var tta))
+                    totalTrades = tta.ValueKind == JsonValueKind.Number ? tta.GetInt32() : 0;
+                if (stats.TryGetProperty("winningTrades", out var wt) && wt.TryGetProperty("all", out var wta))
+                    winningTrades = wta.ValueKind == JsonValueKind.Number ? wta.GetInt32() : 0;
+            }
 
             decimal maxDd = 0;
-            if (root.TryGetProperty("MaxEquityDrawdownPercentages", out var mdd) && mdd.ValueKind == JsonValueKind.Number)
-                maxDd = mdd.GetDecimal() / 100m;
+            if (root.TryGetProperty("equity", out var equity) && equity.TryGetProperty("maxEquityDrawdownPercent", out var mdd))
+                maxDd = mdd.ValueKind == JsonValueKind.Number ? mdd.GetDecimal() / 100m : 0;
 
             double winRate = totalTrades > 0 ? (double)winningTrades / totalTrades : 0;
 
@@ -252,13 +258,6 @@ public sealed class BacktestRunner
             logger.LogWarning(ex, "Failed to parse ctrader-cli report JSON from {Path}", reportJsonPath);
             return default;
         }
-    }
-
-    private static int ReadInt(JsonElement root, string prop)
-    {
-        if (root.TryGetProperty(prop, out var el) && el.ValueKind == JsonValueKind.Number)
-            return el.GetInt32();
-        return 0;
     }
 
     private static string? ResolveError(int exitCode, string stderr, string stdout, bool isKnownCrash)
