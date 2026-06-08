@@ -127,18 +127,10 @@ public sealed class ReplayTestHarness : IAsyncDisposable
 
         try
         {
-            var engine = _host.Services.GetRequiredService<EngineWorker>();
-            var engineType = typeof(BackgroundService);
-            var executeTaskField = engineType.GetField(
-                "_executingTask",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-            if (executeTaskField?.GetValue(engine) is Task executingTask)
-                await Task.WhenAny(executingTask, Task.Delay(Timeout.Infinite, ct));
-            else
-                await Task.Delay(TimeSpan.FromSeconds(10), ct);
+            var adapter = _host.Services.GetRequiredService<IBrokerAdapter>();
+            await adapter.BarStream.Completion;
+            await Task.Delay(5_000, ct);
         }
-        catch (OperationCanceledException) { }
         finally
         {
             await _host.StopAsync(CancellationToken.None);

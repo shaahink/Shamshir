@@ -96,7 +96,6 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             _barChannel.Writer.TryComplete();
             _tickChannel.Writer.TryComplete();
             _accountChannel.Writer.TryComplete();
-            _executionChannel.Writer.TryComplete();
         }
     }
 
