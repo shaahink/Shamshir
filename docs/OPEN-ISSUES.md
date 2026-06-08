@@ -150,6 +150,9 @@ row at the beginning of `RunAsync`, update it with final stats on completion (su
 ---
 
 ### DESIGN-06 — `BarEvaluationHandler` drops remaining events silently on shutdown
+
+✅ **Fixed (Iteration 13)**. `DisposeAsync` now drains remaining channel events via `TryRead` and
+flushes them to the DB synchronously after the main flush task completes.
 **File**: `src/TradingEngine.Host/BarEvaluationHandler.cs:71`
 
 `DisposeAsync` cancels `_cts`, which causes the `Task.Delay(3_000, ct)` to throw
@@ -202,6 +205,8 @@ works fine.
 ---
 
 ### STD-03 — `BAR_EVAL` logged at `Information` level on every bar
+
+✅ **Fixed (Iteration 13)**. Changed to `LogDebug`.
 **File**: `src/TradingEngine.Host/EngineWorker.cs:199`
 
 A 6-month H1 backtest = 4,000+ `Information` log lines from this alone. Should be `Debug` or `Trace`.
