@@ -30,4 +30,5 @@ public sealed class TradeResultEntity
     public string RiskProfileId { get; set; } = "";
     public string Mode { get; set; } = "";
     public double DurationSeconds { get; set; }
+    public string? RunId { get; set; }
 }

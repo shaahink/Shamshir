@@ -23,7 +23,10 @@ builder.Services.AddScoped(_ => new TradeReportQueries(new SqliteConnection($"Da
 builder.Services.AddSingleton<BacktestOrchestrator>();
 
 using (var ctx = new TradingDbContext(new DbContextOptionsBuilder<TradingDbContext>().UseSqlite($"Data Source={dbPath}").Options))
+{
     ctx.Database.EnsureCreated();
+    try { ctx.Database.ExecuteSqlRaw("ALTER TABLE TradeResults ADD COLUMN RunId TEXT NULL;"); } catch { }
+}
 
 var app = builder.Build();
 

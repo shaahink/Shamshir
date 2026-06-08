@@ -29,17 +29,32 @@ public sealed class BacktestOrchestrator
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
-        _ = LoadPersistedRunsAsync();
     }
 
-    private async Task<TradeStats> GetTradeStatsAsync(DateTime from, DateTime to)
+    private async Task StampTradesWithRunIdAsync(string runId, DateTime from, DateTime to)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+            await db.Trades
+                .Where(t => t.ClosedAtUtc >= from && t.ClosedAtUtc <= to && t.RunId == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.RunId, runId));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to stamp trades with RunId");
+        }
+    }
+
+    private async Task<TradeStats> GetTradeStatsAsync(string runId)
     {
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
             var trades = await db.Trades
-                .Where(t => t.ClosedAtUtc >= from && t.ClosedAtUtc <= to)
+                .Where(t => t.RunId == runId)
                 .ToListAsync();
 
             if (trades.Count == 0) return new(0, 0, 0, 0, 0);
@@ -57,39 +72,6 @@ public sealed class BacktestOrchestrator
         {
             _logger.LogWarning(ex, "Failed to query trade stats");
             return new(0, 0, 0, 0, 0);
-        }
-    }
-
-    private async Task LoadPersistedRunsAsync()
-    {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var repo = scope.ServiceProvider.GetRequiredService<IBacktestRunRepository>();
-            var persisted = await repo.GetAllAsync(CancellationToken.None);
-            foreach (var p in persisted)
-            {
-                _runs.TryAdd(p.RunId, new BacktestRunState
-                {
-                    RunId = p.RunId,
-                    Symbol = p.Symbol,
-                    StartedAt = p.StartedAtUtc,
-                    Status = "completed",
-                    Result = new BacktestResult
-                    {
-                        RunId = p.RunId,
-                        NetProfit = p.NetProfit,
-                        MaxDrawdownPct = p.MaxDrawdownPct,
-                        TotalTrades = p.TotalTrades,
-                        WinningTrades = p.WinningTrades,
-                        WinRatePct = p.WinRatePct,
-                    },
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load persisted backtest runs");
         }
     }
 
@@ -130,7 +112,8 @@ public sealed class BacktestOrchestrator
 
             var result = await runner.RunAsync(cfg);
 
-            var tradeStats = await GetTradeStatsAsync(cfg.Start, cfg.End);
+            await StampTradesWithRunIdAsync(runId, cfg.Start, cfg.End);
+            var tradeStats = await GetTradeStatsAsync(runId);
 
             result = result with
             {
