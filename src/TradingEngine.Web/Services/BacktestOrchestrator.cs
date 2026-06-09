@@ -9,6 +9,7 @@ using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Risk;
+using TradingEngine.Risk.Filters;
 using TradingEngine.Services;
 
 namespace TradingEngine.Web.Services;
@@ -262,11 +263,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 });
 
                 services.AddSingleton<DrawdownTracker>();
+                services.AddSingleton<INewsFilter>(_ => new NewsFilter());
+                services.AddSingleton<SessionFilter>();
                 services.AddSingleton<RiskManager>();
                 services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
 
                 var solutionRoot = Path.GetFullPath(Path.Combine(
-                    AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".."));
+                    AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
                 var configLoader = new ConfigLoader(solutionRoot);
                 var loadedConfig = configLoader.Load();
                 services.AddSingleton(loadedConfig);
