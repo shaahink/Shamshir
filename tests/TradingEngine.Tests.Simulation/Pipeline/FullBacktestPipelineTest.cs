@@ -54,6 +54,7 @@ public sealed class FullBacktestPipelineTest
                 ["Engine__Broker__NetMQ__CommandPort"] = commandPort.ToString(),
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 ["SERILOG_FILE_PATH"] = logPath,
+                ["Logging__LogLevel__TradingEngine"] = "Debug",
                 ["Persistence__DbPath"] = Path.GetFullPath(Path.Combine(
                     solutionRoot, "data", "trading.db")),
             },
@@ -63,20 +64,7 @@ public sealed class FullBacktestPipelineTest
         engineProcess.Start();
         Console.WriteLine($"[TEST] Engine started. PID={engineProcess.Id} Log={logPath}");
 
-        // ─── Wait for engine to initialize ────────────────────────────
-        await Task.Delay(3000);
-        if (engineProcess.HasExited)
-        {
-            engineProcess.Kill(entireProcessTree: true);
-            await engineProcess.WaitForExitAsync(CancellationToken.None);
-            var logFiles = Directory.GetFiles(workDir, "*.log");
-            var logContent = logFiles.Length > 0 ? await File.ReadAllTextAsync(logFiles[0]) : "(no log file)";
-            var output = $"[TEST] Engine exited prematurely. ExitCode={engineProcess.ExitCode}\n\nEngine log:\n{logContent}";
-            File.WriteAllText(Path.Combine(workDir, "test-output.txt"), output);
-            Console.WriteLine(output);
-            Assert.Fail($"Engine exited during startup. See {workDir}\\test-output.txt");
-            return;
-        }
+        // ─── Run backtest (BacktestRunner verifies engine readiness before CLI) ──
         Console.WriteLine($"[TEST] Engine initialized");
         // ─── Run backtest ────────────────────────────────────────────────
         try
@@ -245,6 +233,7 @@ public sealed class FullBacktestPipelineTest
                 ["Engine__Broker__NetMQ__CommandPort"] = commandPort.ToString(),
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 ["SERILOG_FILE_PATH"] = logPath,
+                ["Logging__LogLevel__TradingEngine"] = "Debug",
                 ["Persistence__DbPath"] = Path.GetFullPath(Path.Combine(
                     solutionRoot, "data", "trading.db")),
             },
@@ -253,18 +242,7 @@ public sealed class FullBacktestPipelineTest
         using var engineProcess = new Process { StartInfo = psi };
         engineProcess.Start();
 
-        await Task.Delay(3000);
-        if (engineProcess.HasExited)
-        {
-            engineProcess.Kill(entireProcessTree: true);
-            await engineProcess.WaitForExitAsync(CancellationToken.None);
-            var logFiles = Directory.GetFiles(workDir, "*.log");
-            var logContent = logFiles.Length > 0 ? await File.ReadAllTextAsync(logFiles[0]) : "(no log file)";
-            Console.WriteLine($"[TEST] Engine exited prematurely. ExitCode={engineProcess.ExitCode}\n\nEngine log:\n{logContent}");
-            Assert.Fail($"Engine exited during startup");
-            return;
-        }
-
+        // ─── Run backtest (BacktestRunner verifies engine readiness before CLI) ──
         try
         {
             var config = new ConfigurationBuilder()

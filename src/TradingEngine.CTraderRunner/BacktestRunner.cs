@@ -49,12 +49,13 @@ public sealed class BacktestRunner
         {
             engineProcess = StartEngine(dataPort, commandPort, runId);
             _logger.LogInformation("Engine subprocess started. PID={Pid}", engineProcess?.Id ?? -1);
-            await WaitForEngineReadyAsync(commandPort, TimeSpan.FromSeconds(30), ct);
         }
         else
         {
-            _logger.LogInformation("Using Aspire-managed engine. DataPort={DataPort} CommandPort={CommandPort}", dataPort, commandPort);
+            _logger.LogInformation("Using externally-managed engine. DataPort={DataPort} CommandPort={CommandPort}", dataPort, commandPort);
         }
+
+        await WaitForEngineReadyAsync(commandPort, TimeSpan.FromSeconds(30), ct);
 
         try
         {
