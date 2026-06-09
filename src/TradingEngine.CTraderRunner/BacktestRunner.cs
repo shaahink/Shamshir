@@ -151,6 +151,9 @@ public sealed class BacktestRunner
                 ["Engine__Broker__NetMQ__DataPort"] = dataPort.ToString(),
                 ["Engine__Broker__NetMQ__CommandPort"] = commandPort.ToString(),
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
+                ["Persistence__DbPath"] = _config["Persistence:DbPath"]
+                    ?? Path.GetFullPath(Path.Combine(
+                        AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db")),
             },
         };
 

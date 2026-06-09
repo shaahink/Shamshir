@@ -359,6 +359,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         await adapter.BarStream.Completion;
         await Task.Delay(5_000, cts.Token);
 
+        var barHandler = innerHost.Services.GetRequiredService<BarEvaluationHandler>();
+        await barHandler.FlushRemainingAsync();
+
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] Engine replay complete.");
         await innerHost.StopAsync(CancellationToken.None);

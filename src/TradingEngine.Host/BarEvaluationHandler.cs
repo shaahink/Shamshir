@@ -76,48 +76,49 @@ public sealed class BarEvaluationHandler : IEventHandler<BarEvaluated>, IAsyncDi
         }
     }
 
+    public async Task FlushRemainingAsync()
+    {
+        var remaining = new List<BarEvaluated>(1_000);
+        while (_channel.Reader.TryRead(out var evt))
+            remaining.Add(evt);
+
+        if (remaining.Count == 0) return;
+
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+            foreach (var evt in remaining)
+            {
+                db.BarEvaluations.Add(new BarEvaluationEntity
+                {
+                    Id = Guid.NewGuid(),
+                    RunId = evt.RunId,
+                    Symbol = evt.Symbol.Value,
+                    Timeframe = evt.Timeframe.ToString(),
+                    BarOpenTimeUtc = evt.BarOpenTimeUtc,
+                    StrategyId = evt.StrategyId,
+                    IndicatorValuesJson = JsonSerializer.Serialize(evt.IndicatorValues),
+                    SignalFired = evt.SignalFired,
+                    SignalDirection = evt.SignalDirection?.ToString(),
+                    Reason = evt.Reason,
+                    OccurredAtUtc = evt.OccurredAtUtc,
+                });
+            }
+            await db.SaveChangesAsync(CancellationToken.None);
+            _logger.LogDebug("BarEvaluationHandler: explicit pre-dispose flush {Count}", remaining.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "BarEvaluationHandler: pre-dispose flush failed");
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         _channel.Writer.Complete();
         _cts.Cancel();
         try { await _flushTask; } catch { }
-
-        var remaining = new List<BarEvaluated>(200);
-        while (_channel.Reader.TryRead(out var evt))
-            remaining.Add(evt);
-
-        if (remaining.Count > 0)
-        {
-            try
-            {
-                await using var scope = _scopeFactory.CreateAsyncScope();
-                var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-                foreach (var evt in remaining)
-                {
-                    db.BarEvaluations.Add(new BarEvaluationEntity
-                    {
-                        Id = Guid.NewGuid(),
-                        RunId = evt.RunId,
-                        Symbol = evt.Symbol.Value,
-                        Timeframe = evt.Timeframe.ToString(),
-                        BarOpenTimeUtc = evt.BarOpenTimeUtc,
-                        StrategyId = evt.StrategyId,
-                        IndicatorValuesJson = JsonSerializer.Serialize(evt.IndicatorValues),
-                        SignalFired = evt.SignalFired,
-                        SignalDirection = evt.SignalDirection?.ToString(),
-                        Reason = evt.Reason,
-                        OccurredAtUtc = evt.OccurredAtUtc,
-                    });
-                }
-                await db.SaveChangesAsync(CancellationToken.None);
-                _logger.LogDebug("BarEvaluationHandler: flushed {Count} remaining on dispose", remaining.Count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "BarEvaluationHandler: failed to flush remaining on dispose");
-            }
-        }
-
         _cts.Dispose();
     }
 }
