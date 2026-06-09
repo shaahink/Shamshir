@@ -173,6 +173,11 @@ public sealed class EngineWorker : BackgroundService
             }
         }
         catch (OperationCanceledException) { }
+        finally
+        {
+            while (_executionEventChannel.Reader.TryRead(out var execEvent))
+                _positionTracker.OnExecution(execEvent, _strategies);
+        }
         _logger.LogDebug("Tick processor stopped");
     }
 
@@ -278,6 +283,34 @@ public sealed class EngineWorker : BackgroundService
                             _runContext.RunId, "ORDER",
                             $"ORDER {strategy.Id} {intent.Direction} lots={orderCtx.Lots:F2} entry≈{bar.Close:F5}",
                             _clock.UtcNow));
+                    }
+
+                    while (_broker.ExecutionStream.TryRead(out var execEvent))
+                        _positionTracker.OnExecution(execEvent, _strategies);
+
+                    foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())
+                    {
+                        if (pos.Symbol != bar.Symbol) continue;
+
+                        bool exit = false;
+                        if (pos.Direction == TradeDirection.Long)
+                        {
+                            if (bar.Low <= pos.CurrentStopLoss.Value) exit = true;
+                            else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) exit = true;
+                        }
+                        else
+                        {
+                            if (bar.High >= pos.CurrentStopLoss.Value) exit = true;
+                            else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) exit = true;
+                        }
+
+                        if (exit)
+                        {
+                            _logger.LogInformation("BAR_EXIT|{Id}|{Symbol}|sl={SL:F5}|tp={TP}|low={Low:F5}|high={High:F5}",
+                                orderId, pos.Symbol, pos.CurrentStopLoss.Value,
+                                pos.TakeProfit?.Value ?? 0, bar.Low, bar.High);
+                            await _broker.ClosePositionAsync(orderId, ct);
+                        }
                     }
                 }
                 catch (OperationCanceledException) { throw; }
