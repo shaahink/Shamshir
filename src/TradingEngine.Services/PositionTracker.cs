@@ -29,7 +29,7 @@ public sealed class PositionTracker(
         _pendingRisk[orderId] = (riskAmount, riskProfileId ?? "standard");
     }
 
-    public void OnExecution(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
+    public async Task OnExecutionAsync(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
     {
         if (_processedExecutionIds.Contains(evt.OrderId) && !_openPositions.ContainsKey(evt.OrderId))
         {
@@ -51,7 +51,7 @@ public sealed class PositionTracker(
 
         if (!_pendingOrders.TryGetValue(evt.OrderId, out var entry))
         {
-            ClosePosition(evt, fillPrice, strategies);
+            await ClosePositionAsync(evt, fillPrice, strategies);
             return;
         }
 
@@ -90,7 +90,7 @@ public sealed class PositionTracker(
             position.Id, position.Symbol, position.Direction, position.Lots, position.EntryPrice.Value);
     }
 
-    private void ClosePosition(ExecutionEvent evt, decimal fillPrice, IEnumerable<IStrategy> strategies)
+    private async Task ClosePositionAsync(ExecutionEvent evt, decimal fillPrice, IEnumerable<IStrategy> strategies)
     {
         if (!_openPositions.TryGetValue(evt.OrderId, out var pos)) return;
 
@@ -112,7 +112,7 @@ public sealed class PositionTracker(
                 pnl, new Pips(0), 0, new Pips(0), new Pips(0),
                 exitReason, pos.StrategyId, riskProfileId, engineMode);
             s.OnTradeResult(tradeResult);
-            _ = eventBus.PublishAsync(new TradeClosed(tradeResult, runContext.RunId, clock.UtcNow), CancellationToken.None);
+            await eventBus.PublishAsync(new TradeClosed(tradeResult, runContext.RunId, clock.UtcNow), CancellationToken.None);
         }
 
         logger.LogInformation("Closed. Id={Id} Exit={Exit:F5} PnL={PnL:F2} Reason={Reason}", pos.Id, fillPrice, pnl.Amount, exitReason);

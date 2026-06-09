@@ -149,7 +149,7 @@ public sealed class EngineWorker : BackgroundService
 
                 while (_executionEventChannel.Reader.TryRead(out var execEvent))
                 {
-                    _positionTracker.OnExecution(execEvent, _strategies);
+                    await _positionTracker.OnExecutionAsync(execEvent, _strategies);
                     _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
                         execEvent.OrderId, execEvent.NewState,
                         execEvent.FillPrice?.Value.ToString("F5") ?? "none",
@@ -179,7 +179,7 @@ public sealed class EngineWorker : BackgroundService
         finally
         {
             while (_executionEventChannel.Reader.TryRead(out var execEvent))
-                _positionTracker.OnExecution(execEvent, _strategies);
+                await _positionTracker.OnExecutionAsync(execEvent, _strategies);
         }
         _logger.LogDebug("Tick processor stopped");
     }
@@ -444,7 +444,7 @@ public sealed class EngineWorker : BackgroundService
                             _clock.UtcNow));
                     }
 
-                    DrainExecutionStream();
+                    await DrainExecutionStreamAsync();
 
                     foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())
                     {
@@ -471,7 +471,7 @@ public sealed class EngineWorker : BackgroundService
                         }
                     }
 
-                    DrainExecutionStream();
+                    await DrainExecutionStreamAsync();
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -485,11 +485,11 @@ public sealed class EngineWorker : BackgroundService
         _logger.LogDebug("Backtest loop stopped");
     }
 
-    private void DrainExecutionStream()
+    private async Task DrainExecutionStreamAsync()
     {
         while (_broker.ExecutionStream.TryRead(out var execEvent))
         {
-            _positionTracker.OnExecution(execEvent, _strategies);
+            await _positionTracker.OnExecutionAsync(execEvent, _strategies);
             _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
                 execEvent.OrderId, execEvent.NewState,
                 execEvent.FillPrice?.Value.ToString("F5") ?? "none",
