@@ -129,6 +129,12 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
     public Task CancelOrderAsync(Guid orderId, CancellationToken ct)
         => Task.CompletedTask;
 
+    public void SyncToBar(decimal close, DateTime openTimeUtc)
+    {
+        _lastClose = close;
+        BrokerTimeUtc = openTimeUtc;
+    }
+
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
     {
         var fillPrice = new Price(_lastClose > 0 ? _lastClose : 1m);

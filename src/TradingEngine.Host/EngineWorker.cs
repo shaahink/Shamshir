@@ -121,15 +121,18 @@ public sealed class EngineWorker : BackgroundService
 
         await WarmUpIndicatorsAsync(ct);
 
-        var tasks = new[]
+        if (_engineMode == EngineMode.Backtest)
         {
-            ProcessTicksAsync(ct),
-            ProcessBarsAsync(ct),
-            ProcessAccountUpdatesAsync(ct),
-            ProcessExecutionEventsAsync(ct),
-        };
-
-        await Task.WhenAll(tasks);
+            await RunBacktestLoopAsync(ct);
+        }
+        else
+        {
+            await Task.WhenAll(
+                ProcessTicksAsync(ct),
+                ProcessBarsAsync(ct),
+                ProcessAccountUpdatesAsync(ct),
+                ProcessExecutionEventsAsync(ct));
+        }
 
         _logger.LogInformation("Engine stopped. Ticks={Ticks} Bars={Bars}",
             Interlocked.Read(ref _tickCount), Interlocked.Read(ref _barCount));
@@ -285,33 +288,8 @@ public sealed class EngineWorker : BackgroundService
                             _clock.UtcNow));
                     }
 
-                    while (_broker.ExecutionStream.TryRead(out var execEvent))
-                        _positionTracker.OnExecution(execEvent, _strategies);
-
-                    foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())
-                    {
-                        if (pos.Symbol != bar.Symbol) continue;
-
-                        bool exit = false;
-                        if (pos.Direction == TradeDirection.Long)
-                        {
-                            if (bar.Low <= pos.CurrentStopLoss.Value) exit = true;
-                            else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) exit = true;
-                        }
-                        else
-                        {
-                            if (bar.High >= pos.CurrentStopLoss.Value) exit = true;
-                            else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) exit = true;
-                        }
-
-                        if (exit)
-                        {
-                            _logger.LogInformation("BAR_EXIT|{Id}|{Symbol}|sl={SL:F5}|tp={TP}|low={Low:F5}|high={High:F5}",
-                                orderId, pos.Symbol, pos.CurrentStopLoss.Value,
-                                pos.TakeProfit?.Value ?? 0, bar.Low, bar.High);
-                            await _broker.ClosePositionAsync(orderId, ct);
-                        }
-                    }
+                    // Per-bar SL/TP evaluation removed from live path — belongs in RunBacktestLoopAsync.
+                    // Live broker manages orders server-side; engine must not second-guess SL/TP.
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -356,6 +334,167 @@ public sealed class EngineWorker : BackgroundService
                 await _executionEventChannel.Writer.WriteAsync(evt, ct);
         }
         catch (OperationCanceledException) { }
+    }
+
+    private async Task RunBacktestLoopAsync(CancellationToken ct)
+    {
+        var initAcct = await _broker.AccountStream.ReadAsync(ct);
+        HandleAccountUpdate(initAcct);
+
+        try
+        {
+            await foreach (var bar in _broker.BarStream.ReadAllAsync(ct))
+            {
+                try
+                {
+                    if (_broker is BacktestReplayAdapter replay)
+                        replay.SyncToBar(bar.Close, bar.OpenTimeUtc);
+
+                    Interlocked.Increment(ref _barCount);
+                    var byTf = _bars.GetOrAdd(bar.Symbol, _ => new());
+                    var list = byTf.GetOrAdd(bar.Timeframe, _ => new());
+                    int barCount;
+                    lock (list)
+                    {
+                        list.Add(bar);
+                        if (list.Count > MaxBarHistory) list.RemoveAt(0);
+                        barCount = list.Count;
+                    }
+
+                    await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe);
+
+                    _logger.LogDebug("BAR_EVAL|{Symbol}|{Tf}|openTime={OpenTime:yyyy-MM-dd HH:mm}|close={Close:F5}|bars={Count}|total={Total}",
+                        bar.Symbol.Value, bar.Timeframe, bar.OpenTimeUtc, bar.Close, barCount, Interlocked.Read(ref _barCount));
+
+                    _progress?.Report(new BacktestProgressEvent(
+                        _runContext.RunId, "BAR",
+                        $"Bar {bar.OpenTimeUtc:yyyy-MM-dd HH:mm} | close={bar.Close:F5} | total={Interlocked.Read(ref _barCount)}",
+                        _clock.UtcNow));
+
+                    var halfSpread = ResolveHalfSpread(bar.Symbol);
+                    var closeTick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread,
+                        bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
+                    var barSnapshot = BuildBarSnapshot(bar.Symbol);
+                    if (barSnapshot is null) continue;
+
+                    BuildIndicatorSnapshot(bar.Symbol);
+
+                    foreach (var strategy in _strategies)
+                    {
+                        var totalBars = barSnapshot.Values.Sum(b => b.Count);
+                        if (totalBars < strategy.RequiredBarCount)
+                        {
+                            _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NEED_BARS|have={Have}|need={Need}",
+                                strategy.Id, bar.Symbol.Value, totalBars, strategy.RequiredBarCount);
+                            _ = _eventBus.PublishAsync(new BarEvaluated(
+                                _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
+                                strategy.Id, new Dictionary<string, double>(_reusableIndicatorDict),
+                                false, null, $"not enough bars (have {totalBars}, need {strategy.RequiredBarCount})",
+                                _clock.UtcNow), CancellationToken.None);
+                            continue;
+                        }
+
+                        var context = new MarketContext(bar.Symbol, closeTick, barSnapshot,
+                            _reusableIndicatorDict, _clock.UtcNow);
+                        var intent = strategy.Evaluate(context);
+
+                        _ = _eventBus.PublishAsync(new BarEvaluated(
+                            _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
+                            strategy.Id, new Dictionary<string, double>(_reusableIndicatorDict),
+                            intent is not null, intent?.Direction,
+                            intent?.Reason ?? "no signal",
+                            _clock.UtcNow), CancellationToken.None);
+
+                        if (intent is null)
+                        {
+                            _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NO_SIGNAL", strategy.Id, bar.Symbol.Value);
+                            continue;
+                        }
+
+                        _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|{Dir}|sl={SL:F5}|tp={TP}",
+                            strategy.Id, bar.Symbol.Value, intent.Direction,
+                            intent.StopLoss.Value, intent.TakeProfit?.Value.ToString("F5") ?? "none");
+                        _logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
+
+                        _progress?.Report(new BacktestProgressEvent(
+                            _runContext.RunId, "SIGNAL",
+                            $"SIGNAL {strategy.Id} {intent.Direction} sl={intent.StopLoss.Value:F5} tp={intent.TakeProfit?.Value.ToString("F5") ?? "none"} reason={intent.Reason}",
+                            _clock.UtcNow));
+
+                        var equity = Volatile.Read(ref _currentEquity);
+                        if (equity.Balance == 0)
+                        {
+                            _logger.LogWarning("DISPATCH_SKIP|{Strategy}|{Symbol}|reason=equity not initialized",
+                                strategy.Id, bar.Symbol.Value);
+                            continue;
+                        }
+                        var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, bar.Close, _broker, ct);
+                        if (orderCtx is null) continue;
+
+                        var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,
+                            intent.Direction, OrderType.Market, intent.LimitPrice);
+                        _positionTracker.TrackOrder(orderCtx.OrderId, orderReq, orderCtx.RiskAmount);
+
+                        _logger.LogInformation("ORDER|{Strategy}|{OrderId}|{Dir}|lots={Lots}|entry={Entry:F5}",
+                            strategy.Id, orderCtx.OrderId, intent.Direction, orderCtx.Lots, bar.Close);
+
+                        _progress?.Report(new BacktestProgressEvent(
+                            _runContext.RunId, "ORDER",
+                            $"ORDER {strategy.Id} {intent.Direction} lots={orderCtx.Lots:F2} entry≈{bar.Close:F5}",
+                            _clock.UtcNow));
+                    }
+
+                    DrainExecutionStream();
+
+                    foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())
+                    {
+                        if (pos.Symbol != bar.Symbol) continue;
+
+                        bool exit = false;
+                        if (pos.Direction == TradeDirection.Long)
+                        {
+                            if (bar.Low <= pos.CurrentStopLoss.Value) exit = true;
+                            else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) exit = true;
+                        }
+                        else
+                        {
+                            if (bar.High >= pos.CurrentStopLoss.Value) exit = true;
+                            else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) exit = true;
+                        }
+
+                        if (exit)
+                        {
+                            _logger.LogInformation("BAR_EXIT|{Id}|{Symbol}|sl={SL:F5}|tp={TP}|low={Low:F5}|high={High:F5}",
+                                orderId, pos.Symbol, pos.CurrentStopLoss.Value,
+                                pos.TakeProfit?.Value ?? 0, bar.Low, bar.High);
+                            await _broker.ClosePositionAsync(orderId, ct);
+                        }
+                    }
+
+                    DrainExecutionStream();
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "BAR_PROC_ERR|{Symbol}|{OpenTime}", bar.Symbol, bar.OpenTimeUtc);
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+
+        _logger.LogDebug("Backtest loop stopped");
+    }
+
+    private void DrainExecutionStream()
+    {
+        while (_broker.ExecutionStream.TryRead(out var execEvent))
+        {
+            _positionTracker.OnExecution(execEvent, _strategies);
+            _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
+                execEvent.OrderId, execEvent.NewState,
+                execEvent.FillPrice?.Value.ToString("F5") ?? "none",
+                execEvent.FilledLots);
+        }
     }
 
     private void HandleAccountUpdate(AccountUpdate update)

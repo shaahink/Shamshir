@@ -341,6 +341,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         eventBus.Subscribe<BarEvaluated>(
             innerHost.Services.GetRequiredService<BarEvaluationHandler>());
 
+        var rm = innerHost.Services.GetRequiredService<RiskManager>();
+        var loaded = innerHost.Services.GetRequiredService<LoadedConfig>();
+        var activeRiskProfileId = loaded.StrategyConfigs
+            .Select(c => c.RiskProfileId).FirstOrDefault() ?? "standard";
+        var activeProfile = loaded.RiskProfiles.FirstOrDefault(r => r.Id == activeRiskProfileId);
+        var activeRuleSetId = activeProfile?.PropFirmRuleSetId ?? "ftmo-standard";
+        var ruleSet = loaded.PropFirms.FirstOrDefault(r => r.Id == activeRuleSetId);
+        if (ruleSet is not null)
+            rm.SetActiveRuleSet(ruleSet);
+
         await innerHost.StartAsync(cts.Token);
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] Engine started. Replaying bars...");
