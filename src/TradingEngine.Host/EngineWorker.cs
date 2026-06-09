@@ -567,7 +567,11 @@ public sealed class EngineWorker : BackgroundService
     private decimal ResolveHalfSpread(Symbol symbol)
     {
         try { return _symbolRegistry.Get(symbol).TypicalSpread / 2m; }
-        catch { return 0.00005m; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ResolveHalfSpread failed for {Symbol} — using fallback 0.5pip", symbol);
+            return 0.00005m;
+        }
     }
 
     private static TimeSpan GetBarDuration(Timeframe tf) => tf switch

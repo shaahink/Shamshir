@@ -35,6 +35,12 @@ using (var ctx = new TradingDbContext(new DbContextOptionsBuilder<TradingDbConte
     try { ctx.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS BarEvaluations (Id TEXT PRIMARY KEY, RunId TEXT NOT NULL, Symbol TEXT NOT NULL, Timeframe TEXT NOT NULL, BarOpenTimeUtc TEXT NOT NULL, StrategyId TEXT NOT NULL, IndicatorValuesJson TEXT NOT NULL DEFAULT '{}', SignalFired INTEGER NOT NULL DEFAULT 0, SignalDirection TEXT, Reason TEXT NOT NULL DEFAULT '', OccurredAtUtc TEXT NOT NULL);"); } catch { }
     try { ctx.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_BarEvaluations_RunId ON BarEvaluations(RunId);"); } catch { }
     try { ctx.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_BarEvaluations_RunId_StrategyId_BarOpenTimeUtc ON BarEvaluations(RunId, StrategyId, BarOpenTimeUtc);"); } catch { }
+
+    if (!builder.Configuration.GetValue<bool>("CTrader:UseForBacktest") && !ctx.Bars.Any())
+    {
+        throw new InvalidOperationException(
+            "Bars table is empty. Run scripts/seed-bars.ps1 before starting with CTrader:UseForBacktest=false.");
+    }
 }
 
 var app = builder.Build();

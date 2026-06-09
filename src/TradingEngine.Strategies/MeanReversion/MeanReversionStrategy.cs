@@ -52,8 +52,8 @@ public sealed class MeanReversionStrategy : IStrategy
             var latestBar = h1Bars[^1];
             TradeDirection? dir = null;
 
-            var nearLow = (double)(latestBar.Close - latestBar.Low) / (double)latestBar.Close < 0.002;
-            var nearHigh = (double)(latestBar.High - latestBar.Close) / (double)latestBar.Close < 0.002;
+            var nearLow = (latestBar.Close - latestBar.Low) / latestBar.Close < 0.002m;
+            var nearHigh = (latestBar.High - latestBar.Close) / latestBar.Close < 0.002m;
 
             if (rsi < p.RsiOversold && nearLow)
                 dir = TradeDirection.Long;
@@ -84,11 +84,20 @@ public sealed class MeanReversionStrategy : IStrategy
         }
     }
 
+    private readonly Queue<bool> _recentTrades = new();
+
     public void OnTradeResult(TradeResult result)
     {
         var w = Stats.ConsecutiveWins; var l = Stats.ConsecutiveLosses;
         if (result.NetPnL.Amount > 0) { w++; l = 0; } else { l++; w = 0; }
-        Stats = new StrategyStats(w, l, Stats.WinRateLast20, Stats.AvgRLast20);
+
+        _recentTrades.Enqueue(result.NetPnL.Amount > 0);
+        if (_recentTrades.Count > 20) _recentTrades.Dequeue();
+
+        var winRate20 = _recentTrades.Count > 0
+            ? (double)_recentTrades.Count(t => t) / _recentTrades.Count : 0d;
+
+        Stats = new StrategyStats(w, l, winRate20, Stats.AvgRLast20);
     }
 
     public void Reset() => Stats = new StrategyStats(0, 0, 0, 0);
