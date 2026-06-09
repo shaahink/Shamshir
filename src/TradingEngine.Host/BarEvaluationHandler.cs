@@ -27,10 +27,10 @@ public sealed class BarEvaluationHandler : IEventHandler<BarEvaluated>, IAsyncDi
         _flushTask = FlushLoopAsync(_cts.Token);
     }
 
-    public async Task HandleAsync(BarEvaluated evt, CancellationToken ct)
+    public Task HandleAsync(BarEvaluated evt, CancellationToken ct)
     {
         _channel.Writer.TryWrite(evt);
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private async Task FlushLoopAsync(CancellationToken ct)

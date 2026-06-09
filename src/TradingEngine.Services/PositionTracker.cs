@@ -99,6 +99,7 @@ public sealed class PositionTracker(
         var exitReason = DetermineExitReason(pos, fillPrice);
 
         _openPositions.Remove(evt.OrderId);
+        _processedExecutionIds.Remove(evt.OrderId);
         riskManager.DeregisterPosition(pos.Id);
         positionManager.DeregisterPosition(pos.Id);
 

@@ -6,7 +6,7 @@ public sealed class EngineWorker : BackgroundService
 {
     private readonly IBrokerAdapter _broker;
     private readonly IRiskManager _riskManager;
-    private readonly IEnumerable<IStrategy> _strategies;
+    private readonly IReadOnlyList<IStrategy> _strategies;
     private readonly IIndicatorService _indicators;
     private readonly IEventBus _eventBus;
     private readonly IEngineClock _clock;
@@ -63,7 +63,7 @@ public sealed class EngineWorker : BackgroundService
     {
         _broker = broker;
         _riskManager = riskManager;
-        _strategies = strategies;
+        _strategies = strategies.ToList();
         _indicators = indicators;
         _eventBus = eventBus;
         _clock = clock;
@@ -97,7 +97,7 @@ public sealed class EngineWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         _logger.LogInformation("Engine starting. Mode={Mode} Strategies={Count}",
-            _engineMode, _strategies.Count());
+            _engineMode, _strategies.Count);
 
         if (_broker is NetMQBrokerAdapter mqAdapter)
             mqAdapter.OnConnected = ResetState;
@@ -205,7 +205,7 @@ public sealed class EngineWorker : BackgroundService
                         barCount = list.Count;
                     }
 
-                    await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe);
+                    await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe, ct);
 
                     _logger.LogDebug("BAR_EVAL|{Symbol}|{Tf}|openTime={OpenTime:yyyy-MM-dd HH:mm}|close={Close:F5}|bars={Count}|total={Total}",
                         bar.Symbol.Value, bar.Timeframe, bar.OpenTimeUtc, bar.Close, barCount, Interlocked.Read(ref _barCount));
@@ -361,7 +361,7 @@ public sealed class EngineWorker : BackgroundService
                         barCount = list.Count;
                     }
 
-                    await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe);
+                    await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe, ct);
 
                     _logger.LogDebug("BAR_EVAL|{Symbol}|{Tf}|openTime={OpenTime:yyyy-MM-dd HH:mm}|close={Close:F5}|bars={Count}|total={Total}",
                         bar.Symbol.Value, bar.Timeframe, bar.OpenTimeUtc, bar.Close, barCount, Interlocked.Read(ref _barCount));
@@ -526,10 +526,10 @@ public sealed class EngineWorker : BackgroundService
         return snapshot;
     }
 
-    private async Task RecomputeIndicatorsAsync(Symbol symbol, Timeframe tf)
+    private Task RecomputeIndicatorsAsync(Symbol symbol, Timeframe tf, CancellationToken ct)
     {
-        if (!_bars.TryGetValue(symbol, out var byTf)) return;
-        if (!byTf.TryGetValue(tf, out var list)) return;
+        if (!_bars.TryGetValue(symbol, out var byTf)) return Task.CompletedTask;
+        if (!byTf.TryGetValue(tf, out var list)) return Task.CompletedTask;
 
         IReadOnlyList<Bar> bars;
         lock (list) { bars = list.ToList(); }
@@ -550,18 +550,18 @@ public sealed class EngineWorker : BackgroundService
                 };
             }
         }
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
-    private async Task WarmUpIndicatorsAsync(CancellationToken ct)
+    private Task WarmUpIndicatorsAsync(CancellationToken ct)
     {
-        _logger.LogInformation("Warm-up: loading indicators for {Count} strategies", _strategies.Count());
+        _logger.LogInformation("Warm-up: loading indicators for {Count} strategies", _strategies.Count);
         foreach (var strategy in _strategies)
         {
             _logger.LogInformation("Warm-up: strategy={Strategy} timeframes={Tf} bars required {Count}",
                 strategy.Id, string.Join(",", strategy.RequiredTimeframes), strategy.RequiredBarCount);
         }
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private decimal ResolveHalfSpread(Symbol symbol)
