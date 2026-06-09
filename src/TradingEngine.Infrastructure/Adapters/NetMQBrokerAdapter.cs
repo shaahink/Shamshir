@@ -78,6 +78,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         try
         {
             var topic = e.Socket.ReceiveFrameString();
+            _logger.LogInformation("NETMQ|SUB_RAW|topic={Topic}", topic);
             var frame = e.Socket.ReceiveFrameString();
 
             if (topic == "diag")

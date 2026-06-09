@@ -11,16 +11,16 @@ namespace TradingEngine.Adapters.CTrader;
 [Robot(AccessRights = AccessRights.FullAccess)]
 public class TradingEngineCBot : Robot
 {
-    [Parameter("Data Port", DefaultValue = "15555")]
+    [Parameter("DataPort", DefaultValue = "15555")]
     public int DataPort { get; set; } = 15555;
 
-    [Parameter("Command Port", DefaultValue = "15556")]
+    [Parameter("CommandPort", DefaultValue = "15556")]
     public int CommandPort { get; set; } = 15556;
 
-    [Parameter("Tick Every N", DefaultValue = "10")]
+    [Parameter("TickEveryN", DefaultValue = "10")]
     public int TickEveryN { get; set; } = 10;
 
-    [Parameter("Symbols", DefaultValue = "EURUSD")]
+    [Parameter("SymbolString", DefaultValue = "EURUSD")]
     public string SymbolString { get; set; } = "EURUSD";
 
     [Parameter("Periods", DefaultValue = "H1")]
@@ -52,6 +52,18 @@ public class TradingEngineCBot : Robot
 
         _pub = new PublisherSocket();
         _pub.Bind($"tcp://*:{DataPort}");
+        Print($"CBOT|PUB_BOUND|dataPort={DataPort}");
+
+        // PUB/SUB slow-joiner: give engine subscriber time to complete handshake
+        System.Threading.Thread.Sleep(600);
+
+        // Heartbeat: send periodic diag via PUB to prove data channel works
+        for (int i = 1; i <= 10; i++)
+        {
+            System.Threading.Thread.Sleep(500);
+            Diag($"HEARTBEAT|{i}");
+        }
+        Print($"CBOT|HEARTBEATS_DONE");
 
         _dealer = new DealerSocket();
         _dealer.Connect($"tcp://127.0.0.1:{CommandPort}");
@@ -60,11 +72,11 @@ public class TradingEngineCBot : Robot
         _poller = new NetMQPoller { _dealer };
         _poller.RunAsync();
 
-        System.Threading.Thread.Sleep(600);
-
         _dealer.SendFrame(Serialize("hello", new { }));
+        Print($"CBOT|HELLO_SENT");
 
         SubscribeAll();
+        Print($"CBOT|SUBSCRIBED|subs={_subscriptions.Count}");
 
         Positions.Closed += OnPositionClosed;
 

@@ -207,7 +207,6 @@ public sealed class BacktestRunner
         sb.Append($" --Periods={string.Join(",", cfg.Periods)}");
         if (cfg.UseFullAccess)
             sb.Append(" --full-access");
-        sb.Append(" --exit-on-stop");
         foreach (var (key, value) in cfg.CustomParams)
             sb.Append($" --{key}={value}");
         return sb.ToString();
