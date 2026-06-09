@@ -8,16 +8,31 @@ namespace TradingEngine.Tests.Simulation.Pipeline;
 [Trait("Category", "Pipeline")]
 public sealed class FullBacktestPipelineTest
 {
+    private static string ResolveCredential(string key, string envKey)
+    {
+        var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var devSettingsPath = Path.Combine(solutionRoot, "src", "TradingEngine.Web", "appsettings.Development.json");
+        if (File.Exists(devSettingsPath))
+        {
+            var devConfig = new ConfigurationBuilder()
+                .AddJsonFile(devSettingsPath)
+                .Build();
+            var value = devConfig[$"CTrader:{key}"];
+            if (!string.IsNullOrEmpty(value)) return value;
+        }
+        return Environment.GetEnvironmentVariable(envKey) ?? "";
+    }
+
     [Trait("Category", "Slow")]
     [Fact(Timeout = 600_000)]
     public async Task EurUsdH1_ThreeMonth_GeneratesAtLeastOneTrade()
     {
-        var ctid = Environment.GetEnvironmentVariable("CTrader__CtId");
-        var pwdFile = Environment.GetEnvironmentVariable("CTrader__PwdFile");
-        var account = Environment.GetEnvironmentVariable("CTrader__Account");
+        var ctid = ResolveCredential("CtId", "CTrader__CtId");
+        var pwdFile = ResolveCredential("PwdFile", "CTrader__PwdFile");
+        var account = ResolveCredential("Account", "CTrader__Account");
 
         if (string.IsNullOrEmpty(ctid) || string.IsNullOrEmpty(pwdFile) || string.IsNullOrEmpty(account))
-            throw new InvalidOperationException("Set CTrader__CtId, CTrader__PwdFile, CTrader__Account env vars first");
+            throw new InvalidOperationException("Set CTrader:CtId in appsettings.Development.json or CTrader__CtId env var");
 
         var (dataPort, commandPort) = PortHelper.AllocatePair();
         var runId = Guid.NewGuid().ToString("N")[..8];
@@ -39,6 +54,8 @@ public sealed class FullBacktestPipelineTest
                 ["Engine__Broker__NetMQ__CommandPort"] = commandPort.ToString(),
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 ["SERILOG_FILE_PATH"] = logPath,
+                ["Persistence__DbPath"] = Path.GetFullPath(Path.Combine(
+                    solutionRoot, "data", "trading.db")),
             },
         };
 
@@ -203,12 +220,12 @@ public sealed class FullBacktestPipelineTest
     [Fact(Timeout = 120_000)]
     public async Task EurUsdH1_ThreeDays_VerifiesPipeAndDataFlow()
     {
-        var ctid = Environment.GetEnvironmentVariable("CTrader__CtId");
-        var pwdFile = Environment.GetEnvironmentVariable("CTrader__PwdFile");
-        var account = Environment.GetEnvironmentVariable("CTrader__Account");
+        var ctid = ResolveCredential("CtId", "CTrader__CtId");
+        var pwdFile = ResolveCredential("PwdFile", "CTrader__PwdFile");
+        var account = ResolveCredential("Account", "CTrader__Account");
 
         if (string.IsNullOrEmpty(ctid) || string.IsNullOrEmpty(pwdFile) || string.IsNullOrEmpty(account))
-            throw new InvalidOperationException("Set CTrader__CtId, CTrader__PwdFile, CTrader__Account env vars first");
+            throw new InvalidOperationException("Set CTrader:CtId in appsettings.Development.json or CTrader__CtId env var");
 
         var (dataPort, commandPort) = PortHelper.AllocatePair();
         var runId = Guid.NewGuid().ToString("N")[..8];
@@ -228,6 +245,8 @@ public sealed class FullBacktestPipelineTest
                 ["Engine__Broker__NetMQ__CommandPort"] = commandPort.ToString(),
                 ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 ["SERILOG_FILE_PATH"] = logPath,
+                ["Persistence__DbPath"] = Path.GetFullPath(Path.Combine(
+                    solutionRoot, "data", "trading.db")),
             },
         };
 
