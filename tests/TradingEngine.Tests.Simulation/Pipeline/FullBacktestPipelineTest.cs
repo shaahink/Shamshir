@@ -206,7 +206,7 @@ public sealed class FullBacktestPipelineTest
             "strategies need warmup bars — if failing, check HistoryBars parameter and .cbotset cache");
         signalYes.Should().NotBeEmpty("at least one strategy should signal over the test period");
         orderLines.Should().NotBeEmpty("a signal must produce an ORDER — check equity guard and DispatchAsync");
-        execLines.Count.Should().BeGreaterOrEqualTo(0, "M1 mode may produce 0 fills (Bid/Ask=0); signals+orders prove pipeline");
+        execLines.Count.Should().BeGreaterThanOrEqualTo(0, "M1 mode may produce 0 fills (Bid/Ask=0); signals+orders prove pipeline");
     }
 
     [Trait("Category", "Fast")]

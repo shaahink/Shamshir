@@ -190,6 +190,9 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
         => SendCommandAsync(new { type = "close_position", positionId = positionId.ToString() }, ct);
 
+    public Task SendShutdownAsync(CancellationToken ct)
+        => SendCommandAsync(new { type = "shutdown" }, ct);
+
     private Task SendCommandAsync(object command, CancellationToken ct)
     {
         if (_router is null || _cBotIdentity is null)

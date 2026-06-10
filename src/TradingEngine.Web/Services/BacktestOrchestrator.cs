@@ -34,6 +34,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public string Symbol { get; init; } = "";
         public string Period { get; init; } = "";
         public ConcurrentQueue<string> LogLines { get; init; } = new();
+        public CancellationTokenSource? CancellationSource { get; set; }
         public IReadOnlyList<string> GetLogs() => LogLines.ToArray();
     }
 
@@ -85,10 +86,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         cfg = cfg with { RunId = runId };
         var state = new BacktestRunState { RunId = runId, Symbol = cfg.Symbol, Period = cfg.Period };
         _runs[runId] = state;
+        state.CancellationSource = new CancellationTokenSource();
 
         EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Starting backtest {runId}...");
 
-        _ = RunAsync(runId, cfg);
+        _ = RunAsync(runId, cfg, state.CancellationSource.Token);
 
         return state;
     }
@@ -108,10 +110,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     public void Cancel(string runId)
     {
         if (_runs.TryGetValue(runId, out var state))
+        {
             state.Status = "cancelled";
+            state.CancellationSource?.Cancel();
+        }
     }
 
-    private async Task RunAsync(string runId, BacktestConfig cfg)
+    private async Task RunAsync(string runId, BacktestConfig cfg, CancellationToken ct)
     {
         var state = _runs[runId];
         var startedAt = state.StartedAt;
@@ -132,7 +137,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 using var scope = _scopeFactory.CreateScope();
                 var runnerLogger = scope.ServiceProvider.GetRequiredService<ILogger<BacktestRunner>>();
                 var runner = new BacktestRunner(_configuration, runnerLogger);
-                result = await runner.RunAsync(cfg);
+                result = await runner.RunAsync(cfg, ct);
             }
             else
             {

@@ -163,6 +163,11 @@ public class TradingEngineCBot : Robot
 
             switch (type)
             {
+                case "ping": break;
+                case "shutdown":
+                    Print($"CBOT|SHUTDOWN|received shutdown command, stopping");
+                    Stop();
+                    break;
                 case "submit_order": HandleSubmitOrder(doc.RootElement); break;
                 case "close_position": HandleClosePosition(doc.RootElement); break;
                 case "modify_order": HandleModifyOrder(doc.RootElement); break;
