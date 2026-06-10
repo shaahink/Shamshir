@@ -11,13 +11,55 @@
 - `docs/iterations/iter-15-ctrader-pipeline/HANDOVER.md` — what iter-15 delivered
 - `docs/OPEN-ISSUES.md` — canonical issues list (some already marked fixed)
 - `src/TradingEngine.CTraderRunner/BacktestRunner.cs` — current subprocess-based cTrader launch
-- `src/TradingEngine.Web/Services/BacktestOrchestrator.cs` — `RunEngineReplayAsync` (inner host pattern to replicate)
-- `src/TradingEngine.Infrastructure/Adapters/NetMQBrokerAdapter.cs` — NetMQ adapter
-- `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs` — cBot command handler
+- `src/TradingEngine.Web/Services/BacktestOrchestrator.cs` — `RunEngineReplayAsync` (inner host pattern to replicate), `Cancel()` (now has CTS)
+- `src/TradingEngine.Infrastructure/Adapters/NetMQBrokerAdapter.cs` — NetMQ adapter, `SendShutdownAsync`
+- `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs` — cBot command handler, `shutdown` case
+
+### Agent note: Pre-built from iter-15
+
+The following are already implemented on `iter/15-ctrader-pipeline` branch
+(commit `87b3761`). **Do not re-implement — verify and use:**
+
+| Capability | File | How to verify |
+|-----------|------|---------------|
+| cBot `shutdown` command | `TradingEngineCBot.cs:168-171` | `findstr /C:"case \"shutdown\""` — calls `Stop()` |
+| Adapter `SendShutdownAsync` | `NetMQBrokerAdapter.cs:193-194` | `findstr /C:"SendShutdownAsync"` — sends `{type:"shutdown"}` |
+| Cancel CTS per run | `BacktestOrchestrator.cs:28-38` | `findstr /C:"CancellationSource"` — `BacktestRunState` has it |
+| Cancel() cancels CTS | `BacktestOrchestrator.cs:113-115` | `findstr /C:"CancellationSource?.Cancel"` — wired in `Cancel()` |
+| `RunAsync` accepts CT | `BacktestOrchestrator.cs:92,119,140` | Passed to `BacktestRunner.RunAsync(cfg, ct)` |
 
 ---
 
 ## Phase A — Quick fixes (blockers for UI/dev workflow)
+
+### A0 — Verify pre-built from iter-15 (2 min)
+
+Before doing any work, verify these are present on the branch:
+
+```powershell
+# cBot shutdown handler
+findstr /C:"case \"shutdown\"" src\TradingEngine.Adapters.CTrader\TradingEngineCBot.cs
+# Expected: case "shutdown": ... Stop();
+
+# Adapter SendShutdownAsync
+findstr /C:"SendShutdownAsync" src\TradingEngine.Infrastructure\Adapters\NetMQBrokerAdapter.cs
+# Expected: public Task SendShutdownAsync(...)
+
+# Orchestrator Cancel with CTS
+findstr /C:"CancellationSource" src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+# Expected: CancellationTokenSource? CancellationSource (in BacktestRunState)
+# Expected: state.CancellationSource?.Cancel() (in Cancel())
+```
+
+If any are missing, `git merge iter/15-ctrader-pipeline` first.
+
+Also verify the shutdown command works end-to-end by running the PingPong test
+(proves ROUTER→DEALER channel works — same channel used for shutdown):
+
+```powershell
+dotnet test tests/TradingEngine.Tests.Simulation --no-build --filter "PingPong"
+# Expected: PASS (11s)
+```
 
 ### A1 — Fix NuGet version conflict in integration tests
 
@@ -597,6 +639,8 @@ _(Implementing agent fills this section)_
 | EURUSD pipeline test | |
 | GBPUSD pipeline test | |
 | Progress page shows events in cTrader mode | |
+| shutdown command verified (cBot stops cleanly) | |
+| Cancel() cancels running backtest | |
 
 ### Issues closed
 
@@ -607,7 +651,7 @@ _(Implementing agent fills this section)_
 | In-process cTrader engine | |
 | BUG-05 (cross-rates) | |
 | DESIGN-02 (exec drain on ticks) | |
-| DESIGN-03 (Cancel kills subprocess) | |
+| DESIGN-03 (Cancel kills subprocess) | ✅ Pre-built (iter-15) — cBot `shutdown` command + orchestrator CTS |
 | DESIGN-07 (fire-and-forget) | |
 | OBS-04 (equity curve) | |
 
