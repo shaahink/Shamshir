@@ -196,8 +196,19 @@ public class TradingEngineCBot : Robot
 
         var tradeType = direction == "Long" ? TradeType.Buy : TradeType.Sell;
         var volumeInUnits = Math.Floor(lots * sym.LotSize / sym.VolumeInUnitsStep) * sym.VolumeInUnitsStep;
-        var slPips = slPrice > 0 ? (double?)Math.Abs(slPrice - (sym.Bid + sym.Ask) / 2.0) / sym.PipSize : null;
-        var tpPips = tpPrice > 0 ? (double?)Math.Abs(tpPrice - (sym.Bid + sym.Ask) / 2.0) / sym.PipSize : null;
+        var midPrice = (sym.Bid + sym.Ask) / 2.0;
+        double? slPips = null;
+        double? tpPips = null;
+        if (slPrice > 0 && midPrice > 0)
+        {
+            var rawSl = Math.Abs(slPrice - midPrice) / sym.PipSize;
+            slPips = rawSl < 500 ? (double?)rawSl : null; // clamp absurd values (M1 mode has bid=ask=0)
+        }
+        if (tpPrice > 0 && midPrice > 0)
+        {
+            var rawTp = Math.Abs(tpPrice - midPrice) / sym.PipSize;
+            tpPips = rawTp < 500 ? (double?)rawTp : null;
+        }
 
         var result = ExecuteMarketOrder(tradeType, symbol, volumeInUnits, "Shamshir", slPips, tpPips);
         if (result?.IsSuccessful == true)
@@ -320,8 +331,15 @@ public class TradingEngineCBot : Robot
     private void Publish(string topic, object payload)
     {
         if (_pub is null) return;
-        var json = Serialize(topic, payload);
-        _pub.SendMoreFrame(topic).SendFrame(json);
+        try
+        {
+            var json = Serialize(topic, payload);
+            _pub.SendMoreFrame(topic).SendFrame(json);
+        }
+        catch (Exception ex)
+        {
+            Print($"CBOT|PUB_ERR|{topic}|{ex.Message}");
+        }
     }
 
     private void PublishAccount()
@@ -337,7 +355,8 @@ public class TradingEngineCBot : Robot
 
     private void PublishExec(Guid clientOrderId, string state, double fillPrice, double filledLots, string? reason)
     {
-        Publish("exec", new
+        if (_pub is null) return;
+        var json = JsonSerializer.Serialize(new
         {
             clientOrderId = clientOrderId.ToString(),
             state,
@@ -345,7 +364,9 @@ public class TradingEngineCBot : Robot
             filledLots,
             reason,
             time = Server.TimeInUtc.ToString("o")
-        });
+        }, JsonOpts);
+        _pub.SendMoreFrame("exec").SendFrame(json);
+        Diag($"EXEC_SENT|{clientOrderId}|{state}|fill={fillPrice:F5}|lots={filledLots:F4}");
     }
 
     private static string Serialize(string type, object payload)
