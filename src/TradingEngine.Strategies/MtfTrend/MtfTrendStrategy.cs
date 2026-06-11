@@ -1,0 +1,149 @@
+using TradingEngine.Services.SLTPCalculation;
+
+namespace TradingEngine.Strategies.MtfTrend;
+
+[StrategyId("mtf-trend")]
+public sealed class MtfTrendStrategy : IStrategy
+{
+    private readonly MtfTrendConfig _config;
+    private readonly ILogger<MtfTrendStrategy> _logger;
+    private readonly ISymbolInfoRegistry _symbolRegistry;
+    private readonly Timeframe _entryTf;
+    private readonly Timeframe _higherTf;
+    private double? _prevRsi;
+    private int _winStreak;
+    private int _lossStreak;
+
+    public MtfTrendStrategy(
+        MtfTrendConfig config,
+        ISymbolInfoRegistry symbolRegistry,
+        ILogger<MtfTrendStrategy> logger)
+    {
+        _config = config;
+        _symbolRegistry = symbolRegistry;
+        _logger = logger;
+        _entryTf = config.Timeframe;
+        _higherTf = config.HigherTimeframe;
+    }
+
+    public string Id => _config.Id;
+    public string DisplayName => _config.DisplayName;
+    public IStrategyConfig Config => _config;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_entryTf, _higherTf];
+    public int RequiredBarCount => _config.Parameters.EmaPeriod + _config.Parameters.RsiPeriod + _config.Parameters.SwingLookback + 5;
+    public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
+    [
+        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod, Timeframe: _entryTf),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _entryTf),
+        new($"EMA_{_config.Parameters.EmaPeriod}", IndicatorType.Ema, _config.Parameters.EmaPeriod, Timeframe: _higherTf),
+    ];
+    public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
+    public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);
+
+    public TradeIntent? Evaluate(MarketContext context)
+    {
+        try
+        {
+            if (!_config.Symbols.Contains(context.Symbol.Value))
+            {
+                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
+                return null;
+            }
+
+            var h1Bars = context.Bars.GetValueOrDefault(_entryTf);
+            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            {
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|tf={Tf} has={Count} needs={Need}", Id, _entryTf, h1Bars?.Count ?? 0, RequiredBarCount);
+                return null;
+            }
+
+            var prefix = $"{context.Symbol}:";
+            var p = _config.Parameters;
+
+            if (!context.IndicatorValues.TryGetValue($"{prefix}EMA_{p.EmaPeriod}", out var h4Ema200))
+                return null;
+            if (!context.IndicatorValues.TryGetValue($"{prefix}RSI_{p.RsiPeriod}", out var rsi))
+                return null;
+            if (!context.IndicatorValues.TryGetValue($"{prefix}ATR_{p.AtrPeriod}", out var atr))
+                return null;
+
+            if (atr <= 0)
+                return null;
+
+            var h1Close = (double)h1Bars[^1].Close;
+            var h4Bullish = h1Close > h4Ema200;
+
+            if (_prevRsi is null)
+            {
+                _prevRsi = rsi;
+                return null;
+            }
+
+            var prevRsi = _prevRsi.Value;
+            _prevRsi = rsi;
+
+            TradeDirection? direction = null;
+            string reason;
+
+            if (h4Bullish && prevRsi < p.RsiBullishPullback && rsi >= p.RsiBullishPullback)
+            {
+                direction = TradeDirection.Long;
+                reason = $"H4 bullish (close={h1Close:F5} > EMA{p.EmaPeriod}={h4Ema200:F5}), RSI crossed above {p.RsiBullishPullback} (prev={prevRsi:F2} now={rsi:F2})";
+            }
+            else if (!h4Bullish && prevRsi > p.RsiBearishPullback && rsi <= p.RsiBearishPullback)
+            {
+                direction = TradeDirection.Short;
+                reason = $"H4 bearish (close={h1Close:F5} <= EMA{p.EmaPeriod}={h4Ema200:F5}), RSI crossed below {p.RsiBearishPullback} (prev={prevRsi:F2} now={rsi:F2})";
+            }
+            else
+            {
+                return null;
+            }
+
+            var entryPrice = new Price(context.LatestTick.Mid);
+            var symbolInfo = _symbolRegistry.Get(context.Symbol);
+
+            var swingSl = direction == TradeDirection.Long
+                ? SlTpHelpers.SwingBased(entryPrice, TradeDirection.Long, h1Bars, p.SwingLookback, new Pips(0), symbolInfo)
+                : SlTpHelpers.SwingBased(entryPrice, TradeDirection.Short, h1Bars, p.SwingLookback, new Pips(0), symbolInfo);
+
+            var atrSl = SlTpHelpers.AtrBased(entryPrice, direction.Value, atr, p.SlAtrMinMultiple, symbolInfo);
+
+            var sl = direction == TradeDirection.Long
+                ? (swingSl.Value > atrSl.Value ? swingSl : atrSl)
+                : (swingSl.Value < atrSl.Value ? swingSl : atrSl);
+
+            var tp = SlTpHelpers.RRMultiple(entryPrice, sl, direction.Value, p.TpRrMultiple, symbolInfo);
+
+            return new TradeIntent(
+                context.Symbol,
+                direction.Value,
+                OrderType.Market,
+                null,
+                sl,
+                tp,
+                Id,
+                _config.RiskProfileId,
+                reason,
+                context.EngineTimeUtc);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "MtfTrendStrategy.Evaluate failed. StrategyId={StrategyId}", Id);
+            return null;
+        }
+    }
+
+    public void OnTradeResult(TradeResult result)
+    {
+        if (result.NetPnL.Amount > 0) { _winStreak++; _lossStreak = 0; }
+        else { _lossStreak++; _winStreak = 0; }
+    }
+
+    public void Reset()
+    {
+        _prevRsi = null;
+        _winStreak = 0;
+        _lossStreak = 0;
+    }
+}

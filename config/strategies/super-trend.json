@@ -1,0 +1,16 @@
+{
+  "id": "super-trend",
+  "displayName": "SuperTrend",
+  "enabled": true,
+  "symbols": ["EURUSD", "GBPUSD"],
+  "riskProfileId": "standard",
+  "timeframe": "H1",
+  "regimeFilter": { "allowRanging": false },
+  "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
+  "parameters": {
+    "atrPeriod": 10,
+    "atrMultiplier": 3.0,
+    "adxPeriod": 14,
+    "adxMinThreshold": 20.0
+  }
+}

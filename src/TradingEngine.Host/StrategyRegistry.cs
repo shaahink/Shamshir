@@ -2,9 +2,14 @@ using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Strategies.BollingerSqueeze;
 using TradingEngine.Strategies.EmaAlignment;
+using TradingEngine.Strategies.MacdMomentum;
 using TradingEngine.Strategies.MeanReversion;
+using TradingEngine.Strategies.MtfTrend;
+using TradingEngine.Strategies.RsiDivergence;
 using TradingEngine.Strategies.SessionBreakout;
+using TradingEngine.Strategies.SuperTrend;
 
 namespace TradingEngine.Host;
 
@@ -76,6 +81,91 @@ public sealed class StrategyRegistry
                 DeserializeParams<SessionBreakoutParameters>(entry.Parameters),
                 Enum.Parse<Timeframe>(entry.Timeframe, true));
             return new SessionBreakoutStrategy(config, sp.GetRequiredService<ILogger<SessionBreakoutStrategy>>());
+        };
+
+        _factories["rsi-divergence"] = (entry, sp) =>
+        {
+            var config = new RsiDivergenceConfig
+            {
+                Id = entry.Id,
+                DisplayName = entry.DisplayName,
+                Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(),
+                RiskProfileId = entry.RiskProfileId,
+                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                Parameters = DeserializeParams<RsiDivergenceParameters>(entry.Parameters),
+            };
+            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
+            var logger = sp.GetRequiredService<ILogger<RsiDivergenceStrategy>>();
+            return new RsiDivergenceStrategy(config, registry, logger);
+        };
+
+        _factories["bb-squeeze"] = (entry, sp) =>
+        {
+            var config = new BollingerSqueezeConfig
+            {
+                Id = entry.Id,
+                DisplayName = entry.DisplayName,
+                Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(),
+                RiskProfileId = entry.RiskProfileId,
+                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                Parameters = DeserializeParams<BollingerSqueezeParameters>(entry.Parameters),
+            };
+            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
+            var logger = sp.GetRequiredService<ILogger<BollingerSqueezeStrategy>>();
+            return new BollingerSqueezeStrategy(config, registry, logger);
+        };
+
+        _factories["macd-momentum"] = (entry, sp) =>
+        {
+            var config = new MacdMomentumConfig
+            {
+                Id = entry.Id,
+                DisplayName = entry.DisplayName,
+                Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(),
+                RiskProfileId = entry.RiskProfileId,
+                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                Parameters = DeserializeParams<MacdMomentumParameters>(entry.Parameters),
+            };
+            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
+            var logger = sp.GetRequiredService<ILogger<MacdMomentumStrategy>>();
+            return new MacdMomentumStrategy(config, registry, logger);
+        };
+
+        _factories["mtf-trend"] = (entry, sp) =>
+        {
+            var config = new MtfTrendConfig
+            {
+                Id = entry.Id,
+                DisplayName = entry.DisplayName,
+                Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(),
+                RiskProfileId = entry.RiskProfileId,
+                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                Parameters = DeserializeParams<MtfTrendParameters>(entry.Parameters),
+            };
+            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
+            var logger = sp.GetRequiredService<ILogger<MtfTrendStrategy>>();
+            return new MtfTrendStrategy(config, registry, logger);
+        };
+
+        _factories["super-trend"] = (entry, sp) =>
+        {
+            var config = new SuperTrendConfig
+            {
+                Id = entry.Id,
+                DisplayName = entry.DisplayName,
+                Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(),
+                RiskProfileId = entry.RiskProfileId,
+                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                Parameters = DeserializeParams<SuperTrendParameters>(entry.Parameters),
+            };
+            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
+            var logger = sp.GetRequiredService<ILogger<SuperTrendStrategy>>();
+            return new SuperTrendStrategy(config, registry, logger);
         };
     }
 

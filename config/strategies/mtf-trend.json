@@ -1,0 +1,20 @@
+{
+  "id": "mtf-trend",
+  "displayName": "Multi-Timeframe Trend",
+  "enabled": true,
+  "symbols": ["EURUSD", "GBPUSD"],
+  "riskProfileId": "standard",
+  "timeframe": "H1",
+  "regimeFilter": { "allowRanging": false },
+  "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
+  "parameters": {
+    "emaPeriod": 200,
+    "rsiPeriod": 14,
+    "rsiBullishPullback": 45.0,
+    "rsiBearishPullback": 55.0,
+    "swingLookback": 10,
+    "atrPeriod": 14,
+    "slAtrMinMultiple": 1.5,
+    "tpRrMultiple": 2.0
+  }
+}

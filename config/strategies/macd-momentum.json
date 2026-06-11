@@ -1,0 +1,21 @@
+{
+  "id": "macd-momentum",
+  "displayName": "MACD Momentum",
+  "enabled": true,
+  "symbols": ["EURUSD", "GBPUSD"],
+  "riskProfileId": "standard",
+  "timeframe": "H1",
+  "regimeFilter": { "allowRanging": false },
+  "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
+  "parameters": {
+    "macdFast": 12,
+    "macdSlow": 26,
+    "macdSignal": 9,
+    "smaPeriod": 200,
+    "adxPeriod": 14,
+    "adxMinThreshold": 20.0,
+    "atrPeriod": 14,
+    "slAtrMultiple": 2.0,
+    "tpRrMultiple": 3.0
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "rsi-divergence",
+  "displayName": "RSI Divergence",
+  "enabled": true,
+  "symbols": ["EURUSD", "GBPUSD", "USDJPY"],
+  "riskProfileId": "standard",
+  "timeframe": "H1",
+  "regimeFilter": { "allowTrending": false, "allowHighVolatility": false },
+  "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
+  "parameters": {
+    "rsiPeriod": 14,
+    "divergenceLookback": 10,
+    "atrPeriod": 14,
+    "slAtrMultiple": 1.5,
+    "tpRrMultiple": 2.0
+  }
+}

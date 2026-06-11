@@ -5,6 +5,17 @@
   "symbols": ["EURUSD", "GBPUSD"],
   "riskProfileId": "standard",
   "timeframe": "H1",
+  "regimeFilter": {
+    "allowTrending": false,
+    "allowRanging": true,
+    "allowHighVolatility": true,
+    "allowLowVolatility": true,
+    "allowUnknown": true
+  },
+  "orderEntry": {
+    "method": "Market",
+    "maxSlippagePips": 2.0
+  },
   "parameters": {
     "rsiPeriod": 14,
     "bbPeriod": 20,

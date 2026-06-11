@@ -1,0 +1,19 @@
+{
+  "id": "bb-squeeze",
+  "displayName": "Bollinger Squeeze",
+  "enabled": true,
+  "symbols": ["EURUSD", "GBPUSD"],
+  "riskProfileId": "standard",
+  "timeframe": "H1",
+  "regimeFilter": { "allowHighVolatility": false },
+  "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
+  "parameters": {
+    "bbPeriod": 20,
+    "bbStdDev": 2.0,
+    "atrPeriod": 14,
+    "squeezeThreshold": 0.8,
+    "cooldownBars": 3,
+    "slBandBuffer": 0.5,
+    "tpRrMultiple": 2.5
+  }
+}
