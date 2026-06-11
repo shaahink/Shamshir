@@ -66,6 +66,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         _progressStore.GetWriter(runId).TryWrite(json);
     }
 
+    private void PushProgressAndLog(string runId, ConcurrentQueue<string> logQueue, string line)
+    {
+        logQueue.Enqueue(line);
+        PushProgress(runId, line);
+    }
+
     private void EnqueueLog(string runId, ConcurrentQueue<string> queue, string msg)
     {
         queue.Enqueue(msg);
@@ -441,7 +447,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                         $"tcp://*:{commandPort}",
                         sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>());
                     adapter.OnStatusChange = (type, msg) =>
+                    {
                         PushProgressEvent(runId, type, msg);
+                        PushProgressAndLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] {type} {msg}");
+                    };
                     return adapter;
                 });
 
@@ -488,6 +497,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 var progressCallback = new Progress<BacktestProgressEvent>(evt =>
                 {
                     PushProgressEvent(runId, evt.EventType, evt.Message);
+                    if (evt.EventType is "TICK" or "EXEC" or "REJECTED" or "NETMQ_CONNECTED" or "NETMQ_SENT" or "NETMQ_DROPPED")
+                        PushProgressAndLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] {evt.EventType} {evt.Message}");
                 });
                 services.AddSingleton<IProgress<BacktestProgressEvent>>(_ => progressCallback);
 
