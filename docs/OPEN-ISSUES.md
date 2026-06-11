@@ -271,9 +271,8 @@ non-singleton, strategies are recreated on every iteration. Should be materializ
 ### STD-07 — `BarEvaluations` schema in raw SQL in `Web/Program.cs`, not in EF migration
 **File**: `src/TradingEngine.Web/Program.cs:34–36`
 
-The table exists in `TradingDbContext.OnModelCreating` AND is created by raw SQL in the web startup.
-Two sources of truth for the same schema. The raw SQL `CREATE TABLE IF NOT EXISTS` bypasses EF
-migration history, so `dotnet ef migrations add` will produce incorrect diffs.
+✅ **Fixed (Iteration 18)**. Raw SQL removed, replaced with proper EF migration (`InitialFullSchema` in
+Persistence/Migrations). Web startup uses `MigrateAsync()` instead of `EnsureCreated()` + ALTER TABLE.
 
 ---
 
