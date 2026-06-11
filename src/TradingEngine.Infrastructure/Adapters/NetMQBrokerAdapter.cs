@@ -62,10 +62,10 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     public Task DisconnectAsync(CancellationToken ct)
     {
-        _poller?.StopAsync();
+        _poller?.Stop();
+        _poller?.Dispose();
         _sub?.Dispose();
         _router?.Dispose();
-        _poller?.Dispose();
         _tickChannel.Writer.TryComplete();
         _barChannel.Writer.TryComplete();
         _accountChannel.Writer.TryComplete();

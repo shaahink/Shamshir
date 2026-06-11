@@ -20,6 +20,7 @@ public sealed class EngineWorker : BackgroundService
     private readonly DrawdownTracker _drawdownTracker;
     private readonly EngineMode _engineMode;
     private readonly EngineRunContext _runContext;
+    private readonly CrossRateStore _crossRateStore;
     private readonly ILogger<EngineWorker> _logger;
     private readonly IProgress<BacktestProgressEvent>? _progress;
 
@@ -58,6 +59,7 @@ public sealed class EngineWorker : BackgroundService
         PositionTracker positionTracker,
         ILogger<EngineWorker> logger,
         EngineRunContext runContext,
+        CrossRateStore crossRateStore,
         DataFeedService? dataFeed = null,
         IProgress<BacktestProgressEvent>? progress = null)
     {
@@ -75,6 +77,7 @@ public sealed class EngineWorker : BackgroundService
         _positionTracker = positionTracker;
         _drawdownTracker = drawdownTracker;
         _runContext = runContext;
+        _crossRateStore = crossRateStore;
         _engineMode = _broker is SimulatedBrokerAdapter || _broker is BacktestReplayAdapter
             ? EngineMode.Backtest : EngineMode.Live;
         _dataFeed = dataFeed;
@@ -288,6 +291,8 @@ public sealed class EngineWorker : BackgroundService
                             _clock.UtcNow));
                     }
 
+                    await DrainExecutionStreamAsync();
+
                     // Per-bar SL/TP evaluation removed from live path — belongs in RunBacktestLoopAsync.
                     // Live broker manages orders server-side; engine must not second-guess SL/TP.
                 }
@@ -349,6 +354,8 @@ public sealed class EngineWorker : BackgroundService
                 {
                     if (_broker is BacktestReplayAdapter replay)
                         replay.SyncToBar(bar.Close, bar.OpenTimeUtc);
+
+                    UpdateCrossRates(bar);
 
                     Interlocked.Increment(ref _barCount);
                     var byTf = _bars.GetOrAdd(bar.Symbol, _ => new());
@@ -562,6 +569,12 @@ public sealed class EngineWorker : BackgroundService
                 strategy.Id, string.Join(",", strategy.RequiredTimeframes), strategy.RequiredBarCount);
         }
         return Task.CompletedTask;
+    }
+
+    private void UpdateCrossRates(Bar bar)
+    {
+        if (bar.Symbol.Value == "GBPUSD") _crossRateStore.GbpUsdRate = bar.Close;
+        else if (bar.Symbol.Value == "USDJPY") _crossRateStore.UsdJpyRate = bar.Close;
     }
 
     private decimal ResolveHalfSpread(Symbol symbol)

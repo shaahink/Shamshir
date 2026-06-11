@@ -38,8 +38,8 @@ using (var ctx = new TradingDbContext(new DbContextOptionsBuilder<TradingDbConte
 
     if (!builder.Configuration.GetValue<bool>("CTrader:UseForBacktest") && !ctx.Bars.Any())
     {
-        throw new InvalidOperationException(
-            "Bars table is empty. Run scripts/seed-bars.ps1 before starting with CTrader:UseForBacktest=false.");
+        Console.WriteLine(
+            "WARNING: Bars table is empty. Run scripts/seed-bars.ps1 before starting with CTrader:UseForBacktest=false.");
     }
 }
 

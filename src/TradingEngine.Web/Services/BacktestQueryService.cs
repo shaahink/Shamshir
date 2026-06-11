@@ -95,4 +95,23 @@ public sealed class BacktestQueryService : IBacktestQueryService
                 noSignal.AsReadOnly());
         }).ToList();
     }
+
+    public async Task<IReadOnlyList<EquityPoint>> GetEquityAsync(
+        DateTime? from = null, DateTime? to = null, CancellationToken ct = default)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+
+        var query = db.EquitySnapshots.AsQueryable();
+        if (from.HasValue) query = query.Where(e => e.TimestampUtc >= from.Value);
+        if (to.HasValue) query = query.Where(e => e.TimestampUtc <= to.Value);
+
+        return await query
+            .OrderBy(e => e.TimestampUtc)
+            .Select(e => new EquityPoint(
+                e.TimestampUtc,
+                e.Equity,
+                e.Balance))
+            .ToListAsync(ct);
+    }
 }

@@ -1,4 +1,7 @@
 ﻿using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.CTraderRunner;
@@ -35,6 +38,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public string Period { get; init; } = "";
         public ConcurrentQueue<string> LogLines { get; init; } = new();
         public CancellationTokenSource? CancellationSource { get; set; }
+        public Task? RunTask { get; set; }
         public IReadOnlyList<string> GetLogs() => LogLines.ToArray();
     }
 
@@ -90,7 +94,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Starting backtest {runId}...");
 
-        _ = RunAsync(runId, cfg, state.CancellationSource.Token);
+        state.RunTask = RunAsync(runId, cfg, state.CancellationSource.Token);
 
         return state;
     }
@@ -116,6 +120,20 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
     }
 
+    public async Task StopAllAsync()
+    {
+        foreach (var (_, state) in _runs)
+            state.CancellationSource?.Cancel();
+
+        var tasks = _runs.Values
+            .Select(s => s.RunTask)
+            .Where(t => t is not null)
+            .ToArray();
+
+        if (tasks.Length > 0)
+            await Task.WhenAll(tasks!);
+    }
+
     private async Task RunAsync(string runId, BacktestConfig cfg, CancellationToken ct)
     {
         var state = _runs[runId];
@@ -133,11 +151,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var useCtader = _configuration.GetValue<bool>("CTrader:UseForBacktest");
             if (useCtader)
             {
-                EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via ctrader-cli...");
-                using var scope = _scopeFactory.CreateScope();
-                var runnerLogger = scope.ServiceProvider.GetRequiredService<ILogger<BacktestRunner>>();
-                var runner = new BacktestRunner(_configuration, runnerLogger);
-                result = await runner.RunAsync(cfg, ct);
+                EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
+                result = await RunEngineNetMqAsync(runId, cfg, state.LogLines, ct);
             }
             else
             {
@@ -258,14 +273,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
                 var symbolRegistry = new SymbolInfoRegistry();
                 symbolRegistry.Register(symbolInfo);
-                services.AddSingleton<ISymbolInfoRegistry>(_ => symbolRegistry);
 
-                services.AddSingleton<Func<string, string, decimal>>(_ => (fromCur, toCur) =>
-                {
-                    if (fromCur == "JPY" && toCur == "USD") return 1m / 149.50m;
-                    if (fromCur == "GBP" && toCur == "USD") return 1.2650m;
-                    return 1m;
-                });
+                var crossRateStore = new CrossRateStore();
+                services.AddSingleton(crossRateStore);
+                services.AddSingleton<Func<string, string, decimal>>(_ => crossRateStore.Convert);
+                services.AddSingleton<ISymbolInfoRegistry>(_ => symbolRegistry);
 
                 services.AddSingleton<DrawdownTracker>();
                 services.AddSingleton<INewsFilter>(_ => new NewsFilter());
@@ -331,6 +343,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     sp.GetRequiredService<PositionTracker>(),
                     sp.GetRequiredService<ILogger<EngineWorker>>(),
                     sp.GetRequiredService<EngineRunContext>(),
+                    sp.GetRequiredService<CrossRateStore>(),
                     dataFeed: null,
                     progress: sp.GetRequiredService<IProgress<BacktestProgressEvent>>()));
                 services.AddHostedService<EngineWorker>(sp =>
@@ -362,6 +375,18 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
         await adapter.BarStream.Completion;
+
+        var barCount = (adapter as BacktestReplayAdapter)?.BarCount ?? 0;
+        if (barCount == 0)
+        {
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] No bars found for {cfg.Symbol}/{cfg.Period} in {cfg.Start:yyyy-MM-dd}–{cfg.End:yyyy-MM-dd}. Run scripts/seed-bars.ps1 to seed data.");
+            await innerHost.StopAsync(CancellationToken.None);
+            innerHost.Dispose();
+            return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = "",
+                ErrorMessage = $"No bars found for {cfg.Symbol}/{cfg.Period}." };
+        }
+
         await Task.Delay(5_000, cts.Token);
 
         var barHandler = innerHost.Services.GetRequiredService<BarEvaluationHandler>();
@@ -373,6 +398,241 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         innerHost.Dispose();
 
         return new BacktestResult { RunId = runId, ExitCode = 0, AlgoHash = "" };
+    }
+
+    private async Task<BacktestResult> RunEngineNetMqAsync(
+        string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines, CancellationToken ct)
+    {
+        var ctid = _configuration["CTrader:CtId"];
+        var pwdFile = _configuration["CTrader:PwdFile"];
+        var account = _configuration["CTrader:Account"];
+        if (string.IsNullOrWhiteSpace(ctid) || string.IsNullOrWhiteSpace(pwdFile) || string.IsNullOrWhiteSpace(account))
+        {
+            EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] CTrader credentials not configured");
+            return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = "",
+                ErrorMessage = "CTrader credentials not configured." };
+        }
+
+        var algoPath = ResolveAlgoPath();
+        var algoHash = ComputeAlgoHash(algoPath);
+
+        var symbol    = Symbol.Parse(cfg.Symbol);
+        var timeframe = ParseTimeframe(cfg.Period);
+
+        var (dataPort, commandPort) = AllocatePorts();
+
+        var dbPath = _configuration.GetValue<string>("Persistence:DbPath")
+            ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+                "..", "..", "..", "..", "..", "data", "trading.db"));
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct,
+            new CancellationTokenSource(TimeSpan.FromMinutes(30)).Token);
+
+        var innerHost = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
+            .ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Warning))
+            .ConfigureServices((ctx, services) =>
+            {
+                services.AddSingleton(new EngineRunContext(runId));
+
+                services.AddSingleton<IBrokerAdapter>(sp =>
+                    new NetMQBrokerAdapter(
+                        $"tcp://127.0.0.1:{dataPort}",
+                        $"tcp://*:{commandPort}",
+                        sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()));
+
+                var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
+                    0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
+                var symbolRegistry = new SymbolInfoRegistry();
+                symbolRegistry.Register(symbolInfo);
+                services.AddSingleton<ISymbolInfoRegistry>(_ => symbolRegistry);
+
+                var crossRateStore = new CrossRateStore();
+                services.AddSingleton(crossRateStore);
+                services.AddSingleton<Func<string, string, decimal>>(_ => crossRateStore.Convert);
+
+                services.AddSingleton<INewsFilter>(_ => new NewsFilter());
+                services.AddSingleton<SessionFilter>();
+                services.AddSingleton<DrawdownTracker>();
+                services.AddSingleton<RiskManager>();
+                services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
+
+                var solutionRoot = Path.GetFullPath(Path.Combine(
+                    AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+                var configLoader = new ConfigLoader(solutionRoot);
+                var loadedConfig = configLoader.Load();
+                services.AddSingleton(loadedConfig);
+                services.AddSingleton<IRiskProfileResolver>(sp =>
+                    new RiskProfileResolver(sp.GetRequiredService<LoadedConfig>().RiskProfiles));
+
+                services.AddSingleton<IEngineClock, BrokerClock>();
+
+                services.AddDbContext<TradingDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
+                services.AddScoped<ITradeRepository, SqliteTradeRepository>();
+                services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+                services.AddSingleton<PersistenceService>();
+
+                services.AddSingleton<IPositionManager, PositionManager>();
+                services.AddSingleton<IEventBus, TypedEventBus>();
+                services.AddSingleton<EquityPersistenceHandler>();
+                services.AddSingleton<TradePersistenceHandler>();
+                services.AddSingleton<BarEvaluationHandler>();
+                services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
+                services.AddSingleton<OrderDispatcher>();
+                services.AddSingleton<PositionTracker>();
+
+                var progressCallback = new Progress<BacktestProgressEvent>(evt =>
+                {
+                    PushProgressEvent(runId, evt.EventType, evt.Message);
+                });
+                services.AddSingleton<IProgress<BacktestProgressEvent>>(_ => progressCallback);
+
+                var registry = new StrategyRegistry();
+                services.AddSingleton(registry);
+                services.AddSingleton<IEnumerable<IStrategy>>(sp =>
+                {
+                    var reg = sp.GetRequiredService<StrategyRegistry>();
+                    var loaded = sp.GetRequiredService<LoadedConfig>();
+                    var activeIds = loaded.StrategyConfigs.Select(c => c.Id).ToArray();
+                    return reg.CreateStrategies(activeIds, loaded, sp);
+                });
+
+                services.AddSingleton<EngineWorker>(sp => new EngineWorker(
+                    sp.GetRequiredService<IBrokerAdapter>(),
+                    sp.GetRequiredService<IRiskManager>(),
+                    sp.GetRequiredService<DrawdownTracker>(),
+                    sp.GetRequiredService<IEnumerable<IStrategy>>(),
+                    sp.GetRequiredService<IIndicatorService>(),
+                    sp.GetRequiredService<IEventBus>(),
+                    sp.GetRequiredService<IEngineClock>(),
+                    sp.GetRequiredService<ISymbolInfoRegistry>(),
+                    sp.GetRequiredService<IRiskProfileResolver>(),
+                    sp.GetRequiredService<Func<string, string, decimal>>(),
+                    sp.GetRequiredService<PersistenceService>(),
+                    sp.GetRequiredService<OrderDispatcher>(),
+                    sp.GetRequiredService<PositionTracker>(),
+                    sp.GetRequiredService<ILogger<EngineWorker>>(),
+                    sp.GetRequiredService<EngineRunContext>(),
+                    sp.GetRequiredService<CrossRateStore>(),
+                    dataFeed: null,
+                    progress: sp.GetRequiredService<IProgress<BacktestProgressEvent>>()));
+                services.AddHostedService<EngineWorker>(sp =>
+                    sp.GetRequiredService<EngineWorker>());
+            })
+            .Build();
+
+        var eventBus = innerHost.Services.GetRequiredService<IEventBus>();
+        eventBus.Subscribe<EquityUpdated>(
+            innerHost.Services.GetRequiredService<EquityPersistenceHandler>());
+        eventBus.Subscribe<TradeClosed>(
+            innerHost.Services.GetRequiredService<TradePersistenceHandler>());
+        eventBus.Subscribe<BarEvaluated>(
+            innerHost.Services.GetRequiredService<BarEvaluationHandler>());
+
+        var rm = innerHost.Services.GetRequiredService<RiskManager>();
+        var loaded = innerHost.Services.GetRequiredService<LoadedConfig>();
+        var activeRiskProfileId = loaded.StrategyConfigs
+            .Select(c => c.RiskProfileId).FirstOrDefault() ?? "standard";
+        var activeProfile = loaded.RiskProfiles.FirstOrDefault(r => r.Id == activeRiskProfileId);
+        var activeRuleSetId = activeProfile?.PropFirmRuleSetId ?? "ftmo-standard";
+        var ruleSet = loaded.PropFirms.FirstOrDefault(r => r.Id == activeRuleSetId);
+        if (ruleSet is not null)
+            rm.SetActiveRuleSet(ruleSet);
+
+        try
+        {
+            await innerHost.StartAsync(cts.Token);
+        }
+        catch (Exception ex)
+        {
+            innerHost.Dispose();
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] Engine start failed: {ex.Message}");
+            return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = algoHash,
+                ErrorMessage = $"Engine start failed: {ex.Message}" };
+        }
+
+        EnqueueLog(runId, logLines,
+            $"[{DateTime.UtcNow:HH:mm:ss}] Engine started (in-process NetMQ). Ports={dataPort}/{commandPort}");
+
+        var cli = new CTraderCli();
+        var args = new[]
+        {
+            $"--start={cfg.Start:dd/MM/yyyy}", $"--end={cfg.End:dd/MM/yyyy}",
+            $"--symbol={cfg.Symbol}", $"--period={cfg.Period}",
+            $"--balance={cfg.Balance}", $"--commission={cfg.CommissionPerMillion}",
+            $"--spread={cfg.SpreadPips}", $"--data-mode={cfg.DataMode}",
+            $"--ctid={ctid}", $"--pwd-file={pwdFile}", $"--account={account}",
+            $"--DataPort={dataPort}", $"--CommandPort={commandPort}",
+            $"--SymbolString={string.Join(",", cfg.Symbols)}",
+            $"--Periods={string.Join(",", cfg.Periods)}",
+            "--full-access",
+        };
+
+        EnqueueLog(runId, logLines,
+            $"[{DateTime.UtcNow:HH:mm:ss}] Launching ctrader-cli...");
+        CTraderResult cliResult;
+        try
+        {
+            cliResult = await cli.BacktestAsync(algoPath, args, cts.Token);
+        }
+        finally
+        {
+            await innerHost.StopAsync(CancellationToken.None);
+            innerHost.Dispose();
+        }
+
+        EnqueueLog(runId, logLines,
+            $"[{DateTime.UtcNow:HH:mm:ss}] CLI exit code: {cliResult.ExitCode}");
+
+        var isKnownCrash = cliResult.ExitCode != 0 && cliResult.IsKnownPostBacktestCrash;
+
+        return new BacktestResult
+        {
+            RunId      = runId,
+            ExitCode   = isKnownCrash ? 0 : cliResult.ExitCode,
+            AlgoHash   = algoHash,
+            ErrorMessage = isKnownCrash ? null : (cliResult.ExitCode != 0
+                ? cliResult.StandardError.Trim() ?? $"CLI exited with code {cliResult.ExitCode}"
+                : null),
+        };
+    }
+
+    private static (int dataPort, int commandPort) AllocatePorts()
+    {
+        using var a = new TcpListener(IPAddress.Loopback, 0);
+        using var b = new TcpListener(IPAddress.Loopback, 0);
+        a.Start(); b.Start();
+        var p1 = ((IPEndPoint)a.LocalEndpoint!).Port;
+        var p2 = ((IPEndPoint)b.LocalEndpoint!).Port;
+        a.Stop(); b.Stop();
+        return (p1, p2);
+    }
+
+    private string ResolveAlgoPath()
+    {
+        var configured = _configuration["CTrader:AlgoPath"];
+        if (!string.IsNullOrEmpty(configured) && File.Exists(configured))
+            return configured;
+
+        var baseDir = AppContext.BaseDirectory;
+        var candidates = new[]
+        {
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
+                "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "src.algo")),
+            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
+                "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "src.algo")),
+        };
+
+        return candidates.FirstOrDefault(File.Exists)
+            ?? throw new FileNotFoundException("src.algo not found. Build TradingEngine.Adapters.CTrader first.");
+    }
+
+    private static string ComputeAlgoHash(string algoPath)
+    {
+        if (!File.Exists(algoPath)) return "missing";
+        using var sha = SHA256.Create();
+        using var fs = File.OpenRead(algoPath);
+        return Convert.ToHexString(sha.ComputeHash(fs))[..16].ToLowerInvariant();
     }
 
     private async Task<TradeStats> GetTradeStatsAsync(string runId, decimal initialBalance)

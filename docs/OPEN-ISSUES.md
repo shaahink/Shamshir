@@ -67,6 +67,8 @@ after each simulated close so `DrawdownTracker` accumulates the real curve.
 **Severity**: Critical for live; incorrect in backtest  
 **File**: `src/TradingEngine.Host/Program.cs:101–106`
 
+✅ **Fixed (Iteration 16)**. Created `CrossRateStore` class with mutable `GbpUsdRate` and `UsdJpyRate` fields. Registered as singleton in all DI paths (Web orchestrator, Host engine, test harness). `RunBacktestLoopAsync` updates cross-rates per bar based on the primary symbol's close price (GBPUSD bar → GBP→USD rate, USDJPY bar → JPY→USD rate). CrossRateStore is injected into EngineWorker constructor.
+
 ```csharp
 if (from == "JPY" && to == "USD") return 1m / 149.50m;
 if (from == "GBP" && to == "USD") return 1.2650m;
@@ -103,6 +105,8 @@ path for in-process handlers.
 ### DESIGN-02 — Execution events only drained when ticks arrive
 **File**: `src/TradingEngine.Host/EngineWorker.cs:144`
 
+✅ **Fixed (Iteration 16)**. Added `await DrainExecutionStreamAsync()` call in `ProcessBarsAsync` (Live mode path) after the strategy evaluation foreach loop. This drains pending execution events on every bar in both Live and Backtest modes.
+
 Fills from the broker are forwarded to `_executionEventChannel` by `ProcessExecutionEventsAsync`,
 but that channel is only drained inside `ProcessTicksAsync` via `TryRead`. If no tick arrives
 after a fill (possible in bar-replay mode where ticks are synthetic), the fill sits unprocessed.
@@ -115,6 +119,8 @@ evaluating strategies.
 
 ### DESIGN-03 — `Cancel()` doesn't kill the running process
 **File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:102`
+
+✅ **Fixed (Iteration 16)**. `BacktestRunState` stores `CancellationTokenSource` per run (implemented in iter-15). `Cancel()` calls `state.CancellationSource?.Cancel()`. The engine now runs in-process (Phase B) — no orphan subprocess. The ctrader-cli subprocess receives the cancellation token via CliWrap, which kills the process on cancellation. The per-run `CancellationTokenSource` links to a 30-minute timeout plus the orchestrator's cancellation chain.
 
 `Cancel()` sets an in-memory status flag. The `ctrader-cli` subprocess and the engine subprocess
 continue running. No `CancellationTokenSource` is stored per run; no process.Kill() is called.
@@ -166,6 +172,8 @@ before returning from `DisposeAsync`.
 
 ### DESIGN-07 — `BacktestOrchestrator.RunAsync` is fire-and-forget with no shutdown drain
 **File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:85`
+
+✅ **Fixed (Iteration 16)**. `BacktestRunState` now has a `RunTask` property. `Start()` stores the task via `state.RunTask = RunAsync(...)` instead of `_ = RunAsync(...)`. Added `StopAllAsync()` method that cancels all CTS tokens and awaits all in-flight tasks for graceful shutdown.
 
 ```csharp
 _ = RunAsync(runId, cfg);
@@ -298,6 +306,8 @@ per RunId: `SIGNAL_FIRED → ORDER_SUBMITTED → ORDER_FILLED → POSITION_OPENE
 The `BacktestReplayAdapter` sends a single `AccountUpdate` at the start (initial balance) and never
 again. The equity curve is flat. The backtest detail page can't show drawdown over time because
 there's no per-trade equity update.
+
+✅ **Fixed (Iteration 16)** — `GetEquityAsync` added to `IBacktestQueryService` interface and implemented in `BacktestQueryService`. Queries `EquitySnapshots` table with optional date range filter. Returns `EquityPoint[]` (TimestampUtc, Equity, Balance). The data already exists from `EquityPersistenceHandler` which saves snapshots during backtest runs.
 
 **What's needed**: After each simulated fill/close in the replay adapter, emit an `AccountUpdate`
 with updated floating PnL so `DrawdownTracker` and `EquityPersistenceHandler` accumulate a real curve.

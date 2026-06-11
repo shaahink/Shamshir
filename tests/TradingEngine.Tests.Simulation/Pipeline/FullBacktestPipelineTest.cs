@@ -210,8 +210,10 @@ public sealed class FullBacktestPipelineTest
     }
 
     [Trait("Category", "Fast")]
-    [Fact(Timeout = 120_000)]
-    public async Task EurUsdH1_ThreeDays_VerifiesPipeAndDataFlow()
+    [Theory]
+    [InlineData("EURUSD")]
+    [InlineData("GBPUSD")]
+    public async Task ThreeDays_PipeAndDataFlow(string symbol)
     {
         var ctid = ResolveCredential("CtId", "CTrader__CtId");
         var pwdFile = ResolveCredential("PwdFile", "CTrader__PwdFile");
@@ -267,7 +269,6 @@ public sealed class FullBacktestPipelineTest
             var runnerLogger = new SimpleLogger<BacktestRunner>();
             var runner = new BacktestRunner(config, runnerLogger);
 
-            var symbol = config["CTrader:Symbol"] ?? "EURUSD";
             var symbols = (config["CTrader:Symbols"] ?? symbol).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             var cfg = new BacktestConfig
             {

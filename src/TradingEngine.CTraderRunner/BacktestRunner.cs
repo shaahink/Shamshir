@@ -127,6 +127,7 @@ public sealed class BacktestRunner
         }
     }
 
+    /// <summary>Pipeline test only — engine is now in-process via BacktestOrchestrator.RunEngineNetMqAsync.</summary>
     private Process? StartEngine(int dataPort, int commandPort, string runId)
     {
         var baseDir = AppContext.BaseDirectory;
@@ -163,6 +164,7 @@ public sealed class BacktestRunner
         return process;
     }
 
+    /// <summary>Pipeline test only — engine is now in-process via BacktestOrchestrator.RunEngineNetMqAsync.</summary>
     private static async Task WaitForEngineReadyAsync(int commandPort, TimeSpan timeout, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow + timeout;

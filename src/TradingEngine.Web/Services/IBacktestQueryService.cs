@@ -34,4 +34,5 @@ public interface IBacktestQueryService
     Task<IReadOnlyList<BacktestRunView>> GetAllRunsAsync(CancellationToken ct);
     Task<BacktestRunView?> GetRunAsync(string runId, CancellationToken ct);
     Task<IReadOnlyList<StrategyPerformance>> GetStrategyBreakdownAsync(string runId, CancellationToken ct);
+    Task<IReadOnlyList<EquityPoint>> GetEquityAsync(DateTime? from = null, DateTime? to = null, CancellationToken ct = default);
 }

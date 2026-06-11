@@ -33,6 +33,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
     public ChannelReader<Bar> BarStream => _barChannel.Reader;
     public ChannelReader<AccountUpdate> AccountStream => _accountChannel.Reader;
     public ChannelReader<ExecutionEvent> ExecutionStream => _executionChannel.Reader;
+    public int BarCount { get; private set; }
     public DateTime BrokerTimeUtc { get; private set; }
 
     public BacktestReplayAdapter(
@@ -69,8 +70,15 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         try
         {
             var bars = await _barRepo.GetAsync(_symbol, _timeframe, _from, _to, ct);
+            BarCount = bars.Count;
             _logger.LogInformation("BacktestReplay: loaded {Count} bars for {Symbol} {Tf}",
                 bars.Count, _symbol, _timeframe);
+
+            if (bars.Count == 0)
+            {
+                _logger.LogWarning("BacktestReplay: no bars found for {Symbol} {Tf} in [{From}–{To}]. Check seed-bars.ps1.",
+                    _symbol, _timeframe, _from, _to);
+            }
 
             foreach (var bar in bars)
             {

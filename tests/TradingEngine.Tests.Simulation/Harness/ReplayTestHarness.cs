@@ -69,6 +69,7 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                 services.AddSingleton<ISymbolInfoRegistry>(_ => symbolRegistry);
 
                 services.AddSingleton<Func<string, string, decimal>>(_ => (_, _) => 1.0m);
+                services.AddSingleton(new CrossRateStore());
 
                 var profile = new RiskProfile(
                     "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,

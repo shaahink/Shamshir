@@ -104,6 +104,7 @@ public static class Program
                 if (from == "GBP" && to == "USD") return 1.2650m;
                 return 1;
             });
+            builder.Services.AddSingleton(new CrossRateStore());
 
             builder.Services.AddSingleton<RiskManager>();
             builder.Services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
