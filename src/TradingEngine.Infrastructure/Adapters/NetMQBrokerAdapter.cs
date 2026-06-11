@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Threading.Channels;
 using NetMQ;
@@ -13,8 +14,8 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private readonly ILogger<NetMQBrokerAdapter> _logger;
 
     private readonly Channel<Tick> _tickChannel = Channel.CreateBounded<Tick>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleWriter = true });
-    private readonly Channel<Bar> _barChannel = Channel.CreateBounded<Bar>(new BoundedChannelOptions(2_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleWriter = true });
-    private readonly Channel<AccountUpdate> _accountChannel = Channel.CreateBounded<AccountUpdate>(new BoundedChannelOptions(1_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleWriter = true });
+    private readonly Channel<Bar> _barChannel = Channel.CreateBounded<Bar>(new BoundedChannelOptions(2_000) { FullMode = BoundedChannelFullMode.Wait, SingleWriter = true });
+    private readonly Channel<AccountUpdate> _accountChannel = Channel.CreateBounded<AccountUpdate>(new BoundedChannelOptions(1_000) { FullMode = BoundedChannelFullMode.Wait, SingleWriter = true });
     private readonly Channel<ExecutionEvent> _execChannel = Channel.CreateBounded<ExecutionEvent>(new BoundedChannelOptions(1_000) { FullMode = BoundedChannelFullMode.Wait, SingleWriter = true });
 
     public ChannelReader<Tick> TickStream => _tickChannel.Reader;
@@ -31,7 +32,9 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private SubscriberSocket? _sub;
     private RouterSocket? _router;
     private NetMQPoller? _poller;
+    private NetMQQueue<(byte[] Identity, string Json)>? _sendQueue;
     private byte[]? _cBotIdentity;
+    private readonly ConcurrentQueue<object> _pendingCommands = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
         { PropertyNameCaseInsensitive = true };
@@ -54,7 +57,10 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         _router.Bind(_commandEndpoint);
         _router.ReceiveReady += OnRouterReceive;
 
-        _poller = new NetMQPoller { _sub, _router };
+        _sendQueue = new NetMQQueue<(byte[], string)>();
+        _sendQueue.ReceiveReady += OnSendQueueReady;
+
+        _poller = new NetMQPoller { _sub, _router, _sendQueue };
         _poller.RunAsync();
 
         _logger.LogInformation("NETMQ|ADAPTER_STARTED|data={DataEndpoint}|command={CommandEndpoint}", _dataEndpoint, _commandEndpoint);
@@ -65,6 +71,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     {
         _poller?.Stop();
         _poller?.Dispose();
+        _sendQueue?.Dispose();
         _sub?.Dispose();
         _router?.Dispose();
         _tickChannel.Writer.TryComplete();
@@ -74,23 +81,31 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    private void OnSendQueueReady(object? sender, NetMQQueueEventArgs<(byte[] Identity, string Json)> e)
+    {
+        while (e.Queue.TryDequeue(out var item, TimeSpan.Zero))
+            _router!.SendMoreFrame(item.Identity).SendFrame(item.Json);
+    }
+
     private void OnSubReceive(object? sender, NetMQSocketEventArgs e)
     {
         try
         {
-            var topic = e.Socket.ReceiveFrameString();
-            _logger.LogInformation("NETMQ|SUB_RAW|topic={Topic}", topic);
-            var frame = e.Socket.ReceiveFrameString();
-
-            if (topic == "diag")
+            while (e.Socket.TryReceiveFrameString(out var topic))
             {
-                _logger.LogInformation("CBOT|{Msg}", frame);
-                OnStatusChange?.Invoke("CBOT", frame);
-                return;
-            }
+                _logger.LogInformation("NETMQ|SUB_RAW|topic={Topic}", topic);
+                var frame = e.Socket.ReceiveFrameString();
 
-            using var doc = JsonDocument.Parse(frame);
-            DispatchMessage(topic, doc.RootElement);
+                if (topic == "diag")
+                {
+                    _logger.LogInformation("CBOT|{Msg}", frame);
+                    OnStatusChange?.Invoke("CBOT", frame);
+                    continue;
+                }
+
+                using var doc = JsonDocument.Parse(frame);
+                DispatchMessage(topic, doc.RootElement);
+            }
         }
         catch (Exception ex)
         {
@@ -157,14 +172,44 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     private void OnRouterReceive(object? sender, NetMQSocketEventArgs e)
     {
-        var identity = e.Socket.ReceiveFrameBytes();
-        var json = e.Socket.ReceiveFrameString();
-        if (_cBotIdentity is null)
+        while (e.Socket.TryReceiveFrameBytes(out var identity))
         {
-            _cBotIdentity = identity;
-            _logger.LogInformation("NETMQ|CONNECTED|dataEndpoint={DataEndpoint}|commandEndpoint={CommandEndpoint}", _dataEndpoint, _commandEndpoint);
-            OnConnected?.Invoke();
-            OnStatusChange?.Invoke("NETMQ_CONNECTED", $"cBot connected via ROUTER");
+            var json = e.Socket.ReceiveFrameString();
+            if (_cBotIdentity is null)
+            {
+                _cBotIdentity = identity;
+                _logger.LogInformation("NETMQ|CONNECTED|dataEndpoint={DataEndpoint}|commandEndpoint={CommandEndpoint}", _dataEndpoint, _commandEndpoint);
+                OnStatusChange?.Invoke("NETMQ_CONNECTED", $"cBot connected via ROUTER");
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var type = doc.RootElement.TryGetProperty("type", out var t) ? t.GetString() : null;
+                if (type == "hello")
+                {
+                    var helloAck = """{"type":"hello_ack","v":1}""";
+                    _sendQueue!.Enqueue((identity, helloAck));
+                    _logger.LogInformation("NETMQ|HELLO_ACK_SENT|identity captured, handshake complete");
+                    FlushPendingCommands();
+                    OnConnected?.Invoke();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "NETMQ|ROUTER_PARSE_ERR");
+            }
+        }
+    }
+
+    private void FlushPendingCommands()
+    {
+        if (_cBotIdentity is null) return;
+        while (_pendingCommands.TryDequeue(out var cmd))
+        {
+            var json = JsonSerializer.Serialize(cmd, cmd.GetType(), JsonOpts);
+            _sendQueue!.Enqueue((_cBotIdentity!, json));
+            _logger.LogInformation("NETMQ|FLUSH_PENDING|type={Type}", cmd.GetType().Name);
         }
     }
 
@@ -176,7 +221,18 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             clientOrderId, request.Symbol, request.Direction, request.Lots, connected);
         if (!connected)
         {
-            OnStatusChange?.Invoke("NETMQ_DROPPED", $"ORDER DROPPED: cBot not connected. RunId={clientOrderId}");
+            var cmd = new
+            {
+                type = "submit_order",
+                clientOrderId = clientOrderId.ToString(),
+                symbol = request.Symbol.Value,
+                direction = request.Direction.ToString(),
+                lots = (double)request.Lots,
+                slPrice = (double)request.Intent.StopLoss.Value,
+                tpPrice = request.Intent.TakeProfit.HasValue ? (double)request.Intent.TakeProfit.Value.Value : 0.0
+            };
+            _pendingCommands.Enqueue(cmd);
+            OnStatusChange?.Invoke("NETMQ_QUEUED", $"ORDER QUEUED (cBot not yet connected): {request.Direction} {request.Lots:F2} {request.Symbol.Value}");
             return clientOrderId;
         }
         OnStatusChange?.Invoke("NETMQ_SENT", $"ORDER SENT to cBot: {request.Direction} {request.Lots:F2} {request.Symbol.Value}");
@@ -201,10 +257,8 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
     {
-        if (_router is null || _cBotIdentity is null)
+        if (_router is null)
         {
-            // cBot not connected — generate synthetic execution event for force-close
-            _logger.LogWarning("NETMQ|FORCE_CLOSE|positionId={PositionId}|reason=cBot disconnected", positionId);
             _execChannel.Writer.TryWrite(
                 new ExecutionEvent(positionId, OrderState.Filled,
                     new Price(1m), 0, "FORCE_CLOSE_ENGINE_SHUTDOWN", BrokerTimeUtc));
@@ -218,13 +272,19 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     private Task SendCommandAsync(object command, CancellationToken ct)
     {
-        if (_router is null || _cBotIdentity is null)
+        if (_router is null)
         {
-            _logger.LogWarning("NETMQ|CMD_DROPPED|reason=cBot not connected");
+            _logger.LogWarning("NETMQ|CMD_DROPPED|reason=router null (disposed)");
+            return Task.CompletedTask;
+        }
+        if (_cBotIdentity is null)
+        {
+            _pendingCommands.Enqueue(command);
+            _logger.LogDebug("NETMQ|CMD_QUEUED|reason=identity not yet known");
             return Task.CompletedTask;
         }
         var json = JsonSerializer.Serialize(command, command.GetType(), JsonOpts);
-        _router.SendMoreFrame(_cBotIdentity).SendFrame(json);
+        _sendQueue!.Enqueue((_cBotIdentity!, json));
         return Task.CompletedTask;
     }
 

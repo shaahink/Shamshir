@@ -36,6 +36,7 @@ public class TradingEngineCBot : Robot
     private readonly HashSet<(string symbol, string tf, DateTime openTime)> _publishedBars = new();
     private readonly List<Bars> _subscriptions = new();
     private readonly Dictionary<long, Guid> _positionMap = new();
+    private volatile bool _connected;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -54,17 +55,6 @@ public class TradingEngineCBot : Robot
         _pub.Bind($"tcp://*:{DataPort}");
         Print($"CBOT|PUB_BOUND|dataPort={DataPort}");
 
-        // PUB/SUB slow-joiner: give engine subscriber time to complete handshake
-        System.Threading.Thread.Sleep(600);
-
-        // Heartbeat: send periodic diag via PUB to prove data channel works
-        for (int i = 1; i <= 10; i++)
-        {
-            System.Threading.Thread.Sleep(500);
-            Diag($"HEARTBEAT|{i}");
-        }
-        Print($"CBOT|HEARTBEATS_DONE");
-
         _dealer = new DealerSocket();
         _dealer.Connect($"tcp://127.0.0.1:{CommandPort}");
         _dealer.ReceiveReady += OnDealerReceive;
@@ -72,11 +62,56 @@ public class TradingEngineCBot : Robot
         _poller = new NetMQPoller { _dealer };
         _poller.RunAsync();
 
-        _dealer.SendFrame(Serialize("hello", new { }));
-        Print($"CBOT|HELLO_SENT");
+        var symbols = SymbolString.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var periods = Periods.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var subs = new List<(string sym, string tf)>();
+        foreach (var sym in symbols)
+            foreach (var period in periods)
+            {
+                var tf = ParseTimeFrame(period);
+                var bars = MarketData.GetBars(tf, sym);
+                _subscriptions.Add(bars);
+                subs.Add((sym, period));
+            }
 
-        SubscribeAll();
-        Print($"CBOT|SUBSCRIBED|subs={_subscriptions.Count}");
+        var helloMsg = Serialize("hello", new
+        {
+            v = 1,
+            symbols = symbols,
+            periods = periods,
+            barsLoaded = _subscriptions.Sum(s => s.Count)
+        });
+        _dealer.SendFrame(helloMsg);
+        Print($"CBOT|HELLO_SENT|subs={subs.Count}|barsLoaded={_subscriptions.Sum(s => s.Count)}");
+
+        for (int retry = 0; retry < 50 && !_connected; retry++)
+        {
+            if (retry > 0 && retry % 10 == 0)
+            {
+                _dealer.SendFrame(helloMsg);
+                Print($"CBOT|HELLO_RESEND|retry={retry}");
+            }
+            System.Threading.Thread.Sleep(100);
+        }
+
+        if (!_connected)
+        {
+            Print("CBOT|HELLO_TIMEOUT|engine did not acknowledge hello — stopping");
+            Stop();
+            return;
+        }
+
+        Print($"CBOT|HANDSHAKE_COMPLETE|connected");
+
+        foreach (var (sym, period) in subs)
+        {
+            var tf = ParseTimeFrame(period);
+            var bars = MarketData.GetBars(tf, sym);
+            bars.BarClosed += OnBarClosed;
+        }
+
+        Diag($"SUBSCRIBED|subs={subs.Count}");
+        Print($"CBOT|SUBSCRIBED|subs={subs.Count}");
 
         Positions.Closed += OnPositionClosed;
 
@@ -154,6 +189,20 @@ public class TradingEngineCBot : Robot
     {
         if (!e.Socket.TryReceiveFrameString(out var json) || json is null) return;
         var captured = json;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(captured);
+            var type = doc.RootElement.TryGetProperty("type", out var t) ? t.GetString() : null;
+            if (type == "hello_ack")
+            {
+                _connected = true;
+                Diag("HELLO_ACK|received");
+                return;
+            }
+        }
+        catch { }
+
         _mainActions.Enqueue(() => HandleCommand(captured));
         Diag($"DEALER_RECV|queueDepth={_mainActions.Count}|jsonLen={captured.Length}");
     }
@@ -302,11 +351,32 @@ public class TradingEngineCBot : Robot
     {
         Diag($"STOP|ticks={_tickCounter}|barEvents={_barEventCount}|dup={_duplicateCount}");
         Print($"CBOT|STOP|ticks={_tickCounter}|barEvents={_barEventCount}|dup={_duplicateCount}");
+
+        while (_mainActions.TryDequeue(out var action))
+        {
+            try { action(); }
+            catch (Exception ex) { Print($"CBOT|DRAIN_ERR|{ex.Message}"); }
+        }
+
+        var stats = Serialize("stats", new
+        {
+            barsSent = _barEventCount,
+            cmdsReceived = 0,
+            ordersExecuted = 0,
+            execsSent = 0
+        });
+        try { _dealer?.SendFrame(stats); } catch { }
+
+        if (_dealer is not null) _dealer.Options.Linger = TimeSpan.FromSeconds(2);
+        if (_pub is not null) _pub.Options.Linger = TimeSpan.FromSeconds(2);
+
         _poller?.StopAsync();
         _dealer?.Dispose();
         _pub?.Dispose();
         _poller?.Dispose();
-        NetMQConfig.Cleanup(false);
+
+        try { NetMQConfig.Cleanup(true); }
+        catch { NetMQConfig.Cleanup(false); }
     }
 
     private void SubscribeAll()
