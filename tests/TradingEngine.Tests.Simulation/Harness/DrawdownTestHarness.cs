@@ -26,7 +26,8 @@ public sealed class DrawdownTestHarness
         _tracker.Initialize(initialBalance);
 
         _riskManager = new RiskManager(_tracker, registry, (_, _) => 1m,
-            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow));
+            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
+            Substitute.For<ICurrencyExposureTracker>());
         _riskManager.SetActiveRuleSet(FtmoRules);
     }
 

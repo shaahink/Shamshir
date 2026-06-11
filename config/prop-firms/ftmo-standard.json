@@ -4,8 +4,11 @@
   "drawdownType": "Fixed",
   "maxDailyLossPercent": 0.05,
   "maxTotalLossPercent": 0.10,
+  "maxWeeklyLossPercent": 0.04,
+  "maxMonthlyLossPercent": 0.08,
   "profitTargetPercent": 0.10,
   "minTradingDays": 4,
+  "requireProfitTarget": true,
   "equityDefinition": "BalancePlusFloatingMinusFeesAndSwaps",
   "dailyResetTimeUtc": "22:00:00",
   "dailyResetTimezone": "Europe/Prague",
@@ -18,5 +21,6 @@
   "weekendNoOpenUtc": "20:00:00",
   "protectionResetPolicy": "NextTradingDay",
   "forceCloseOnBreach": false,
-  "dailyDdBase": "InitialBalance"
+  "dailyDdBase": "InitialBalance",
+  "gracePeriod": { "enabled": false }
 }

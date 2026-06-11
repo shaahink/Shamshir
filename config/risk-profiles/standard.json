@@ -6,9 +6,17 @@
   "maxTotalDrawdownPercent": 0.08,
   "maxSlPips": 100.0,
   "maxExposurePercent": 0.05,
+  "maxExposurePerCurrencyPercent": 0.05,
   "drawdownScaleThreshold": 0.5,
   "drawdownScaleFloor": 0.5,
   "maxConcurrentPositions": 3,
   "allowHedging": false,
-  "propFirmRuleSetId": "ftmo-standard"
+  "propFirmRuleSetId": "ftmo-standard",
+  "sizeModifiers": {
+    "minCombinedScale": 0.1,
+    "maxCombinedScale": 1.5,
+    "atrRegime": { "enabled": false },
+    "timeOfDay": { "enabled": false },
+    "confidence": { "enabled": false }
+  }
 }

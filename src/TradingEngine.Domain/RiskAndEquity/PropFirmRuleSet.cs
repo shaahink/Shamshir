@@ -20,4 +20,10 @@ public record PropFirmRuleSet(
     string WeekendNoOpenUtc,
     string ProtectionResetPolicy,
     bool ForceCloseOnBreach,
-    DailyDdBase DailyDdBase = DailyDdBase.InitialBalance);
+    DailyDdBase DailyDdBase = DailyDdBase.InitialBalance)
+{
+    public double MaxWeeklyLossPercent { get; init; } = 0.04;
+    public double MaxMonthlyLossPercent { get; init; } = 0.08;
+    public bool RequireProfitTarget { get; init; } = true;
+    public GracePeriodOptions GracePeriod { get; init; } = new();
+}

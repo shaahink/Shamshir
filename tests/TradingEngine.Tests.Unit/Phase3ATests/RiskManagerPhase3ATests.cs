@@ -14,7 +14,8 @@ public sealed class RiskManagerPhase3ATests
         registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
             0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
         return new RiskManager(tracker, registry, (_, _) => 1,
-            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow));
+            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
+            Substitute.For<ICurrencyExposureTracker>());
     }
 
     private static TradeIntent MakeIntent(string strategyId = "test") => new(

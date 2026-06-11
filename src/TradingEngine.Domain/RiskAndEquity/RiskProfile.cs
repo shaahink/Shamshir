@@ -18,5 +18,9 @@ public record RiskProfile(
     decimal FixedDollarRisk = 0m,
     double KellyFraction = 0.25,
     double AntiMartingaleMultiplier = 1.5,
-    int AntiMartingaleMaxSteps = 3);
+    int AntiMartingaleMaxSteps = 3)
+{
+    public double MaxExposurePerCurrencyPercent { get; init; } = 0.05;
+    public SizeModifierOptions SizeModifiers { get; init; } = new();
+}
 

@@ -105,6 +105,7 @@ public static class Program
                 return 1;
             });
             builder.Services.AddSingleton(new CrossRateStore());
+            builder.Services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
 
             builder.Services.AddSingleton<RiskManager>();
             builder.Services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
@@ -132,6 +133,13 @@ public static class Program
             builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
             builder.Services.AddSingleton<OrderDispatcher>();
             builder.Services.AddSingleton<PositionTracker>();
+
+            builder.Services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
+            builder.Services.AddSingleton<ISizeModifier, DrawdownSizeModifier>();
+            builder.Services.AddSingleton<ISizeModifier, AtrRegimeSizeModifier>();
+            builder.Services.AddSingleton<ISizeModifier, TimeOfDaySizeModifier>();
+            builder.Services.AddSingleton<ISizeModifier, ConfidenceSizeModifier>();
+            builder.Services.AddSingleton<SizeModifierPipeline>();
 
             var registry = new StrategyRegistry();
             var activeStrategyIds = builder.Configuration.GetValue<string>("Engine:ActiveStrategyIds")?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
@@ -222,11 +230,22 @@ public static class Program
                 rm.SetActiveRuleSet(ruleSet);
                 Log.Information("Active prop firm rule set: {Id} (max daily DD {DailyPct}%, max total DD {TotalPct}%)",
                     ruleSet.Id, ruleSet.MaxDailyLossPercent * 100, ruleSet.MaxTotalLossPercent * 100);
+
+                var passEstimator = app.Services.GetRequiredService<IPassProbabilityEstimator>();
+                var complianceSvc = new PropFirmComplianceService(
+                    ruleSet,
+                    app.Services.GetRequiredService<DrawdownTracker>(),
+                    app.Services.GetRequiredService<IEngineClock>(),
+                    passEstimator);
+                rm.SetComplianceService(complianceSvc);
             }
             else
             {
                 Log.Warning("No PropFirmRuleSet found for id={Id} — risk gates disabled", activeRuleSetId);
             }
+
+            var sizePipeline = app.Services.GetRequiredService<SizeModifierPipeline>();
+            rm.SetSizePipeline(sizePipeline);
 
             app.Run();
         }

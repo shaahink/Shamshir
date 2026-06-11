@@ -8,7 +8,9 @@ using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Risk;
+using TradingEngine.Risk.Compliance;
 using TradingEngine.Risk.Filters;
+using TradingEngine.Risk.Sizing;
 using TradingEngine.Services;
 
 namespace TradingEngine.Host;
@@ -56,6 +58,7 @@ public static class EngineHostFactory
                 services.AddSingleton<INewsFilter>(_ => new NewsFilter());
                 services.AddSingleton<SessionFilter>();
                 services.AddSingleton<DrawdownTracker>();
+                services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
                 services.AddSingleton<RiskManager>();
                 services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
 
@@ -67,6 +70,14 @@ public static class EngineHostFactory
                         sp.GetRequiredService<LoadedConfig>().RiskProfiles));
 
                 services.AddSingleton<IEngineClock, BrokerClock>();
+
+                services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
+
+                services.AddSingleton<ISizeModifier, DrawdownSizeModifier>();
+                services.AddSingleton<ISizeModifier, AtrRegimeSizeModifier>();
+                services.AddSingleton<ISizeModifier, TimeOfDaySizeModifier>();
+                services.AddSingleton<ISizeModifier, ConfidenceSizeModifier>();
+                services.AddSingleton<SizeModifierPipeline>();
 
                 services.AddDbContext<TradingDbContext>(o =>
                     o.UseSqlite($"Data Source={options.DbPath}"));
@@ -171,6 +182,19 @@ public static class EngineHostFactory
         var activeRuleSetId = activeProfile?.PropFirmRuleSetId ?? "ftmo-standard";
         var ruleSet = loaded.PropFirms.FirstOrDefault(r => r.Id == activeRuleSetId);
         if (ruleSet is not null)
+        {
             rm.SetActiveRuleSet(ruleSet);
+
+            var passEstimator = host.Services.GetRequiredService<IPassProbabilityEstimator>();
+            var complianceSvc = new PropFirmComplianceService(
+                ruleSet,
+                host.Services.GetRequiredService<DrawdownTracker>(),
+                host.Services.GetRequiredService<IEngineClock>(),
+                passEstimator);
+            rm.SetComplianceService(complianceSvc);
+        }
+
+        var sizePipeline = host.Services.GetRequiredService<SizeModifierPipeline>();
+        rm.SetSizePipeline(sizePipeline);
     }
 }

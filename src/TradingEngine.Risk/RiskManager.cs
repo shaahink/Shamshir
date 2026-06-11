@@ -1,3 +1,6 @@
+using TradingEngine.Risk.Compliance;
+using TradingEngine.Risk.Sizing;
+
 namespace TradingEngine.Risk;
 
 public sealed class RiskManager(
@@ -6,8 +9,11 @@ public sealed class RiskManager(
     Func<string, string, decimal> getCrossRate,
     INewsFilter newsFilter,
     SessionFilter sessionFilter,
-    IEngineClock clock) : IRiskManager
+    IEngineClock clock,
+    ICurrencyExposureTracker currencyExposure) : IRiskManager
 {
+    private readonly ICurrencyExposureTracker _currencyExposure = currencyExposure;
+
     public decimal InitialBalance => drawdownTracker.InitialAccountBalance;
 
     public ExtendedRiskState CurrentState { get; private set; } = new()
@@ -18,6 +24,8 @@ public sealed class RiskManager(
     };
 
     private PropFirmRuleSet? _activeRuleSet;
+    private IPropFirmComplianceService? _complianceService;
+    private SizeModifierPipeline? _sizePipeline;
     private ProtectionCause _protectionCause = ProtectionCause.None;
     private bool _forceClosePending;
     private readonly Dictionary<Guid, (string StrategyId, decimal Risk)> _openPositionRisk = new();
@@ -26,6 +34,16 @@ public sealed class RiskManager(
     {
         _activeRuleSet = ruleSet;
         drawdownTracker.DailyDdBaseMode = ruleSet.DailyDdBase;
+    }
+
+    public void SetComplianceService(IPropFirmComplianceService svc)
+    {
+        _complianceService = svc;
+    }
+
+    public void SetSizePipeline(SizeModifierPipeline pipeline)
+    {
+        _sizePipeline = pipeline;
     }
 
     public void EnterProtectionMode(string reason, ProtectionCause cause)
@@ -90,6 +108,16 @@ public sealed class RiskManager(
         if (sessionFilter.IsWeekend(clock.UtcNow) && _activeRuleSet?.AllowWeekendHolding == false)
             violations.Add(new("WEEKEND_RESTRICTION", "Weekend close approaching — no new positions"));
 
+        if (_complianceService is not null)
+        {
+            var compResult = _complianceService.ValidateSignal(intent, CurrentState, profile);
+            if (compResult.Severity == ComplianceSeverity.Block)
+            {
+                foreach (var v in compResult.Violations)
+                    violations.Add(new("COMPLIANCE_BLOCK", v));
+            }
+        }
+
         return violations;
     }
 
@@ -99,13 +127,21 @@ public sealed class RiskManager(
         var entryPrice = intent.LimitPrice ?? new Price(currentMid);
         var slDistance = PipCalculator.Distance(entryPrice, intent.StopLoss, symbolInfo);
         var pipValue = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, getCrossRate);
-        var drawdownScale = DrawdownScaler.ComputeScaleFactor(
-            equity.CurrentMaxDrawdown, (decimal)profile.MaxTotalDrawdownPercent,
-            profile.DrawdownScaleThreshold, profile.DrawdownScaleFloor);
+
+        var drawdownScale = _sizePipeline is not null
+            ? (decimal)_sizePipeline.ComputeCombinedScale(new SizeModifierContext
+            {
+                Equity = equity,
+                Profile = profile,
+                Intent = intent,
+            })
+            : (decimal)DrawdownScaler.ComputeScaleFactor(
+                equity.CurrentMaxDrawdown, (decimal)profile.MaxTotalDrawdownPercent,
+                profile.DrawdownScaleThreshold, profile.DrawdownScaleFloor);
 
         return PositionSizer.Calculate(
             equity.Equity, RiskPercent.Parse(profile.RiskPerTradePercent),
-            slDistance, pipValue, (decimal)drawdownScale,
+            slDistance, pipValue, drawdownScale,
             (decimal)symbolInfo.MaxLots, symbolInfo.MinLots, symbolInfo.LotStep);
     }
 
@@ -136,10 +172,12 @@ public sealed class RiskManager(
     public void OnWeeklyReset(decimal currentEquity)
     {
         drawdownTracker.OnWeeklyReset(currentEquity);
+        _complianceService?.OnWeeklyReset(clock.UtcNow, currentEquity);
     }
 
     public void OnMonthlyReset(decimal currentEquity)
     {
         drawdownTracker.OnMonthlyReset(currentEquity);
+        _complianceService?.OnMonthlyReset(clock.UtcNow, currentEquity);
     }
 }

@@ -18,7 +18,8 @@ public sealed class RiskManagerTests
         var registry = new SymbolInfoRegistry();
         registry.Register(EurUsd());
         var rm = new RiskManager(tracker, registry, (_, _) => 1m,
-            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow));
+            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
+            Substitute.For<ICurrencyExposureTracker>());
         rm.SetActiveRuleSet(FtmoRules);
         return rm;
     }
@@ -147,7 +148,8 @@ public sealed class RiskManagerTests
         var registry = new SymbolInfoRegistry();
         registry.Register(EurUsd());
         var rm = new RiskManager(tracker, registry, (_, _) => 1m,
-            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow));
+            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
+            Substitute.For<ICurrencyExposureTracker>());
         rm.SetActiveRuleSet(FtmoRules);
 
         rm.UpdateEquityLevels(94_900m);
@@ -168,7 +170,8 @@ public sealed class RiskManagerTests
         var registry = new SymbolInfoRegistry();
         registry.Register(EurUsd());
         var rm = new RiskManager(tracker, registry, (_, _) => 1m,
-            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow));
+            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
+            Substitute.For<ICurrencyExposureTracker>());
         rm.SetActiveRuleSet(FtmoRules);
 
         rm.UpdateEquityLevels(95_500m);
