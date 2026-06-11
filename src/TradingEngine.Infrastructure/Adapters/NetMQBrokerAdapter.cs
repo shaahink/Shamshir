@@ -188,7 +188,18 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         => SendCommandAsync(new { type = "cancel_order", orderId = orderId.ToString() }, ct);
 
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
-        => SendCommandAsync(new { type = "close_position", positionId = positionId.ToString() }, ct);
+    {
+        if (_router is null || _cBotIdentity is null)
+        {
+            // cBot not connected — generate synthetic execution event for force-close
+            _logger.LogWarning("NETMQ|FORCE_CLOSE|positionId={PositionId}|reason=cBot disconnected", positionId);
+            _execChannel.Writer.TryWrite(
+                new ExecutionEvent(positionId, OrderState.Filled,
+                    new Price(1m), 0, "FORCE_CLOSE_ENGINE_SHUTDOWN", BrokerTimeUtc));
+            return Task.CompletedTask;
+        }
+        return SendCommandAsync(new { type = "close_position", positionId = positionId.ToString() }, ct);
+    }
 
     public Task SendShutdownAsync(CancellationToken ct)
         => SendCommandAsync(new { type = "shutdown" }, ct);

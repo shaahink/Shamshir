@@ -429,7 +429,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             new CancellationTokenSource(TimeSpan.FromMinutes(30)).Token);
 
         var innerHost = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
-            .ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Warning))
+            .ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Information))
             .ConfigureServices((ctx, services) =>
             {
                 services.AddSingleton(new EngineRunContext(runId));
@@ -554,6 +554,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] Engine started (in-process NetMQ). Ports={dataPort}/{commandPort}");
 
+        var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
+        Directory.CreateDirectory(resultsDir);
+        var reportJsonPath = Path.Combine(resultsDir, "report.json");
+
         var cli = new CTraderCli();
         var args = new[]
         {
@@ -565,6 +569,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             $"--DataPort={dataPort}", $"--CommandPort={commandPort}",
             $"--SymbolString={string.Join(",", cfg.Symbols)}",
             $"--Periods={string.Join(",", cfg.Periods)}",
+            $"--report-json=\"{reportJsonPath}\"",
             "--full-access",
         };
 
@@ -585,6 +590,57 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             $"[{DateTime.UtcNow:HH:mm:ss}] CLI exit code: {cliResult.ExitCode}");
 
         var isKnownCrash = cliResult.ExitCode != 0 && cliResult.IsKnownPostBacktestCrash;
+
+        if (cliResult.ExitCode != 0 && !isKnownCrash)
+        {
+            var errMsg = !string.IsNullOrWhiteSpace(cliResult.StandardError)
+                ? cliResult.StandardError.Trim()
+                : cliResult.StandardOutput.Split('\n').LastOrDefault(l => l.Contains("Error"))?.Trim()
+                    ?? $"ctrader-cli exited with code {cliResult.ExitCode}";
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] CLI error: {errMsg}");
+        }
+
+        // Capture cTrader report files
+        var reportHtmlPath = "";
+        try
+        {
+            var algoDir = Path.GetDirectoryName(algoPath)!;
+            var dataSrcDir = Path.Combine(algoDir, "data", "src");
+            if (Directory.Exists(dataSrcDir))
+            {
+                // Find the most recent Backtesting directory
+                var backtestDirs = Directory.GetDirectories(dataSrcDir, "Backtesting", SearchOption.AllDirectories)
+                    .OrderByDescending(Directory.GetLastWriteTimeUtc)
+                    .ToList();
+
+                if (backtestDirs.Count > 0)
+                {
+                    var latestDir = backtestDirs[0];
+                    var htmlFile = Path.Combine(latestDir, "report.html");
+                    if (File.Exists(htmlFile))
+                    {
+                        var destHtml = Path.Combine(resultsDir, "report.html");
+                        File.Copy(htmlFile, destHtml, overwrite: true);
+                        reportHtmlPath = destHtml;
+                        EnqueueLog(runId, logLines,
+                            $"[{DateTime.UtcNow:HH:mm:ss}] cTrader report: {destHtml}");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] Failed to capture cTrader report: {ex.Message}");
+        }
+
+        // Log report.json if available
+        if (File.Exists(reportJsonPath))
+        {
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] cTrader report JSON: {reportJsonPath}");
+        }
 
         return new BacktestResult
         {
