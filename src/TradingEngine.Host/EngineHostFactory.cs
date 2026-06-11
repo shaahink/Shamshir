@@ -35,7 +35,9 @@ public static class EngineHostFactory
             : catalog.GetAll();
 
         return Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
-            .ConfigureLogging(l => l.SetMinimumLevel(options.MinLogLevel))
+            .ConfigureLogging(l => l
+                .SetMinimumLevel(options.MinLogLevel)
+                .AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning))
             .ConfigureServices((ctx, services) =>
             {
                 services.AddSingleton(new EngineRunContext(options.RunId));
