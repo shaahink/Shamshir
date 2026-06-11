@@ -15,7 +15,7 @@ public sealed class TypedEventBusTests
 
         bus.Subscribe(handler);
         var snapshot = new EquitySnapshot(DateTime.UtcNow, 0, 0, 0, 0, 0, 0, 0, EngineMode.Backtest);
-        var riskState = new RiskState(true, false, null, 0, 0, 0, 0, null);
+        var riskState = new ExtendedRiskState { TradingAllowed = true };
         await bus.PublishAsync(new EquityUpdated(snapshot, riskState, DateTime.UtcNow), CancellationToken.None);
 
         handled.Should().BeTrue();
@@ -26,7 +26,7 @@ public sealed class TypedEventBusTests
     {
         var bus = new TypedEventBus();
         var snapshot = new EquitySnapshot(DateTime.UtcNow, 0, 0, 0, 0, 0, 0, 0, EngineMode.Backtest);
-        var riskState = new RiskState(true, false, null, 0, 0, 0, 0, null);
+        var riskState = new ExtendedRiskState { TradingAllowed = true };
         await bus.Invoking(b => b.PublishAsync(new EquityUpdated(snapshot, riskState, DateTime.UtcNow), CancellationToken.None))
             .Should().NotThrowAsync();
     }

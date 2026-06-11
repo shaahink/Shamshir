@@ -2,7 +2,7 @@ namespace TradingEngine.Web.Pages;
 
 public sealed class IndexModel(ReportingDbContext db) : PageModel
 {
-    public RiskState? RiskState { get; private set; }
+    public ExtendedRiskState? RiskState { get; private set; }
     public int OpenPositionCount { get; private set; }
     public decimal LatestEquity { get; private set; }
     public int TotalTradesToday { get; private set; }
@@ -13,10 +13,14 @@ public sealed class IndexModel(ReportingDbContext db) : PageModel
         if (latest is not null)
         {
             LatestEquity = latest.Equity;
-            RiskState = new RiskState(
-                true, false, null,
-                latest.CurrentDailyDrawdown, latest.CurrentMaxDrawdown,
-                0.05m, 0.10m, null);
+            RiskState = new ExtendedRiskState
+            {
+                TradingAllowed = true,
+                DailyDrawdownUsed = latest.CurrentDailyDrawdown,
+                MaxDrawdownUsed = latest.CurrentMaxDrawdown,
+                DailyDrawdownLimit = 0.05m,
+                MaxDrawdownLimit = 0.10m,
+            };
         }
 
         var todayStart = DateTime.UtcNow.Date;

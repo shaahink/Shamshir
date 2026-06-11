@@ -7,7 +7,15 @@ public sealed class DrawdownTracker
     public decimal DailyStartEquity { get; private set; }
     public decimal CurrentDailyDrawdown { get; private set; }
     public decimal CurrentMaxDrawdown { get; private set; }
+    public decimal WeeklyStartEquity { get; private set; }
+    public decimal MonthlyStartEquity { get; private set; }
+    public decimal CurrentWeeklyDrawdown { get; private set; }
+    public decimal CurrentMonthlyDrawdown { get; private set; }
+    public decimal DrawdownVelocity { get; private set; }
+    public bool IsAccelerating => DrawdownVelocity > 0.001m;
     public string DrawdownType { get; private set; } = "Fixed";
+
+    private readonly Queue<decimal> _velocityWindow = new();
 
     private bool _initialized;
 
@@ -17,6 +25,8 @@ public sealed class DrawdownTracker
         InitialAccountBalance = initialBalance;
         PeakEquity = initialBalance;
         DailyStartEquity = initialBalance;
+        WeeklyStartEquity = initialBalance;
+        MonthlyStartEquity = initialBalance;
         DrawdownType = drawdownType;
         _initialized = true;
     }
@@ -46,6 +56,14 @@ public sealed class DrawdownTracker
                 : 0m,
         };
 
+        CurrentWeeklyDrawdown = WeeklyStartEquity > 0
+            ? Math.Max(0m, (WeeklyStartEquity - equity) / WeeklyStartEquity)
+            : 0m;
+
+        CurrentMonthlyDrawdown = MonthlyStartEquity > 0
+            ? Math.Max(0m, (MonthlyStartEquity - equity) / MonthlyStartEquity)
+            : 0m;
+
         var equityBase = DrawdownType == "Trailing" ? PeakEquity : InitialAccountBalance;
         CurrentMaxDrawdown = equityBase > 0
             ? Math.Max(0m, (equityBase - equity) / equityBase)
@@ -55,6 +73,28 @@ public sealed class DrawdownTracker
     public void OnDailyReset(decimal currentEquity)
     {
         DailyStartEquity = currentEquity;
+        _velocityWindow.Enqueue(CurrentMaxDrawdown);
+        while (_velocityWindow.Count > 5)
+            _velocityWindow.Dequeue();
+
+        if (_velocityWindow.Count >= 2)
+        {
+            var values = _velocityWindow.ToArray();
+            double sum = 0;
+            for (int i = 1; i < values.Length; i++)
+                sum += (double)(values[i] - values[i - 1]);
+            DrawdownVelocity = (decimal)(sum / (values.Length - 1));
+        }
+    }
+
+    public void OnWeeklyReset(decimal currentEquity)
+    {
+        WeeklyStartEquity = currentEquity;
+    }
+
+    public void OnMonthlyReset(decimal currentEquity)
+    {
+        MonthlyStartEquity = currentEquity;
     }
 
     public decimal GetMaxDrawdownFloor(decimal maxTotalLossPercent) =>

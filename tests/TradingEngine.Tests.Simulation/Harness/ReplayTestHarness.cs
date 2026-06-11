@@ -58,7 +58,11 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                 riskManager.ConsumeForceClosePending().Returns(false);
                 riskManager.InitialBalance.Returns(10_000m);
                 riskManager.CurrentState.Returns(
-                    new RiskState(false, false, null, 0m, 0m, 0m, 0m, null));
+                    new ExtendedRiskState
+                    {
+                        TradingAllowed = false, InProtectionMode = false,
+                        DailyDrawdownUsed = 0m, MaxDrawdownUsed = 0m,
+                    });
                 services.AddSingleton<IRiskManager>(_ => riskManager);
                 services.AddSingleton<DrawdownTracker>();
 

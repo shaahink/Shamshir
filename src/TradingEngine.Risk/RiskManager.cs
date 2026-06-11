@@ -10,9 +10,12 @@ public sealed class RiskManager(
 {
     public decimal InitialBalance => drawdownTracker.InitialAccountBalance;
 
-    public RiskState CurrentState { get; private set; } = new(
-        TradingAllowed: true, InProtectionMode: false, ProtectionReason: null,
-        DailyDrawdownUsed: 0, MaxDrawdownUsed: 0, DailyDrawdownLimit: 0, MaxDrawdownLimit: 0, ProtectionUntilUtc: null);
+    public ExtendedRiskState CurrentState { get; private set; } = new()
+    {
+        TradingAllowed = true, InProtectionMode = false, ProtectionReason = null,
+        DailyDrawdownUsed = 0, WeeklyDrawdownUsed = 0, MonthlyDrawdownUsed = 0,
+        MaxDrawdownUsed = 0, DailyDrawdownLimit = 0, MaxDrawdownLimit = 0, ProtectionUntilUtc = null,
+    };
 
     private PropFirmRuleSet? _activeRuleSet;
     private ProtectionCause _protectionCause = ProtectionCause.None;
@@ -112,7 +115,11 @@ public sealed class RiskManager(
         CurrentState = CurrentState with
         {
             DailyDrawdownUsed = drawdownTracker.CurrentDailyDrawdown,
-            MaxDrawdownUsed = drawdownTracker.CurrentMaxDrawdown
+            WeeklyDrawdownUsed = drawdownTracker.CurrentWeeklyDrawdown,
+            MonthlyDrawdownUsed = drawdownTracker.CurrentMonthlyDrawdown,
+            MaxDrawdownUsed = drawdownTracker.CurrentMaxDrawdown,
+            DrawdownVelocity = drawdownTracker.DrawdownVelocity,
+            IsDrawdownAccelerating = drawdownTracker.IsAccelerating,
         };
     }
 
@@ -124,5 +131,15 @@ public sealed class RiskManager(
             _protectionCause = ProtectionCause.None;
             CurrentState = CurrentState with { InProtectionMode = false, ProtectionReason = null, TradingAllowed = true };
         }
+    }
+
+    public void OnWeeklyReset(decimal currentEquity)
+    {
+        drawdownTracker.OnWeeklyReset(currentEquity);
+    }
+
+    public void OnMonthlyReset(decimal currentEquity)
+    {
+        drawdownTracker.OnMonthlyReset(currentEquity);
     }
 }
