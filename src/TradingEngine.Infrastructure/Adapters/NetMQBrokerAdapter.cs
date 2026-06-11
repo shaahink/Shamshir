@@ -23,6 +23,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     public ChannelReader<ExecutionEvent> ExecutionStream => _execChannel.Reader;
 
     public Action? OnConnected { get; set; }
+    public Action<string, string>? OnStatusChange { get; set; }
 
     public DateTime BrokerTimeUtc { get; private set; } = DateTime.UtcNow;
     public bool IsConnected => _cBotIdentity is not null;
@@ -162,6 +163,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             _cBotIdentity = identity;
             _logger.LogInformation("NETMQ|CONNECTED|dataEndpoint={DataEndpoint}|commandEndpoint={CommandEndpoint}", _dataEndpoint, _commandEndpoint);
             OnConnected?.Invoke();
+            OnStatusChange?.Invoke("NETMQ_CONNECTED", $"cBot connected via ROUTER");
         }
     }
 
@@ -171,6 +173,12 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         var connected = _cBotIdentity is not null;
         _logger.LogInformation("NETMQ|SUBMIT_ORDER|id={Id}|symbol={Symbol}|dir={Dir}|lots={Lots}|connected={Connected}",
             clientOrderId, request.Symbol, request.Direction, request.Lots, connected);
+        if (!connected)
+        {
+            OnStatusChange?.Invoke("NETMQ_DROPPED", $"ORDER DROPPED: cBot not connected. RunId={clientOrderId}");
+            return clientOrderId;
+        }
+        OnStatusChange?.Invoke("NETMQ_SENT", $"ORDER SENT to cBot: {request.Direction} {request.Lots:F2} {request.Symbol.Value}");
         await SendCommandAsync(new
         {
             type = "submit_order",

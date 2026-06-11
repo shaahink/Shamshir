@@ -435,10 +435,15 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 services.AddSingleton(new EngineRunContext(runId));
 
                 services.AddSingleton<IBrokerAdapter>(sp =>
-                    new NetMQBrokerAdapter(
+                {
+                    var adapter = new NetMQBrokerAdapter(
                         $"tcp://127.0.0.1:{dataPort}",
                         $"tcp://*:{commandPort}",
-                        sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()));
+                        sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>());
+                    adapter.OnStatusChange = (type, msg) =>
+                        PushProgressEvent(runId, type, msg);
+                    return adapter;
+                });
 
                 var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
                     0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
