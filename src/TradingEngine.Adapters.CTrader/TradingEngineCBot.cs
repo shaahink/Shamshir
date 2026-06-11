@@ -29,10 +29,14 @@ public class TradingEngineCBot : Robot
     private PublisherSocket? _pub;
     private DealerSocket? _dealer;
     private NetMQPoller? _poller;
+    private readonly BlockingCollection<string> _inbox = new();
     private readonly ConcurrentQueue<Action> _mainActions = new();
     private int _tickCounter;
     private int _barEventCount;
     private int _duplicateCount;
+    private int _cmdsReceived;
+    private int _ordersExecuted;
+    private int _execsSent;
     private readonly HashSet<(string symbol, string tf, DateTime openTime)> _publishedBars = new();
     private readonly List<Bars> _subscriptions = new();
     private readonly Dictionary<long, Guid> _positionMap = new();
@@ -124,16 +128,6 @@ public class TradingEngineCBot : Robot
     {
         _tickCounter++;
 
-        var queued = _mainActions.Count;
-        var processed = 0;
-        while (_mainActions.TryDequeue(out var action))
-        {
-            try { action(); processed++; }
-            catch (Exception ex) { Print($"CBOT|CMD_ERR|{ex.Message}"); }
-        }
-        if (queued > 0)
-            Diag($"TICK_DRAIN|tick={_tickCounter}|queued={queued}|processed={processed}");
-
         if (_tickCounter % TickEveryN == 0)
         {
             Publish("tick", new
@@ -158,31 +152,180 @@ public class TradingEngineCBot : Robot
         var key = (bars.SymbolName, bars.TimeFrame.ShortName, bar.OpenTime);
         if (!_publishedBars.Add(key)) { _duplicateCount++; return; }
 
-        var hat2Open = bars.Count > 2 ? bars.Last(2).OpenTime : DateTime.MinValue;
-
         Print($"CBOT|BAR_EVENT|seq={_barEventCount}|" +
               $"count={bars.Count}|" +
               $"openTime={bar.OpenTime:yyyy-MM-dd HH:mm}|" +
               $"open={bar.Open:F5}|high={bar.High:F5}|low={bar.Low:F5}|close={bar.Close:F5}|" +
-              $"hat2OpenTime={hat2Open:yyyy-MM-dd HH:mm}|" +
-              $"firstIdx0={bars.Last(0).OpenTime:yyyy-MM-dd HH:mm}|" +
               $"dup=false");
 
-        var openTimeUtc = DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc).ToString("o");
+        var openTimeUtc = DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc);
 
-        Diag($"BAR_SENT|{bars.SymbolName}|{bars.TimeFrame.ShortName}|{openTimeUtc}|close={bar.Close:F5}|seq={_barEventCount}");
-
-        Publish("bar", new
+        var barJson = Serialize("bar", new
         {
+            v = 1,
+            seq = _barEventCount,
             symbol = bars.SymbolName,
             period = bars.TimeFrame.ShortName,
-            openTime = openTimeUtc,
+            openTime = openTimeUtc.ToString("o"),
             open = bar.Open,
             high = bar.High,
             low = bar.Low,
             close = bar.Close,
-            volume = (long)bar.TickVolume
+            volume = (long)bar.TickVolume,
+            simTime = Server.TimeInUtc.ToString("o"),
+            account = new { balance = Account.Balance, equity = Account.Equity }
         });
+        _dealer!.SendFrame(barJson);
+        Diag($"BAR_SENT|{bars.SymbolName}|{bars.TimeFrame.ShortName}|{openTimeUtc:o}|close={bar.Close:F5}|seq={_barEventCount}");
+
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_inbox.TryTake(out var json, 100))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(json);
+                    var type = doc.RootElement.TryGetProperty("type", out var t) ? t.GetString() : null;
+
+                    if (type == "bar_done" && doc.RootElement.TryGetProperty("seq", out var seqEl) && seqEl.GetInt32() == _barEventCount)
+                    {
+                        var commands = doc.RootElement.TryGetProperty("commands", out var cmds) ? cmds : default;
+                        _cmdsReceived += commands.ValueKind == JsonValueKind.Array ? commands.GetArrayLength() : 0;
+
+                        var execs = new List<object>();
+                        if (commands.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var cmd in commands.EnumerateArray())
+                            {
+                                var cmdType = cmd.GetProperty("type").GetString();
+                                if (cmdType == "submit_order")
+                                {
+                                    var result = ExecuteSubmitOrder(cmd);
+                                    execs.Add(result);
+                                }
+                                else if (cmdType == "close_position")
+                                {
+                                    var result = ExecuteClosePosition(cmd);
+                                    execs.Add(result);
+                                }
+                                else if (cmdType == "shutdown")
+                                {
+                                    Print("CBOT|SHUTDOWN|received via bar_done");
+                                    Stop();
+                                    return;
+                                }
+                            }
+                        }
+
+                        var barResult = Serialize("bar_result", new
+                        {
+                            v = 1,
+                            seq = _barEventCount,
+                            execs = execs,
+                            account = new { balance = Account.Balance, equity = Account.Equity }
+                        });
+                        _dealer!.SendFrame(barResult);
+                        Diag($"BAR_RESULT|seq={_barEventCount}|execs={execs.Count}");
+                        return;
+                    }
+                    else if (type == "shutdown")
+                    {
+                        Print("CBOT|SHUTDOWN|received during bar processing");
+                        Stop();
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Print($"CBOT|BAR_PROC_ERR|{ex.Message}");
+                }
+            }
+        }
+
+        Print($"CBOT|BAR_TIMEOUT|seq={_barEventCount}|bar_done not received within 30s");
+        Stop();
+    }
+
+    private object ExecuteSubmitOrder(JsonElement cmd)
+    {
+        var clientOrderId = cmd.GetProperty("clientOrderId").GetString()!;
+        var symbol = cmd.GetProperty("symbol").GetString()!;
+        var direction = cmd.GetProperty("direction").GetString()!;
+        var lots = cmd.GetProperty("lots").GetDouble();
+        var slPrice = cmd.GetProperty("slPrice").GetDouble();
+        var tpPrice = cmd.GetProperty("tpPrice").GetDouble();
+
+        Diag($"CMD_RECV|submit_order|{clientOrderId}|{symbol}|{direction}|lots={lots:F4}");
+
+        var sym = Symbols.GetSymbol(symbol);
+        if (sym is null)
+            return MakeExecResult(clientOrderId, "entry_fill", 0, "Rejected", 0, lots, "Unknown symbol: " + symbol);
+
+        var tradeType = direction == "Long" ? TradeType.Buy : TradeType.Sell;
+        var volumeInUnits = Math.Floor(lots * sym.LotSize / sym.VolumeInUnitsStep) * sym.VolumeInUnitsStep;
+
+        var result = ExecuteMarketOrder(tradeType, symbol, volumeInUnits, "Shamshir", null, null);
+        if (result?.IsSuccessful == true)
+        {
+            var pos = result.Position;
+            _positionMap[pos.Id] = Guid.Parse(clientOrderId);
+            _ordersExecuted++;
+
+            if (slPrice > 0 || tpPrice > 0)
+            {
+                try
+                {
+#pragma warning disable CS0618
+                    ModifyPosition(pos, slPrice > 0 ? slPrice : pos.StopLoss, tpPrice > 0 ? tpPrice : pos.TakeProfit);
+#pragma warning restore CS0618
+                }
+                catch { }
+            }
+
+            PublishAccount();
+            return MakeExecResult(clientOrderId, "entry_fill", pos.Id, "Filled", pos.EntryPrice,
+                pos.VolumeInUnits / sym.LotSize, null);
+        }
+
+        return MakeExecResult(clientOrderId, "entry_fill", 0, "Rejected", 0, lots, result?.Error.ToString() ?? "Null result");
+    }
+
+    private object ExecuteClosePosition(JsonElement cmd)
+    {
+        var positionIdStr = cmd.GetProperty("positionId").GetString()!;
+        foreach (var pos in Positions)
+        {
+            if (pos.Id.ToString() == positionIdStr)
+            {
+                var result = ClosePosition(pos);
+                Diag($"CLOSE_POS|{positionIdStr}|success={result?.IsSuccessful}");
+                if (result?.IsSuccessful == true) PublishAccount();
+                return MakeExecResult(Guid.Empty.ToString(), "close", pos.Id,
+                    result?.IsSuccessful == true ? "Filled" : "Rejected",
+                    pos.CurrentPrice > 0 ? pos.CurrentPrice : 0d, pos.VolumeInUnits / (Symbols.GetSymbol(pos.SymbolName)?.LotSize ?? 100000.0), null);
+            }
+        }
+        Print($"CBOT|CLOSE_NOT_FOUND|positionId={positionIdStr}");
+        return MakeExecResult(Guid.Empty.ToString(), "close", 0, "Rejected", 0, 0, "Position not found: " + positionIdStr);
+    }
+
+    private static object MakeExecResult(string clientOrderId, string kind, long positionId,
+        string state, double fillPrice, double filledLots, string? reason)
+    {
+        return new
+        {
+            clientOrderId,
+            kind,
+            positionId,
+            state,
+            fillPrice,
+            filledLots,
+            reason,
+            simTime = DateTime.UtcNow.ToString("o"),
+            grossProfit = 0.0,
+            netProfit = 0.0
+        };
     }
 
     private void OnDealerReceive(object? sender, NetMQSocketEventArgs e)
@@ -200,134 +343,17 @@ public class TradingEngineCBot : Robot
                 Diag("HELLO_ACK|received");
                 return;
             }
+            if (type == "shutdown")
+            {
+                Print("CBOT|SHUTDOWN|received shutdown, stopping");
+                Stop();
+                return;
+            }
         }
         catch { }
 
-        _mainActions.Enqueue(() => HandleCommand(captured));
-        Diag($"DEALER_RECV|queueDepth={_mainActions.Count}|jsonLen={captured.Length}");
-    }
-
-    private void HandleCommand(string json)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            var type = doc.RootElement.GetProperty("type").GetString();
-            Print($"CBOT|CMD|{type}|{json[..Math.Min(120, json.Length)]}");
-
-            switch (type)
-            {
-                case "ping": break;
-                case "shutdown":
-                    Print($"CBOT|SHUTDOWN|received shutdown command, stopping");
-                    Stop();
-                    break;
-                case "submit_order": HandleSubmitOrder(doc.RootElement); break;
-                case "close_position": HandleClosePosition(doc.RootElement); break;
-                case "modify_order": HandleModifyOrder(doc.RootElement); break;
-                case "cancel_order": HandleCancelOrder(doc.RootElement); break;
-            }
-        }
-        catch (Exception ex)
-        {
-            Print($"CBOT|CMD_PARSE_ERR|{ex.Message}");
-        }
-    }
-
-    private void HandleSubmitOrder(JsonElement cmd)
-    {
-        var clientOrderId = cmd.GetProperty("clientOrderId").GetGuid();
-        var symbol = cmd.GetProperty("symbol").GetString()!;
-        var direction = cmd.GetProperty("direction").GetString()!;
-        var lots = cmd.GetProperty("lots").GetDouble();
-        var slPrice = cmd.GetProperty("slPrice").GetDouble();
-        var tpPrice = cmd.GetProperty("tpPrice").GetDouble();
-
-        Diag($"CMD_RECV|submit_order|{clientOrderId}|{symbol}|{direction}|lots={lots:F4}");
-
-        var sym = Symbols.GetSymbol(symbol);
-        if (sym is null)
-        {
-            PublishExec(clientOrderId, "Rejected", 0, 0, "Unknown symbol: " + symbol);
-            Diag($"EXEC_SENT|{clientOrderId}|Rejected|reason=Unknown symbol");
-            return;
-        }
-
-        var tradeType = direction == "Long" ? TradeType.Buy : TradeType.Sell;
-        var volumeInUnits = Math.Floor(lots * sym.LotSize / sym.VolumeInUnitsStep) * sym.VolumeInUnitsStep;
-        var midPrice = (sym.Bid + sym.Ask) / 2.0;
-        double? slPips = null;
-        double? tpPips = null;
-        if (slPrice > 0 && midPrice > 0)
-        {
-            var rawSl = Math.Abs(slPrice - midPrice) / sym.PipSize;
-            slPips = rawSl < 500 ? (double?)rawSl : null; // clamp absurd values (M1 mode has bid=ask=0)
-        }
-        if (tpPrice > 0 && midPrice > 0)
-        {
-            var rawTp = Math.Abs(tpPrice - midPrice) / sym.PipSize;
-            tpPips = rawTp < 500 ? (double?)rawTp : null;
-        }
-
-        var result = ExecuteMarketOrder(tradeType, symbol, volumeInUnits, "Shamshir", slPips, tpPips);
-        if (result?.IsSuccessful == true)
-        {
-            var pos = result.Position;
-            _positionMap[pos.Id] = clientOrderId;
-            PublishExec(clientOrderId, "Filled", pos.EntryPrice, pos.VolumeInUnits / sym.LotSize, null);
-            Diag($"EXEC_SENT|{clientOrderId}|Filled|fill={pos.EntryPrice:F5}|lots={pos.VolumeInUnits / sym.LotSize:F4}");
-            PublishAccount();
-        }
-        else
-        {
-            PublishExec(clientOrderId, "Rejected", 0, 0, result?.Error.ToString() ?? "Null result");
-            Diag($"EXEC_SENT|{clientOrderId}|Rejected|reason={result?.Error}");
-        }
-    }
-
-    private void HandleClosePosition(JsonElement cmd)
-    {
-        var positionId = cmd.GetProperty("positionId").GetString();
-        foreach (var pos in Positions)
-        {
-            if (pos.Id.ToString() == positionId)
-            {
-                var result = ClosePosition(pos);
-                if (result?.IsSuccessful == true) PublishAccount();
-                return;
-            }
-        }
-        Print($"CBOT|CLOSE_NOT_FOUND|positionId={positionId}");
-    }
-
-    private void HandleModifyOrder(JsonElement cmd)
-    {
-        var orderId = cmd.GetProperty("orderId").GetString();
-        var newSl = cmd.GetProperty("newSl").GetDouble();
-        var newTp = cmd.GetProperty("newTp").GetDouble();
-        foreach (var pos in Positions)
-        {
-            if (pos.Id.ToString() == orderId)
-            {
-#pragma warning disable CS0618
-                ModifyPosition(pos, newSl > 0 ? newSl : pos.StopLoss, newTp > 0 ? newTp : pos.TakeProfit);
-#pragma warning restore CS0618
-                return;
-            }
-        }
-    }
-
-    private void HandleCancelOrder(JsonElement cmd)
-    {
-        var orderId = cmd.GetProperty("orderId").GetString();
-        foreach (var order in PendingOrders)
-        {
-            if (order.Id.ToString() == orderId)
-            {
-                CancelPendingOrder(order);
-                return;
-            }
-        }
+        _inbox.Add(captured);
+        Diag($"DEALER_RECV|inboxDepth={_inbox.Count}|jsonLen={captured.Length}");
     }
 
     private void OnPositionClosed(PositionClosedEventArgs args)
@@ -337,13 +363,27 @@ public class TradingEngineCBot : Robot
         {
             var sym = Symbols.GetSymbol(pos.SymbolName);
             var lots = sym is not null ? pos.VolumeInUnits / sym.LotSize : pos.VolumeInUnits / 100_000.0;
-            var exitPrice = pos.EntryPrice + (pos.TradeType == TradeType.Buy ? 1 : -1)
-                * (pos.GrossProfit / (pos.VolumeInUnits > 0 ? pos.VolumeInUnits : 1));
+            var closePrice = pos.CurrentPrice > 0 ? pos.CurrentPrice : pos.EntryPrice;
 
-            PublishExec(clientOrderId, "Filled", exitPrice, lots, null);
-            Diag($"EXEC_SENT|{clientOrderId}|Filled|fill={exitPrice:F5}|lots={lots:F4}|reason=PositionClosed");
-            PublishAccount();
+            var execJson = Serialize("exec", new
+            {
+                v = 1,
+                clientOrderId = clientOrderId.ToString(),
+                kind = "close",
+                positionId = pos.Id,
+                state = "Filled",
+                fillPrice = closePrice,
+                filledLots = lots,
+                reason = (string?)null,
+                simTime = Server.TimeInUtc.ToString("o"),
+                grossProfit = pos.GrossProfit,
+                netProfit = pos.NetProfit
+            });
+            try { _dealer?.SendFrame(execJson); } catch { }
+            _execsSent++;
+            Diag($"EXEC_SENT|{clientOrderId}|Filled|kind=close|fill={closePrice:F5}|lots={lots:F4}|pnl={pos.NetProfit:F2}");
             _positionMap.Remove(pos.Id);
+            PublishAccount();
         }
     }
 
@@ -360,10 +400,11 @@ public class TradingEngineCBot : Robot
 
         var stats = Serialize("stats", new
         {
+            v = 1,
             barsSent = _barEventCount,
-            cmdsReceived = 0,
-            ordersExecuted = 0,
-            execsSent = 0
+            cmdsReceived = _cmdsReceived,
+            ordersExecuted = _ordersExecuted,
+            execsSent = _execsSent
         });
         try { _dealer?.SendFrame(stats); } catch { }
 
@@ -377,22 +418,6 @@ public class TradingEngineCBot : Robot
 
         try { NetMQConfig.Cleanup(true); }
         catch { NetMQConfig.Cleanup(false); }
-    }
-
-    private void SubscribeAll()
-    {
-        var symbols = SymbolString.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        var periods = Periods.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-
-        foreach (var sym in symbols)
-            foreach (var period in periods)
-            {
-                var tf = ParseTimeFrame(period);
-                var bars = MarketData.GetBars(tf, sym);
-                bars.BarClosed += OnBarClosed;
-                _subscriptions.Add(bars);
-                Diag($"SUBSCRIBED|{sym}|{period}|loaded={bars.Count}");
-            }
     }
 
     private static TimeFrame ParseTimeFrame(string s) => s.ToUpperInvariant() switch
@@ -431,22 +456,6 @@ public class TradingEngineCBot : Robot
             floatingPnL = Account.Equity - Account.Balance,
             time = Server.TimeInUtc.ToString("o")
         });
-    }
-
-    private void PublishExec(Guid clientOrderId, string state, double fillPrice, double filledLots, string? reason)
-    {
-        if (_pub is null) return;
-        var json = JsonSerializer.Serialize(new
-        {
-            clientOrderId = clientOrderId.ToString(),
-            state,
-            fillPrice,
-            filledLots,
-            reason,
-            time = Server.TimeInUtc.ToString("o")
-        }, JsonOpts);
-        _pub.SendMoreFrame("exec").SendFrame(json);
-        Diag($"EXEC_SENT|{clientOrderId}|{state}|fill={fillPrice:F5}|lots={filledLots:F4}");
     }
 
     private static string Serialize(string type, object payload)

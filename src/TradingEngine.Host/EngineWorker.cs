@@ -485,6 +485,9 @@ public sealed class EngineWorker : BackgroundService
                     }
 
                     await DrainExecutionStreamAsync();
+
+                    if (_broker is NetMQBrokerAdapter netMq)
+                        await _broker.CompleteBarAsync(netMq.CurrentBarSeq, ct);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)

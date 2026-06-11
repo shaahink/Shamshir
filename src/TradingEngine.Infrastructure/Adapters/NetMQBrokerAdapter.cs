@@ -35,6 +35,9 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private NetMQQueue<(byte[] Identity, string Json)>? _sendQueue;
     private byte[]? _cBotIdentity;
     private readonly ConcurrentQueue<object> _pendingCommands = new();
+    private readonly List<object> _bufferedCommands = new();
+    private readonly object _bufferLock = new();
+    public long CurrentBarSeq { get; private set; }
 
     private static readonly JsonSerializerOptions JsonOpts = new()
         { PropertyNameCaseInsensitive = true };
@@ -104,7 +107,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                 }
 
                 using var doc = JsonDocument.Parse(frame);
-                DispatchMessage(topic, doc.RootElement);
+                DispatchSubMessage(topic, doc.RootElement);
             }
         }
         catch (Exception ex)
@@ -113,7 +116,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         }
     }
 
-    private void DispatchMessage(string topic, JsonElement root)
+    private void DispatchSubMessage(string topic, JsonElement root)
     {
         switch (topic)
         {
@@ -128,20 +131,6 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                 _tickChannel.Writer.TryWrite(tick);
                 break;
             }
-            case "bar":
-            {
-                var bar = new Bar(
-                    Symbol.Parse(root.GetProperty("symbol").GetString()!),
-                    Enum.Parse<Timeframe>(root.GetProperty("period").GetString()!, ignoreCase: true),
-                    root.GetProperty("openTime").GetDateTime().ToUniversalTime(),
-                    root.GetProperty("open").GetDecimal(),
-                    root.GetProperty("high").GetDecimal(),
-                    root.GetProperty("low").GetDecimal(),
-                    root.GetProperty("close").GetDecimal(),
-                    root.GetProperty("volume").GetDouble());
-                _barChannel.Writer.TryWrite(bar);
-                break;
-            }
             case "acct":
             {
                 var acct = new AccountUpdate(
@@ -150,21 +139,6 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                     root.GetProperty("floatingPnL").GetDecimal(),
                     root.GetProperty("time").GetDateTime().ToUniversalTime());
                 _accountChannel.Writer.TryWrite(acct);
-                break;
-            }
-            case "exec":
-            {
-                var orderId = root.GetProperty("clientOrderId").GetGuid();
-                var state = Enum.Parse<OrderState>(root.GetProperty("state").GetString()!, ignoreCase: true);
-                var fillPrice = root.GetProperty("fillPrice").GetDecimal();
-                var filledLots = root.GetProperty("filledLots").GetDecimal();
-                var reason = root.GetProperty("reason").ValueKind == JsonValueKind.String
-                    ? root.GetProperty("reason").GetString() : null;
-                var time = root.GetProperty("time").GetDateTime().ToUniversalTime();
-                var exec = new ExecutionEvent(orderId, state,
-                    fillPrice > 0 ? new Price(fillPrice) : null,
-                    filledLots, reason, time);
-                _execChannel.Writer.TryWrite(exec);
                 break;
             }
         }
@@ -186,13 +160,83 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             {
                 using var doc = JsonDocument.Parse(json);
                 var type = doc.RootElement.TryGetProperty("type", out var t) ? t.GetString() : null;
-                if (type == "hello")
+
+                switch (type)
                 {
-                    var helloAck = """{"type":"hello_ack","v":1}""";
-                    _sendQueue!.Enqueue((identity, helloAck));
-                    _logger.LogInformation("NETMQ|HELLO_ACK_SENT|identity captured, handshake complete");
-                    FlushPendingCommands();
-                    OnConnected?.Invoke();
+                    case "hello":
+                        var helloAck = """{"type":"hello_ack","v":1}""";
+                        _sendQueue!.Enqueue((identity, helloAck));
+                        _logger.LogInformation("NETMQ|HELLO_ACK_SENT|identity captured, handshake complete");
+                        FlushPendingCommands();
+                        OnConnected?.Invoke();
+                        break;
+
+                    case "bar":
+                        CurrentBarSeq = doc.RootElement.TryGetProperty("seq", out var s) ? s.GetInt64() : 0;
+                        var bar = new Bar(
+                            Symbol.Parse(doc.RootElement.GetProperty("symbol").GetString()!),
+                            Enum.Parse<Timeframe>(doc.RootElement.GetProperty("period").GetString()!, ignoreCase: true),
+                            doc.RootElement.GetProperty("openTime").GetDateTime().ToUniversalTime(),
+                            doc.RootElement.GetProperty("open").GetDecimal(),
+                            doc.RootElement.GetProperty("high").GetDecimal(),
+                            doc.RootElement.GetProperty("low").GetDecimal(),
+                            doc.RootElement.GetProperty("close").GetDecimal(),
+                            doc.RootElement.GetProperty("volume").GetDouble());
+                        BrokerTimeUtc = bar.OpenTimeUtc;
+                        _barChannel.Writer.TryWrite(bar);
+                        break;
+
+                    case "bar_result":
+                        if (doc.RootElement.TryGetProperty("execs", out var execs) && execs.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var ex in execs.EnumerateArray())
+                            {
+                                var orderId = ex.TryGetProperty("clientOrderId", out var oid) && oid.GetString() is { } oidStr
+                                    ? Guid.Parse(oidStr) : Guid.Empty;
+                                var kind = ex.TryGetProperty("kind", out var k) ? k.GetString() : null;
+                                var state = Enum.Parse<OrderState>(ex.GetProperty("state").GetString()!, ignoreCase: true);
+                                var fillPrice = ex.GetProperty("fillPrice").GetDecimal();
+                                var filledLots = ex.GetProperty("filledLots").GetDecimal();
+                                var reason = ex.TryGetProperty("reason", out var r) && r.ValueKind == JsonValueKind.String
+                                    ? r.GetString() : null;
+                                var time = ex.TryGetProperty("simTime", out var st) ? st.GetDateTime().ToUniversalTime() : DateTime.UtcNow;
+                                var exec = new ExecutionEvent(orderId, state,
+                                    fillPrice > 0 ? new Price(fillPrice) : null,
+                                    filledLots, reason, time);
+                                _execChannel.Writer.TryWrite(exec);
+                            }
+                        }
+                        if (doc.RootElement.TryGetProperty("account", out var acct))
+                        {
+                            var acctUpdate = new AccountUpdate(
+                                acct.GetProperty("balance").GetDecimal(),
+                                acct.GetProperty("equity").GetDecimal(),
+                                acct.GetProperty("equity").GetDecimal() - acct.GetProperty("balance").GetDecimal(),
+                                DateTime.UtcNow);
+                            _accountChannel.Writer.TryWrite(acctUpdate);
+                        }
+                        break;
+
+                    case "exec":
+                    {
+                        var orderId = doc.RootElement.TryGetProperty("clientOrderId", out var o) && o.GetString() is { } oStr
+                            ? Guid.Parse(oStr) : Guid.Empty;
+                        var state = Enum.Parse<OrderState>(doc.RootElement.GetProperty("state").GetString()!, ignoreCase: true);
+                        var fillPrice = doc.RootElement.GetProperty("fillPrice").GetDecimal();
+                        var filledLots = doc.RootElement.GetProperty("filledLots").GetDecimal();
+                        var reason = doc.RootElement.TryGetProperty("reason", out var re) && re.ValueKind == JsonValueKind.String
+                            ? re.GetString() : null;
+                        var time = doc.RootElement.TryGetProperty("simTime", out var st) ? st.GetDateTime().ToUniversalTime() : DateTime.UtcNow;
+                        var execEvt = new ExecutionEvent(orderId, state,
+                            fillPrice > 0 ? new Price(fillPrice) : null,
+                            filledLots, reason, time);
+                        _execChannel.Writer.TryWrite(execEvt);
+                        break;
+                    }
+
+                    case "stats":
+                        _logger.LogInformation("NETMQ|STATS|{Json}", json);
+                        break;
                 }
             }
             catch (Exception ex)
@@ -219,24 +263,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         var connected = _cBotIdentity is not null;
         _logger.LogInformation("NETMQ|SUBMIT_ORDER|id={Id}|symbol={Symbol}|dir={Dir}|lots={Lots}|connected={Connected}",
             clientOrderId, request.Symbol, request.Direction, request.Lots, connected);
-        if (!connected)
-        {
-            var cmd = new
-            {
-                type = "submit_order",
-                clientOrderId = clientOrderId.ToString(),
-                symbol = request.Symbol.Value,
-                direction = request.Direction.ToString(),
-                lots = (double)request.Lots,
-                slPrice = (double)request.Intent.StopLoss.Value,
-                tpPrice = request.Intent.TakeProfit.HasValue ? (double)request.Intent.TakeProfit.Value.Value : 0.0
-            };
-            _pendingCommands.Enqueue(cmd);
-            OnStatusChange?.Invoke("NETMQ_QUEUED", $"ORDER QUEUED (cBot not yet connected): {request.Direction} {request.Lots:F2} {request.Symbol.Value}");
-            return clientOrderId;
-        }
-        OnStatusChange?.Invoke("NETMQ_SENT", $"ORDER SENT to cBot: {request.Direction} {request.Lots:F2} {request.Symbol.Value}");
-        await SendCommandAsync(new
+        var cmd = new
         {
             type = "submit_order",
             clientOrderId = clientOrderId.ToString(),
@@ -245,15 +272,31 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             lots = (double)request.Lots,
             slPrice = (double)request.Intent.StopLoss.Value,
             tpPrice = request.Intent.TakeProfit.HasValue ? (double)request.Intent.TakeProfit.Value.Value : 0.0
-        }, ct);
+        };
+        if (!connected)
+        {
+            _pendingCommands.Enqueue(cmd);
+            OnStatusChange?.Invoke("NETMQ_QUEUED", $"ORDER QUEUED (cBot not yet connected): {request.Direction} {request.Lots:F2} {request.Symbol.Value}");
+            return clientOrderId;
+        }
+        lock (_bufferLock) { _bufferedCommands.Add(cmd); }
+        OnStatusChange?.Invoke("NETMQ_BUFFERED", $"ORDER BUFFERED for bar: {request.Direction} {request.Lots:F2} {request.Symbol.Value}");
         return clientOrderId;
     }
 
     public Task ModifyOrderAsync(Guid orderId, Price newSl, Price? newTp, CancellationToken ct)
-        => SendCommandAsync(new { type = "modify_order", orderId = orderId.ToString(), newSl = (double)newSl.Value, newTp = newTp.HasValue ? (double)newTp.Value.Value : 0.0 }, ct);
+    {
+        var cmd = new { type = "modify_order", orderId = orderId.ToString(), newSl = (double)newSl.Value, newTp = newTp.HasValue ? (double)newTp.Value.Value : 0.0 };
+        lock (_bufferLock) { _bufferedCommands.Add(cmd); }
+        return Task.CompletedTask;
+    }
 
     public Task CancelOrderAsync(Guid orderId, CancellationToken ct)
-        => SendCommandAsync(new { type = "cancel_order", orderId = orderId.ToString() }, ct);
+    {
+        var cmd = new { type = "cancel_order", orderId = orderId.ToString() };
+        lock (_bufferLock) { _bufferedCommands.Add(cmd); }
+        return Task.CompletedTask;
+    }
 
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
     {
@@ -264,11 +307,48 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                     new Price(1m), 0, "FORCE_CLOSE_ENGINE_SHUTDOWN", BrokerTimeUtc));
             return Task.CompletedTask;
         }
-        return SendCommandAsync(new { type = "close_position", positionId = positionId.ToString() }, ct);
+        var cmd = new { type = "close_position", positionId = positionId.ToString() };
+        lock (_bufferLock) { _bufferedCommands.Add(cmd); }
+        return Task.CompletedTask;
     }
 
     public Task SendShutdownAsync(CancellationToken ct)
         => SendCommandAsync(new { type = "shutdown" }, ct);
+
+    public async Task CompleteBarAsync(long seq, CancellationToken ct)
+    {
+        object[] commands;
+        lock (_bufferLock)
+        {
+            commands = _bufferedCommands.ToArray();
+            _bufferedCommands.Clear();
+        }
+
+        var barDone = new
+        {
+            type = "bar_done",
+            v = 1,
+            seq = seq,
+            commands = commands
+        };
+        var json = JsonSerializer.Serialize(barDone, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        if (_cBotIdentity is not null && _sendQueue is not null)
+        {
+            _sendQueue.Enqueue((_cBotIdentity!, json));
+            _logger.LogInformation("NETMQ|BAR_DONE|seq={Seq}|commands={Count}", seq, commands.Length);
+            OnStatusChange?.Invoke("BAR_DONE", $"BAR_DONE seq={seq} commands={commands.Length}");
+        }
+        else
+        {
+            _logger.LogWarning("NETMQ|BAR_DONE_FAILED|seq={Seq}|reason=cBot not connected", seq);
+        }
+
+        await Task.CompletedTask;
+    }
 
     private Task SendCommandAsync(object command, CancellationToken ct)
     {

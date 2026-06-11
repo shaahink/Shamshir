@@ -20,6 +20,8 @@ public interface IBrokerAdapter
     Task ConnectAsync(CancellationToken ct);
     Task DisconnectAsync(CancellationToken ct);
     bool IsConnected { get; }
+
+    Task CompleteBarAsync(long seq, CancellationToken ct) => Task.CompletedTask;
 }
 
 public record AccountState(decimal Balance, decimal Equity, IReadOnlyList<OpenPositionInfo> OpenPositions);
