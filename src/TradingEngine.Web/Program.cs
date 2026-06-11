@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
 builder.Services.AddControllers();
+builder.Services.AddServerSideBlazor();
 
 var dbPath = builder.Configuration.GetValue<string>("Persistence:DbPath")
     ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));
@@ -40,6 +41,8 @@ app.UseStaticFiles();
 app.UseRouting();
 app.MapRazorPages();
 app.MapControllers();
+app.MapBlazorHub();
+app.MapFallbackToPage("/blazor/_Host");
 
 app.Run();
 

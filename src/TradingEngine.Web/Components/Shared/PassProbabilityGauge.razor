@@ -1,0 +1,17 @@
+@* PassProbabilityGauge - FTMO pass probability display *@
+<div class="text-center">
+    <h4>Pass Probability</h4>
+    <div style="font-size:3rem; font-weight:bold; color:@Color">@(Probability.ToString("F0"))%</div>
+    <p class="text-muted">@Recommendation</p>
+    <small>Daily breach: @(DailyBreach.ToString("F1"))% | Max breach: @(MaxBreach.ToString("F1"))% | Projected: $@ProjectedEquity.ToString("F0")</small>
+</div>
+
+@code {
+    [Parameter] public double Probability { get; set; }
+    [Parameter] public double DailyBreach { get; set; }
+    [Parameter] public double MaxBreach { get; set; }
+    [Parameter] public decimal ProjectedEquity { get; set; }
+    [Parameter] public string Recommendation { get; set; } = "";
+
+    private string Color => Probability switch { >= 70 => "#26a69a", >= 40 => "#ff9800", _ => "#ef5350" };
+}

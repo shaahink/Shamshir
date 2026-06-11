@@ -1,0 +1,19 @@
+@* EquityCurveChart - lightweight-charts based equity curve *@
+<div id="@ElementId" style="width:100%;height:300px"></div>
+
+@code {
+    [Parameter] public string ElementId { get; set; } = "equity-chart";
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await JS.InvokeVoidAsync("createEquityChart", ElementId);
+    }
+
+    public async Task SetData(List<EquityDataPoint> data)
+    {
+        var jsData = data.Select(d => new { time = new DateTimeOffset(d.Time).ToUnixTimeSeconds(), value = (double)d.Equity }).ToList();
+        await JS.InvokeVoidAsync("setEquityData", ElementId, jsData);
+    }
+}
