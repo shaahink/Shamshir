@@ -149,6 +149,10 @@ public sealed class EngineWorker : BackgroundService
             await foreach (var tick in _broker.TickStream.ReadAllAsync(ct))
             {
                 Interlocked.Increment(ref _tickCount);
+                _progress?.Report(new BacktestProgressEvent(
+                    _runContext.RunId, "TICK",
+                    $"TICK #{Interlocked.Read(ref _tickCount)}",
+                    _clock.UtcNow));
 
                 while (_executionEventChannel.Reader.TryRead(out var execEvent))
                 {

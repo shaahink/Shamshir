@@ -89,11 +89,15 @@ public class TradingEngineCBot : Robot
     {
         _tickCounter++;
 
+        var queued = _mainActions.Count;
+        var processed = 0;
         while (_mainActions.TryDequeue(out var action))
         {
-            try { action(); }
+            try { action(); processed++; }
             catch (Exception ex) { Print($"CBOT|CMD_ERR|{ex.Message}"); }
         }
+        if (queued > 0)
+            Diag($"TICK_DRAIN|tick={_tickCounter}|queued={queued}|processed={processed}");
 
         if (_tickCounter % TickEveryN == 0)
         {
@@ -151,6 +155,7 @@ public class TradingEngineCBot : Robot
         if (!e.Socket.TryReceiveFrameString(out var json) || json is null) return;
         var captured = json;
         _mainActions.Enqueue(() => HandleCommand(captured));
+        Diag($"DEALER_RECV|queueDepth={_mainActions.Count}|jsonLen={captured.Length}");
     }
 
     private void HandleCommand(string json)
