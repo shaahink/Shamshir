@@ -296,12 +296,13 @@ public class TradingEngineCBot : Robot
         var positionIdStr = cmd.GetProperty("positionId").GetString()!;
         foreach (var pos in Positions)
         {
-            if (pos.Id.ToString() == positionIdStr)
+            if (_positionMap.TryGetValue(pos.Id, out var orderGuid) && orderGuid.ToString() == positionIdStr)
             {
+                var clientOrderId = orderGuid;
                 var result = ClosePosition(pos);
                 Diag($"CLOSE_POS|{positionIdStr}|success={result?.IsSuccessful}");
                 if (result?.IsSuccessful == true) PublishAccount();
-                return MakeExecResult(Guid.Empty.ToString(), "close", pos.Id,
+                return MakeExecResult(clientOrderId.ToString(), "close", pos.Id,
                     result?.IsSuccessful == true ? "Filled" : "Rejected",
                     pos.CurrentPrice > 0 ? pos.CurrentPrice : 0d, pos.VolumeInUnits / (Symbols.GetSymbol(pos.SymbolName)?.LotSize ?? 100000.0), null);
             }

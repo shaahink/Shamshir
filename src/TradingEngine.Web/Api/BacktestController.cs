@@ -106,11 +106,15 @@ public sealed class BacktestController : ControllerBase
             return;
         }
 
-        await foreach (var line in reader.ReadAllAsync(ct))
+        try
         {
-            if (ct.IsCancellationRequested) break;
-            await Response.WriteAsync($"data: {line}\n\n", ct);
-            await Response.Body.FlushAsync(ct);
+            await foreach (var line in reader.ReadAllAsync(ct))
+            {
+                if (ct.IsCancellationRequested) break;
+                await Response.WriteAsync($"data: {line}\n\n", ct);
+                await Response.Body.FlushAsync(ct);
+            }
         }
+        catch (OperationCanceledException) { }
     }
 }

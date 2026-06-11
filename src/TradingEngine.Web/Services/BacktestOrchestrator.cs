@@ -381,7 +381,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             SolutionRoot = solutionRoot,
             SymbolNames = new[] { cfg.Symbol },
             Progress = progressCallback,
-            MinLogLevel = LogLevel.Information,
+            MinLogLevel = LogLevel.Warning,
         });
         EngineHostFactory.WireEventHandlers(innerHost);
         EngineHostFactory.WireRiskRules(innerHost);
