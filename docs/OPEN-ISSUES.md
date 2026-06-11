@@ -2,9 +2,32 @@
 
 **Written**: 2026-06-08 (post-Iteration-10 code review)
 **Branch at time of writing**: `phase/8b-bar-tracing`
+**Last updated**: 2026-06-11 (post-Iteration-17)
 
 This document is the authoritative issues log. Update it as items are fixed or new findings are added.
 Never delete a resolved item — mark it `✅ Fixed (Iteration N)` so there is a record.
+
+---
+
+## Iteration 17 Resolved Items
+
+The following items were addressed in Iteration 17 (`iter/17-deterministic-pipeline`):
+
+- **NetMQ thread-affinity bug** (orders silently lost) → Fixed with `NetMQQueue<T>` (Phase A1)
+- **Sleep-based synchronization** (`Thread.Sleep(600)`, 10×500ms heartbeats) → Replaced with `hello`/`hello_ack` handshake (Phase A2)
+- **Shutdown data loss** (no linger, final execs dropped) → Fixed with `Linger=2s`, `stats` message, drain on stop (Phase A3)
+- **DI block copied in 3 places** (divergent) → `EngineHostFactory` single composition root (Phase B1)
+- **EngineMode type-sniffing** (`_broker is SimulatedBrokerAdapter`) → Explicit `EngineMode` parameter (Phase B1)
+- **Hardcoded SymbolInfo** (`new SymbolInfo(symbol, ..., "EUR", "USD", ...)`) → `config/symbols.json` + `SymbolCatalog` (Phase B2)
+- **CrossRateStore double-instance bug** (two separate instances) → Single instance registered (Phase B1)
+- **Dual execution-event consumer** (ProcessExecutionEventsAsync vs DrainExecutionStreamAsync) → Single consumer via double-drain (Phase B3)
+- **Lock-step protocol** (barrier per bar, deterministic execution) → Implemented in cBot + engine (Phase C)
+- **Symbol wrong for GBPUSD/AUDUSD backtests** (defaulted to EURUSD) → Fixed in controller + page model (Phases B2, post-C fix)
+- **EF Core SQL log flood** (2000+ INSERT dumps) → `.AddFilter("Microsoft.EntityFrameworkCore", Warning)` (post-C fix)
+- **Close position ID mismatch** (Guid ≠ long) → Fixed with `_positionMap` reverse-lookup (post-C fix)
+- **PipelineEvents journal** (per-run event log) → Entity, mapping, writer, repository (Phase D1)
+- **Unified logging** (4 methods → 1 `BacktestJournal`) → Consolidation (Phase D2)
+- **Multi-symbol/timeframe UI** (checkboxes for 12 symbols, 6 timeframes) → (Phase 1)
 
 ---
 

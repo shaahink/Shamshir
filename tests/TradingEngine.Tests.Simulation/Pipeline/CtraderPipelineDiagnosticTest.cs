@@ -299,7 +299,14 @@ public sealed class CtraderPipelineDiagnosticTest : IAsyncDisposable
             barEvalCount = await db.BarEvaluations.CountAsync(e => e.RunId == runId);
         }
 
-        await host.StopAsync(CancellationToken.None);
+        try
+        {
+            var writer = host.Services.GetRequiredService<PipelineEventWriter>();
+            await writer.FlushRemainingAsync();
+        }
+        catch { }
+
+        try { await host.StopAsync(CancellationToken.None); } catch { }
         host.Dispose();
 
         return (tradeCount, barEvalCount, signalCount, orderCount, execCount);

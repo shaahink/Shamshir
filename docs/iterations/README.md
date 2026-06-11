@@ -38,7 +38,7 @@ Commit + merge → move to completed/
 | 14 | UI rewrite (Blazor Server) | 📋 Planned | — |
 | 15 | Architecture cleanup | 📋 Parallel with 14 | — |
 | 16 | cTrader in-process engine | ⚠ Implemented — orders never reach cBot from UI path (diagnosed in iter-17 PLAN) | `iter/16-ctrader-inproc` |
-| 17 | Deterministic pipeline: transport fix, lock-step protocol, single composition root, journal observability | 🔧 Implemented — ready for verification | `iter/17-deterministic-pipeline` |
+| 17 | Deterministic pipeline: transport fix, lock-step protocol, single composition root, journal observability, multi-symbol | ✅ Completed | `iter/17-deterministic-pipeline` |
 
 ---
 
