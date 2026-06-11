@@ -500,7 +500,7 @@ public sealed class EngineWorker : BackgroundService
 
     private async Task DrainExecutionStreamAsync()
     {
-        while (_broker.ExecutionStream.TryRead(out var execEvent))
+        while (_executionEventChannel.Reader.TryRead(out var execEvent))
         {
             await _positionTracker.OnExecutionAsync(execEvent, _strategies);
             var state = execEvent.NewState;

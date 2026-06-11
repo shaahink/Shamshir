@@ -20,7 +20,7 @@ public sealed record EngineHostOptions
     public required Func<IServiceProvider, IBrokerAdapter> AdapterFactory { get; init; }
     public required string DbPath { get; init; }
     public required string SolutionRoot { get; init; }
-    public IReadOnlyList<SymbolInfo> Symbols { get; init; } = [];
+    public IReadOnlyList<string> SymbolNames { get; init; } = [];
     public IProgress<BacktestProgressEvent>? Progress { get; init; }
     public LogLevel MinLogLevel { get; init; } = LogLevel.Information;
 }
@@ -29,6 +29,11 @@ public static class EngineHostFactory
 {
     public static IHost Create(EngineHostOptions options)
     {
+        var catalog = new SymbolCatalog(options.SolutionRoot);
+        var symbols = options.SymbolNames.Count > 0
+            ? catalog.ResolveAll(options.SymbolNames)
+            : catalog.GetAll();
+
         return Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
             .ConfigureLogging(l => l.SetMinimumLevel(options.MinLogLevel))
             .ConfigureServices((ctx, services) =>
@@ -38,7 +43,7 @@ public static class EngineHostFactory
                 services.AddSingleton(options.AdapterFactory);
 
                 var symbolRegistry = new SymbolInfoRegistry();
-                foreach (var si in options.Symbols)
+                foreach (var si in symbols)
                     symbolRegistry.Register(si);
                 services.AddSingleton<ISymbolInfoRegistry>(_ => symbolRegistry);
 

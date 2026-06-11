@@ -100,9 +100,6 @@ public sealed class CtraderPipelineDiagnosticTest : IAsyncDisposable
             }
         });
 
-        var symbolInfo = new SymbolInfo(sym, SymbolCategory.Forex, "EUR", "USD",
-            0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
-
         var host = EngineHostFactory.Create(new EngineHostOptions
         {
             RunId = runId,
@@ -112,7 +109,7 @@ public sealed class CtraderPipelineDiagnosticTest : IAsyncDisposable
                 sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()),
             DbPath = _dbPath,
             SolutionRoot = solutionRoot,
-            Symbols = new[] { symbolInfo },
+            SymbolNames = new[] { symbol },
             Progress = progressCallback,
             MinLogLevel = LogLevel.Warning,
         });

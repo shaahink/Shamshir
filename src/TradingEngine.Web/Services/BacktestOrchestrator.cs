@@ -271,9 +271,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             PushProgressEvent(runId, evt.EventType, evt.Message);
         });
 
-        var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
-            0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
-
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
 
         var innerHost = EngineHostFactory.Create(new EngineHostOptions
@@ -284,7 +281,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 cfg.Balance, sp.GetRequiredService<ILogger<BacktestReplayAdapter>>()),
             DbPath = dbPath,
             SolutionRoot = solutionRoot,
-            Symbols = new[] { symbolInfo },
+            SymbolNames = new[] { cfg.Symbol },
             Progress = progressCallback,
             MinLogLevel = LogLevel.Warning,
         });
@@ -382,7 +379,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             },
             DbPath = dbPath,
             SolutionRoot = solutionRoot,
-            Symbols = new[] { symbolInfo },
+            SymbolNames = new[] { cfg.Symbol },
             Progress = progressCallback,
             MinLogLevel = LogLevel.Information,
         });
