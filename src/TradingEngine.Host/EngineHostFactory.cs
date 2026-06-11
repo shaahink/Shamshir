@@ -72,7 +72,12 @@ public static class EngineHostFactory
                     o.UseSqlite($"Data Source={options.DbPath}"));
                 services.AddScoped<ITradeRepository, SqliteTradeRepository>();
                 services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+                services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
                 services.AddSingleton<PersistenceService>();
+                services.AddSingleton<PipelineEventWriter>(sp => new PipelineEventWriter(options.RunId,
+                    sp.GetRequiredService<IServiceScopeFactory>(),
+                    sp.GetRequiredService<ILogger<PipelineEventWriter>>()));
+                services.AddSingleton<IPipelineJournal>(sp => sp.GetRequiredService<PipelineEventWriter>());
 
                 services.AddSingleton<IPositionManager, PositionManager>();
                 services.AddSingleton<IEventBus, TypedEventBus>();
@@ -122,7 +127,8 @@ public static class EngineHostFactory
                     sp.GetRequiredService<CrossRateStore>(),
                     options.Mode,
                     dataFeed: null,
-                    progress: sp.GetRequiredService<IProgress<BacktestProgressEvent>>()));
+                    progress: sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
+                    journal: sp.GetRequiredService<IPipelineJournal>()));
                 services.AddHostedService<EngineWorker>(sp =>
                     sp.GetRequiredService<EngineWorker>());
             })

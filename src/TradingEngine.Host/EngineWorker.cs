@@ -23,6 +23,7 @@ public sealed class EngineWorker : BackgroundService
     private readonly CrossRateStore _crossRateStore;
     private readonly ILogger<EngineWorker> _logger;
     private readonly IProgress<BacktestProgressEvent>? _progress;
+    private readonly IPipelineJournal? _journal;
 
     private readonly ConcurrentDictionary<Symbol, ConcurrentDictionary<Timeframe, List<Bar>>> _bars = new();
     private readonly ConcurrentDictionary<string, double> _indicatorValues = new();
@@ -62,7 +63,8 @@ public sealed class EngineWorker : BackgroundService
         CrossRateStore crossRateStore,
         EngineMode engineMode,
         DataFeedService? dataFeed = null,
-        IProgress<BacktestProgressEvent>? progress = null)
+        IProgress<BacktestProgressEvent>? progress = null,
+        IPipelineJournal? journal = null)
     {
         _broker = broker;
         _riskManager = riskManager;
@@ -83,6 +85,7 @@ public sealed class EngineWorker : BackgroundService
         _dataFeed = dataFeed;
         _logger = logger;
         _progress = progress;
+        _journal = journal;
     }
 
     private void ResetState()
@@ -456,6 +459,8 @@ public sealed class EngineWorker : BackgroundService
                             $"ORDER {strategy.Id} {intent.Direction} lots={orderCtx.Lots:F2} entry≈{bar.Close:F5}",
                             _clock.UtcNow));
                     }
+
+                    _journal?.Write("BAR_EVAL", bar.Symbol.Value, bar.OpenTimeUtc);
 
                     await DrainExecutionStreamAsync();
 

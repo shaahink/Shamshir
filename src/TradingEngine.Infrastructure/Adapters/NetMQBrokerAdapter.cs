@@ -12,6 +12,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private readonly string _dataEndpoint;
     private readonly string _commandEndpoint;
     private readonly ILogger<NetMQBrokerAdapter> _logger;
+    private readonly IPipelineJournal? _journal;
 
     private readonly Channel<Tick> _tickChannel = Channel.CreateBounded<Tick>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleWriter = true });
     private readonly Channel<Bar> _barChannel = Channel.CreateBounded<Bar>(new BoundedChannelOptions(2_000) { FullMode = BoundedChannelFullMode.Wait, SingleWriter = true });
@@ -46,11 +47,13 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private static readonly JsonSerializerOptions JsonOpts = new()
         { PropertyNameCaseInsensitive = true };
 
-    public NetMQBrokerAdapter(string dataEndpoint, string commandEndpoint, ILogger<NetMQBrokerAdapter> logger)
+    public NetMQBrokerAdapter(string dataEndpoint, string commandEndpoint,
+        ILogger<NetMQBrokerAdapter> logger, IPipelineJournal? journal = null)
     {
         _dataEndpoint = dataEndpoint;
         _commandEndpoint = commandEndpoint;
         _logger = logger;
+        _journal = journal;
     }
 
     public Task ConnectAsync(CancellationToken ct)
@@ -176,6 +179,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                         _logger.LogInformation("NETMQ|HELLO_ACK_SENT|identity captured, handshake complete");
                         FlushPendingCommands();
                         OnConnected?.Invoke();
+                        _journal?.Write("CONNECTED", null, DateTime.UtcNow);
                         break;
 
                     case "bar":
@@ -192,6 +196,8 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                             doc.RootElement.GetProperty("volume").GetDouble());
                         BrokerTimeUtc = bar.OpenTimeUtc;
                         _barChannel.Writer.TryWrite(bar);
+                        _journal?.Write("BAR_RECV", null, bar.OpenTimeUtc,
+                            JsonSerializer.Serialize(new { bar.Symbol.Value, bar.Close }, JsonOpts));
 
                         if (doc.RootElement.TryGetProperty("account", out var barAcct))
                         {
@@ -226,6 +232,8 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                                 _execChannel.Writer.TryWrite(exec);
                             }
                             _execsReceived += count;
+                            _journal?.Write("EXEC_RECV", null, DateTime.UtcNow,
+                                JsonSerializer.Serialize(new { count }, JsonOpts));
                         }
                         if (doc.RootElement.TryGetProperty("account", out var acct))
                         {
@@ -258,6 +266,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
                     case "stats":
                         _logger.LogInformation("NETMQ|STATS|{Json}", json);
+                        _journal?.Write("STATS", null, DateTime.UtcNow);
                         try
                         {
                             var cBarsSent = doc.RootElement.TryGetProperty("barsSent", out var bs) ? bs.GetInt64() : 0;
@@ -377,6 +386,8 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         {
             _sendQueue.Enqueue((_cBotIdentity!, json));
             _commandsSent += commands.Length;
+            _journal?.Write("ORDER_SENT", null, DateTime.UtcNow,
+                JsonSerializer.Serialize(new { seq, count = commands.Length }, JsonOpts));
             _logger.LogInformation("NETMQ|BAR_DONE|seq={Seq}|commands={Count}", seq, commands.Length);
             OnStatusChange?.Invoke("BAR_DONE", $"BAR_DONE seq={seq} commands={commands.Length}");
         }

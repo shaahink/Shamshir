@@ -10,6 +10,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<BarEntity> Bars => Set<BarEntity>();
     public DbSet<BarEvaluationEntity> BarEvaluations => Set<BarEvaluationEntity>();
     public DbSet<BacktestRunEntity> BacktestRuns => Set<BacktestRunEntity>();
+    public DbSet<PipelineEventEntity> PipelineEvents => Set<PipelineEventEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -19,6 +20,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
         modelBuilder.ApplyConfiguration(new EngineEventMapping());
         modelBuilder.ApplyConfiguration(new EquitySnapshotMapping());
         modelBuilder.ApplyConfiguration(new BarMapping());
+        modelBuilder.ApplyConfiguration(new PipelineEventMapping());
 
         modelBuilder.Entity<BacktestRunEntity>(e =>
         {
