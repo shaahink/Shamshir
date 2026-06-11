@@ -81,120 +81,49 @@ public sealed class CtraderPipelineDiagnosticTest : IAsyncDisposable
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
 
-        var host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
-            .ConfigureServices((_, services) =>
+        var progressCallback = new Progress<BacktestProgressEvent>(evt =>
+        {
+            if (evt.EventType == "SIGNAL")
             {
-                services.AddLogging(l => l.SetMinimumLevel(LogLevel.Warning));
-                services.AddSingleton(new EngineRunContext(runId));
-                services.AddSingleton<IBrokerAdapter>(sp =>
-                    new NetMQBrokerAdapter($"tcp://127.0.0.1:{dataPort}",
-                        $"tcp://*:{commandPort}",
-                        sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()));
+                Interlocked.Increment(ref signalCount);
+                Console.WriteLine($"[TRACE] SIGNAL #{signalCount}: {evt.Message}");
+            }
+            else if (evt.EventType == "ORDER")
+            {
+                Interlocked.Increment(ref orderCount);
+                Console.WriteLine($"[TRACE] ORDER #{orderCount}: {evt.Message}");
+            }
+            else if (evt.EventType == "EXEC")
+            {
+                Interlocked.Increment(ref execCount);
+                Console.WriteLine($"[TRACE] EXEC #{execCount}: {evt.Message}");
+            }
+        });
 
-                var symbolInfo = new SymbolInfo(sym, SymbolCategory.Forex, "EUR", "USD",
-                    0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
-                var symbolRegistry = new SymbolInfoRegistry();
-                symbolRegistry.Register(symbolInfo);
-                services.AddSingleton<ISymbolInfoRegistry>(_ => symbolRegistry);
-                services.AddSingleton(new CrossRateStore());
-                services.AddSingleton<Func<string, string, decimal>>(_ => new CrossRateStore().Convert);
-                services.AddSingleton<INewsFilter>(_ => new NewsFilter());
-                services.AddSingleton<SessionFilter>();
-                services.AddSingleton<DrawdownTracker>();
-                services.AddSingleton<RiskManager>();
-                services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
-                var configLoader = new ConfigLoader(solutionRoot);
-                var loadedConfig = configLoader.Load();
-                services.AddSingleton(loadedConfig);
-                services.AddSingleton<IRiskProfileResolver>(sp =>
-                    new RiskProfileResolver(sp.GetRequiredService<LoadedConfig>().RiskProfiles));
-                services.AddSingleton<IEngineClock, BrokerClock>();
-                services.AddDbContext<TradingDbContext>(o => o.UseSqlite($"Data Source={_dbPath}"));
-                services.AddScoped<ITradeRepository, SqliteTradeRepository>();
-                services.AddScoped<IEquityRepository, SqliteEquityRepository>();
-                services.AddSingleton<PersistenceService>();
-                services.AddSingleton<IPositionManager, PositionManager>();
-                services.AddSingleton<IEventBus, TypedEventBus>();
-                services.AddSingleton<EquityPersistenceHandler>();
-                services.AddSingleton<TradePersistenceHandler>();
-                services.AddSingleton<BarEvaluationHandler>();
-                services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
-                services.AddSingleton<OrderDispatcher>();
-                services.AddSingleton<PositionTracker>();
+        var symbolInfo = new SymbolInfo(sym, SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
 
-                // Trace progress events
-                services.AddSingleton<IProgress<BacktestProgressEvent>>(_ =>
-                    new Progress<BacktestProgressEvent>(evt =>
-                    {
-                        if (evt.EventType == "SIGNAL")
-                        {
-                            Interlocked.Increment(ref signalCount);
-                            Console.WriteLine($"[TRACE] SIGNAL #{signalCount}: {evt.Message}");
-                        }
-                        else if (evt.EventType == "ORDER")
-                        {
-                            Interlocked.Increment(ref orderCount);
-                            Console.WriteLine($"[TRACE] ORDER #{orderCount}: {evt.Message}");
-                        }
-                        else if (evt.EventType == "EXEC")
-                        {
-                            Interlocked.Increment(ref execCount);
-                            Console.WriteLine($"[TRACE] EXEC #{execCount}: {evt.Message}");
-                        }
-                    }));
-
-                var registry = new StrategyRegistry();
-                services.AddSingleton(registry);
-                services.AddSingleton<IEnumerable<IStrategy>>(sp =>
-                {
-                    var reg = sp.GetRequiredService<StrategyRegistry>();
-                    var loaded = sp.GetRequiredService<LoadedConfig>();
-                    var activeIds = loaded.StrategyConfigs.Select(c => c.Id).ToArray();
-                    return reg.CreateStrategies(activeIds, loaded, sp);
-                });
-
-                services.AddSingleton<EngineWorker>(sp => new EngineWorker(
-                    sp.GetRequiredService<IBrokerAdapter>(),
-                    sp.GetRequiredService<IRiskManager>(),
-                    sp.GetRequiredService<DrawdownTracker>(),
-                    sp.GetRequiredService<IEnumerable<IStrategy>>(),
-                    sp.GetRequiredService<IIndicatorService>(),
-                    sp.GetRequiredService<IEventBus>(),
-                    sp.GetRequiredService<IEngineClock>(),
-                    sp.GetRequiredService<ISymbolInfoRegistry>(),
-                    sp.GetRequiredService<IRiskProfileResolver>(),
-                    sp.GetRequiredService<Func<string, string, decimal>>(),
-                    sp.GetRequiredService<PersistenceService>(),
-                    sp.GetRequiredService<OrderDispatcher>(),
-                    sp.GetRequiredService<PositionTracker>(),
-                    sp.GetRequiredService<ILogger<EngineWorker>>(),
-                    sp.GetRequiredService<EngineRunContext>(),
-                    sp.GetRequiredService<CrossRateStore>(),
-                    dataFeed: null,
-                    progress: sp.GetRequiredService<IProgress<BacktestProgressEvent>>()));
-                services.AddHostedService<EngineWorker>(sp => sp.GetRequiredService<EngineWorker>());
-            })
-            .Build();
+        var host = EngineHostFactory.Create(new EngineHostOptions
+        {
+            RunId = runId,
+            Mode = EngineMode.Backtest,
+            AdapterFactory = sp => new NetMQBrokerAdapter($"tcp://127.0.0.1:{dataPort}",
+                $"tcp://*:{commandPort}",
+                sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()),
+            DbPath = _dbPath,
+            SolutionRoot = solutionRoot,
+            Symbols = new[] { symbolInfo },
+            Progress = progressCallback,
+            MinLogLevel = LogLevel.Warning,
+        });
+        EngineHostFactory.WireEventHandlers(host);
+        EngineHostFactory.WireRiskRules(host);
 
         using (var scope = host.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
             await db.Database.EnsureCreatedAsync();
         }
-
-        // Subscribe handlers
-        var eventBus = host.Services.GetRequiredService<IEventBus>();
-        eventBus.Subscribe<TradeClosed>(host.Services.GetRequiredService<TradePersistenceHandler>());
-        eventBus.Subscribe<BarEvaluated>(host.Services.GetRequiredService<BarEvaluationHandler>());
-        eventBus.Subscribe<EquityUpdated>(host.Services.GetRequiredService<EquityPersistenceHandler>());
-
-        var rm = host.Services.GetRequiredService<RiskManager>();
-        var loaded = host.Services.GetRequiredService<LoadedConfig>();
-        var activeRiskProfileId = loaded.StrategyConfigs.Select(c => c.RiskProfileId).FirstOrDefault() ?? "standard";
-        var activeProfile = loaded.RiskProfiles.FirstOrDefault(r => r.Id == activeRiskProfileId);
-        var activeRuleSetId = activeProfile?.PropFirmRuleSetId ?? "ftmo-standard";
-        var ruleSet = loaded.PropFirms.FirstOrDefault(r => r.Id == activeRuleSetId);
-        if (ruleSet is not null) rm.SetActiveRuleSet(ruleSet);
 
         Console.WriteLine($"[TEST:{label}] Starting. Symbol={symbol} Period={period} {start:yyyy-MM-dd}→{end:yyyy-MM-dd} Ports={dataPort}/{commandPort}");
         Console.WriteLine($"[TEST:{label}] RunId={runId} DB={_dbPath}");

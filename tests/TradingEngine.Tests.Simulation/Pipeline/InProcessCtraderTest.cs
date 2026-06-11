@@ -156,6 +156,7 @@ public sealed class InProcessCtraderTest : IAsyncDisposable
                     sp.GetRequiredService<ILogger<EngineWorker>>(),
                     sp.GetRequiredService<EngineRunContext>(),
                     sp.GetRequiredService<CrossRateStore>(),
+                    EngineMode.Backtest,
                     dataFeed: null,
                     progress: sp.GetRequiredService<IProgress<BacktestProgressEvent>>()));
                 services.AddHostedService<EngineWorker>(sp =>

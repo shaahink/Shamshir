@@ -60,6 +60,7 @@ public sealed class EngineWorker : BackgroundService
         ILogger<EngineWorker> logger,
         EngineRunContext runContext,
         CrossRateStore crossRateStore,
+        EngineMode engineMode,
         DataFeedService? dataFeed = null,
         IProgress<BacktestProgressEvent>? progress = null)
     {
@@ -78,8 +79,7 @@ public sealed class EngineWorker : BackgroundService
         _drawdownTracker = drawdownTracker;
         _runContext = runContext;
         _crossRateStore = crossRateStore;
-        _engineMode = _broker is SimulatedBrokerAdapter || _broker is BacktestReplayAdapter
-            ? EngineMode.Backtest : EngineMode.Live;
+        _engineMode = engineMode;
         _dataFeed = dataFeed;
         _logger = logger;
         _progress = progress;

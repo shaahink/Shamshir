@@ -1,9 +1,7 @@
-using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using TradingEngine.Host;
 using TradingEngine.Infrastructure.Adapters;
 using TradingEngine.Infrastructure.Events;
 using TradingEngine.Infrastructure.Indicators;
@@ -13,44 +11,35 @@ using TradingEngine.Risk;
 using TradingEngine.Risk.Filters;
 using TradingEngine.Services;
 
-namespace TradingEngine.Tests.Simulation.Scenarios;
+namespace TradingEngine.Host;
 
-[Trait("Category", "Smoke")]
-public sealed class InProcessEngineSmokeTests : IAsyncDisposable
+public sealed record EngineHostOptions
 {
-    private readonly string _dbPath;
+    public required string RunId { get; init; }
+    public required EngineMode Mode { get; init; }
+    public required Func<IServiceProvider, IBrokerAdapter> AdapterFactory { get; init; }
+    public required string DbPath { get; init; }
+    public required string SolutionRoot { get; init; }
+    public IReadOnlyList<SymbolInfo> Symbols { get; init; } = [];
+    public IProgress<BacktestProgressEvent>? Progress { get; init; }
+    public LogLevel MinLogLevel { get; init; } = LogLevel.Information;
+}
 
-    public InProcessEngineSmokeTests()
+public static class EngineHostFactory
+{
+    public static IHost Create(EngineHostOptions options)
     {
-        _dbPath = Path.Combine(Path.GetTempPath(), $"inproc_test_{Guid.NewGuid():N}.db");
-    }
-
-    [Fact(Timeout = 15_000)]
-    public async Task NetMQEngine_InnerHost_StartsAndStopsCleanly()
-    {
-        var runId = "smoke-001";
-        var dataPort = 15557;
-        var commandPort = 15558;
-        var symbol = Symbol.Parse("EURUSD");
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-
-        var host = Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
-            .ConfigureLogging(l => l.SetMinimumLevel(LogLevel.Warning))
-            .ConfigureServices((_, services) =>
+        return Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
+            .ConfigureLogging(l => l.SetMinimumLevel(options.MinLogLevel))
+            .ConfigureServices((ctx, services) =>
             {
-                services.AddSingleton(new EngineRunContext(runId));
+                services.AddSingleton(new EngineRunContext(options.RunId));
 
-                services.AddSingleton<IBrokerAdapter>(sp =>
-                    new NetMQBrokerAdapter(
-                        $"tcp://127.0.0.1:{dataPort}",
-                        $"tcp://*:{commandPort}",
-                        sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()));
+                services.AddSingleton(options.AdapterFactory);
 
-                var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
-                    0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
                 var symbolRegistry = new SymbolInfoRegistry();
-                symbolRegistry.Register(symbolInfo);
+                foreach (var si in options.Symbols)
+                    symbolRegistry.Register(si);
                 services.AddSingleton<ISymbolInfoRegistry>(_ => symbolRegistry);
 
                 var crossRateStore = new CrossRateStore();
@@ -63,17 +52,17 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                 services.AddSingleton<RiskManager>();
                 services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
 
-                var profile = new RiskProfile(
-                    "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,
-                    false, "ftmo-standard",
-                    LotSizingMethod.PercentRisk, 0.1m, 0m, 0.25, 1.5, 3);
-                var resolver = new RiskProfileResolver([profile]);
-                services.AddSingleton<IRiskProfileResolver>(_ => resolver);
+                var configLoader = new ConfigLoader(options.SolutionRoot);
+                var loadedConfig = configLoader.Load();
+                services.AddSingleton(loadedConfig);
+                services.AddSingleton<IRiskProfileResolver>(sp =>
+                    new RiskProfileResolver(
+                        sp.GetRequiredService<LoadedConfig>().RiskProfiles));
 
                 services.AddSingleton<IEngineClock, BrokerClock>();
 
                 services.AddDbContext<TradingDbContext>(o =>
-                    o.UseSqlite($"Data Source={_dbPath}"));
+                    o.UseSqlite($"Data Source={options.DbPath}"));
                 services.AddScoped<ITradeRepository, SqliteTradeRepository>();
                 services.AddScoped<IEquityRepository, SqliteEquityRepository>();
                 services.AddSingleton<PersistenceService>();
@@ -87,12 +76,25 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
 
-                services.AddSingleton<IProgress<BacktestProgressEvent>>(_ =>
-                    new Progress<BacktestProgressEvent>(_ => { }));
+                if (options.Progress is not null)
+                {
+                    services.AddSingleton(options.Progress);
+                }
+                else
+                {
+                    services.AddSingleton<IProgress<BacktestProgressEvent>>(
+                        _ => new Progress<BacktestProgressEvent>(_ => { }));
+                }
 
                 var registry = new StrategyRegistry();
                 services.AddSingleton(registry);
-                services.AddSingleton<IEnumerable<IStrategy>>(_ => []);
+                services.AddSingleton<IEnumerable<IStrategy>>(sp =>
+                {
+                    var reg = sp.GetRequiredService<StrategyRegistry>();
+                    var loaded = sp.GetRequiredService<LoadedConfig>();
+                    var activeIds = loaded.StrategyConfigs.Select(c => c.Id).ToArray();
+                    return reg.CreateStrategies(activeIds, loaded, sp);
+                });
 
                 services.AddSingleton<EngineWorker>(sp => new EngineWorker(
                     sp.GetRequiredService<IBrokerAdapter>(),
@@ -111,41 +113,36 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                     sp.GetRequiredService<ILogger<EngineWorker>>(),
                     sp.GetRequiredService<EngineRunContext>(),
                     sp.GetRequiredService<CrossRateStore>(),
-                    EngineMode.Backtest,
+                    options.Mode,
                     dataFeed: null,
                     progress: sp.GetRequiredService<IProgress<BacktestProgressEvent>>()));
                 services.AddHostedService<EngineWorker>(sp =>
                     sp.GetRequiredService<EngineWorker>());
             })
             .Build();
-
-        using (var scope = host.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-            await db.Database.EnsureCreatedAsync();
-        }
-
-        // Start — engine binds ROUTER, subscribes to data port
-        await host.StartAsync(cts.Token);
-
-        // Give engine time to connect
-        await Task.Delay(500, cts.Token);
-
-        // Engine should be connected (ROUTER bound on command port)
-        var adapter = host.Services.GetRequiredService<IBrokerAdapter>() as NetMQBrokerAdapter;
-        Assert.NotNull(adapter);
-
-        // Clean stop
-        await host.StopAsync(CancellationToken.None);
-        host.Dispose();
     }
 
-    public async ValueTask DisposeAsync()
+    public static void WireEventHandlers(IHost host)
     {
-        for (var i = 0; i < 10 && File.Exists(_dbPath); i++)
-        {
-            try { File.Delete(_dbPath); break; }
-            catch (IOException) { await Task.Delay(200); }
-        }
+        var eventBus = host.Services.GetRequiredService<IEventBus>();
+        eventBus.Subscribe<EquityUpdated>(
+            host.Services.GetRequiredService<EquityPersistenceHandler>());
+        eventBus.Subscribe<TradeClosed>(
+            host.Services.GetRequiredService<TradePersistenceHandler>());
+        eventBus.Subscribe<BarEvaluated>(
+            host.Services.GetRequiredService<BarEvaluationHandler>());
+    }
+
+    public static void WireRiskRules(IHost host)
+    {
+        var rm = host.Services.GetRequiredService<RiskManager>();
+        var loaded = host.Services.GetRequiredService<LoadedConfig>();
+        var activeRiskProfileId = loaded.StrategyConfigs
+            .Select(c => c.RiskProfileId).FirstOrDefault() ?? "standard";
+        var activeProfile = loaded.RiskProfiles.FirstOrDefault(r => r.Id == activeRiskProfileId);
+        var activeRuleSetId = activeProfile?.PropFirmRuleSetId ?? "ftmo-standard";
+        var ruleSet = loaded.PropFirms.FirstOrDefault(r => r.Id == activeRuleSetId);
+        if (ruleSet is not null)
+            rm.SetActiveRuleSet(ruleSet);
     }
 }
