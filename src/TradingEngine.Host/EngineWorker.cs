@@ -517,6 +517,20 @@ public sealed class EngineWorker : BackgroundService
                 $"EXEC {execEvent.OrderId} [{state}] fill={execEvent.FillPrice?.Value.ToString("F5") ?? "none"} lots={execEvent.FilledLots}{(state == OrderState.Rejected ? " reason=" + (execEvent.RejectionReason ?? "?") : "")}",
                 _clock.UtcNow));
         }
+        while (_broker.ExecutionStream.TryRead(out var execEvent))
+        {
+            await _positionTracker.OnExecutionAsync(execEvent, _strategies);
+            var state = execEvent.NewState;
+            _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
+                execEvent.OrderId, state,
+                execEvent.FillPrice?.Value.ToString("F5") ?? "none",
+                execEvent.FilledLots);
+
+            _progress?.Report(new BacktestProgressEvent(
+                _runContext.RunId, state == OrderState.Rejected ? "REJECTED" : "EXEC",
+                $"EXEC {execEvent.OrderId} [{state}] fill={execEvent.FillPrice?.Value.ToString("F5") ?? "none"} lots={execEvent.FilledLots}{(state == OrderState.Rejected ? " reason=" + (execEvent.RejectionReason ?? "?") : "")}",
+                _clock.UtcNow));
+        }
     }
 
     private void HandleAccountUpdate(AccountUpdate update)

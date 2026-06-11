@@ -189,6 +189,16 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                             doc.RootElement.GetProperty("volume").GetDouble());
                         BrokerTimeUtc = bar.OpenTimeUtc;
                         _barChannel.Writer.TryWrite(bar);
+
+                        if (doc.RootElement.TryGetProperty("account", out var barAcct))
+                        {
+                            var acctUpdate = new AccountUpdate(
+                                barAcct.GetProperty("balance").GetDecimal(),
+                                barAcct.GetProperty("equity").GetDecimal(),
+                                barAcct.GetProperty("equity").GetDecimal() - barAcct.GetProperty("balance").GetDecimal(),
+                                bar.OpenTimeUtc);
+                            _accountChannel.Writer.TryWrite(acctUpdate);
+                        }
                         break;
 
                     case "bar_result":
