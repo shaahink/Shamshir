@@ -556,7 +556,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
-        var reportJsonPath = Path.Combine(resultsDir, "report.json");
 
         var cli = new CTraderCli();
         var args = new[]
@@ -569,7 +568,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             $"--DataPort={dataPort}", $"--CommandPort={commandPort}",
             $"--SymbolString={string.Join(",", cfg.Symbols)}",
             $"--Periods={string.Join(",", cfg.Periods)}",
-            $"--report-json=\"{reportJsonPath}\"",
             "--full-access",
         };
 
@@ -633,13 +631,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         {
             EnqueueLog(runId, logLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] Failed to capture cTrader report: {ex.Message}");
-        }
-
-        // Log report.json if available
-        if (File.Exists(reportJsonPath))
-        {
-            EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] cTrader report JSON: {reportJsonPath}");
         }
 
         return new BacktestResult
