@@ -162,6 +162,39 @@ public static class Program
                 });
                 builder.Services.AddHostedService<DataFeedService>(sp => sp.GetRequiredService<DataFeedService>());
             }
+            builder.Services.AddSingleton<EngineWorkerDependencies>(sp => new EngineWorkerDependencies
+            {
+                Market = new MarketServices
+                {
+                    Broker = sp.GetRequiredService<IBrokerAdapter>(),
+                    Indicators = sp.GetRequiredService<IIndicatorService>(),
+                    SymbolRegistry = sp.GetRequiredService<ISymbolInfoRegistry>(),
+                    CrossRateStore = sp.GetRequiredService<CrossRateStore>(),
+                    Clock = sp.GetRequiredService<IEngineClock>(),
+                    EngineMode = mode,
+                    DataFeed = mode == EngineMode.Backtest ? sp.GetRequiredService<DataFeedService>() : null,
+                },
+                Risk = new RiskServices
+                {
+                    RiskManager = sp.GetRequiredService<IRiskManager>(),
+                    DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
+                    RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
+                    CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
+                },
+                Strategies = new StrategyServices
+                {
+                    Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
+                    OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
+                    PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                },
+                Persistence = new PersistenceServices
+                {
+                    EventBus = sp.GetRequiredService<IEventBus>(),
+                    Persistence = sp.GetRequiredService<PersistenceService>(),
+                    Progress = null,
+                    Journal = null,
+                },
+            });
             builder.Services.AddSingleton<EngineWorker>();
             builder.Services.AddHostedService<EngineWorker>(sp => sp.GetRequiredService<EngineWorker>());
             builder.Services.AddHostedService<DailyResetService>();

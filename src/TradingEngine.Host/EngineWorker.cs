@@ -25,6 +25,34 @@ public sealed class EngineWorker : BackgroundService
     private readonly IProgress<BacktestProgressEvent>? _progress;
     private readonly IPipelineJournal? _journal;
 
+
+    public EngineWorker(
+        EngineWorkerDependencies deps,
+        EngineRunContext runContext,
+        ILogger<EngineWorker> logger)
+    {
+        _broker = deps.Market.Broker;
+        _riskManager = deps.Risk.RiskManager;
+        _strategies = deps.Strategies.Strategies.ToList();
+        _indicators = deps.Market.Indicators;
+        _eventBus = deps.Persistence.EventBus;
+        _clock = deps.Market.Clock;
+        _symbolRegistry = deps.Market.SymbolRegistry;
+        _riskProfileResolver = deps.Risk.RiskProfileResolver;
+        _crossRateProvider = deps.Risk.CrossRateProvider;
+        _persistence = deps.Persistence.Persistence;
+        _orderDispatcher = deps.Strategies.OrderDispatcher;
+        _positionTracker = deps.Strategies.PositionTracker;
+        _drawdownTracker = deps.Risk.DrawdownTracker;
+        _runContext = runContext;
+        _crossRateStore = deps.Market.CrossRateStore;
+        _engineMode = deps.Market.EngineMode;
+        _dataFeed = deps.Market.DataFeed;
+        _logger = logger;
+        _progress = deps.Persistence.Progress;
+        _journal = deps.Persistence.Journal;
+    }
+
     private readonly ConcurrentDictionary<Symbol, ConcurrentDictionary<Timeframe, List<Bar>>> _bars = new();
     private readonly ConcurrentDictionary<string, double> _indicatorValues = new();
     private EquitySnapshot _currentEquity = new(DateTime.MinValue, 0, 0, 0, 0, 0, 0, 0, EngineMode.Backtest);
@@ -43,50 +71,6 @@ public sealed class EngineWorker : BackgroundService
     private const int MaxBarHistory = 500;
     private long _tickCount;
     private long _barCount;
-
-    public EngineWorker(
-        IBrokerAdapter broker,
-        IRiskManager riskManager,
-        DrawdownTracker drawdownTracker,
-        IEnumerable<IStrategy> strategies,
-        IIndicatorService indicators,
-        IEventBus eventBus,
-        IEngineClock clock,
-        ISymbolInfoRegistry symbolRegistry,
-        IRiskProfileResolver riskProfileResolver,
-        Func<string, string, decimal> crossRateProvider,
-        PersistenceService persistence,
-        OrderDispatcher orderDispatcher,
-        PositionTracker positionTracker,
-        ILogger<EngineWorker> logger,
-        EngineRunContext runContext,
-        CrossRateStore crossRateStore,
-        EngineMode engineMode,
-        DataFeedService? dataFeed = null,
-        IProgress<BacktestProgressEvent>? progress = null,
-        IPipelineJournal? journal = null)
-    {
-        _broker = broker;
-        _riskManager = riskManager;
-        _strategies = strategies.ToList();
-        _indicators = indicators;
-        _eventBus = eventBus;
-        _clock = clock;
-        _symbolRegistry = symbolRegistry;
-        _riskProfileResolver = riskProfileResolver;
-        _crossRateProvider = crossRateProvider;
-        _persistence = persistence;
-        _orderDispatcher = orderDispatcher;
-        _positionTracker = positionTracker;
-        _drawdownTracker = drawdownTracker;
-        _runContext = runContext;
-        _crossRateStore = crossRateStore;
-        _engineMode = engineMode;
-        _dataFeed = dataFeed;
-        _logger = logger;
-        _progress = progress;
-        _journal = journal;
-    }
 
     private void ResetState()
     {

@@ -100,6 +100,39 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                 var strategy = new AlwaysSignalStrategy();
                 services.AddSingleton<IEnumerable<IStrategy>>(_ => [strategy]);
 
+                services.AddSingleton<EngineWorkerDependencies>(sp => new EngineWorkerDependencies
+                {
+                    Market = new MarketServices
+                    {
+                        Broker = sp.GetRequiredService<IBrokerAdapter>(),
+                        Indicators = sp.GetRequiredService<IIndicatorService>(),
+                        SymbolRegistry = sp.GetRequiredService<ISymbolInfoRegistry>(),
+                        CrossRateStore = sp.GetRequiredService<CrossRateStore>(),
+                        Clock = sp.GetRequiredService<IEngineClock>(),
+                        EngineMode = EngineMode.Backtest,
+                        DataFeed = null,
+                    },
+                    Risk = new RiskServices
+                    {
+                        RiskManager = sp.GetRequiredService<IRiskManager>(),
+                        DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
+                        RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
+                        CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
+                    },
+                    Strategies = new StrategyServices
+                    {
+                        Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
+                        OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
+                        PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                    },
+                    Persistence = new PersistenceServices
+                    {
+                        EventBus = sp.GetRequiredService<IEventBus>(),
+                        Persistence = sp.GetRequiredService<PersistenceService>(),
+                        Progress = null,
+                        Journal = null,
+                    },
+                });
                 services.AddSingleton<EngineWorker>();
                 services.AddHostedService<EngineWorker>(sp => sp.GetRequiredService<EngineWorker>());
             })

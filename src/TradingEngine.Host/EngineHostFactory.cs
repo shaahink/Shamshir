@@ -109,26 +109,41 @@ public static class EngineHostFactory
                 });
 
                 services.AddSingleton<EngineWorker>(sp => new EngineWorker(
-                    sp.GetRequiredService<IBrokerAdapter>(),
-                    sp.GetRequiredService<IRiskManager>(),
-                    sp.GetRequiredService<DrawdownTracker>(),
-                    sp.GetRequiredService<IEnumerable<IStrategy>>(),
-                    sp.GetRequiredService<IIndicatorService>(),
-                    sp.GetRequiredService<IEventBus>(),
-                    sp.GetRequiredService<IEngineClock>(),
-                    sp.GetRequiredService<ISymbolInfoRegistry>(),
-                    sp.GetRequiredService<IRiskProfileResolver>(),
-                    sp.GetRequiredService<Func<string, string, decimal>>(),
-                    sp.GetRequiredService<PersistenceService>(),
-                    sp.GetRequiredService<OrderDispatcher>(),
-                    sp.GetRequiredService<PositionTracker>(),
-                    sp.GetRequiredService<ILogger<EngineWorker>>(),
+                    new EngineWorkerDependencies
+                    {
+                        Market = new MarketServices
+                        {
+                            Broker = sp.GetRequiredService<IBrokerAdapter>(),
+                            Indicators = sp.GetRequiredService<IIndicatorService>(),
+                            SymbolRegistry = sp.GetRequiredService<ISymbolInfoRegistry>(),
+                            CrossRateStore = sp.GetRequiredService<CrossRateStore>(),
+                            Clock = sp.GetRequiredService<IEngineClock>(),
+                            EngineMode = options.Mode,
+                            DataFeed = null,
+                        },
+                        Risk = new RiskServices
+                        {
+                            RiskManager = sp.GetRequiredService<IRiskManager>(),
+                            DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
+                            RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
+                            CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
+                        },
+                        Strategies = new StrategyServices
+                        {
+                            Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
+                            OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
+                            PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                        },
+                        Persistence = new PersistenceServices
+                        {
+                            EventBus = sp.GetRequiredService<IEventBus>(),
+                            Persistence = sp.GetRequiredService<PersistenceService>(),
+                            Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
+                            Journal = sp.GetRequiredService<IPipelineJournal>(),
+                        },
+                    },
                     sp.GetRequiredService<EngineRunContext>(),
-                    sp.GetRequiredService<CrossRateStore>(),
-                    options.Mode,
-                    dataFeed: null,
-                    progress: sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
-                    journal: sp.GetRequiredService<IPipelineJournal>()));
+                    sp.GetRequiredService<ILogger<EngineWorker>>()));
                 services.AddHostedService<EngineWorker>(sp =>
                     sp.GetRequiredService<EngineWorker>());
             })
