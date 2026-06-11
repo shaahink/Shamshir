@@ -33,11 +33,23 @@ public sealed class BacktestController : ControllerBase
         public decimal Balance { get; init; } = 100_000;
         public double CommissionPerMillion { get; init; } = 30;
         public double SpreadPips { get; init; } = 1;
+        public string? Symbols { get; init; }
+        public string? Periods { get; init; }
     }
 
     [HttpPost("start")]
     public async Task<IActionResult> Start([FromBody] StartRequest req)
     {
+        var symList = !string.IsNullOrWhiteSpace(req.Symbols)
+            ? req.Symbols.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.ToUpperInvariant()).ToArray()
+            : new[] { req.Symbol.ToUpperInvariant() };
+
+        var perList = !string.IsNullOrWhiteSpace(req.Periods)
+            ? req.Periods.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.ToUpperInvariant()).ToArray()
+            : new[] { req.Period.ToUpperInvariant() };
+
         var cfg = new BacktestConfig
         {
             Symbol = req.Symbol.ToUpperInvariant(),
@@ -47,8 +59,8 @@ public sealed class BacktestController : ControllerBase
             Balance = req.Balance,
             CommissionPerMillion = req.CommissionPerMillion,
             SpreadPips = req.SpreadPips,
-            Symbols = new[] { req.Symbol.ToUpperInvariant() },
-            Periods = new[] { req.Period.ToUpperInvariant() },
+            Symbols = symList,
+            Periods = perList,
         };
 
         var runId = await _command.StartAsync(cfg, HttpContext.RequestAborted);

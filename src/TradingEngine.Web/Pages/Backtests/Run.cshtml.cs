@@ -11,10 +11,10 @@ public sealed class RunModel : PageModel
     private readonly IConfiguration _config;
 
     [BindProperty]
-    public string Symbol { get; set; } = "EURUSD";
+    public string[] SelectedSymbols { get; set; } = ["EURUSD"];
 
     [BindProperty]
-    public string Period { get; set; } = "h1";
+    public string[] SelectedPeriods { get; set; } = ["H1"];
 
     [BindProperty]
     public DateTime StartDate { get; set; } = new(2024, 1, 15);
@@ -43,15 +43,23 @@ public sealed class RunModel : PageModel
 
     public async Task<IActionResult> OnPost()
     {
+        var symbols = SelectedSymbols.Length > 0
+            ? SelectedSymbols.Select(s => s.ToUpperInvariant()).ToArray()
+            : new[] { "EURUSD" };
+
+        var periods = SelectedPeriods.Length > 0
+            ? SelectedPeriods.Select(p => p.ToUpperInvariant()).ToArray()
+            : new[] { "H1" };
+
         var cfg = new BacktestConfig
         {
-            Symbol = Symbol.ToUpperInvariant(),
-            Period = Period.ToLowerInvariant(),
+            Symbol = symbols[0],
+            Period = periods[0].ToLowerInvariant(),
             Start = StartDate,
             End = EndDate,
             Balance = Balance,
-            Symbols = new[] { Symbol.ToUpperInvariant() },
-            Periods = new[] { Period.ToUpperInvariant() },
+            Symbols = symbols,
+            Periods = periods,
         };
 
         var runId = await _command.StartAsync(cfg, HttpContext.RequestAborted);

@@ -281,7 +281,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 cfg.Balance, sp.GetRequiredService<ILogger<BacktestReplayAdapter>>()),
             DbPath = dbPath,
             SolutionRoot = solutionRoot,
-            SymbolNames = new[] { cfg.Symbol },
+            SymbolNames = cfg.Symbols,
             Progress = progressCallback,
             MinLogLevel = LogLevel.Warning,
         });
@@ -379,7 +379,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             },
             DbPath = dbPath,
             SolutionRoot = solutionRoot,
-            SymbolNames = new[] { cfg.Symbol },
+            SymbolNames = cfg.Symbols,
             Progress = progressCallback,
             MinLogLevel = LogLevel.Warning,
         });

@@ -20,25 +20,33 @@
 
 <form method="post" class="backtest-form">
     <div class="form-group">
-        <label for="Symbol">Symbol</label>
-        <select id="Symbol" asp-for="Symbol">
-            <option>EURUSD</option>
-            <option>GBPUSD</option>
-            <option>USDJPY</option>
-            <option>GBPJPY</option>
-            <option>XAUUSD</option>
-        </select>
+        <label>Symbols (check all you want to trade, first checked = primary)</label>
+        <div class="checkbox-grid">
+            <label><input type="checkbox" name="SelectedSymbols" value="EURUSD" checked="checked" /> EURUSD</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="GBPUSD" /> GBPUSD</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="USDJPY" /> USDJPY</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="GBPJPY" /> GBPJPY</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="XAUUSD" /> XAUUSD</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="AUDUSD" /> AUDUSD</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="USDCHF" /> USDCHF</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="USDCAD" /> USDCAD</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="NZDUSD" /> NZDUSD</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="EURGBP" /> EURGBP</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="EURJPY" /> EURJPY</label>
+            <label><input type="checkbox" name="SelectedSymbols" value="XAGUSD" /> XAGUSD</label>
+        </div>
     </div>
 
     <div class="form-group">
-        <label for="Period">Period</label>
-        <select id="Period" asp-for="Period">
-            <option value="h1">H1</option>
-            <option value="m15">M15</option>
-            <option value="m5">M5</option>
-            <option value="m1">M1</option>
-            <option value="d1">D1</option>
-        </select>
+        <label>Timeframes (check all you want)</label>
+        <div class="checkbox-inline">
+            <label><input type="checkbox" name="SelectedPeriods" value="H1" checked="checked" /> H1</label>
+            <label><input type="checkbox" name="SelectedPeriods" value="M15" /> M15</label>
+            <label><input type="checkbox" name="SelectedPeriods" value="M5" /> M5</label>
+            <label><input type="checkbox" name="SelectedPeriods" value="M1" /> M1</label>
+            <label><input type="checkbox" name="SelectedPeriods" value="D1" /> D1</label>
+            <label><input type="checkbox" name="SelectedPeriods" value="H4" /> H4</label>
+        </div>
     </div>
 
     <div class="form-group">
@@ -62,8 +70,12 @@
 </form>
 
 <style>
-    .backtest-form { max-width: 500px; }
+    .backtest-form { max-width: 600px; }
     .form-group { margin-bottom: 1rem; }
-    .form-group label { display: block; margin-bottom: 0.3rem; font-weight: bold; }
-    .form-group select, .form-group input { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+    .form-group > label:first-child { display: block; margin-bottom: 0.3rem; font-weight: bold; }
+    .form-group input[type="date"], .form-group input[type="number"] { width: 100%%; padding: 0.4rem; box-sizing: border-box; }
+    .checkbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
+    .checkbox-grid label { display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+    .checkbox-inline { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .checkbox-inline label { display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
 </style>
