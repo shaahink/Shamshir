@@ -47,6 +47,8 @@ public sealed class BacktestController : ControllerBase
             Balance = req.Balance,
             CommissionPerMillion = req.CommissionPerMillion,
             SpreadPips = req.SpreadPips,
+            Symbols = new[] { req.Symbol.ToUpperInvariant() },
+            Periods = new[] { req.Period.ToUpperInvariant() },
         };
 
         var runId = await _command.StartAsync(cfg, HttpContext.RequestAborted);
