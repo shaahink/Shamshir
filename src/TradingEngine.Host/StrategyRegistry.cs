@@ -43,6 +43,7 @@ public sealed class StrategyRegistry
             var config = new EmaAlignmentConfig(
                 entry.Id,
                 entry.DisplayName,
+                entry.Enabled,
                 entry.Symbols.ToList(),
                 entry.RiskProfileId,
                 DeserializeParams<EmaAlignmentParameters>(entry.Parameters),
@@ -55,6 +56,7 @@ public sealed class StrategyRegistry
             var config = new MeanReversionConfig(
                 entry.Id,
                 entry.DisplayName,
+                entry.Enabled,
                 entry.Symbols.ToList(),
                 entry.RiskProfileId,
                 DeserializeParams<MeanReversionParameters>(entry.Parameters),
@@ -67,6 +69,7 @@ public sealed class StrategyRegistry
             var config = new SessionBreakoutConfig(
                 entry.Id,
                 entry.DisplayName,
+                entry.Enabled,
                 entry.Symbols.ToList(),
                 entry.RiskProfileId,
                 DeserializeParams<SessionBreakoutParameters>(entry.Parameters),

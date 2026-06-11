@@ -14,7 +14,12 @@ public sealed record EmaAlignmentParameters
 public sealed record EmaAlignmentConfig(
     string Id,
     string DisplayName,
+    bool Enabled,
     IReadOnlyList<string> Symbols,
     string RiskProfileId,
     EmaAlignmentParameters Parameters,
-    Timeframe Timeframe = Timeframe.H1) : IStrategyConfig;
+    Timeframe Timeframe = Timeframe.H1) : IStrategyConfig
+{
+    public RegimeFilterOptions RegimeFilter { get; init; } = new();
+    public OrderEntryOptions OrderEntry { get; init; } = new();
+}

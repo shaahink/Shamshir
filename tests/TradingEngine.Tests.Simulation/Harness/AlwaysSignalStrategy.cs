@@ -11,6 +11,7 @@ public sealed class AlwaysSignalStrategy : IStrategy
     public int RequiredBarCount => 1;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => [];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
+    public IStrategyConfig Config => new AlwaysSignalConfig();
     public StrategyStats Stats => new(0, 0, 0, 0);
 
     public TradeIntent? Evaluate(MarketContext context)
@@ -37,4 +38,16 @@ public sealed class AlwaysSignalStrategy : IStrategy
     }
 
     public void Reset() { _barCount = 0; _positionOpen = false; }
+}
+
+internal sealed record AlwaysSignalConfig : IStrategyConfig
+{
+    public string Id => "always-signal";
+    public string DisplayName => "Always Signal";
+    public bool Enabled => true;
+    public IReadOnlyList<string> Symbols => [];
+    public string RiskProfileId => "standard";
+    public Timeframe Timeframe => Timeframe.H1;
+    public RegimeFilterOptions RegimeFilter => new();
+    public OrderEntryOptions OrderEntry => new();
 }

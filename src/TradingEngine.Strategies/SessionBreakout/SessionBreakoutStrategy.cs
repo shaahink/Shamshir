@@ -11,6 +11,7 @@ public sealed class SessionBreakoutStrategy : IStrategy
 
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
+    public IStrategyConfig Config => _config;
     public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
     public int RequiredBarCount => _config.Parameters.AtrPeriod + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];

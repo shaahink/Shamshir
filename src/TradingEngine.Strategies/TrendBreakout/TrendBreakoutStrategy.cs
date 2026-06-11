@@ -17,6 +17,7 @@ public sealed class TrendBreakoutStrategy : IStrategy
 
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
+    public IStrategyConfig Config => _config;
     public IReadOnlyList<Timeframe> RequiredTimeframes => [_timeframe];
     public int RequiredBarCount => Math.Max(
         Math.Max(_config.Parameters.LookbackBars, _config.Parameters.MaPeriod),

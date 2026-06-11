@@ -8,6 +8,7 @@ public sealed class MeanReversionStrategy : IStrategy
     private readonly ILogger<MeanReversionStrategy> _logger;
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
+    public IStrategyConfig Config => _config;
     public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
     public int RequiredBarCount => Math.Max(_config.Parameters.BbPeriod, _config.Parameters.AtrPeriod) + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];

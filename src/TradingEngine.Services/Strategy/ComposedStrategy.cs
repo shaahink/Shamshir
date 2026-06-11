@@ -12,6 +12,7 @@ public sealed class ComposedStrategy : IStrategy
     public int RequiredBarCount => _signal.RequiredBarCount;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => _signal.RequiredIndicators;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors { get; }
+    public IStrategyConfig Config { get; }
     public StrategyStats Stats { get; private set; } = new(0, 0, 0, 0);
 
     public ComposedStrategy(
@@ -28,6 +29,7 @@ public sealed class ComposedStrategy : IStrategy
         _exit = exit;
         _filters = filters?.ToList() ?? [];
         PositionBehaviors = behaviors?.ToList() ?? [];
+        Config = new ComposedStrategyConfig(id, displayName);
     }
 
     public TradeIntent? Evaluate(MarketContext context)
@@ -85,4 +87,14 @@ public sealed class ComposedStrategy : IStrategy
     {
         Stats = new StrategyStats(0, 0, 0, 0);
     }
+}
+
+internal sealed record ComposedStrategyConfig(string Id, string DisplayName) : IStrategyConfig
+{
+    public bool Enabled => true;
+    public IReadOnlyList<string> Symbols => [];
+    public string RiskProfileId => "standard";
+    public Timeframe Timeframe => Timeframe.H1;
+    public RegimeFilterOptions RegimeFilter => new();
+    public OrderEntryOptions OrderEntry => new();
 }

@@ -8,6 +8,8 @@ public sealed record TrendBreakoutConfig : IStrategyConfig
     public IReadOnlyList<string> Symbols { get; init; } = Array.Empty<string>();
     public string RiskProfileId { get; init; } = "standard";
     public Timeframe Timeframe { get; init; } = Timeframe.H1;
+    public RegimeFilterOptions RegimeFilter { get; init; } = new();
+    public OrderEntryOptions OrderEntry { get; init; } = new();
     public TrendBreakoutParameters Parameters { get; init; } = new();
 }
 

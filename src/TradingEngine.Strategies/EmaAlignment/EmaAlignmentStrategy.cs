@@ -9,6 +9,7 @@ public sealed class EmaAlignmentStrategy : IStrategy
     private readonly ILogger<EmaAlignmentStrategy> _logger;
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
+    public IStrategyConfig Config => _config;
     public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
     public int RequiredBarCount => Math.Max(_config.Parameters.SlowPeriod, _config.Parameters.AtrPeriod) + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
