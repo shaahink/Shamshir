@@ -96,6 +96,8 @@ public static class EngineHostFactory
                 services.AddSingleton<TradePersistenceHandler>();
                 services.AddSingleton<BarEvaluationHandler>();
                 services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
+                services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
+                services.AddSingleton<IStrategyBank, StrategyBankService>();
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
 

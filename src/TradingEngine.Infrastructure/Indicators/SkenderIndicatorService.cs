@@ -55,5 +55,27 @@ public sealed class SkenderIndicatorService : IIndicatorService
         return quotes.GetRsi(period).LastOrDefault()?.Rsi ?? 50;
     }
 
+    public double Adx(IReadOnlyList<Bar> bars, int period)
+    {
+        var quotes = bars.Select(b => new SkenderQuote(b)).ToList();
+        return quotes.GetAdx(period).LastOrDefault()?.Adx ?? 0;
+    }
+
+    public IndMacdResult Macd(IReadOnlyList<Bar> bars, int fast, int slow, int signal)
+    {
+        var quotes = bars.Select(b => new SkenderQuote(b)).ToList();
+        var last = quotes.GetMacd(fast, slow, signal).LastOrDefault();
+        return new IndMacdResult(last?.Macd ?? 0, last?.Signal ?? 0, last?.Histogram ?? 0);
+    }
+
+    public IndSuperTrendResult SuperTrend(IReadOnlyList<Bar> bars, int period, double multiplier)
+    {
+        var quotes = bars.Select(b => new SkenderQuote(b)).ToList();
+        var last = quotes.GetSuperTrend(period, multiplier).LastOrDefault();
+        if (last is null) return new IndSuperTrendResult(0, 0);
+        var direction = last.UpperBand is not null ? -1.0 : last.LowerBand is not null ? 1.0 : 0;
+        return new IndSuperTrendResult((double)(last.SuperTrend ?? 0), direction);
+    }
+
     public void InvalidateCache() => _cache.Clear();
 }

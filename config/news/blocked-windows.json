@@ -1,0 +1,6 @@
+{
+  "windows": [
+    { "symbol": "*", "dayOfWeek": "Friday", "startUtc": "20:00", "endUtc": "23:59", "reason": "Weekend pre-close" },
+    { "symbol": "*", "dayOfWeek": "Sunday", "startUtc": "00:00", "endUtc": "21:00", "reason": "Weekend open gap" }
+  ]
+}

@@ -590,16 +590,56 @@ public sealed class EngineWorker : BackgroundService
         {
             foreach (var req in strategy.RequiredIndicators)
             {
-                var key = $"{symbol}:{req.Key}";
-                _indicatorValues[key] = req.Type switch
+                // Use requested timeframe's bars when different from current tf
+                var reqBars = bars;
+                if (req.Timeframe != tf && req.Timeframe != default)
                 {
-                    IndicatorType.Atr => _indicators.Atr(bars, req.Period),
-                    IndicatorType.Ema => _indicators.Ema(bars, req.Period),
-                    IndicatorType.Rsi => _indicators.Rsi(bars, req.Period),
-                    IndicatorType.Sma => _indicators.Sma(bars, req.Period),
-                    IndicatorType.BollingerBands => _indicators.BollingerBands(bars, req.Period, req.StdDev).Middle,
-                    _ => throw new NotSupportedException($"Indicator {req.Type} not supported for recompute")
-                };
+                    if (byTf.TryGetValue(req.Timeframe, out var reqList))
+                        lock (reqList) { reqBars = reqList.ToList(); }
+                    else
+                        continue;
+                }
+
+                var baseKey = $"{symbol}:{req.Key}";
+                switch (req.Type)
+                {
+                    case IndicatorType.Atr:
+                        _indicatorValues[baseKey] = _indicators.Atr(reqBars, req.Period);
+                        break;
+                    case IndicatorType.Ema:
+                        _indicatorValues[baseKey] = _indicators.Ema(reqBars, req.Period);
+                        break;
+                    case IndicatorType.Rsi:
+                        _indicatorValues[baseKey] = _indicators.Rsi(reqBars, req.Period);
+                        break;
+                    case IndicatorType.Sma:
+                        _indicatorValues[baseKey] = _indicators.Sma(reqBars, req.Period);
+                        break;
+                    case IndicatorType.Adx:
+                        _indicatorValues[baseKey] = _indicators.Adx(reqBars, req.Period);
+                        break;
+                    case IndicatorType.BollingerBands:
+                        var (upper, middle, lower) = _indicators.BollingerBands(reqBars, req.Period, req.StdDev);
+                        _indicatorValues[baseKey] = middle;
+                        _indicatorValues[$"{baseKey}_Upper"] = upper;
+                        _indicatorValues[$"{baseKey}_Lower"] = lower;
+                        break;
+                    case IndicatorType.Macd:
+                        var macdFast = req.Period;
+                        var macdSlow = req.Param1 > 0 ? req.Param1 : 26;
+                        var macdSig = (int)(req.Param2 > 0 ? req.Param2 : 9);
+                        var macd = _indicators.Macd(reqBars, macdFast, macdSlow, macdSig);
+                        _indicatorValues[baseKey] = macd.MacdLine;
+                        _indicatorValues[$"{baseKey}_Signal"] = macd.Signal;
+                        _indicatorValues[$"{baseKey}_Histogram"] = macd.Histogram;
+                        break;
+                    case IndicatorType.SuperTrend:
+                        var stMult = req.Param2 > 0 ? req.Param2 : 3.0;
+                        var st = _indicators.SuperTrend(reqBars, req.Period, stMult);
+                        _indicatorValues[baseKey] = st.Line;
+                        _indicatorValues[$"{baseKey}_Direction"] = st.Direction;
+                        break;
+                }
             }
         }
         return Task.CompletedTask;

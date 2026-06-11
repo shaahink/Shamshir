@@ -1,0 +1,7 @@
+{
+  "mode": "Disabled",
+  "evaluationWindowDays": 30,
+  "minWinRateToKeepActive": 0.35,
+  "minProfitFactorToKeepActive": 0.8,
+  "minTradesForEvaluation": 10
+}
