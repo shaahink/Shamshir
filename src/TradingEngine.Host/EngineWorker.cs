@@ -72,6 +72,9 @@ public sealed class EngineWorker : BackgroundService
     private long _tickCount;
     private long _barCount;
 
+    private int _lastResetIsoWeek = -1;
+    private int _lastResetMonth = -1;
+
     private void ResetState()
     {
         _bars.Clear();
@@ -526,6 +529,20 @@ public sealed class EngineWorker : BackgroundService
     {
         _drawdownTracker.InitializeIfNeeded(update.Balance);
         _riskManager.UpdateEquityLevels(update.Equity);
+
+        var now = _clock.UtcNow;
+        var isoWeek = ISOWeek.GetWeekOfYear(now);
+        var month = now.Month;
+        if (isoWeek != _lastResetIsoWeek)
+        {
+            _lastResetIsoWeek = isoWeek;
+            _riskManager.OnWeeklyReset(update.Equity);
+        }
+        if (month != _lastResetMonth)
+        {
+            _lastResetMonth = month;
+            _riskManager.OnMonthlyReset(update.Equity);
+        }
 
         var riskState = _riskManager.CurrentState;
         var equity = new EquitySnapshot(
