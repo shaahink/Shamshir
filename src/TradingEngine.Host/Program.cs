@@ -117,9 +117,6 @@ public static class Program
                 ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));
             Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
-            using (var ctx = new TradingDbContext(new DbContextOptionsBuilder<TradingDbContext>().UseSqlite($"Data Source={dbPath}").Options))
-                ctx.Database.EnsureCreated();
-
             builder.Services.AddDbContext<TradingDbContext>(opt => opt.UseSqlite($"Data Source={dbPath}"));
             builder.Services.AddScoped<ITradeRepository, SqliteTradeRepository>();
             builder.Services.AddScoped<IEquityRepository, SqliteEquityRepository>();
