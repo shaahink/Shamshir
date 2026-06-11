@@ -21,7 +21,9 @@ builder.Services.AddDbContext<ReportingDbContext>(opt =>
 builder.Services.AddScoped<IBacktestRunRepository, SqliteBacktestRunRepository>();
 builder.Services.AddScoped<IBarRepository, SqliteBarRepository>();
 builder.Services.AddScoped(_ => new TradeReportQueries(new SqliteConnection($"Data Source={dbPath}")));
+builder.Services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
 builder.Services.AddSingleton<BacktestProgressStore>();
+builder.Services.AddSingleton<BacktestJournal>();
 builder.Services.AddSingleton<BacktestOrchestrator>();
 builder.Services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
 builder.Services.AddSingleton<IBacktestQueryService, BacktestQueryService>();

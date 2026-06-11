@@ -22,6 +22,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BacktestOrchestrator> _logger;
     private readonly BacktestProgressStore _progressStore;
+    private readonly BacktestJournal _journal;
     private readonly IConfiguration _configuration;
     private readonly ConcurrentDictionary<string, BacktestRunState> _runs = new();
 
@@ -45,37 +46,20 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     public BacktestOrchestrator(
         IServiceScopeFactory scopeFactory,
         BacktestProgressStore progressStore,
+        BacktestJournal journal,
         IConfiguration configuration,
         ILogger<BacktestOrchestrator> logger)
     {
         _scopeFactory = scopeFactory;
         _progressStore = progressStore;
+        _journal = journal;
         _configuration = configuration;
         _logger = logger;
     }
 
-    private void PushProgress(string runId, string line)
-    {
-        var json = JsonSerializer.Serialize(new { line });
-        _progressStore.GetWriter(runId).TryWrite(json);
-    }
-
-    private void PushProgressEvent(string runId, string eventType, string message)
-    {
-        var json = JsonSerializer.Serialize(new { eventType, message });
-        _progressStore.GetWriter(runId).TryWrite(json);
-    }
-
-    private void PushProgressAndLog(string runId, ConcurrentQueue<string> logQueue, string line)
-    {
-        logQueue.Enqueue(line);
-        PushProgress(runId, line);
-    }
-
     private void EnqueueLog(string runId, ConcurrentQueue<string> queue, string msg)
     {
-        queue.Enqueue(msg);
-        PushProgress(runId, msg);
+        _journal.Write(runId, "LOG", msg, queue);
     }
 
     private static Timeframe ParseTimeframe(string period) => period.ToUpperInvariant() switch
@@ -268,7 +252,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         var progressCallback = new Progress<BacktestProgressEvent>(evt =>
         {
-            PushProgressEvent(runId, evt.EventType, evt.Message);
+            _journal.Write(runId, evt.EventType, evt.Message);
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
@@ -352,9 +336,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         var progressCallback = new Progress<BacktestProgressEvent>(evt =>
         {
-            PushProgressEvent(runId, evt.EventType, evt.Message);
+            _journal.Write(runId, evt.EventType, evt.Message);
             if (evt.EventType is "EXEC" or "REJECTED" or "NETMQ_CONNECTED" or "NETMQ_SENT" or "NETMQ_DROPPED" or "CBOT")
-                PushProgressAndLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] {evt.EventType} {evt.Message}");
+                _journal.Write(runId, evt.EventType, evt.Message, logLines);
         });
 
         var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
@@ -372,8 +356,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>());
                 adapter.OnStatusChange = (type, msg) =>
                 {
-                    PushProgressEvent(runId, type, msg);
-                    PushProgressAndLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] {type} {msg}");
+                    _journal.Write(runId, type, msg);
+                    _journal.Write(runId, type, msg, logLines);
                 };
                 return adapter;
             },

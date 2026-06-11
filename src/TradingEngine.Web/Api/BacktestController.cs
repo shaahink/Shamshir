@@ -10,17 +10,20 @@ public sealed class BacktestController : ControllerBase
     private readonly IBacktestCommandService _command;
     private readonly BacktestOrchestrator _orchestrator;
     private readonly BacktestProgressStore _progressStore;
+    private readonly IPipelineEventRepository _pipelineRepo;
     private readonly ILogger<BacktestController> _logger;
 
     public BacktestController(
         IBacktestCommandService command,
         BacktestOrchestrator orchestrator,
         BacktestProgressStore progressStore,
+        IPipelineEventRepository pipelineRepo,
         ILogger<BacktestController> logger)
     {
         _command = command;
         _orchestrator = orchestrator;
         _progressStore = progressStore;
+        _pipelineRepo = pipelineRepo;
         _logger = logger;
     }
 
@@ -104,6 +107,26 @@ public sealed class BacktestController : ControllerBase
             return NotFound(new { error = $"Run {runId} not found" });
 
         return Ok(new { logs = state.GetLogs() });
+    }
+
+    [HttpGet("{runId}/journal")]
+    public async Task<IActionResult> Journal(string runId)
+    {
+        var events = await _pipelineRepo.GetByRunIdAsync(runId, HttpContext.RequestAborted);
+        var funnel = events
+            .GroupBy(e => e.Stage)
+            .OrderBy(g => g.Key)
+            .Select(g => new { stage = g.Key, count = g.Count() })
+            .ToList();
+
+        return Ok(new { runId, funnel, events = events.Select(e => new
+        {
+            seq = e.Seq,
+            stage = e.Stage,
+            simTime = e.SimTimeUtc,
+            correlationId = e.CorrelationId,
+            detail = e.DetailJson
+        }).ToList() });
     }
 
     [HttpGet("{runId}/stream")]
