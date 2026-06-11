@@ -204,7 +204,7 @@ public sealed class CtraderPipelineDiagnosticTest : IAsyncDisposable
         return (tradeCount, barEvalCount, signalCount, orderCount, execCount);
     }
 
-    private async Task<(int trades, int barEvals, int signals, int orders, int execs)> RunMultiSymbolDiagnostic(
+    private async Task<(int trades, int barEvals, int signals, int orders, int execs, Dictionary<string, int> tradesBySymbol)> RunMultiSymbolDiagnostic(
         string[] symbols, string[] periods, DateTime start, DateTime end, string label)
     {
         var ctid = ResolveCredential("CtId", "CTrader__CtId");
@@ -264,7 +264,7 @@ public sealed class CtraderPipelineDiagnosticTest : IAsyncDisposable
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try { await host.StartAsync(cts.Token); }
-        catch (Exception ex) { Console.WriteLine($"[TEST:{label}] ENGINE START FAILED: {ex.Message}"); host.Dispose(); return (0, 0, 0, 0, 0); }
+        catch (Exception ex) { Console.WriteLine($"[TEST:{label}] ENGINE START FAILED: {ex.Message}"); host.Dispose(); return (0, 0, 0, 0, 0, new Dictionary<string, int>()); }
         Console.WriteLine($"[TEST:{label}] Engine started in {sw.Elapsed.TotalSeconds:F1}s");
 
         var cli = new CTraderCli();
@@ -292,11 +292,18 @@ public sealed class CtraderPipelineDiagnosticTest : IAsyncDisposable
 
         await Task.Delay(2000);
         int tradeCount = 0, barEvalCount = 0;
+        var tradesBySymbol = new Dictionary<string, int>();
         using (var scope = host.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
             tradeCount = await db.Trades.CountAsync(t => t.RunId == runId);
             barEvalCount = await db.BarEvaluations.CountAsync(e => e.RunId == runId);
+            foreach (var sym in symbols)
+            {
+                var symbolTrades = await db.Trades.CountAsync(t => t.RunId == runId && t.Symbol == sym);
+                tradesBySymbol[sym] = symbolTrades;
+                Console.WriteLine($"[TEST:{label}] DB: {sym} Trades={symbolTrades}");
+            }
         }
 
         try
@@ -307,9 +314,9 @@ public sealed class CtraderPipelineDiagnosticTest : IAsyncDisposable
         catch { }
 
         try { await host.StopAsync(CancellationToken.None); } catch { }
-        host.Dispose();
+        try { host.Dispose(); } catch { }
 
-        return (tradeCount, barEvalCount, signalCount, orderCount, execCount);
+        return (tradeCount, barEvalCount, signalCount, orderCount, execCount, tradesBySymbol);
     }
 
     [Fact(Timeout = 300_000)]
@@ -341,14 +348,19 @@ public sealed class CtraderPipelineDiagnosticTest : IAsyncDisposable
     [Fact(Timeout = 300_000)]
     public async Task EurUsd_GbpUsd_H1_3Days_MultiSymbol_ProducesTrades()
     {
-        var (trades, bars, signals, orders, execs) = await RunMultiSymbolDiagnostic(
+        var (trades, bars, signals, orders, execs, tradesBySymbol) = await RunMultiSymbolDiagnostic(
             new[] { "EURUSD", "GBPUSD" }, new[] { "H1" },
             new DateTime(2024, 1, 15), new DateTime(2024, 1, 18),
             "EURUSD+GBPUSD-3D");
 
         Console.WriteLine($"[RESULT:MULTI-3D] Trades={trades} BarEvals={bars} Signals={signals} Orders={orders} Execs={execs}");
+        foreach (var (sym, count) in tradesBySymbol)
+            Console.WriteLine($"[RESULT:MULTI-3D] {sym}: {count} trades");
+
         bars.Should().BeGreaterThan(0);
         trades.Should().BeGreaterThan(0, "at least one trade expected across both symbols in 3 days");
+        tradesBySymbol["EURUSD"].Should().BeGreaterThan(0, "EURUSD must produce trades");
+        tradesBySymbol["GBPUSD"].Should().BeGreaterThan(0, "GBPUSD must produce trades");
     }
 
     [Fact(Timeout = 300_000)]
