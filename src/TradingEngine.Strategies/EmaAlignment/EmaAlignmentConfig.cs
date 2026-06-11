@@ -22,4 +22,5 @@ public sealed record EmaAlignmentConfig(
 {
     public RegimeFilterOptions RegimeFilter { get; init; } = new();
     public OrderEntryOptions OrderEntry { get; init; } = new();
+    public PositionManagementOptions PositionManagement { get; init; } = new();
 }

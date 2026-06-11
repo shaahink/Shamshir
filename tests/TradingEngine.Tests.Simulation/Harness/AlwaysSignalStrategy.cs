@@ -50,4 +50,5 @@ internal sealed record AlwaysSignalConfig : IStrategyConfig
     public Timeframe Timeframe => Timeframe.H1;
     public RegimeFilterOptions RegimeFilter => new();
     public OrderEntryOptions OrderEntry => new();
+    public PositionManagementOptions PositionManagement => new();
 }

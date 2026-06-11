@@ -10,6 +10,7 @@ public sealed record TrendBreakoutConfig : IStrategyConfig
     public Timeframe Timeframe { get; init; } = Timeframe.H1;
     public RegimeFilterOptions RegimeFilter { get; init; } = new();
     public OrderEntryOptions OrderEntry { get; init; } = new();
+    public PositionManagementOptions PositionManagement { get; init; } = new();
     public TrendBreakoutParameters Parameters { get; init; } = new();
 }
 

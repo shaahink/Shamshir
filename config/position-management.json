@@ -1,0 +1,6 @@
+{
+  "stopLoss":   { "method": "AtrMultiple", "atrMultiple": 1.5, "fixedPips": 0, "maxPips": 100 },
+  "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0, "fixedPips": 0, "atrMultiple": 0 },
+  "breakeven":  { "enabled": false, "triggerRMultiple": 1.0, "offsetPips": 1.0 },
+  "trailing":   { "method": "None", "stepPips": 10, "atrMultiple": 1.0, "activateAfterBreakeven": true }
+}

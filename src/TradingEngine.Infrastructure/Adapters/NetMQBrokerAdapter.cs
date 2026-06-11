@@ -321,6 +321,8 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         var connected = _cBotIdentity is not null;
         _logger.LogInformation("NETMQ|SUBMIT_ORDER|id={Id}|symbol={Symbol}|dir={Dir}|lots={Lots}|connected={Connected}",
             clientOrderId, request.Symbol, request.Direction, request.Lots, connected);
+        var entryOpts = request.Intent.Entry;
+        var isLimit = entryOpts?.Method == OrderEntryMethod.LimitOffset;
         var cmd = new
         {
             type = "submit_order",
@@ -328,6 +330,10 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             symbol = request.Symbol.Value,
             direction = request.Direction.ToString(),
             lots = (double)request.Lots,
+            orderType = isLimit ? "Limit" : "Market",
+            limitPrice = isLimit ? (double)request.Intent.LimitPrice!.Value.Value : 0.0,
+            expiryBars = isLimit ? (entryOpts!.LimitOrderExpiryBars) : 0,
+            maxSlippagePips = entryOpts?.MaxSlippagePips ?? 2.0,
             slPrice = (double)request.Intent.StopLoss.Value,
             tpPrice = request.Intent.TakeProfit.HasValue ? (double)request.Intent.TakeProfit.Value.Value : 0.0
         };

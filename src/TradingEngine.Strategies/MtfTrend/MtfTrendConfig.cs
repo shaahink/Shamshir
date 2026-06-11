@@ -10,6 +10,7 @@ public sealed record MtfTrendConfig : IStrategyConfig
     public Timeframe Timeframe { get; init; } = Timeframe.H1;
     public RegimeFilterOptions RegimeFilter { get; init; } = new() { AllowRanging = false };
     public OrderEntryOptions OrderEntry { get; init; } = new();
+    public PositionManagementOptions PositionManagement { get; init; } = new();
     public MtfTrendParameters Parameters { get; init; } = new();
     public Timeframe HigherTimeframe { get; init; } = Timeframe.H4;
 }

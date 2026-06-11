@@ -10,5 +10,6 @@ public interface IStrategyConfig
     Timeframe Timeframe { get; }
     RegimeFilterOptions RegimeFilter { get; }
     OrderEntryOptions OrderEntry { get; }
+    PositionManagementOptions PositionManagement { get; }
 }
 

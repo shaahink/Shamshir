@@ -10,4 +10,7 @@ public record TradeIntent(
     string StrategyId,
     string RiskProfileId,
     string Reason,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc)
+{
+    public OrderEntryOptions? Entry { get; init; }
+}

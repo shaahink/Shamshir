@@ -97,4 +97,5 @@ internal sealed record ComposedStrategyConfig(string Id, string DisplayName) : I
     public Timeframe Timeframe => Timeframe.H1;
     public RegimeFilterOptions RegimeFilter => new();
     public OrderEntryOptions OrderEntry => new();
+    public PositionManagementOptions PositionManagement => new();
 }
