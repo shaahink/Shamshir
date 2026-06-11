@@ -12,6 +12,7 @@ public sealed class StrategyRegistry
 {
     private readonly Dictionary<string, Type> _strategyTypes = [];
     private readonly Dictionary<string, Func<StrategyConfigEntry, IServiceProvider, IStrategy>> _factories = [];
+    private IReadOnlyList<IStrategy>? _cachedAll;
 
     public StrategyRegistry()
     {
@@ -138,6 +139,10 @@ public sealed class StrategyRegistry
             }
         }
 
+        _cachedAll = strategies;
         return strategies;
     }
+
+    public IReadOnlyList<IStrategy> GetAll()
+        => _cachedAll ?? [];
 }
