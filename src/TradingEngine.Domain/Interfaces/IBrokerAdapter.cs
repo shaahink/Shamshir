@@ -40,7 +40,13 @@ public record ExecutionEvent(
     Price? FillPrice,
     decimal FilledLots,
     string? RejectionReason,
-    DateTime TimestampUtc);
+    DateTime TimestampUtc)
+{
+    public decimal? GrossProfit { get; init; }
+    public decimal? NetProfit { get; init; }
+    public decimal? Commission { get; init; }
+    public decimal? Swap { get; init; }
+}
 
 public record OrderRequest(
     TradeIntent Intent,

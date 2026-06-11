@@ -12,4 +12,5 @@ public sealed class EquitySnapshotEntity
     public decimal CurrentDailyDrawdown { get; set; }
     public decimal CurrentMaxDrawdown { get; set; }
     public string Mode { get; set; } = "";
+    public string Type { get; set; } = "Tick";
 }

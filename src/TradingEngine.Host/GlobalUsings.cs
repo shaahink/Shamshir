@@ -5,6 +5,7 @@ global using Microsoft.EntityFrameworkCore;
 global using Microsoft.Data.Sqlite;
 global using Serilog;
 global using TradingEngine.Domain;
+global using TradingEngine.Domain.Events;
 global using TradingEngine.Risk;
 global using TradingEngine.Risk.Compliance;
 global using TradingEngine.Risk.Filters;

@@ -228,7 +228,13 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                                 var time = ex.TryGetProperty("simTime", out var st) ? st.GetDateTime().ToUniversalTime() : DateTime.UtcNow;
                                 var exec = new ExecutionEvent(orderId, state,
                                     fillPrice > 0 ? new Price(fillPrice) : null,
-                                    filledLots, reason, time);
+                                    filledLots, reason, time)
+                                {
+                                    GrossProfit = ParseDecimalOrNull(ex, "grossProfit"),
+                                    NetProfit = ParseDecimalOrNull(ex, "netProfit"),
+                                    Commission = ParseDecimalOrNull(ex, "commission"),
+                                    Swap = ParseDecimalOrNull(ex, "swap"),
+                                };
                                 _execChannel.Writer.TryWrite(exec);
                             }
                             _execsReceived += count;
@@ -258,7 +264,13 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                         var time = doc.RootElement.TryGetProperty("simTime", out var st) ? st.GetDateTime().ToUniversalTime() : DateTime.UtcNow;
                         var execEvt = new ExecutionEvent(orderId, state,
                             fillPrice > 0 ? new Price(fillPrice) : null,
-                            filledLots, reason, time);
+                            filledLots, reason, time)
+                        {
+                            GrossProfit = ParseDecimalOrNull(doc.RootElement, "grossProfit"),
+                            NetProfit = ParseDecimalOrNull(doc.RootElement, "netProfit"),
+                            Commission = ParseDecimalOrNull(doc.RootElement, "commission"),
+                            Swap = ParseDecimalOrNull(doc.RootElement, "swap"),
+                        };
                         _execChannel.Writer.TryWrite(execEvt);
                         _execsReceived++;
                         break;
@@ -419,6 +431,13 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     public Task<AccountState> GetAccountStateAsync(CancellationToken ct)
         => Task.FromResult(new AccountState(0, 0, []));
+
+    private static decimal? ParseDecimalOrNull(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.Number)
+            return prop.GetDecimal();
+        return null;
+    }
 
     public async ValueTask DisposeAsync() => await DisconnectAsync(CancellationToken.None);
 }

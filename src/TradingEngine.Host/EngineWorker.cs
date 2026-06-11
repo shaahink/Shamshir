@@ -537,11 +537,21 @@ public sealed class EngineWorker : BackgroundService
         {
             _lastResetIsoWeek = isoWeek;
             _riskManager.OnWeeklyReset(update.Equity);
+            _ = _eventBus.PublishAsync(new WeeklyEquitySnapshotTaken(
+                new EquitySnapshot(update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
+                    _drawdownTracker.PeakEquity, _drawdownTracker.DailyStartEquity,
+                    _riskManager.CurrentState.WeeklyDrawdownUsed, _riskManager.CurrentState.MaxDrawdownUsed, _engineMode),
+                _riskManager.CurrentState, _clock.UtcNow), CancellationToken.None);
         }
         if (month != _lastResetMonth)
         {
             _lastResetMonth = month;
             _riskManager.OnMonthlyReset(update.Equity);
+            _ = _eventBus.PublishAsync(new MonthlyEquitySnapshotTaken(
+                new EquitySnapshot(update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
+                    _drawdownTracker.PeakEquity, _drawdownTracker.DailyStartEquity,
+                    _riskManager.CurrentState.MonthlyDrawdownUsed, _riskManager.CurrentState.MaxDrawdownUsed, _engineMode),
+                _riskManager.CurrentState, _clock.UtcNow), CancellationToken.None);
         }
 
         var riskState = _riskManager.CurrentState;
