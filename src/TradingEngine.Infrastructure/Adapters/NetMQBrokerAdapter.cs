@@ -39,6 +39,10 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private readonly object _bufferLock = new();
     public long CurrentBarSeq { get; private set; }
 
+    private long _barsReceived;
+    private long _commandsSent;
+    private long _execsReceived;
+
     private static readonly JsonSerializerOptions JsonOpts = new()
         { PropertyNameCaseInsensitive = true };
 
@@ -173,6 +177,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
                     case "bar":
                         CurrentBarSeq = doc.RootElement.TryGetProperty("seq", out var s) ? s.GetInt64() : 0;
+                        _barsReceived++;
                         var bar = new Bar(
                             Symbol.Parse(doc.RootElement.GetProperty("symbol").GetString()!),
                             Enum.Parse<Timeframe>(doc.RootElement.GetProperty("period").GetString()!, ignoreCase: true),
@@ -189,8 +194,10 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                     case "bar_result":
                         if (doc.RootElement.TryGetProperty("execs", out var execs) && execs.ValueKind == JsonValueKind.Array)
                         {
+                            var count = 0;
                             foreach (var ex in execs.EnumerateArray())
                             {
+                                count++;
                                 var orderId = ex.TryGetProperty("clientOrderId", out var oid) && oid.GetString() is { } oidStr
                                     ? Guid.Parse(oidStr) : Guid.Empty;
                                 var kind = ex.TryGetProperty("kind", out var k) ? k.GetString() : null;
@@ -205,6 +212,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                                     filledLots, reason, time);
                                 _execChannel.Writer.TryWrite(exec);
                             }
+                            _execsReceived += count;
                         }
                         if (doc.RootElement.TryGetProperty("account", out var acct))
                         {
@@ -231,11 +239,27 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                             fillPrice > 0 ? new Price(fillPrice) : null,
                             filledLots, reason, time);
                         _execChannel.Writer.TryWrite(execEvt);
+                        _execsReceived++;
                         break;
                     }
 
                     case "stats":
                         _logger.LogInformation("NETMQ|STATS|{Json}", json);
+                        try
+                        {
+                            var cBarsSent = doc.RootElement.TryGetProperty("barsSent", out var bs) ? bs.GetInt64() : 0;
+                            var cCmdsRecv = doc.RootElement.TryGetProperty("cmdsReceived", out var cr) ? cr.GetInt64() : 0;
+                            var cExecsSent = doc.RootElement.TryGetProperty("execsSent", out var es) ? es.GetInt64() : 0;
+
+                            var barsOk = cBarsSent == _barsReceived ? "✓" : "✗";
+                            var cmdsOk = cCmdsRecv == _commandsSent ? "✓" : "✗";
+                            var execsOk = cExecsSent == _execsReceived ? "✓" : "✗";
+
+                            var recLine = $"RECONCILE bars: sent={cBarsSent} recv={_barsReceived} {barsOk} | cmds: sent={_commandsSent} recv={cCmdsRecv} {cmdsOk} | execs: sent={cExecsSent} recv={_execsReceived} {execsOk}";
+                            _logger.LogInformation("NETMQ|RECONCILE|{Result}", recLine);
+                            OnStatusChange?.Invoke("RECONCILE", recLine);
+                        }
+                        catch { }
                         break;
                 }
             }
@@ -339,6 +363,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         if (_cBotIdentity is not null && _sendQueue is not null)
         {
             _sendQueue.Enqueue((_cBotIdentity!, json));
+            _commandsSent += commands.Length;
             _logger.LogInformation("NETMQ|BAR_DONE|seq={Seq}|commands={Count}", seq, commands.Length);
             OnStatusChange?.Invoke("BAR_DONE", $"BAR_DONE seq={seq} commands={commands.Length}");
         }
