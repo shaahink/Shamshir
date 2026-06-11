@@ -50,6 +50,8 @@ public sealed class RunModel : PageModel
             Start = StartDate,
             End = EndDate,
             Balance = Balance,
+            Symbols = new[] { Symbol.ToUpperInvariant() },
+            Periods = new[] { Period.ToUpperInvariant() },
         };
 
         var runId = await _command.StartAsync(cfg, HttpContext.RequestAborted);
