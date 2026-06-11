@@ -497,7 +497,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 var progressCallback = new Progress<BacktestProgressEvent>(evt =>
                 {
                     PushProgressEvent(runId, evt.EventType, evt.Message);
-                    if (evt.EventType is "TICK" or "EXEC" or "REJECTED" or "NETMQ_CONNECTED" or "NETMQ_SENT" or "NETMQ_DROPPED")
+                    if (evt.EventType is "EXEC" or "REJECTED" or "NETMQ_CONNECTED" or "NETMQ_SENT" or "NETMQ_DROPPED" or "CBOT")
                         PushProgressAndLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] {evt.EventType} {evt.Message}");
                 });
                 services.AddSingleton<IProgress<BacktestProgressEvent>>(_ => progressCallback);

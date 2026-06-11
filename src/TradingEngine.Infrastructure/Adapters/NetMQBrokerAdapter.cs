@@ -85,6 +85,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             if (topic == "diag")
             {
                 _logger.LogInformation("CBOT|{Msg}", frame);
+                OnStatusChange?.Invoke("CBOT", frame);
                 return;
             }
 
