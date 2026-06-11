@@ -168,6 +168,9 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     public async Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
         var clientOrderId = Guid.NewGuid();
+        var connected = _cBotIdentity is not null;
+        _logger.LogInformation("NETMQ|SUBMIT_ORDER|id={Id}|symbol={Symbol}|dir={Dir}|lots={Lots}|connected={Connected}",
+            clientOrderId, request.Symbol, request.Direction, request.Lots, connected);
         await SendCommandAsync(new
         {
             type = "submit_order",
