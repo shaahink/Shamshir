@@ -1,3 +1,45 @@
 @page "/analysis"
+@inject HttpClient Http
+
 <h3>Symbol Analysis</h3>
-<p>Correlation matrix and regime heatmap.</p>
+<div class="row mb-2">
+    <div class="col-12">
+        <label>Symbols (comma-separated):</label>
+        <input class="form-control" @bind="SymbolsInput" />
+        <label>Days:</label>
+        <input class="form-control w-auto d-inline" type="number" @bind="Days" style="width:100px" />
+        <button class="btn btn-primary btn-sm ms-2" @onclick="LoadData">Load</button>
+    </div>
+</div>
+<div class="row">
+    <div class="col-md-6">
+        @if (CorrSymbols.Any()) { <CorrelationMatrix Symbols="@CorrSymbols" Matrix="@CorrMatrix" /> }
+    </div>
+    <div class="col-md-6">
+        @if (RegimeCells.Any()) { <RegimeHeatmap Cells="@RegimeCells" /> }
+    </div>
+</div>
+
+@code {
+    private string SymbolsInput = "EURUSD,GBPUSD,USDJPY";
+    private int Days = 90;
+    private List<string> CorrSymbols = new();
+    private List<List<double>> CorrMatrix = new();
+    private List<RegimeCell> RegimeCells = new();
+
+    private class CorrResponse { public string[] symbols { get; set; } = []; public double[][] matrix { get; set; } = []; }
+    private class RegimeResponse { public string date { get; set; } = ""; public string regime { get; set; } = ""; }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            var corr = await Http.GetFromJsonAsync<CorrResponse>($"/api/backtest/analytics/correlation?symbols={SymbolsInput}&days={Days}");
+            if (corr is not null) { CorrSymbols = corr.symbols.ToList(); CorrMatrix = corr.matrix.Select(r => r.ToList()).ToList(); }
+            var sym = SymbolsInput.Split(',')[0];
+            var regime = await Http.GetFromJsonAsync<List<RegimeResponse>>($"/api/backtest/analytics/regime-history?symbol={sym}&days={Days}");
+            if (regime is not null) RegimeCells = regime.Select(r => new RegimeCell(DateTime.Parse(r.date), r.regime)).ToList();
+        }
+        catch { }
+    }
+}

@@ -1,3 +1,42 @@
 @page "/strategies"
+@inject IStrategyBank Bank
+
 <h3>Strategy Manager</h3>
-<p>Configure and monitor trading strategies.</p>
+<div class="row">
+    @foreach (var s in Strategies)
+    {
+        <div class="col-md-6 mb-2">
+            <StrategyStatusCard Id="@s.Id" DisplayName="@s.DisplayName" IsEnabled="@s.IsEnabled" TotalTrades="@s.TotalTrades" WinRate="@s.WinRate" PnL="@s.TotalPnL" ProfitFactor="@s.ProfitFactor" OnToggle="ToggleStrategy" />
+        </div>
+    }
+</div>
+
+@code {
+    private List<StratInfo> Strategies = new();
+
+    private class StratInfo
+    {
+        public string Id { get; set; } = ""; public string DisplayName { get; set; } = "";
+        public bool IsEnabled { get; set; } public int TotalTrades { get; set; }
+        public double WinRate { get; set; } public decimal TotalPnL { get; set; }
+        public decimal ProfitFactor { get; set; }
+    }
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            var snapshot = Bank.GetSnapshot();
+            Strategies = snapshot.Strategies.Select(s => new StratInfo { Id = s.Id, DisplayName = s.DisplayName, IsEnabled = s.IsEnabled, TotalTrades = s.Stats.TotalTrades, WinRate = s.Stats.WinRate * 100, TotalPnL = s.Stats.TotalPnL, ProfitFactor = s.Stats.ProfitFactor }).ToList();
+        }
+        catch { }
+    }
+
+    private void ToggleStrategy(string id)
+    {
+        var s = Strategies.FirstOrDefault(x => x.Id == id);
+        if (s is null) return;
+        if (s.IsEnabled) Bank.Disable(id); else Bank.Enable(id);
+        s.IsEnabled = !s.IsEnabled;
+    }
+}
