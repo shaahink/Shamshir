@@ -69,8 +69,9 @@ public sealed class RsiDivergenceStrategy : IStrategy
 
         var dir = bullish ? TradeDirection.Long : TradeDirection.Short;
         var entry = new Price(dir == TradeDirection.Long ? currentBar.High + 0.00001m : currentBar.Low - 0.00001m);
-        var sl = SlTpHelpers.AtrBased(entry, dir, atr, _config.Parameters.SlAtrMultiple, found.SymbolInfo);
-        var tp = SlTpHelpers.RRMultiple(entry, sl, dir, _config.Parameters.TpRrMultiple, found.SymbolInfo);
+        var pm = _config.PositionManagement;
+        var sl = SlTpHelpers.AtrBased(entry, dir, atr, pm.StopLoss.AtrMultiple, found.SymbolInfo);
+        var tp = SlTpHelpers.RRMultiple(entry, sl, dir, pm.TakeProfit.RrMultiple, found.SymbolInfo);
 
         return new TradeIntent(context.Symbol, dir, OrderType.Market, null, sl, tp,
             _config.Id, _config.RiskProfileId, bullish ? "bullish-rsi-div" : "bearish-rsi-div", context.EngineTimeUtc);

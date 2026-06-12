@@ -19,6 +19,4 @@ public sealed record RsiDivergenceParameters
     public int RsiPeriod { get; init; } = 14;
     public int DivergenceLookback { get; init; } = 10;
     public int AtrPeriod { get; init; } = 14;
-    public double SlAtrMultiple { get; init; } = 1.5;
-    public double TpRrMultiple { get; init; } = 2.0;
 }

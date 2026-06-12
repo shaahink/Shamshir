@@ -16,12 +16,14 @@
     "method": "Market",
     "maxSlippagePips": 2.0
   },
+  "positionManagement": {
+    "stopLoss": { "method": "AtrMultiple", "atrMultiple": 1.5 },
+    "takeProfit": { "method": "RrMultiple", "rrMultiple": 1.0 }
+  },
   "parameters": {
     "rsiPeriod": 14,
     "bbPeriod": 20,
     "bbStdDev": 2.0,
-    "atrPeriod": 14,
-    "slAtrMultiple": 1.5,
-    "tpRrMultiple": 1.0
+    "atrPeriod": 14
   }
 }

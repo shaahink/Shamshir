@@ -95,8 +95,9 @@ public sealed class TrendBreakoutStrategy : IStrategy
             _lastSignalDirection = entryDirection == TradeDirection.Long ? 1 : -1;
 
             var symbolInfo = _symbolRegistry.Get(context.Symbol);
-            var sl = SlTpHelpers.AtrBased(entryPrice, entryDirection.Value, atr, p.SlAtrMultiple, symbolInfo);
-            var tp = SlTpHelpers.RRMultiple(entryPrice, sl, entryDirection.Value, p.TpRrMultiple, symbolInfo);
+            var pm = _config.PositionManagement;
+            var sl = SlTpHelpers.AtrBased(entryPrice, entryDirection.Value, atr, pm.StopLoss.AtrMultiple, symbolInfo);
+            var tp = SlTpHelpers.RRMultiple(entryPrice, sl, entryDirection.Value, pm.TakeProfit.RrMultiple, symbolInfo);
 
             var reason = entryDirection == TradeDirection.Long
                 ? $"Break of {p.LookbackBars}-bar high {highestHigh}, above EMA{p.MaPeriod}"

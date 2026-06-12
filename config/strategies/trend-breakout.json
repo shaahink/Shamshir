@@ -16,13 +16,14 @@
     "method": "Market",
     "maxSlippagePips": 2.0
   },
+  "positionManagement": {
+    "stopLoss": { "method": "AtrMultiple", "atrMultiple": 1.5 },
+    "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0 },
+    "trailing": { "method": "AtrMultiple", "atrMultiple": 1.0 }
+  },
   "parameters": {
     "lookbackBars": 20,
     "maPeriod": 50,
-    "atrPeriod": 14,
-    "slAtrMultiple": 1.5,
-    "tpRrMultiple": 2.0,
-    "trailingMethod": "AtrMultiple",
-    "trailingAtrMultiple": 1.0
+    "atrPeriod": 14
   }
 }

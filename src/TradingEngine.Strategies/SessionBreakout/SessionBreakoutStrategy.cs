@@ -72,11 +72,11 @@ public sealed class SessionBreakoutStrategy : IStrategy
 
             if (dir is null) return null;
 
-            var slOffset = (decimal)(atr * p.SlAtrMultiple);
+            var slOffset = (decimal)(atr * _config.PositionManagement.StopLoss.AtrMultiple);
             var sl = dir == TradeDirection.Long
                 ? new Price(entryPrice.Value - slOffset)
                 : new Price(entryPrice.Value + slOffset);
-            var tpDist = Math.Abs(entryPrice.Value - sl.Value) * (decimal)p.TpRrMultiple;
+            var tpDist = Math.Abs(entryPrice.Value - sl.Value) * (decimal)_config.PositionManagement.TakeProfit.RrMultiple;
             var tp = dir == TradeDirection.Long
                 ? new Price(entryPrice.Value + tpDist)
                 : new Price(entryPrice.Value - tpDist);

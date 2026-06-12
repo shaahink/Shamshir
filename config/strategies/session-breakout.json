@@ -16,10 +16,12 @@
     "method": "Market",
     "maxSlippagePips": 2.0
   },
+  "positionManagement": {
+    "stopLoss": { "method": "AtrMultiple", "atrMultiple": 1.5 },
+    "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0 }
+  },
   "parameters": {
     "atrPeriod": 14,
-    "slAtrMultiple": 1.5,
-    "tpRrMultiple": 2.0,
     "rangeStartUtc": "05:00:00",
     "rangeEndUtc": "07:00:00",
     "entryWindowEndUtc": "09:00:00",
