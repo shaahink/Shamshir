@@ -1,19 +1,18 @@
 namespace TradingEngine.Web.Api;
 
 using TradingEngine.Risk.Compliance;
-using TradingEngine.Web.Services;
 
 [ApiController]
 [Route("api/backtest")]
 public class BacktestAnalyticsController : ControllerBase
 {
-    private readonly IBacktestQueryService _query;
     private readonly TradingDbContext _db;
+    private readonly IPassProbabilityEstimator _estimator;
 
-    public BacktestAnalyticsController(IBacktestQueryService query, TradingDbContext db)
+    public BacktestAnalyticsController(TradingDbContext db, IPassProbabilityEstimator estimator)
     {
-        _query = query;
         _db = db;
+        _estimator = estimator;
     }
 
     [HttpGet("{runId}/pass-probability")]
@@ -29,7 +28,6 @@ public class BacktestAnalyticsController : ControllerBase
         var initialBalance = run?.InitialBalance ?? 100_000m;
         var currentEquity = initialBalance + dailyPnL.Sum();
 
-        var estimator = new PassProbabilityEstimator();
         var input = new PassProbabilityInput
         {
             CurrentEquity = currentEquity,
@@ -41,8 +39,7 @@ public class BacktestAnalyticsController : ControllerBase
             HistoricalDailyPnL = dailyPnL,
             MonteCarloRuns = 10_000,
         };
-        var result = estimator.Estimate(input);
-        return Ok(result);
+        return Ok(_estimator.Estimate(input));
     }
 
     [HttpGet("compare")]

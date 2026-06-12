@@ -1,46 +1,41 @@
 namespace TradingEngine.Web.Api;
 
-using TradingEngine.Web.Services;
+using TradingEngine.Host;
 
 [ApiController]
 [Route("api/strategies")]
 public class StrategiesController : ControllerBase
 {
-    private readonly IBacktestCommandService _cmd;
-    private readonly IBacktestQueryService _query;
+    private readonly IStrategyBank _bank;
+    private readonly StrategyRegistry _registry;
+    private readonly string _configDir;
 
-    public StrategiesController(IBacktestCommandService cmd, IBacktestQueryService query)
+    public StrategiesController(IStrategyBank bank, StrategyRegistry registry)
     {
-        _cmd = cmd;
-        _query = query;
+        _bank = bank;
+        _registry = registry;
+        _configDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "config", "strategies");
+        Directory.CreateDirectory(_configDir);
     }
 
     [HttpGet]
     public IActionResult GetAll()
     {
-        // Return available strategies from config
-        var configDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "config", "strategies");
-        if (!Directory.Exists(configDir))
-            return Ok(Array.Empty<object>());
-
-        var strategies = new List<object>();
-        foreach (var file in Directory.GetFiles(configDir, "*.json"))
-        {
-            var json = System.IO.File.ReadAllText(file);
-            strategies.Add(new { file = Path.GetFileNameWithoutExtension(file), config = json });
-        }
-        return Ok(strategies);
+        var snapshot = _bank.GetSnapshot();
+        return Ok(snapshot);
     }
 
     [HttpPut("{id}/enable")]
     public IActionResult Enable(string id)
     {
+        _bank.Enable(id);
         return Ok(new { id, enabled = true });
     }
 
     [HttpPut("{id}/disable")]
     public IActionResult Disable(string id)
     {
+        _bank.Disable(id);
         return Ok(new { id, enabled = false });
     }
 
@@ -49,8 +44,7 @@ public class StrategiesController : ControllerBase
     {
         using var reader = new StreamReader(Request.Body);
         var json = await reader.ReadToEndAsync();
-        var configDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "config", "strategies");
-        var path = Path.Combine(configDir, $"{id}.json");
+        var path = Path.Combine(_configDir, $"{id}.json");
         await System.IO.File.WriteAllTextAsync(path, json);
         return Ok(new { id, saved = true });
     }

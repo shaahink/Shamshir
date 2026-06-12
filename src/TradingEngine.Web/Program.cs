@@ -1,6 +1,9 @@
 using Microsoft.Data.Sqlite;
+using TradingEngine.Host;
+using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Infrastructure.Persistence.Reporting;
+using TradingEngine.Risk.Compliance;
 using TradingEngine.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,6 +31,16 @@ builder.Services.AddSingleton<BacktestJournal>();
 builder.Services.AddSingleton<BacktestOrchestrator>();
 builder.Services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
 builder.Services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
+
+// Register strategy bank infrastructure for Blazor pages + APIs
+builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
+builder.Services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
+builder.Services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
+builder.Services.AddSingleton<StrategyRegistry>();
+builder.Services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
+    sp.GetRequiredService<StrategyRegistry>(),
+    null, // rotation disabled by default
+    sp.GetRequiredService<ILogger<StrategyBankService>>()));
 
 using var app = builder.Build();
 
