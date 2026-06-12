@@ -98,4 +98,5 @@ internal sealed record ComposedStrategyConfig(string Id, string DisplayName) : I
     public RegimeFilterOptions RegimeFilter => new();
     public OrderEntryOptions OrderEntry => new();
     public PositionManagementOptions PositionManagement => new();
+    public ReentryOptions Reentry => new();
 }

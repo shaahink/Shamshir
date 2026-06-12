@@ -17,9 +17,12 @@ public sealed class RiskManagerTests
         tracker.Initialize(initialBalance);
         var registry = new SymbolInfoRegistry();
         registry.Register(EurUsd());
+        var gov = Substitute.For<ITradingGovernor>();
+        gov.Evaluate(Arg.Any<GovernorContext>())
+            .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
         var rm = new RiskManager(tracker, registry, (_, _) => 1m,
             new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
-            Substitute.For<ICurrencyExposureTracker>());
+            Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
         rm.SetActiveRuleSet(FtmoRules);
         return rm;
     }
@@ -41,7 +44,7 @@ public sealed class RiskManagerTests
     {
         var rm = MakeRm();
         var snap = Snapshot(100_000, dailyDd: 0.0499m);
-        var v = rm.Validate(LongEurUsd(), snap, Profile);
+        var v = rm.Validate(LongEurUsd(), snap, Profile, 1.1000m);
         v.Should().NotContain(x => x.Code == "DAILY_DD_LIMIT");
     }
 
@@ -50,7 +53,7 @@ public sealed class RiskManagerTests
     {
         var rm = MakeRm();
         var snap = Snapshot(100_000, dailyDd: 0.05m);
-        var v = rm.Validate(LongEurUsd(), snap, Profile);
+        var v = rm.Validate(LongEurUsd(), snap, Profile, 1.1000m);
         v.Should().Contain(x => x.Code == "DAILY_DD_LIMIT");
     }
 
@@ -59,7 +62,7 @@ public sealed class RiskManagerTests
     {
         var rm = MakeRm();
         var snap = Snapshot(100_000, dailyDd: 0.072m);
-        var v = rm.Validate(LongEurUsd(), snap, Profile);
+        var v = rm.Validate(LongEurUsd(), snap, Profile, 1.1000m);
         v.Should().Contain(x => x.Code == "DAILY_DD_LIMIT");
     }
 
@@ -68,7 +71,7 @@ public sealed class RiskManagerTests
     {
         var rm = MakeRm();
         var snap = Snapshot(100_000, maxDd: 0.0999m);
-        var v = rm.Validate(LongEurUsd(), snap, Profile);
+        var v = rm.Validate(LongEurUsd(), snap, Profile, 1.1000m);
         v.Should().NotContain(x => x.Code == "MAX_DD_LIMIT");
     }
 
@@ -77,7 +80,7 @@ public sealed class RiskManagerTests
     {
         var rm = MakeRm();
         var snap = Snapshot(100_000, maxDd: 0.10m);
-        var v = rm.Validate(LongEurUsd(), snap, Profile);
+        var v = rm.Validate(LongEurUsd(), snap, Profile, 1.1000m);
         v.Should().Contain(x => x.Code == "MAX_DD_LIMIT");
     }
 
@@ -87,7 +90,7 @@ public sealed class RiskManagerTests
         var rm = MakeRm();
         rm.EnterProtectionMode("Manual halt", ProtectionCause.MaxDrawdown);
         var snap = Snapshot(100_000, dailyDd: 0m, maxDd: 0m);
-        var v = rm.Validate(LongEurUsd(), snap, Profile);
+        var v = rm.Validate(LongEurUsd(), snap, Profile, 1.1000m);
         v.Should().Contain(x => x.Code == "PROTECTION_MODE_ACTIVE");
     }
 
@@ -120,7 +123,7 @@ public sealed class RiskManagerTests
         rm.RegisterPosition(Guid.NewGuid(), "strat-1", 50m);
         rm.RegisterPosition(Guid.NewGuid(), "strat-1", 50m);
 
-        var v = rm.Validate(LongEurUsd(), Snapshot(100_000), Profile);
+        var v = rm.Validate(LongEurUsd(), Snapshot(100_000), Profile, 1.1000m);
         v.Should().Contain(x => x.Code == "MAX_POSITIONS");
     }
 
@@ -136,7 +139,7 @@ public sealed class RiskManagerTests
         rm.RegisterPosition(Guid.NewGuid(), "strat-1", 50m);
 
         rm.DeregisterPosition(id1);
-        var v = rm.Validate(LongEurUsd(), Snapshot(100_000), Profile);
+        var v = rm.Validate(LongEurUsd(), Snapshot(100_000), Profile, 1.1000m);
         v.Should().NotContain(x => x.Code == "MAX_POSITIONS");
     }
 
@@ -147,16 +150,19 @@ public sealed class RiskManagerTests
         tracker.Initialize(100_000);
         var registry = new SymbolInfoRegistry();
         registry.Register(EurUsd());
+        var gov = Substitute.For<ITradingGovernor>();
+        gov.Evaluate(Arg.Any<GovernorContext>())
+            .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
         var rm = new RiskManager(tracker, registry, (_, _) => 1m,
             new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
-            Substitute.For<ICurrencyExposureTracker>());
+            Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
         rm.SetActiveRuleSet(FtmoRules);
 
         rm.UpdateEquityLevels(94_900m);
         var freshState = rm.CurrentState;
 
         var snap = Snapshot(94_900m, dailyDd: freshState.DailyDrawdownUsed, maxDd: freshState.MaxDrawdownUsed);
-        var v = rm.Validate(LongEurUsd(), snap, Profile);
+        var v = rm.Validate(LongEurUsd(), snap, Profile, 1.1000m);
 
         v.Should().Contain(x => x.Code == "DAILY_DD_LIMIT",
             "equity dropped below FTMO daily floor — trading must be blocked");
@@ -169,15 +175,18 @@ public sealed class RiskManagerTests
         tracker.Initialize(100_000);
         var registry = new SymbolInfoRegistry();
         registry.Register(EurUsd());
+        var gov = Substitute.For<ITradingGovernor>();
+        gov.Evaluate(Arg.Any<GovernorContext>())
+            .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
         var rm = new RiskManager(tracker, registry, (_, _) => 1m,
             new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
-            Substitute.For<ICurrencyExposureTracker>());
+            Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
         rm.SetActiveRuleSet(FtmoRules);
 
         rm.UpdateEquityLevels(95_500m);
         var state = rm.CurrentState;
         var snap = Snapshot(95_500m, dailyDd: state.DailyDrawdownUsed, maxDd: state.MaxDrawdownUsed);
-        var v = rm.Validate(LongEurUsd(), snap, Profile);
+        var v = rm.Validate(LongEurUsd(), snap, Profile, 1.1000m);
         v.Should().NotContain(x => x.Code == "DAILY_DD_LIMIT");
     }
 }

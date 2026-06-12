@@ -107,6 +107,50 @@ right abstraction — replace the singleton closure with one that reads live pri
 
 ---
 
+### BUG-06 — BacktestReplayAdapter reports flat equity forever; loss limits unenforceable
+**Severity**: Critical — explains backtests that violated daily-loss limits
+**Found**: 2026-06-12 (iter-19 planning audit)
+**File**: `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs:92`
+
+`FeedBarsAsync` emits `new AccountUpdate(_initialBalance, _initialBalance, 0, …)` on every bar.
+Equity and balance are hardcoded to the initial balance for the whole run: realized PnL never
+reaches the balance, floating PnL never reaches equity. `DrawdownTracker` therefore computes 0%
+drawdown always, and `DAILY_DD_LIMIT`/`MAX_DD_LIMIT` can mathematically never fire in backtests.
+
+**Fix**: planned as iter-19 Phase G0.1 (mark-to-market: balance updated on closes, equity =
+balance + floating PnL at bar close).
+
+---
+
+### BUG-07 — `EnterProtectionMode` has no callers; daily breach never flattens positions
+**Severity**: Critical
+**Found**: 2026-06-12 (iter-19 planning audit)
+**File**: `src/TradingEngine.Risk/RiskManager.cs:49`
+
+Protection mode is dead code — nothing in the engine calls `EnterProtectionMode`. Additionally,
+`_forceClosePending` is only set for `ProtectionCause.MaxDrawdown` with `ForceCloseOnBreach`, so
+even if wired, a *daily* limit breach would block new entries but leave open positions running
+unbounded. Risk checks gate new entries only, at `>=` the hard limit.
+
+**Fix**: planned as iter-19 Phase G0.2 (breach watchdog in `HandleAccountUpdate`, force-close on
+both daily and max-DD causes, flatten at 0.9 × hard limit).
+
+---
+
+### BUG-08 — MAX_EXPOSURE pre-check is a no-op for market orders
+**Severity**: High
+**Found**: 2026-06-12 (iter-19 planning audit)
+**File**: `src/TradingEngine.Risk/RiskManager.cs:96`
+
+`Validate` derives the entry price as `intent.LimitPrice ?? intent.StopLoss` — for market orders
+(no limit price) the SL distance is measured from the SL itself, i.e. 0 pips, so the computed new
+position risk is 0 and the exposure check always passes. It also assumes `1.0m` lots rather than
+the lots that will actually be submitted.
+
+**Fix**: planned as iter-19 Phase G0.3 (use current mid as entry price, compute risk on sized lots).
+
+---
+
 ## Part 2 — Serious Design Problems
 
 ### DESIGN-01 — `TradeClosed` published fire-and-forget from `PositionTracker`

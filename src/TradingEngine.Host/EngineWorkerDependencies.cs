@@ -25,6 +25,8 @@ public sealed record RiskServices
     public required DrawdownTracker DrawdownTracker { get; init; }
     public required IRiskProfileResolver RiskProfileResolver { get; init; }
     public required Func<string, string, decimal> CrossRateProvider { get; init; }
+    public ITradingGovernor? Governor { get; init; }
+    public SizingPolicyOptions SizingPolicy { get; init; } = new();
 }
 
 public sealed record StrategyServices
@@ -34,6 +36,7 @@ public sealed record StrategyServices
     public required IRegimeDetector RegimeDetector { get; init; }
     public required OrderDispatcher OrderDispatcher { get; init; }
     public required PositionTracker PositionTracker { get; init; }
+    public ISignalGate? SignalGate { get; init; }
 }
 
 public sealed record PersistenceServices

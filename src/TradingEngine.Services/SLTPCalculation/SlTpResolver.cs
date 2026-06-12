@@ -45,7 +45,7 @@ public sealed class SlTpResolver
         return opts.Method switch
         {
             "None" => null,
-            "FixedPips" => SlTpHelpers.AtrMultiple(entry, direction, atr, opts.FixedPips / (atr > 0 ? atr : 1), symbol),
+            "FixedPips" => SlTpHelpers.FixedPip(entry, direction, new Pips(opts.FixedPips), symbol),
             "AtrMultiple" => SlTpHelpers.AtrMultiple(entry, direction, atr, opts.AtrMultiple, symbol),
             _ => SlTpHelpers.RRMultiple(entry, sl, direction, opts.RrMultiple, symbol),
         };

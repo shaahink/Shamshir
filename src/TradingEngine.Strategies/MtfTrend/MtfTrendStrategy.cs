@@ -103,17 +103,10 @@ public sealed class MtfTrendStrategy : IStrategy
             var entryPrice = new Price(context.LatestTick.Mid);
             var symbolInfo = _symbolRegistry.Get(context.Symbol);
 
-            var swingSl = direction == TradeDirection.Long
-                ? SlTpHelpers.SwingBased(entryPrice, TradeDirection.Long, h1Bars, p.SwingLookback, new Pips(0), symbolInfo)
-                : SlTpHelpers.SwingBased(entryPrice, TradeDirection.Short, h1Bars, p.SwingLookback, new Pips(0), symbolInfo);
-
-            var atrSl = SlTpHelpers.AtrBased(entryPrice, direction.Value, atr, p.SlAtrMinMultiple, symbolInfo);
-
-            var sl = direction == TradeDirection.Long
-                ? (swingSl.Value > atrSl.Value ? swingSl : atrSl)
-                : (swingSl.Value < atrSl.Value ? swingSl : atrSl);
-
-            var tp = SlTpHelpers.RRMultiple(entryPrice, sl, direction.Value, p.TpRrMultiple, symbolInfo);
+            var swingSl = SlTpHelpers.SwingBased(entryPrice, direction.Value, h1Bars, p.SwingLookback, new Pips(0), symbolInfo);
+            var resolver = new SlTpResolver();
+            var (sl, tp) = resolver.Resolve(entryPrice, direction.Value, atr, symbolInfo,
+                _config.PositionManagement, swingSl);
 
             return new TradeIntent(
                 context.Symbol,

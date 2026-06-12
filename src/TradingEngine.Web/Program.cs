@@ -26,6 +26,10 @@ builder.Services.AddScoped<IBacktestRunRepository, SqliteBacktestRunRepository>(
 builder.Services.AddScoped<IBarRepository, SqliteBarRepository>();
 builder.Services.AddScoped(_ => new TradeReportQueries(new SqliteConnection($"Data Source={dbPath}")));
 builder.Services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
+builder.Services.AddScoped<IExperimentRepository, SqliteExperimentRepository>();
+builder.Services.AddScoped<ITradeRepository, SqliteTradeRepository>();
+builder.Services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+builder.Services.AddTransient<ExperimentRunner>();
 builder.Services.AddSingleton<BacktestProgressStore>();
 builder.Services.AddSingleton<BacktestJournal>();
 builder.Services.AddSingleton<BacktestOrchestrator>();
@@ -36,6 +40,14 @@ builder.Services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
 builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
 builder.Services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
 builder.Services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
+builder.Services.AddSingleton<ISymbolInfoRegistry>(_ =>
+{
+    var solRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    var catalog = new SymbolCatalog(solRoot);
+    var reg = new SymbolInfoRegistry();
+    foreach (var si in catalog.GetAll()) reg.Register(si);
+    return reg;
+});
 builder.Services.AddSingleton<StrategyRegistry>();
 builder.Services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
     sp.GetRequiredService<StrategyRegistry>(),

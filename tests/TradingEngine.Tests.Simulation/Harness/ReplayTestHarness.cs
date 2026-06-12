@@ -46,15 +46,20 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                 services.AddSingleton<IBarRepository>(_ => barRepo);
                 services.AddSingleton<IBrokerAdapter>(sp => new BacktestReplayAdapter(
                     barRepo, symbol, Timeframe.H1, from, to,
-                    10_000m, sp.GetRequiredService<ILogger<BacktestReplayAdapter>>()));
+                    10_000m, sp.GetRequiredService<ISymbolInfoRegistry>(),
+                    sp.GetRequiredService<Func<string, string, decimal>>(),
+                    sp.GetRequiredService<ILogger<BacktestReplayAdapter>>()));
 
                 var riskManager = Substitute.For<IRiskManager>();
                 riskManager.CalculateLotSize(Arg.Any<TradeIntent>(),
                     Arg.Any<EquitySnapshot>(), Arg.Any<RiskProfile>(), Arg.Any<decimal>())
                     .Returns(0.01m);
                 riskManager.Validate(Arg.Any<TradeIntent>(),
-                    Arg.Any<EquitySnapshot>(), Arg.Any<RiskProfile>())
+                    Arg.Any<EquitySnapshot>(), Arg.Any<RiskProfile>(), Arg.Any<decimal>())
                     .Returns(Array.Empty<RiskViolation>());
+                riskManager.ValidateBudgetEntry(Arg.Any<decimal>(),
+                    Arg.Any<EquitySnapshot>(), Arg.Any<decimal>())
+                    .Returns(true);
                 riskManager.ConsumeForceClosePending().Returns(false);
                 riskManager.InitialBalance.Returns(10_000m);
                 riskManager.CurrentState.Returns(
@@ -63,6 +68,13 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                         TradingAllowed = false, InProtectionMode = false,
                         DailyDrawdownUsed = 0m, MaxDrawdownUsed = 0m,
                     });
+                var governor = Substitute.For<ITradingGovernor>();
+                governor.Evaluate(Arg.Any<GovernorContext>())
+                    .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
+                governor.GetSnapshot()
+                    .Returns(new GovernorSnapshot(GovernorTradingState.Normal, 1.0m, 0, 0, 0, "OK"));
+
+                services.AddSingleton<ITradingGovernor>(_ => governor);
                 services.AddSingleton<IRiskManager>(_ => riskManager);
                 services.AddSingleton<DrawdownTracker>();
 
@@ -127,6 +139,8 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                         DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
                         RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
                         CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
+                        Governor = sp.GetRequiredService<ITradingGovernor>(),
+                        SizingPolicy = new SizingPolicyOptions(),
                     },
                     Strategies = new StrategyServices
                     {

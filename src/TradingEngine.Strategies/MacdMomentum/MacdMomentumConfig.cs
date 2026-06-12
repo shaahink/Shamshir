@@ -11,6 +11,7 @@ public sealed record MacdMomentumConfig : IStrategyConfig
     public RegimeFilterOptions RegimeFilter { get; init; } = new() { AllowRanging = false };
     public OrderEntryOptions OrderEntry { get; init; } = new();
     public PositionManagementOptions PositionManagement { get; init; } = new();
+    public ReentryOptions Reentry { get; init; } = new();
     public MacdMomentumParameters Parameters { get; init; } = new();
 }
 

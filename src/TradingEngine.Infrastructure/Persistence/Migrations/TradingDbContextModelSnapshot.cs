@@ -506,6 +506,92 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
 
                     b.ToTable("TradeResults", (string)null);
                 });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ExperimentEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Hypothesis")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SpecJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Experiments", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ExperimentRunEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BacktestRunId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ExperimentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FoldIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FoldRole")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScoreJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VariantLabel")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BacktestRunId");
+
+                    b.HasIndex("ExperimentId");
+
+                    b.ToTable("ExperimentRuns", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ExperimentRunEntity", b =>
+                {
+                    b.HasOne("TradingEngine.Infrastructure.Persistence.Entities.ExperimentEntity", "Experiment")
+                        .WithMany("Runs")
+                        .HasForeignKey("ExperimentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Experiment");
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ExperimentEntity", b =>
+                {
+                    b.Navigation("Runs");
+                });
 #pragma warning restore 612, 618
         }
     }

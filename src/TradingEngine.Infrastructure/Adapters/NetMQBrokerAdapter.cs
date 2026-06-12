@@ -382,6 +382,14 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    public Task ClosePartialPositionAsync(Guid positionId, decimal lots, CancellationToken ct)
+    {
+        if (_router is null) return Task.CompletedTask;
+        var cmd = new { type = "close_partial", positionId = positionId.ToString(), lots };
+        lock (_bufferLock) { _bufferedCommands.Add(cmd); }
+        return Task.CompletedTask;
+    }
+
     public Task SendShutdownAsync(CancellationToken ct)
         => SendCommandAsync(new { type = "shutdown" }, ct);
 

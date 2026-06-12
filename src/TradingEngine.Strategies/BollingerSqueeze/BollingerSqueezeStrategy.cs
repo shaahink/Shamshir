@@ -98,18 +98,18 @@ public sealed class BollingerSqueezeStrategy : IStrategy
             var close = (double)latestBar.Close;
 
             TradeDirection? direction = null;
-            Price sl;
+            Price bandSl;
             double slOffset = p.SlBandBuffer * atr;
 
             if (close > upperBand)
             {
                 direction = TradeDirection.Long;
-                sl = new Price((decimal)(lowerBand - slOffset));
+                bandSl = new Price((decimal)(lowerBand - slOffset));
             }
             else if (close < lowerBand)
             {
                 direction = TradeDirection.Short;
-                sl = new Price((decimal)(upperBand + slOffset));
+                bandSl = new Price((decimal)(upperBand + slOffset));
             }
             else
             {
@@ -120,7 +120,9 @@ public sealed class BollingerSqueezeStrategy : IStrategy
 
             var entryPrice = new Price(context.LatestTick.Mid);
             var symbolInfo = _symbolRegistry.Get(context.Symbol);
-            var tp = SlTpHelpers.RRMultiple(entryPrice, sl, direction.Value, p.TpRrMultiple, symbolInfo);
+            var resolver = new SlTpResolver();
+            var (sl, tp) = resolver.Resolve(entryPrice, direction.Value, atr, symbolInfo,
+                _config.PositionManagement, bandSl);
 
             var reason = direction == TradeDirection.Long
                 ? $"BB squeeze breakout (long): close={close:F5} > upper={upperBand:F5}, width={bbWidth:F6}"

@@ -78,21 +78,49 @@ public sealed class PositionManager(
 
         if (config.TrailingStop.Method == TrailingMethod.AtrMultiple && !_beApplied.Contains(position.Id))
         {
-            var atrValue = 0.0;
-            if (recentBars.Count > 0)
-            {
-                atrValue = indicatorService.Atr(recentBars, Math.Max(14, recentBars.Count - 1));
-                if (atrValue <= 0) atrValue = config.TrailingStop.AtrMultiple * (double)symbolInfo.PipSize;
-            }
+            var atrValue = ComputeAtr(recentBars, config);
+            var atrMultiple = GetEffectiveAtrMultiple(config);
 
             var atrTrail = TrailingHelpers.AtrTrail(
                 position,
                 _highWaterBid.GetValueOrDefault(position.Id, position.EntryPrice.Value),
                 _lowWaterAsk.GetValueOrDefault(position.Id, position.EntryPrice.Value),
-                (double)atrValue, config.TrailingStop.AtrMultiple, symbolInfo);
+                atrValue, atrMultiple, symbolInfo);
             if (atrTrail.HasValue)
             {
                 mods.Add(new MoveStopLoss(position.Id, atrTrail.Value));
+                newState = PositionLifecycleState.Trailing;
+            }
+        }
+
+        if (config.TrailingStop.Method == TrailingMethod.Structure && !_beApplied.Contains(position.Id))
+        {
+            var lookback = config.TrailingStop.StructureLookbackBars > 0
+                ? config.TrailingStop.StructureLookbackBars
+                : 10;
+            var atrValue = ComputeAtr(recentBars, config);
+            var atrMultiple = GetEffectiveAtrMultiple(config);
+
+            var structureSl = TrailingHelpers.StructureTrail(
+                position, recentBars, lookback, atrValue, atrMultiple, symbolInfo);
+            if (structureSl.HasValue)
+            {
+                mods.Add(new MoveStopLoss(position.Id, structureSl.Value));
+                newState = PositionLifecycleState.Trailing;
+            }
+        }
+
+        if (config.TrailingStop.Method == TrailingMethod.SteppedR && !_beApplied.Contains(position.Id))
+        {
+            var steppedRLevels = config.TrailingStop.SteppedRLevels is { Length: > 0 }
+                ? config.TrailingStop.SteppedRLevels
+                : new[] { 1.0, 2.0, 3.0 };
+
+            var steppedSl = TrailingHelpers.SteppedRTrail(
+                position, currentTick.Bid, currentTick.Ask, steppedRLevels, symbolInfo);
+            if (steppedSl.HasValue)
+            {
+                mods.Add(new MoveStopLoss(position.Id, steppedSl.Value));
                 newState = PositionLifecycleState.Trailing;
             }
         }
@@ -117,5 +145,22 @@ public sealed class PositionManager(
         }
 
         return mods;
+    }
+
+    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config)
+    {
+        if (recentBars.Count == 0) return config.TrailingStop.AtrMultiple * 0.0001;
+        var atrValue = indicatorService.Atr(recentBars, Math.Min(14, recentBars.Count));
+        if (atrValue <= 0) atrValue = config.TrailingStop.AtrMultiple * 0.0001;
+        return atrValue;
+    }
+
+    private double GetEffectiveAtrMultiple(PositionManagementConfig config)
+    {
+        if (!config.TrailingStop.RideEnabled) return config.TrailingStop.AtrMultiple;
+
+        return config.TrailingStop.AtrMultiple > 0
+            ? config.TrailingStop.RideRelaxedAtrMultiple
+            : config.TrailingStop.AtrMultiple;
     }
 }

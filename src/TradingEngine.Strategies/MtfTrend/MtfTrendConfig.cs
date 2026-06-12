@@ -11,6 +11,7 @@ public sealed record MtfTrendConfig : IStrategyConfig
     public RegimeFilterOptions RegimeFilter { get; init; } = new() { AllowRanging = false };
     public OrderEntryOptions OrderEntry { get; init; } = new();
     public PositionManagementOptions PositionManagement { get; init; } = new();
+    public ReentryOptions Reentry { get; init; } = new();
     public MtfTrendParameters Parameters { get; init; } = new();
     public Timeframe HigherTimeframe { get; init; } = Timeframe.H4;
 }

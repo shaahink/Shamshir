@@ -62,6 +62,12 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                 services.AddSingleton<DrawdownTracker>();
                 services.AddSingleton<RiskManager>();
                 services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
+                services.AddSingleton(new SizingPolicyOptions());
+                services.AddSingleton(new GovernorOptions());
+                var testGovernor = Substitute.For<ITradingGovernor>();
+                testGovernor.Evaluate(Arg.Any<GovernorContext>())
+                    .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
+                services.AddSingleton<ITradingGovernor>(_ => testGovernor);
 
                 var profile = new RiskProfile(
                     "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,
@@ -113,6 +119,8 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                             DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
                             RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
                             CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
+                            Governor = sp.GetRequiredService<ITradingGovernor>(),
+                            SizingPolicy = new SizingPolicyOptions(),
                         },
                         Strategies = new StrategyServices
                         {

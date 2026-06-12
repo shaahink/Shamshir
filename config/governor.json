@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "lossBandFractions": [0.4, 0.6],
+  "lossBandMultipliers": [1.0, 0.5],
+  "streakReduceAt": 3,
+  "streakMultiplier": 0.5,
+  "streakPauseAt": 5,
+  "coolingOffBars": 24,
+  "profitLockEnabled": true,
+  "profitLockFraction": 0.6
+}

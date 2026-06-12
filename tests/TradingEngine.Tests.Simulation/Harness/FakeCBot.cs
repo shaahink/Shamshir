@@ -225,7 +225,7 @@ public sealed class FakeCBot : IAsyncDisposable
                     continue;
                 }
 
-                if (type == "bar_done" || type == "submit_order" || type == "close_position")
+                if (type == "bar_done" || type == "submit_order" || type == "close_position" || type == "close_partial")
                     CommandsReceived++;
 
                 _inbox.Add(doc, _ct);

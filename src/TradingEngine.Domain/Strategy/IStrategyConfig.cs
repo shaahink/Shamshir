@@ -11,5 +11,6 @@ public interface IStrategyConfig
     RegimeFilterOptions RegimeFilter { get; }
     OrderEntryOptions OrderEntry { get; }
     PositionManagementOptions PositionManagement { get; }
+    ReentryOptions Reentry { get; }
 }
 

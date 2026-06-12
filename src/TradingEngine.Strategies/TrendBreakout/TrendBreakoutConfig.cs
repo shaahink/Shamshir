@@ -11,6 +11,7 @@ public sealed record TrendBreakoutConfig : IStrategyConfig
     public RegimeFilterOptions RegimeFilter { get; init; } = new();
     public OrderEntryOptions OrderEntry { get; init; } = new();
     public PositionManagementOptions PositionManagement { get; init; } = new();
+    public ReentryOptions Reentry { get; init; } = new();
     public TrendBreakoutParameters Parameters { get; init; } = new();
 }
 

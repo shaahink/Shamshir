@@ -26,6 +26,12 @@ public sealed class DIValidationTests
         services.AddSingleton<SessionFilter>();
         services.AddSingleton<DrawdownTracker>();
         services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
+        services.AddSingleton(new SizingPolicyOptions());
+        services.AddSingleton(new GovernorOptions());
+        var testGovernor = Substitute.For<ITradingGovernor>();
+        testGovernor.Evaluate(Arg.Any<GovernorContext>())
+            .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
+        services.AddSingleton<ITradingGovernor>(_ => testGovernor);
         services.AddSingleton<RiskManager>();
         services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
         services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
@@ -36,6 +42,7 @@ public sealed class DIValidationTests
         services.AddSingleton<ISizeModifier, AtrRegimeSizeModifier>();
         services.AddSingleton<ISizeModifier, TimeOfDaySizeModifier>();
         services.AddSingleton<ISizeModifier, ConfidenceSizeModifier>();
+        services.AddSingleton<ISizeModifier, GovernorSizeModifier>();
         services.AddSingleton<SizeModifierPipeline>();
 
         // Strategy infrastructure

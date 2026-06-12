@@ -134,6 +134,22 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         return Task.CompletedTask;
     }
 
+    public Task ClosePartialPositionAsync(Guid positionId, decimal lots, CancellationToken ct)
+    {
+        lock (_openPositions)
+        {
+            if (_openPositions.TryGetValue(positionId, out var pos))
+            {
+                var remaining = pos.Lots - lots;
+                if (remaining <= 0)
+                    _openPositions.Remove(positionId);
+                else
+                    pos.Lots = remaining;
+            }
+        }
+        return Task.CompletedTask;
+    }
+
     public void OnTickReceived(Tick tick)
     {
         BrokerTimeUtc = tick.TimestampUtc;

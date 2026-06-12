@@ -1,7 +1,7 @@
 {
   "id": "standard",
   "displayName": "Standard",
-  "riskPerTradePercent": 0.01,
+  "riskPerTradePercent": 0.005,
   "maxDailyDrawdownPercent": 0.04,
   "maxTotalDrawdownPercent": 0.08,
   "maxSlPips": 100.0,

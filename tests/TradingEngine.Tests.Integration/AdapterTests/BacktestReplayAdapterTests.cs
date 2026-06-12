@@ -32,9 +32,15 @@ public sealed class BacktestReplayAdapterTests
                       Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(bars));
 
+        var symbolInfo = new SymbolInfo(Eurusd, SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
+        var symbolRegistry = Substitute.For<ISymbolInfoRegistry>();
+        symbolRegistry.Get(Eurusd).Returns(symbolInfo);
+
         return new BacktestReplayAdapter(
             repo, Eurusd, Timeframe.H1, T0, T0.AddDays(1),
-            10_000m, NullLogger<BacktestReplayAdapter>.Instance);
+            10_000m, symbolRegistry, (_, _) => 1.0m,
+            NullLogger<BacktestReplayAdapter>.Instance);
     }
 
     [Fact(Timeout = 15_000)]

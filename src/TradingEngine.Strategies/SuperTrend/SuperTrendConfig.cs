@@ -11,6 +11,7 @@ public sealed record SuperTrendConfig : IStrategyConfig
     public RegimeFilterOptions RegimeFilter { get; init; } = new() { AllowRanging = false };
     public OrderEntryOptions OrderEntry { get; init; } = new();
     public PositionManagementOptions PositionManagement { get; init; } = new();
+    public ReentryOptions Reentry { get; init; } = new();
     public SuperTrendParameters Parameters { get; init; } = new();
 }
 

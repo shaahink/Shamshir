@@ -7,11 +7,21 @@
   "timeframe": "H1",
   "regimeFilter": { "allowTrending": false, "allowHighVolatility": false },
   "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
+  "positionManagement": {
+    "stopLoss": { "method": "AtrMultiple", "atrMultiple": 1.5 },
+    "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0 }
+  },
   "parameters": {
     "rsiPeriod": 14,
     "divergenceLookback": 10,
     "atrPeriod": 14,
     "slAtrMultiple": 1.5,
     "tpRrMultiple": 2.0
+  }
+  "reentry": {
+    "blockWhileSameDirectionOpen": true,
+    "cooldownBarsAfterSl": 5,
+    "cooldownBarsAfterTp": 2,
+    "cooldownBarsAfterEntry": 3
   }
 }

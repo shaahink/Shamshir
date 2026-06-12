@@ -214,6 +214,11 @@ public class TradingEngineCBot : Robot
                                     var result = ExecuteClosePosition(cmd);
                                     execs.Add(result);
                                 }
+                                else if (cmdType == "close_partial")
+                                {
+                                    var result = ExecuteClosePartialPosition(cmd);
+                                    execs.Add(result);
+                                }
                                 else if (cmdType == "shutdown")
                                 {
                                     Print("CBOT|SHUTDOWN|received via bar_done");
@@ -315,6 +320,34 @@ public class TradingEngineCBot : Robot
         }
         Print($"CBOT|CLOSE_NOT_FOUND|positionId={positionIdStr}");
         return MakeExecResult(Guid.Empty.ToString(), "close", 0, "Rejected", 0, 0, "Position not found: " + positionIdStr);
+    }
+
+    private object ExecuteClosePartialPosition(JsonElement cmd)
+    {
+        var positionIdStr = cmd.GetProperty("positionId").GetString()!;
+        var closeLots = cmd.TryGetProperty("lots", out var lotsEl) ? (decimal)lotsEl.GetDouble() : 0m;
+        if (closeLots <= 0) closeLots = 0.01m;
+
+        foreach (var pos in Positions)
+        {
+            if (_positionMap.TryGetValue(pos.Id, out var orderGuid) && orderGuid.ToString() == positionIdStr)
+            {
+                var clientOrderId = orderGuid;
+                var lotSize = Symbols.GetSymbol(pos.SymbolName)?.LotSize ?? 100000.0;
+                var volumeInUnits = (int)((double)closeLots * lotSize);
+                if (volumeInUnits <= 0) volumeInUnits = 1000;
+
+                var result = ClosePosition(pos, volumeInUnits);
+                Diag($"CLOSE_PARTIAL|{positionIdStr}|lots={closeLots}|units={volumeInUnits}|success={result?.IsSuccessful}");
+                if (result?.IsSuccessful == true) PublishAccount();
+
+                return MakeExecResult(clientOrderId.ToString(), "partial_close", pos.Id,
+                    result?.IsSuccessful == true ? "Filled" : "Rejected",
+                    pos.CurrentPrice > 0 ? pos.CurrentPrice : 0d, (double)closeLots, null);
+            }
+        }
+        Print($"CBOT|CLOSE_PARTIAL_NOT_FOUND|positionId={positionIdStr}");
+        return MakeExecResult(Guid.Empty.ToString(), "partial_close", 0, "Rejected", 0, 0, "Position not found: " + positionIdStr);
     }
 
     private static object MakeExecResult(string clientOrderId, string kind, long positionId,

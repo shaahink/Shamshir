@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\TradingEngine.Domain\TradingEngine.Domain.csproj" />
+  </ItemGroup>
+
 </Project>

@@ -11,6 +11,8 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<BarEvaluationEntity> BarEvaluations => Set<BarEvaluationEntity>();
     public DbSet<BacktestRunEntity> BacktestRuns => Set<BacktestRunEntity>();
     public DbSet<PipelineEventEntity> PipelineEvents => Set<PipelineEventEntity>();
+    public DbSet<ExperimentEntity> Experiments => Set<ExperimentEntity>();
+    public DbSet<ExperimentRunEntity> ExperimentRuns => Set<ExperimentRunEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -34,6 +36,23 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.RunId);
             e.HasIndex(x => new { x.RunId, x.StrategyId, x.BarOpenTimeUtc });
+        });
+
+        modelBuilder.Entity<ExperimentEntity>(e =>
+        {
+            e.ToTable("Experiments");
+            e.HasKey(x => x.Id);
+        });
+
+        modelBuilder.Entity<ExperimentRunEntity>(e =>
+        {
+            e.ToTable("ExperimentRuns");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.ExperimentId);
+            e.HasIndex(x => x.BacktestRunId);
+            e.HasOne(x => x.Experiment)
+                .WithMany(x => x.Runs)
+                .HasForeignKey(x => x.ExperimentId);
         });
     }
 }

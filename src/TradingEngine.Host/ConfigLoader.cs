@@ -11,6 +11,8 @@ public sealed record LoadedConfig(
 {
     public IReadOnlyList<NewsBlockWindow> NewsWindows { get; init; } = [];
     public StrategyRotationOptions? StrategyRotation { get; init; }
+    public GovernorOptions Governor { get; init; } = new();
+    public SizingPolicyOptions SizingPolicy { get; init; } = new();
 }
 
 public sealed record StrategyConfigEntry(
@@ -46,11 +48,15 @@ public sealed class ConfigLoader
 
         var newsWindows = LoadNewsWindows();
         var rotation = LoadOptionalFile<StrategyRotationOptions>("rotation.json");
+        var governor = LoadOptionalFile<GovernorOptions>("governor.json") ?? new GovernorOptions();
+        var sizingPolicy = LoadOptionalFile<SizingPolicyOptions>("sizing-policy.json") ?? new SizingPolicyOptions();
 
         return new LoadedConfig(propFirms, riskProfiles, strategyConfigs)
         {
             NewsWindows = newsWindows,
             StrategyRotation = rotation,
+            Governor = governor,
+            SizingPolicy = sizingPolicy,
         };
     }
 

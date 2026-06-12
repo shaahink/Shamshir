@@ -11,6 +11,7 @@ public sealed record RsiDivergenceConfig : IStrategyConfig
     public RegimeFilterOptions RegimeFilter { get; init; } = new() { AllowTrending = false, AllowHighVolatility = false };
     public OrderEntryOptions OrderEntry { get; init; } = new();
     public PositionManagementOptions PositionManagement { get; init; } = new();
+    public ReentryOptions Reentry { get; init; } = new();
     public RsiDivergenceParameters Parameters { get; init; } = new();
 }
 

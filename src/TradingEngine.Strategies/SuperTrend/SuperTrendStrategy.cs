@@ -64,6 +64,7 @@ public sealed class SuperTrendStrategy : IStrategy
                 return null;
             if (!context.IndicatorValues.TryGetValue($"{prefix}ADX_{p.AdxPeriod}", out var adx))
                 return null;
+            context.IndicatorValues.TryGetValue($"{prefix}ATR_{p.AtrPeriod}", out var atr);
 
             var stDir = (int)stDirRaw;
             if (stDir is not 1 and not -1)
@@ -89,9 +90,10 @@ public sealed class SuperTrendStrategy : IStrategy
 
             TradeDirection direction = stDir == 1 ? TradeDirection.Long : TradeDirection.Short;
             var entryPrice = new Price(context.LatestTick.Mid);
-            var sl = new Price((decimal)stLine);
             var symbolInfo = _symbolRegistry.Get(context.Symbol);
-            var tp = SlTpHelpers.RRMultiple(entryPrice, sl, direction, 2.0, symbolInfo);
+            var resolver = new SlTpResolver();
+            var (sl, tp) = resolver.Resolve(entryPrice, direction, atr, symbolInfo,
+                _config.PositionManagement, new Price((decimal)stLine));
 
             var reason = flippedDir == -1
                 ? $"SuperTrend flipped bullish, direction={stDir}, ST line={stLine:F5}, ADX={adx:F2}"

@@ -7,6 +7,10 @@
   "timeframe": "H1",
   "regimeFilter": { "allowHighVolatility": false },
   "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
+  "positionManagement": {
+    "stopLoss": { "method": "SwingPoint", "atrMultiple": 2.0, "maxPips": 300 },
+    "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.5 }
+  },
   "parameters": {
     "bbPeriod": 20,
     "bbStdDev": 2.0,
@@ -15,5 +19,11 @@
     "cooldownBars": 3,
     "slBandBuffer": 0.5,
     "tpRrMultiple": 2.5
+  }
+  "reentry": {
+    "blockWhileSameDirectionOpen": true,
+    "cooldownBarsAfterSl": 5,
+    "cooldownBarsAfterTp": 2,
+    "cooldownBarsAfterEntry": 3
   }
 }

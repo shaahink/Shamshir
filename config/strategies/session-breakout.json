@@ -27,4 +27,10 @@
     "entryWindowEndUtc": "09:00:00",
     "flattenTimeUtc": "12:00:00"
   }
+  "reentry": {
+    "blockWhileSameDirectionOpen": true,
+    "cooldownBarsAfterSl": 5,
+    "cooldownBarsAfterTp": 2,
+    "cooldownBarsAfterEntry": 3
+  }
 }

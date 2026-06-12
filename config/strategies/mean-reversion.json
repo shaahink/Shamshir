@@ -26,4 +26,10 @@
     "bbStdDev": 2.0,
     "atrPeriod": 14
   }
+  "reentry": {
+    "blockWhileSameDirectionOpen": true,
+    "cooldownBarsAfterSl": 5,
+    "cooldownBarsAfterTp": 2,
+    "cooldownBarsAfterEntry": 3
+  }
 }

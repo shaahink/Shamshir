@@ -8,6 +8,12 @@ public static class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length >= 1 && args[0] == "experiment")
+        {
+            ExperimentCli.Run(args.AsSpan(1));
+            return;
+        }
+
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SERILOG_FILE_PATH")))
             Environment.SetEnvironmentVariable("SERILOG_FILE_PATH", "logs/engine-.log");
 
@@ -110,6 +116,9 @@ public static class Program
 
             builder.Services.AddSingleton<RiskManager>();
             builder.Services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
+            builder.Services.AddSingleton(new SizingPolicyOptions());
+            builder.Services.AddSingleton(new GovernorOptions());
+            builder.Services.AddSingleton<ITradingGovernor, TradingGovernorService>();
             builder.Services.AddSingleton<IRiskProfileResolver>(sp => new RiskProfileResolver(loadedConfig.RiskProfiles));
 
             builder.Services.AddSingleton<IEngineClock, BrokerClock>();
@@ -133,6 +142,7 @@ public static class Program
             builder.Services.AddSingleton<IStrategyBank, StrategyBankService>();
             builder.Services.AddSingleton<OrderDispatcher>();
             builder.Services.AddSingleton<PositionTracker>();
+            builder.Services.AddSingleton<ISignalGate, SignalGateService>();
 
             builder.Services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
             builder.Services.AddSingleton<ISizeModifier, DrawdownSizeModifier>();
@@ -188,6 +198,8 @@ public static class Program
                     DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
                     RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
                     CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
+                    Governor = sp.GetRequiredService<ITradingGovernor>(),
+                    SizingPolicy = sp.GetRequiredService<SizingPolicyOptions>(),
                 },
                 Strategies = new StrategyServices
                 {
@@ -196,6 +208,7 @@ public static class Program
                     RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
                     OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                     PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                    SignalGate = sp.GetRequiredService<ISignalGate>(),
                 },
                 Persistence = new PersistenceServices
                 {

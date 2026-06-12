@@ -10,6 +10,7 @@ using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Risk;
 using TradingEngine.Risk.Compliance;
 using TradingEngine.Risk.Filters;
+using TradingEngine.Risk.Governor;
 using TradingEngine.Risk.Sizing;
 using TradingEngine.Services;
 
@@ -68,6 +69,11 @@ public static class EngineHostFactory
                 var configLoader = new ConfigLoader(options.SolutionRoot);
                 var loadedConfig = configLoader.Load();
                 services.AddSingleton(loadedConfig);
+
+                services.AddSingleton(loadedConfig.SizingPolicy);
+                services.AddSingleton(loadedConfig.Governor);
+                services.AddSingleton<ITradingGovernor, TradingGovernorService>();
+                services.AddSingleton<ISizeModifier, GovernorSizeModifier>();
                 services.AddSingleton<IRiskProfileResolver>(sp =>
                     new RiskProfileResolver(
                         sp.GetRequiredService<LoadedConfig>().RiskProfiles));
@@ -106,6 +112,7 @@ public static class EngineHostFactory
                     sp.GetRequiredService<ILogger<StrategyBankService>>()));
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
+                services.AddSingleton<ISignalGate, SignalGateService>();
 
                 if (options.Progress is not null)
                 {
@@ -146,6 +153,8 @@ public static class EngineHostFactory
                             DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
                             RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
                             CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
+                            Governor = sp.GetRequiredService<ITradingGovernor>(),
+                            SizingPolicy = sp.GetRequiredService<SizingPolicyOptions>(),
                         },
                         Strategies = new StrategyServices
                         {
@@ -154,6 +163,7 @@ public static class EngineHostFactory
                             RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
                             OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                             PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                            SignalGate = sp.GetRequiredService<ISignalGate>(),
                         },
                         Persistence = new PersistenceServices
                         {

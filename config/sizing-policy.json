@@ -1,0 +1,5 @@
+{
+  "flattenAtFraction": 0.9,
+  "budgetUseFraction": 0.25,
+  "maxPortfolioHeatRiskMultiples": 3.0
+}

@@ -15,6 +15,8 @@ public interface IBrokerAdapter
     Task ModifyOrderAsync(Guid orderId, Price newStopLoss, Price? newTakeProfit, CancellationToken ct);
     Task CancelOrderAsync(Guid orderId, CancellationToken ct);
     Task ClosePositionAsync(Guid positionId, CancellationToken ct);
+    Task ClosePartialPositionAsync(Guid positionId, decimal lots, CancellationToken ct)
+        => ClosePositionAsync(positionId, ct); // default: full close
 
     Task<AccountState> GetAccountStateAsync(CancellationToken ct);
     Task ConnectAsync(CancellationToken ct);

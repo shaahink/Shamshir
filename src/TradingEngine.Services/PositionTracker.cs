@@ -51,6 +51,12 @@ public sealed class PositionTracker(
 
         if (!_pendingOrders.TryGetValue(evt.OrderId, out var entry))
         {
+            if (_openPositions.TryGetValue(evt.OrderId, out var openPos)
+                && evt.FilledLots > 0 && evt.FilledLots < openPos.Lots - 0.0001m)
+            {
+                await HandlePartialCloseAsync(evt, fillPrice, openPos, strategies);
+                return;
+            }
             await ClosePositionAsync(evt, fillPrice, strategies);
             return;
         }
@@ -117,6 +123,27 @@ public sealed class PositionTracker(
         }
 
         logger.LogInformation("Closed. Id={Id} Exit={Exit:F5} PnL={PnL:F2} Reason={Reason}", pos.Id, fillPrice, pnl.Amount, exitReason);
+    }
+
+    private async Task HandlePartialCloseAsync(ExecutionEvent evt, decimal fillPrice, Position pos, IEnumerable<IStrategy> strategies)
+    {
+        var closedLots = evt.FilledLots;
+        var remainingLots = pos.Lots - closedLots;
+
+        var symbolInfo = symbolRegistry.Get(pos.Symbol);
+        var pnl = PipCalculator.GrossPnL(pos.Direction, pos.EntryPrice, new Price(fillPrice), closedLots, symbolInfo, crossRateProvider);
+
+        var reducedPosition = pos with { Lots = remainingLots };
+        _openPositions[evt.OrderId] = reducedPosition;
+
+        var (_, riskProfileId) = _pendingRisk.GetValueOrDefault(evt.OrderId, (0m, "standard"));
+        riskManager.RegisterPosition(pos.Id, pos.StrategyId, 0);
+
+        await eventBus.PublishAsync(new PositionPartiallyClosed(
+            pos.Id, closedLots, remainingLots, fillPrice, clock.UtcNow), CancellationToken.None);
+
+        logger.LogInformation("Partially closed. Id={Id} Closed={ClosedLots} Remaining={RemainingLots} PnL={PnL:F2}",
+            pos.Id, closedLots, remainingLots, pnl.Amount);
     }
 
     private static string DetermineExitReason(Position pos, decimal fillPrice)

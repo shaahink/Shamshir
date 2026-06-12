@@ -51,4 +51,5 @@ internal sealed record AlwaysSignalConfig : IStrategyConfig
     public RegimeFilterOptions RegimeFilter => new();
     public OrderEntryOptions OrderEntry => new();
     public PositionManagementOptions PositionManagement => new();
+    public ReentryOptions Reentry => new();
 }

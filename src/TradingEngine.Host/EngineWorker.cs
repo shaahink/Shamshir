@@ -18,6 +18,9 @@ public sealed class EngineWorker : BackgroundService
     private readonly OrderDispatcher _orderDispatcher;
     private readonly PositionTracker _positionTracker;
     private readonly DrawdownTracker _drawdownTracker;
+    private readonly SizingPolicyOptions _sizingPolicy;
+    private readonly ITradingGovernor? _governor;
+    private readonly ISignalGate? _signalGate;
     private readonly IStrategyBank _strategyBank;
     private readonly IRegimeDetector _regimeDetector;
     private readonly EngineMode _engineMode;
@@ -46,6 +49,9 @@ public sealed class EngineWorker : BackgroundService
         _orderDispatcher = deps.Strategies.OrderDispatcher;
         _positionTracker = deps.Strategies.PositionTracker;
         _drawdownTracker = deps.Risk.DrawdownTracker;
+        _sizingPolicy = deps.Risk.SizingPolicy;
+        _governor = deps.Risk.Governor;
+        _signalGate = deps.Strategies.SignalGate;
         _strategyBank = deps.Strategies.StrategyBank;
         _regimeDetector = deps.Strategies.RegimeDetector;
         _runContext = runContext;
@@ -78,6 +84,7 @@ public sealed class EngineWorker : BackgroundService
 
     private int _lastResetIsoWeek = -1;
     private int _lastResetMonth = -1;
+    private int _lastResetDayOfYear = -1;
 
     private readonly Dictionary<(Symbol, Timeframe), MarketRegime> _currentRegimes = new();
 
@@ -169,9 +176,11 @@ public sealed class EngineWorker : BackgroundService
                         await _broker.ClosePositionAsync(pos.Id, ct);
                 }
 
-                var accountUpdate = Interlocked.Exchange(ref _latestAccountUpdate, null);
+                    var accountUpdate = Interlocked.Exchange(ref _latestAccountUpdate, null);
                 if (accountUpdate is not null)
                     HandleAccountUpdate(accountUpdate);
+
+                _governor?.OnBar(tick.TimestampUtc);
 
                 if (_dataFeed is not null && _broker is SimulatedBrokerAdapter sim)
                     sim.OnTickReceived(tick);
@@ -266,6 +275,22 @@ public sealed class EngineWorker : BackgroundService
                             continue;
                         }
 
+                        if (_signalGate is not null)
+                        {
+                            var gateResult = _signalGate.Check(strategy.Id, intent.Symbol.Value, intent.Direction, bar.OpenTimeUtc);
+                            if (!gateResult.Allowed)
+                            {
+                                _logger.LogInformation("SIGNAL_GATED|{Strategy}|{Symbol}|{Reason}", strategy.Id, intent.Symbol.Value, gateResult.Reason);
+                                _ = _eventBus.PublishAsync(new BarEvaluated(
+                                    _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
+                                    strategy.Id, new Dictionary<string, double>(_reusableIndicatorDict),
+                                    false, intent.Direction,
+                                    $"REENTRY:{gateResult.Reason}",
+                                    _clock.UtcNow), CancellationToken.None);
+                                continue;
+                            }
+                        }
+
                         _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|{Dir}|sl={SL:F5}|tp={TP}",
                             strategy.Id, bar.Symbol.Value, intent.Direction,
                             intent.StopLoss.Value, intent.TakeProfit?.Value.ToString("F5") ?? "none");
@@ -295,9 +320,11 @@ public sealed class EngineWorker : BackgroundService
 
                         _progress?.Report(new BacktestProgressEvent(
                             _runContext.RunId, "ORDER",
-                            $"ORDER {strategy.Id} {intent.Direction} lots={orderCtx.Lots:F2} entry≈{bar.Close:F5}",
+                            $"ORDER {strategy.Id} {intent.Direction} lots={orderCtx.Lots:F2} entry?{bar.Close:F5}",
                             _clock.UtcNow));
                     }
+
+                    _journal?.Write("BAR_EVAL", bar.Symbol.Value, bar.OpenTimeUtc);
 
                     await DrainExecutionStreamAsync();
 
@@ -364,6 +391,21 @@ public sealed class EngineWorker : BackgroundService
                         replay.SyncToBar(bar.Close, bar.OpenTimeUtc);
 
                     UpdateCrossRates(bar);
+
+                    if (_broker.AccountStream.TryRead(out var acctUpdate))
+                        HandleAccountUpdate(acctUpdate);
+
+                    _governor?.OnBar(bar.OpenTimeUtc);
+                    _signalGate?.OnBar(bar.OpenTimeUtc);
+
+                    if (_riskManager.ConsumeForceClosePending())
+                    {
+                        _logger.LogCritical("Force-close triggered in backtest loop. Closing {Count} open positions",
+                            _positionTracker.OpenPositions.Count);
+                        foreach (var (_, pos) in _positionTracker.OpenPositions.ToList())
+                            await _broker.ClosePositionAsync(pos.Id, ct);
+                        await DrainExecutionStreamAsync();
+                    }
 
                     Interlocked.Increment(ref _barCount);
                     var byTf = _bars.GetOrAdd(bar.Symbol, _ => new());
@@ -548,13 +590,44 @@ public sealed class EngineWorker : BackgroundService
         _drawdownTracker.InitializeIfNeeded(update.Balance);
         _riskManager.UpdateEquityLevels(update.Equity);
 
+        var ruleSet = _riskManager.ActiveRuleSet;
+        if (ruleSet is not null && !_riskManager.CurrentState.InProtectionMode)
+        {
+            var flattenFraction = (decimal)_sizingPolicy.FlattenAtFraction;
+
+            if (_riskManager.CurrentState.DailyDrawdownUsed >= (decimal)ruleSet.MaxDailyLossPercent * flattenFraction)
+            {
+                _riskManager.EnterProtectionMode(
+                    $"Daily DD at {_riskManager.CurrentState.DailyDrawdownUsed:P1} >= {ruleSet.MaxDailyLossPercent * (double)_sizingPolicy.FlattenAtFraction:P1} hard limit",
+                    ProtectionCause.DailyDrawdown);
+                _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — daily DD");
+            }
+            else if (_riskManager.CurrentState.MaxDrawdownUsed >= (decimal)ruleSet.MaxTotalLossPercent * flattenFraction)
+            {
+                _riskManager.EnterProtectionMode(
+                    $"Max DD at {_riskManager.CurrentState.MaxDrawdownUsed:P1} >= {ruleSet.MaxTotalLossPercent * (double)_sizingPolicy.FlattenAtFraction:P1} hard limit",
+                    ProtectionCause.MaxDrawdown);
+                _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — max DD");
+            }
+        }
+
         var now = _clock.UtcNow;
         var isoWeek = ISOWeek.GetWeekOfYear(now);
         var month = now.Month;
+        var dayOfYear = now.DayOfYear;
+
+        if (dayOfYear != _lastResetDayOfYear)
+        {
+            _lastResetDayOfYear = dayOfYear;
+            _governor?.OnDailyReset();
+            _riskManager.OnDailyReset(update.Equity);
+        }
         if (isoWeek != _lastResetIsoWeek)
         {
             _lastResetIsoWeek = isoWeek;
             _riskManager.OnWeeklyReset(update.Equity);
+            _governor?.OnWeeklyReset();
+            _governor?.OnDailyReset(); // daily reset on new week
             _ = _eventBus.PublishAsync(new WeeklyEquitySnapshotTaken(
                 new EquitySnapshot(update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
                     _drawdownTracker.PeakEquity, _drawdownTracker.DailyStartEquity,

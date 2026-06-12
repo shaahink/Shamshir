@@ -25,9 +25,12 @@ public sealed class DrawdownTestHarness
         _tracker = new DrawdownTracker();
         _tracker.Initialize(initialBalance);
 
+        var gov = Substitute.For<ITradingGovernor>();
+        gov.Evaluate(Arg.Any<GovernorContext>())
+            .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
         _riskManager = new RiskManager(_tracker, registry, (_, _) => 1m,
             new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
-            Substitute.For<ICurrencyExposureTracker>());
+            Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
         _riskManager.SetActiveRuleSet(FtmoRules);
     }
 

@@ -5,6 +5,7 @@ namespace TradingEngine.Strategies.MeanReversion;
 public sealed class MeanReversionStrategy : IStrategy
 {
     private readonly MeanReversionConfig _config;
+    private readonly ISymbolInfoRegistry _symbolRegistry;
     private readonly ILogger<MeanReversionStrategy> _logger;
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
@@ -21,9 +22,10 @@ public sealed class MeanReversionStrategy : IStrategy
         new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
     ];
 
-    public MeanReversionStrategy(MeanReversionConfig config, ILogger<MeanReversionStrategy> logger)
+    public MeanReversionStrategy(MeanReversionConfig config, ISymbolInfoRegistry symbolRegistry, ILogger<MeanReversionStrategy> logger)
     {
         _config = config;
+        _symbolRegistry = symbolRegistry;
         _logger = logger;
     }
 
@@ -63,15 +65,10 @@ public sealed class MeanReversionStrategy : IStrategy
 
             if (dir is null) return null;
 
+            var resolver = new SlTpResolver();
             var entryPrice = new Price(currentPrice);
-            var slOffset = (decimal)(atr * _config.PositionManagement.StopLoss.AtrMultiple);
-            var sl = dir == TradeDirection.Long
-                ? new Price(entryPrice.Value - slOffset)
-                : new Price(entryPrice.Value + slOffset);
-            var tpDist = Math.Abs(entryPrice.Value - sl.Value) * (decimal)_config.PositionManagement.TakeProfit.RrMultiple;
-            var tp = dir == TradeDirection.Long
-                ? new Price(entryPrice.Value + tpDist)
-                : new Price(entryPrice.Value - tpDist);
+            var symbolInfo = _symbolRegistry.Get(context.Symbol);
+            var (sl, tp) = resolver.Resolve(entryPrice, dir.Value, atr, symbolInfo, _config.PositionManagement);
 
             return new TradeIntent(context.Symbol, dir.Value, OrderType.Market, null, sl, tp,
                 Id, _config.RiskProfileId,

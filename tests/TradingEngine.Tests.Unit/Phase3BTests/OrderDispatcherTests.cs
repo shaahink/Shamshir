@@ -7,10 +7,12 @@ public sealed class OrderDispatcherTests
     public async Task DispatchAsync_WithValidIntent_ReturnsOrderContext()
     {
         var rm = Substitute.For<IRiskManager>();
-        rm.Validate(Arg.Any<TradeIntent>(), Arg.Any<EquitySnapshot>(), Arg.Any<RiskProfile>())
+        rm.Validate(Arg.Any<TradeIntent>(), Arg.Any<EquitySnapshot>(), Arg.Any<RiskProfile>(), Arg.Any<decimal>())
             .Returns([]);
         rm.CalculateLotSize(Arg.Any<TradeIntent>(), Arg.Any<EquitySnapshot>(), Arg.Any<RiskProfile>(), Arg.Any<decimal>())
             .Returns(0.1m);
+        rm.ValidateBudgetEntry(Arg.Any<decimal>(), Arg.Any<EquitySnapshot>(), Arg.Any<decimal>())
+            .Returns(true);
 
         var resolver = Substitute.For<IRiskProfileResolver>();
         resolver.Resolve(Arg.Any<string>()).Returns(new RiskProfile("test", "Test", 0.01, 0.05, 0.10, 100, 0.05, 0.5, 0.5, 3, false, "ftmo-standard"));

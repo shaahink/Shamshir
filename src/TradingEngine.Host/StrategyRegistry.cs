@@ -59,7 +59,7 @@ public sealed class StrategyRegistry
                 OrderEntry = entry.OrderEntry ?? new(),
                 PositionManagement = entry.PositionManagement ?? new(),
             };
-            return new EmaAlignmentStrategy(config, sp.GetRequiredService<ILogger<EmaAlignmentStrategy>>());
+            return new EmaAlignmentStrategy(config, sp.GetRequiredService<ISymbolInfoRegistry>(), sp.GetRequiredService<ILogger<EmaAlignmentStrategy>>());
         };
 
         _factories["mean-reversion"] = (entry, sp) =>
@@ -74,7 +74,7 @@ public sealed class StrategyRegistry
                 OrderEntry = entry.OrderEntry ?? new(),
                 PositionManagement = entry.PositionManagement ?? new(),
             };
-            return new MeanReversionStrategy(config, sp.GetRequiredService<ILogger<MeanReversionStrategy>>());
+            return new MeanReversionStrategy(config, sp.GetRequiredService<ISymbolInfoRegistry>(), sp.GetRequiredService<ILogger<MeanReversionStrategy>>());
         };
 
         _factories["session-breakout"] = (entry, sp) =>
@@ -89,7 +89,7 @@ public sealed class StrategyRegistry
                 OrderEntry = entry.OrderEntry ?? new(),
                 PositionManagement = entry.PositionManagement ?? new(),
             };
-            return new SessionBreakoutStrategy(config, sp.GetRequiredService<ILogger<SessionBreakoutStrategy>>());
+            return new SessionBreakoutStrategy(config, sp.GetRequiredService<ISymbolInfoRegistry>(), sp.GetRequiredService<ILogger<SessionBreakoutStrategy>>());
         };
 
         _factories["rsi-divergence"] = (entry, sp) =>

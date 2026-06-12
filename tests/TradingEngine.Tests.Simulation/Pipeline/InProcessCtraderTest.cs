@@ -102,6 +102,12 @@ public sealed class InProcessCtraderTest : IAsyncDisposable
                 services.AddSingleton<DrawdownTracker>();
                 services.AddSingleton<RiskManager>();
                 services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
+                services.AddSingleton(new SizingPolicyOptions());
+                services.AddSingleton(new GovernorOptions());
+                var testGovernor = Substitute.For<ITradingGovernor>();
+                testGovernor.Evaluate(Arg.Any<GovernorContext>())
+                    .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
+                services.AddSingleton<ITradingGovernor>(_ => testGovernor);
 
                 var configLoader = new ConfigLoader(solutionRoot);
                 var loadedConfig = configLoader.Load();
@@ -158,6 +164,8 @@ public sealed class InProcessCtraderTest : IAsyncDisposable
                             DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
                             RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
                             CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
+                            Governor = sp.GetRequiredService<ITradingGovernor>(),
+                            SizingPolicy = new SizingPolicyOptions(),
                         },
                         Strategies = new StrategyServices
                         {
