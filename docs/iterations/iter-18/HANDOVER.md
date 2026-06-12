@@ -1,18 +1,78 @@
 # Iteration 18 — HANDOVER.md
 
-**Branch**: `iter/18-strategy-bank-blazor`
-**Implemented**: 2026-06-11
-**Status**: PR1 + PR2 + PR3 complete; 5 strategy tests passing; Blazor pages functional
+**Branch**: `iter/18-strategy-bank-blazor`  
+**Implemented**: 2026-06-11 → 2026-06-12  
+**Status**: Complete — PR1/PR2/PR3/PR4 delivered  
 
 ---
 
-## Summary: 15 commits, 100+ files
+## Commits: 26 total
 
-| Phase | Status | Tests | Key deliverable |
-|-------|--------|-------|-----------------|
-| A0-A5 + B1-B3 | Done | 111 pass | Risk overhaul, DB migrations |
-| C1-D3 | Done | 111 pass | Strategy bank, 5 new strats, unified position mgmt |
-| E1-E6 | Done | 111 pass | Blazor Server dashboard |
+| Category | Count |
+|----------|-------|
+| Risk foundation (A0-A5) | 4 |
+| DB migrations + data (B1-B3) | 3 |
+| Strategy bank + new strategies (C1-C4) | 4 |
+| Order intelligence + position mgmt (D1-D3) | 2 |
+| Blazor dashboard (E1-E6) | 1 |
+| Wire fixes (strategy bank, news filter, DI) | 3 |
+| Bug fixes (migration, dedup, symbols, cBot) | 5 |
+| Testing + docs | 4 |
+
+## Test Results: 133 passing
+
+| Suite | Count |
+|-------|-------|
+| Unit tests | 116 pass |
+| Integration tests | 17 pass (incl. migration test + DI validation) |
+| Strategy simulation tests | 5 pass |
+
+## Bug Fixes (Session 2)
+
+| Bug | Fix | Commit |
+|-----|-----|--------|
+| PendingModelChangesWarning on startup | `AddEquitySnapshotType` migration | `45dc010` |
+| SizeModifierPipeline DI failure | Removed `SizeModifierOptions` from constructor | `abc9cb9` |
+| Symbol USDJPY not registered | EngineHostFactory loads all symbols from catalog | `445098b` |
+| NetMQ duplicate execs (sent=173 recv=363) | `TryWriteExec` dedup + cBot `_commandCloses` fix | `9edeae7`, `d778a07` |
+| cBot cartesian symbol-timeframe product | Positional pairing: symbols[i]→periods[i] | `8c75634` |
+| Temp DB files not cleaned up | WebSmokeTests, NetMQBridgeTest, ReplayTestHarness dispose | `92775b1` |
+
+## Session 2 Deliverables
+
+- Strategy bank + regime detector wired into engine loop
+- ConfigurableNewsFilter replacing stub
+- `rotation.json` loaded via ConfigLoader
+- Existing strategy configs migrated to unified `positionManagement` blocks
+- 5 Blazor pages wired to real APIs
+- `DIValidationTests`: 13 core services resolved via DI
+- `MigrationTests`: fresh DB migration verified
+- WebSmokeTests temp DB cleanup
+
+## Blazor Pages
+
+| Route | Page | Status |
+|-------|------|--------|
+| `/dashboard` | BacktestDashboard | Functional — symbol/date/amount controls, backtest runner |
+| `/explorer` | TradeExplorer | Functional — run browser via IBacktestQueryService |
+| `/strategies` | StrategyManager | Functional — IStrategyBank.GetSnapshot, enable/disable |
+| `/compare` | BacktestComparison | Functional — compare API + FTMO pass-probability |
+| `/analysis` | SymbolAnalysis | Functional — correlation matrix + regime heatmap |
+
+## Config Files (21 total)
+
+- 9 strategy JSONs (4 existing + 5 new) all with `regimeFilter`/`orderEntry`/`positionManagement`
+- 3 risk profiles (standard/conservative/aggressive) with `maxExposurePerCurrencyPercent` + `sizeModifiers`
+- 2 prop-firm rulesets (ftmo-standard/ftmo-aggressive) with weekly/monthly fields
+- `rotation.json`, `position-management.json`, `news/blocked-windows.json`
+- All existing strategy `Parameters` records: SL/TP/trailing fields removed
+
+## Documentation
+
+- `docs/iterations/iter-18/PLAN.md` — full implementation plan (2100 lines)
+- `docs/iterations/iter-18/HANDOVER.md` — this file
+- `docs/iterations/iter-18/PROTOCOL-DELTA.md` — limit order protocol additions
+- `docs/OPEN-ISSUES.md` — STD-07 (raw SQL) marked fixed
 | F1 | Partial | — | Simulation tests for risk features |
 | F2 | Pending | — | FakeCBot extensions |
 | F3 | Pending | — | Live mode re-verification |
