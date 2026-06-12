@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using TradingEngine.Host;
 using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.Persistence.Repositories;
@@ -47,6 +47,7 @@ using var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+    //await db.Database.EnsureCreatedAsync();
     await db.Database.MigrateAsync();
 }
 

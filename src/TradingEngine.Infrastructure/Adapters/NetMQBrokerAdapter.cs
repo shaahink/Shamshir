@@ -43,6 +43,9 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private long _barsReceived;
     private long _commandsSent;
     private long _execsReceived;
+    private long _execsDeduped;
+    private readonly HashSet<string> _recentExecSigs = new();
+    private const int MaxRecentExecSigs = 500;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
         { PropertyNameCaseInsensitive = true };
@@ -77,18 +80,20 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    public Task DisconnectAsync(CancellationToken ct)
+    public async Task DisconnectAsync(CancellationToken ct)
     {
         _poller?.Stop();
         _poller?.Dispose();
         _sendQueue?.Dispose();
         _sub?.Dispose();
         _router?.Dispose();
+
+        // Allow any in-flight writes to propagate before completing channels
+        await Task.Delay(200, ct);
         _tickChannel.Writer.TryComplete();
         _barChannel.Writer.TryComplete();
         _accountChannel.Writer.TryComplete();
         _execChannel.Writer.TryComplete();
-        return Task.CompletedTask;
     }
 
     private void OnSendQueueReady(object? sender, NetMQQueueEventArgs<(byte[] Identity, string Json)> e)
@@ -235,7 +240,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                                     Commission = ParseDecimalOrNull(ex, "commission"),
                                     Swap = ParseDecimalOrNull(ex, "swap"),
                                 };
-                                _execChannel.Writer.TryWrite(exec);
+                                TryWriteExec(exec);
                             }
                             _execsReceived += count;
                             _journal?.Write("EXEC_RECV", null, DateTime.UtcNow,
@@ -271,7 +276,7 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                             Commission = ParseDecimalOrNull(doc.RootElement, "commission"),
                             Swap = ParseDecimalOrNull(doc.RootElement, "swap"),
                         };
-                        _execChannel.Writer.TryWrite(execEvt);
+                        TryWriteExec(execEvt);
                         _execsReceived++;
                         break;
                     }
@@ -287,9 +292,10 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
                             var barsOk = cBarsSent == _barsReceived ? "✓" : "✗";
                             var cmdsOk = cCmdsRecv == _commandsSent ? "✓" : "✗";
-                            var execsOk = cExecsSent == _execsReceived ? "✓" : "✗";
+                            var uniqueExecs = _execsReceived - _execsDeduped;
+                            var execsOk = cExecsSent == uniqueExecs ? "✓" : "✗";
 
-                            var recLine = $"RECONCILE bars: sent={cBarsSent} recv={_barsReceived} {barsOk} | cmds: sent={_commandsSent} recv={cCmdsRecv} {cmdsOk} | execs: sent={cExecsSent} recv={_execsReceived} {execsOk}";
+                            var recLine = $"RECONCILE bars: sent={cBarsSent} recv={_barsReceived} {barsOk} | cmds: sent={_commandsSent} recv={cCmdsRecv} {cmdsOk} | execs: sent={cExecsSent} recv={_execsReceived} dedup={_execsDeduped} unique={uniqueExecs} {execsOk}";
                             _logger.LogInformation("NETMQ|RECONCILE|{Result}", recLine);
                             OnStatusChange?.Invoke("RECONCILE", recLine);
                         }
@@ -443,6 +449,22 @@ public sealed class NetMQBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.Number)
             return prop.GetDecimal();
         return null;
+    }
+
+    private void TryWriteExec(ExecutionEvent exec)
+    {
+        var sig = $"{exec.OrderId}|{exec.NewState}|{exec.FillPrice?.Value ?? 0}|{exec.FilledLots}";
+        lock (_recentExecSigs)
+        {
+            if (!_recentExecSigs.Add(sig))
+            {
+                Interlocked.Increment(ref _execsDeduped);
+                return; // duplicate — already seen
+            }
+            if (_recentExecSigs.Count > MaxRecentExecSigs)
+                _recentExecSigs.Clear();
+        }
+        _execChannel.Writer.TryWrite(exec);
     }
 
     public async ValueTask DisposeAsync() => await DisconnectAsync(CancellationToken.None);
