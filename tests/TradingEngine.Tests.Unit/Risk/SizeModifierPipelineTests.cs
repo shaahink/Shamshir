@@ -3,10 +3,10 @@ namespace TradingEngine.Tests.Unit.Risk;
 [Trait("Category", "Risk")]
 public sealed class SizeModifierPipelineTests
 {
-    private static SizeModifierPipeline Make(IEnumerable<ISizeModifier> modifiers, SizeModifierOptions? opts = null)
+    private static SizeModifierPipeline Make(IEnumerable<ISizeModifier> modifiers)
     {
         var logger = Substitute.For<ILogger<SizeModifierPipeline>>();
-        return new SizeModifierPipeline(modifiers, opts ?? new SizeModifierOptions(), logger);
+        return new SizeModifierPipeline(modifiers, logger);
     }
 
     private static SizeModifierContext MakeContext(EquitySnapshot? equity = null, RiskProfile? profile = null)
@@ -38,12 +38,15 @@ public sealed class SizeModifierPipelineTests
     [Fact]
     public void Pipeline_Clamps_ToMaxCombinedScale()
     {
-        var ctx = MakeContext();
+        var ctx = MakeContext(profile: new RiskProfile("s", "S", 0.01, 0.04, 0.08, 100, 0.05, 0.5, 0.5, 3, false, "ftmo")
+        {
+            SizeModifiers = new SizeModifierOptions { MaxCombinedScale = 1.5, MinCombinedScale = 0.1 },
+        });
         var m = Substitute.For<ISizeModifier>();
         m.Name.Returns("M");
         m.ComputeScale(Arg.Any<SizeModifierContext>()).Returns(10.0);
 
-        var pipeline = Make([m], new SizeModifierOptions { MaxCombinedScale = 1.5 });
+        var pipeline = Make([m]);
         var result = pipeline.ComputeCombinedScale(ctx);
         result.Should().Be(1.5);
     }
@@ -51,12 +54,15 @@ public sealed class SizeModifierPipelineTests
     [Fact]
     public void Pipeline_Clamps_ToMinCombinedScale()
     {
-        var ctx = MakeContext();
+        var ctx = MakeContext(profile: new RiskProfile("s", "S", 0.01, 0.04, 0.08, 100, 0.05, 0.5, 0.5, 3, false, "ftmo")
+        {
+            SizeModifiers = new SizeModifierOptions { MinCombinedScale = 0.1, MaxCombinedScale = 1.5 },
+        });
         var m = Substitute.For<ISizeModifier>();
         m.Name.Returns("M");
         m.ComputeScale(Arg.Any<SizeModifierContext>()).Returns(0.01);
 
-        var pipeline = Make([m], new SizeModifierOptions { MinCombinedScale = 0.1 });
+        var pipeline = Make([m]);
         var result = pipeline.ComputeCombinedScale(ctx);
         result.Should().Be(0.1);
     }

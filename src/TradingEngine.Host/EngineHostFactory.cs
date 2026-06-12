@@ -98,7 +98,10 @@ public static class EngineHostFactory
                 services.AddSingleton<BarEvaluationHandler>();
                 services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
                 services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
-                services.AddSingleton<IStrategyBank, StrategyBankService>();
+                services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
+                    sp.GetRequiredService<StrategyRegistry>(),
+                    sp.GetRequiredService<LoadedConfig>().StrategyRotation,
+                    sp.GetRequiredService<ILogger<StrategyBankService>>()));
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
 
