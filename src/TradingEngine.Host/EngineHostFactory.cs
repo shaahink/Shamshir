@@ -55,7 +55,8 @@ public static class EngineHostFactory
                 services.AddSingleton(crossRateStore);
                 services.AddSingleton<Func<string, string, decimal>>(_ => crossRateStore.Convert);
 
-                services.AddSingleton<INewsFilter>(_ => new NewsFilter());
+                services.AddSingleton<INewsFilter>(sp => new ConfigurableNewsFilter(
+                    sp.GetRequiredService<LoadedConfig>().NewsWindows));
                 services.AddSingleton<SessionFilter>();
                 services.AddSingleton<DrawdownTracker>();
                 services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
@@ -144,6 +145,8 @@ public static class EngineHostFactory
                         Strategies = new StrategyServices
                         {
                             Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
+                            StrategyBank = sp.GetRequiredService<IStrategyBank>(),
+                            RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
                             OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                             PositionTracker = sp.GetRequiredService<PositionTracker>(),
                         },

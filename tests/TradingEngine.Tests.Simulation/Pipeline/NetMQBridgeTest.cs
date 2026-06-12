@@ -105,5 +105,7 @@ public sealed class NetMQBridgeTest
             "engine should log BAR_EVAL after receiving bar");
         lines.Should().Contain(l => l.Contains("TICK|EURUSD"),
             "engine should log TICK after receiving tick");
+
+        try { Directory.Delete(workDir, true); } catch { }
     }
 }

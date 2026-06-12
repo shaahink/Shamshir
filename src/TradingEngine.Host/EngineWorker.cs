@@ -18,6 +18,8 @@ public sealed class EngineWorker : BackgroundService
     private readonly OrderDispatcher _orderDispatcher;
     private readonly PositionTracker _positionTracker;
     private readonly DrawdownTracker _drawdownTracker;
+    private readonly IStrategyBank _strategyBank;
+    private readonly IRegimeDetector _regimeDetector;
     private readonly EngineMode _engineMode;
     private readonly EngineRunContext _runContext;
     private readonly CrossRateStore _crossRateStore;
@@ -44,6 +46,8 @@ public sealed class EngineWorker : BackgroundService
         _orderDispatcher = deps.Strategies.OrderDispatcher;
         _positionTracker = deps.Strategies.PositionTracker;
         _drawdownTracker = deps.Risk.DrawdownTracker;
+        _strategyBank = deps.Strategies.StrategyBank;
+        _regimeDetector = deps.Strategies.RegimeDetector;
         _runContext = runContext;
         _crossRateStore = deps.Market.CrossRateStore;
         _engineMode = deps.Market.EngineMode;
@@ -74,6 +78,8 @@ public sealed class EngineWorker : BackgroundService
 
     private int _lastResetIsoWeek = -1;
     private int _lastResetMonth = -1;
+
+    private readonly Dictionary<(Symbol, Timeframe), MarketRegime> _currentRegimes = new();
 
     private void ResetState()
     {
@@ -222,7 +228,13 @@ public sealed class EngineWorker : BackgroundService
 
                     BuildIndicatorSnapshot(bar.Symbol);
 
-                    foreach (var strategy in _strategies)
+                    var regime = _regimeDetector.Detect(bar.Symbol,
+                        barSnapshot[bar.Timeframe],
+                        _reusableIndicatorDict);
+                    _currentRegimes[(bar.Symbol, bar.Timeframe)] = regime;
+                    var activeStrategies = _strategyBank.GetActive(bar.Symbol, bar.Timeframe, regime);
+
+                    foreach (var strategy in activeStrategies)
                     {
                         var totalBars = barSnapshot.Values.Sum(b => b.Count);
                         if (totalBars < strategy.RequiredBarCount)
@@ -382,7 +394,13 @@ public sealed class EngineWorker : BackgroundService
 
                     BuildIndicatorSnapshot(bar.Symbol);
 
-                    foreach (var strategy in _strategies)
+                    var btRegime = _regimeDetector.Detect(bar.Symbol,
+                        barSnapshot[bar.Timeframe],
+                        _reusableIndicatorDict);
+                    _currentRegimes[(bar.Symbol, bar.Timeframe)] = btRegime;
+                    var btActiveStrategies = _strategyBank.GetActive(bar.Symbol, bar.Timeframe, btRegime);
+
+                    foreach (var strategy in btActiveStrategies)
                     {
                         var totalBars = barSnapshot.Values.Sum(b => b.Count);
                         if (totalBars < strategy.RequiredBarCount)

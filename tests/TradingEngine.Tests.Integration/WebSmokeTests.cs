@@ -5,21 +5,31 @@ using Microsoft.AspNetCore.Mvc.Testing;
 namespace TradingEngine.Tests.Integration;
 
 [Trait("Category", "Infrastructure")]
-public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
     private readonly HttpClient _client;
+    private readonly string _tempDir;
 
     public WebSmokeTests(WebApplicationFactory<Program> factory)
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), $"shamshir-web-{Guid.NewGuid():N}");
-        var tempDb = Path.Combine(tempDir, "trading.db");
-        Directory.CreateDirectory(tempDir);
+        _tempDir = Path.Combine(Path.GetTempPath(), $"shamshir-web-{Guid.NewGuid():N}");
+        var tempDb = Path.Combine(_tempDir, "trading.db");
+        Directory.CreateDirectory(_tempDir);
 
         _client = factory.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Persistence:DbPath", tempDb);
             builder.UseSetting("CTrader:StartEngineSubprocess", "false");
         }).CreateClient();
+    }
+
+    public void Dispose()
+    {
+        _client.Dispose();
+        if (Directory.Exists(_tempDir))
+        {
+            try { Directory.Delete(_tempDir, true); } catch { }
+        }
     }
 
     [Fact]

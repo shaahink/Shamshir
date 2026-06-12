@@ -7,7 +7,11 @@ namespace TradingEngine.Host;
 public sealed record LoadedConfig(
     IReadOnlyList<PropFirmRuleSet> PropFirms,
     IReadOnlyList<RiskProfile> RiskProfiles,
-    IReadOnlyList<StrategyConfigEntry> StrategyConfigs);
+    IReadOnlyList<StrategyConfigEntry> StrategyConfigs)
+{
+    public IReadOnlyList<NewsBlockWindow> NewsWindows { get; init; } = [];
+    public StrategyRotationOptions? StrategyRotation { get; init; }
+}
 
 public sealed record StrategyConfigEntry(
     string Id,
@@ -35,7 +39,14 @@ public sealed class ConfigLoader
 
         ValidateCrossReferences(riskProfiles, strategyConfigs, propFirms);
 
-        return new LoadedConfig(propFirms, riskProfiles, strategyConfigs);
+        var newsWindows = LoadNewsWindows();
+        var rotation = LoadOptionalFile<StrategyRotationOptions>("rotation.json");
+
+        return new LoadedConfig(propFirms, riskProfiles, strategyConfigs)
+        {
+            NewsWindows = newsWindows,
+            StrategyRotation = rotation,
+        };
     }
 
     private List<T> LoadDirectory<T>(string subDir)
@@ -123,4 +134,35 @@ public sealed class ConfigLoader
             }
         }
     }
+
+    private IReadOnlyList<NewsBlockWindow> LoadNewsWindows()
+    {
+        var path = Path.Combine(_basePath, "config", "news", "blocked-windows.json");
+        if (!File.Exists(path)) return [];
+
+        var json = File.ReadAllText(path);
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter() },
+        };
+        var wrapper = JsonSerializer.Deserialize<NewsWindowsWrapper>(json, options);
+        return wrapper?.Windows ?? [];
+    }
+
+    private T? LoadOptionalFile<T>(string fileName) where T : class
+    {
+        var path = Path.Combine(_basePath, "config", fileName);
+        if (!File.Exists(path)) return null;
+
+        var json = File.ReadAllText(path);
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter() },
+        };
+        return JsonSerializer.Deserialize<T>(json, options);
+    }
+
+    private sealed record NewsWindowsWrapper(IReadOnlyList<NewsBlockWindow> Windows);
 }

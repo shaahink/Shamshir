@@ -96,7 +96,8 @@ public static class Program
                 return reg;
             });
 
-            builder.Services.AddSingleton<INewsFilter>(_ => new NewsFilter());
+            builder.Services.AddSingleton<INewsFilter>(sp => new ConfigurableNewsFilter(
+                loadedConfig.NewsWindows));
             builder.Services.AddSingleton<SessionFilter>();
             builder.Services.AddSingleton<Func<string, string, decimal>>(_ => (from, to) =>
             {
@@ -128,6 +129,8 @@ public static class Program
             builder.Services.AddSingleton<TradePersistenceHandler>();
             builder.Services.AddSingleton<BarEvaluationHandler>();
             builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
+            builder.Services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
+            builder.Services.AddSingleton<IStrategyBank, StrategyBankService>();
             builder.Services.AddSingleton<OrderDispatcher>();
             builder.Services.AddSingleton<PositionTracker>();
 
@@ -189,6 +192,8 @@ public static class Program
                 Strategies = new StrategyServices
                 {
                     Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
+                    StrategyBank = sp.GetRequiredService<IStrategyBank>(),
+                    RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
                     OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                     PositionTracker = sp.GetRequiredService<PositionTracker>(),
                 },

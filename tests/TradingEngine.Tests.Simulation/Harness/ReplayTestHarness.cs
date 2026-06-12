@@ -96,6 +96,11 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                 services.AddSingleton<EquityPersistenceHandler>();
 
                 services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
+                services.AddSingleton<IRegimeDetector>(_ => Substitute.For<IRegimeDetector>());
+                services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
+                    new StrategyRegistry(),
+                    null,
+                    sp.GetRequiredService<ILogger<StrategyBankService>>()));
 
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
@@ -126,6 +131,8 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                     Strategies = new StrategyServices
                     {
                         Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
+                        StrategyBank = sp.GetRequiredService<IStrategyBank>(),
+                        RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
                         OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                         PositionTracker = sp.GetRequiredService<PositionTracker>(),
                     },

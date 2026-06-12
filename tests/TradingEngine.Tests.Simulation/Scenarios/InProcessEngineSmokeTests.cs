@@ -117,6 +117,8 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                         Strategies = new StrategyServices
                         {
                             Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
+                            StrategyBank = Substitute.For<IStrategyBank>(),
+                            RegimeDetector = Substitute.For<IRegimeDetector>(),
                             OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                             PositionTracker = sp.GetRequiredService<PositionTracker>(),
                         },

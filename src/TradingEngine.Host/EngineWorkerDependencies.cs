@@ -30,6 +30,8 @@ public sealed record RiskServices
 public sealed record StrategyServices
 {
     public required IEnumerable<IStrategy> Strategies { get; init; }
+    public required IStrategyBank StrategyBank { get; init; }
+    public required IRegimeDetector RegimeDetector { get; init; }
     public required OrderDispatcher OrderDispatcher { get; init; }
     public required PositionTracker PositionTracker { get; init; }
 }
