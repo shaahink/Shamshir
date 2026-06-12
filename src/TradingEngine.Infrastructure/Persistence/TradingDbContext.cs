@@ -13,6 +13,8 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<PipelineEventEntity> PipelineEvents => Set<PipelineEventEntity>();
     public DbSet<ExperimentEntity> Experiments => Set<ExperimentEntity>();
     public DbSet<ExperimentRunEntity> ExperimentRuns => Set<ExperimentRunEntity>();
+    public DbSet<DailyProtectionLedgerEntity> DailyProtectionLedgers => Set<DailyProtectionLedgerEntity>();
+    public DbSet<ProtectionLedgerEntryEntity> ProtectionLedgerEntries => Set<ProtectionLedgerEntryEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +55,25 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.HasOne(x => x.Experiment)
                 .WithMany(x => x.Runs)
                 .HasForeignKey(x => x.ExperimentId);
+        });
+
+        modelBuilder.Entity<DailyProtectionLedgerEntity>(e =>
+        {
+            e.ToTable("DailyProtectionLedgers");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.RunId);
+            e.HasIndex(x => x.Date);
+        });
+
+        modelBuilder.Entity<ProtectionLedgerEntryEntity>(e =>
+        {
+            e.ToTable("ProtectionLedgerEntries");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.LedgerId);
+            e.HasIndex(x => x.AtUtc);
+            e.HasOne(x => x.Ledger)
+                .WithMany(x => x.Entries)
+                .HasForeignKey(x => x.LedgerId);
         });
     }
 }

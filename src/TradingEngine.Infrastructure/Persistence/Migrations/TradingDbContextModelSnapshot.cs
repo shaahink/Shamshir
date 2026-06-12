@@ -592,6 +592,106 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("Runs");
                 });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.DailyProtectionLedgerEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("BreachOccurred")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("EndEquity")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FinalGovernorState")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("MaxDailyDdUsedFraction")
+                        .HasColumnType("REAL");
+
+                    b.Property<decimal>("MinEquity")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RunId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SignalsBlocked")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("StartEquity")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TradesClosed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TradesOpened")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date");
+
+                    b.HasIndex("RunId");
+
+                    b.ToTable("DailyProtectionLedgers", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ProtectionLedgerEntryEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("DailyDdUsedFraction")
+                        .HasColumnType("REAL");
+
+                    b.Property<decimal>("EquityAtTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("LedgerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AtUtc");
+
+                    b.HasIndex("LedgerId");
+
+                    b.ToTable("ProtectionLedgerEntries", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ProtectionLedgerEntryEntity", b =>
+                {
+                    b.HasOne("TradingEngine.Infrastructure.Persistence.Entities.DailyProtectionLedgerEntity", "Ledger")
+                        .WithMany("Entries")
+                        .HasForeignKey("LedgerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Ledger");
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.DailyProtectionLedgerEntity", b =>
+                {
+                    b.Navigation("Entries");
+                });
 #pragma warning restore 612, 618
         }
     }

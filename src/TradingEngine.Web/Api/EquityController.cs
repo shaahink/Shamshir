@@ -4,9 +4,17 @@ namespace TradingEngine.Web.Api;
 [Route("api/equity")]
 public sealed class EquityController : ControllerBase
 {
-    [HttpGet]
-    public IActionResult GetEquity([FromQuery] DateTime? from, [FromQuery] DateTime? to)
+    private readonly IBacktestQueryService _query;
+
+    public EquityController(IBacktestQueryService query)
     {
-        return Ok(Array.Empty<object>());
+        _query = query;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetEquity([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
+    {
+        var points = await _query.GetEquityAsync(from, to, ct);
+        return Ok(points.Select(p => new { p.TimestampUtc, p.Equity, p.Balance }));
     }
 }

@@ -4,9 +4,20 @@ namespace TradingEngine.Web.Api;
 [Route("api/events")]
 public sealed class EventsController : ControllerBase
 {
-    [HttpGet]
-    public IActionResult GetEvents([FromQuery] int tail = 100)
+    private readonly IPipelineEventRepository _repo;
+
+    public EventsController(IPipelineEventRepository repo)
     {
-        return Ok(Array.Empty<object>());
+        _repo = repo;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetEvents([FromQuery] string? runId, [FromQuery] int tail = 100, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(runId))
+            return Ok(Array.Empty<object>());
+
+        var events = await _repo.GetByRunIdAsync(runId, ct);
+        return Ok(events.TakeLast(tail));
     }
 }

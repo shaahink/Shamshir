@@ -51,8 +51,12 @@ builder.Services.AddSingleton<ISymbolInfoRegistry>(_ =>
 builder.Services.AddSingleton<StrategyRegistry>();
 builder.Services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
     sp.GetRequiredService<StrategyRegistry>(),
-    null, // rotation disabled by default
+    null,
     sp.GetRequiredService<ILogger<StrategyBankService>>()));
+builder.Services.AddSingleton<ITradingGovernor, TradingGovernorService>();
+builder.Services.AddSingleton(new GovernorOptions());
+builder.Services.AddSingleton<DrawdownTracker>();
+builder.Services.AddSingleton<ProtectionLedgerWriter>();
 
 using var app = builder.Build();
 

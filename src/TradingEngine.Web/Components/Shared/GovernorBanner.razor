@@ -1,0 +1,21 @@
+<div class="card @BannerClass">
+    <div class="card-body py-2">
+        <strong>Governor</strong>: @State
+        @if (!string.IsNullOrEmpty(Reason)) { <br/><small class="text-muted">@Reason</small> }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string State { get; set; } = "Normal";
+    [Parameter] public string Reason { get; set; } = "";
+
+    private string BannerClass => State switch
+    {
+        "HardStop" => "text-bg-danger",
+        "SoftStop" => "text-bg-warning",
+        "ProfitLocked" => "text-bg-info",
+        "CoolingOff" => "text-bg-secondary",
+        "Reduced" => "text-bg-warning",
+        _ => "text-bg-success"
+    };
+}
