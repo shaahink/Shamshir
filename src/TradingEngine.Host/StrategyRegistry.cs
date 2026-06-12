@@ -37,6 +37,9 @@ public sealed class StrategyRegistry
                 Symbols = entry.Symbols.ToList(),
                 RiskProfileId = entry.RiskProfileId,
                 Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                RegimeFilter = entry.RegimeFilter ?? new(),
+                OrderEntry = entry.OrderEntry ?? new(),
+                PositionManagement = entry.PositionManagement ?? new(),
                 Parameters = DeserializeParams<TrendBreakoutParameters>(entry.Parameters),
             };
             var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
@@ -47,39 +50,45 @@ public sealed class StrategyRegistry
         _factories["ema-alignment"] = (entry, sp) =>
         {
             var config = new EmaAlignmentConfig(
-                entry.Id,
-                entry.DisplayName,
-                entry.Enabled,
-                entry.Symbols.ToList(),
-                entry.RiskProfileId,
+                entry.Id, entry.DisplayName, entry.Enabled,
+                entry.Symbols.ToList(), entry.RiskProfileId,
                 DeserializeParams<EmaAlignmentParameters>(entry.Parameters),
-                Enum.Parse<Timeframe>(entry.Timeframe, true));
+                Enum.Parse<Timeframe>(entry.Timeframe, true))
+            {
+                RegimeFilter = entry.RegimeFilter ?? new(),
+                OrderEntry = entry.OrderEntry ?? new(),
+                PositionManagement = entry.PositionManagement ?? new(),
+            };
             return new EmaAlignmentStrategy(config, sp.GetRequiredService<ILogger<EmaAlignmentStrategy>>());
         };
 
         _factories["mean-reversion"] = (entry, sp) =>
         {
             var config = new MeanReversionConfig(
-                entry.Id,
-                entry.DisplayName,
-                entry.Enabled,
-                entry.Symbols.ToList(),
-                entry.RiskProfileId,
+                entry.Id, entry.DisplayName, entry.Enabled,
+                entry.Symbols.ToList(), entry.RiskProfileId,
                 DeserializeParams<MeanReversionParameters>(entry.Parameters),
-                Enum.Parse<Timeframe>(entry.Timeframe, true));
+                Enum.Parse<Timeframe>(entry.Timeframe, true))
+            {
+                RegimeFilter = entry.RegimeFilter ?? new(),
+                OrderEntry = entry.OrderEntry ?? new(),
+                PositionManagement = entry.PositionManagement ?? new(),
+            };
             return new MeanReversionStrategy(config, sp.GetRequiredService<ILogger<MeanReversionStrategy>>());
         };
 
         _factories["session-breakout"] = (entry, sp) =>
         {
             var config = new SessionBreakoutConfig(
-                entry.Id,
-                entry.DisplayName,
-                entry.Enabled,
-                entry.Symbols.ToList(),
-                entry.RiskProfileId,
+                entry.Id, entry.DisplayName, entry.Enabled,
+                entry.Symbols.ToList(), entry.RiskProfileId,
                 DeserializeParams<SessionBreakoutParameters>(entry.Parameters),
-                Enum.Parse<Timeframe>(entry.Timeframe, true));
+                Enum.Parse<Timeframe>(entry.Timeframe, true))
+            {
+                RegimeFilter = entry.RegimeFilter ?? new(),
+                OrderEntry = entry.OrderEntry ?? new(),
+                PositionManagement = entry.PositionManagement ?? new(),
+            };
             return new SessionBreakoutStrategy(config, sp.GetRequiredService<ILogger<SessionBreakoutStrategy>>());
         };
 
@@ -87,12 +96,12 @@ public sealed class StrategyRegistry
         {
             var config = new RsiDivergenceConfig
             {
-                Id = entry.Id,
-                DisplayName = entry.DisplayName,
-                Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(),
-                RiskProfileId = entry.RiskProfileId,
+                Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(), RiskProfileId = entry.RiskProfileId,
                 Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                RegimeFilter = entry.RegimeFilter ?? new(),
+                OrderEntry = entry.OrderEntry ?? new(),
+                PositionManagement = entry.PositionManagement ?? new(),
                 Parameters = DeserializeParams<RsiDivergenceParameters>(entry.Parameters),
             };
             var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
@@ -104,12 +113,12 @@ public sealed class StrategyRegistry
         {
             var config = new BollingerSqueezeConfig
             {
-                Id = entry.Id,
-                DisplayName = entry.DisplayName,
-                Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(),
-                RiskProfileId = entry.RiskProfileId,
+                Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(), RiskProfileId = entry.RiskProfileId,
                 Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                RegimeFilter = entry.RegimeFilter ?? new(),
+                OrderEntry = entry.OrderEntry ?? new(),
+                PositionManagement = entry.PositionManagement ?? new(),
                 Parameters = DeserializeParams<BollingerSqueezeParameters>(entry.Parameters),
             };
             var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
@@ -121,12 +130,12 @@ public sealed class StrategyRegistry
         {
             var config = new MacdMomentumConfig
             {
-                Id = entry.Id,
-                DisplayName = entry.DisplayName,
-                Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(),
-                RiskProfileId = entry.RiskProfileId,
+                Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(), RiskProfileId = entry.RiskProfileId,
                 Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                RegimeFilter = entry.RegimeFilter ?? new(),
+                OrderEntry = entry.OrderEntry ?? new(),
+                PositionManagement = entry.PositionManagement ?? new(),
                 Parameters = DeserializeParams<MacdMomentumParameters>(entry.Parameters),
             };
             var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
@@ -138,12 +147,12 @@ public sealed class StrategyRegistry
         {
             var config = new MtfTrendConfig
             {
-                Id = entry.Id,
-                DisplayName = entry.DisplayName,
-                Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(),
-                RiskProfileId = entry.RiskProfileId,
+                Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(), RiskProfileId = entry.RiskProfileId,
                 Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                RegimeFilter = entry.RegimeFilter ?? new(),
+                OrderEntry = entry.OrderEntry ?? new(),
+                PositionManagement = entry.PositionManagement ?? new(),
                 Parameters = DeserializeParams<MtfTrendParameters>(entry.Parameters),
             };
             var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
@@ -155,12 +164,12 @@ public sealed class StrategyRegistry
         {
             var config = new SuperTrendConfig
             {
-                Id = entry.Id,
-                DisplayName = entry.DisplayName,
-                Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(),
-                RiskProfileId = entry.RiskProfileId,
+                Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+                Symbols = entry.Symbols.ToList(), RiskProfileId = entry.RiskProfileId,
                 Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
+                RegimeFilter = entry.RegimeFilter ?? new(),
+                OrderEntry = entry.OrderEntry ?? new(),
+                PositionManagement = entry.PositionManagement ?? new(),
                 Parameters = DeserializeParams<SuperTrendParameters>(entry.Parameters),
             };
             var registry = sp.GetRequiredService<ISymbolInfoRegistry>();

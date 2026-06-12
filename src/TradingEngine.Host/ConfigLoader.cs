@@ -20,7 +20,12 @@ public sealed record StrategyConfigEntry(
     IReadOnlyList<string> Symbols,
     string RiskProfileId,
     JsonElement Parameters,
-    string Timeframe = "H1");
+    string Timeframe = "H1")
+{
+    public RegimeFilterOptions? RegimeFilter { get; init; }
+    public OrderEntryOptions? OrderEntry { get; init; }
+    public PositionManagementOptions? PositionManagement { get; init; }
+}
 
 public sealed class ConfigLoader
 {
@@ -101,7 +106,12 @@ public sealed class ConfigLoader
                 root.GetProperty("symbols").EnumerateArray().Select(s => s.GetString()!).ToList(),
                 root.GetProperty("riskProfileId").GetString()!,
                 parameters,
-                timeframe));
+                timeframe)
+            {
+                RegimeFilter = ParseOptional<RegimeFilterOptions>(root, "regimeFilter"),
+                OrderEntry = ParseOptional<OrderEntryOptions>(root, "orderEntry"),
+                PositionManagement = ParseOptional<PositionManagementOptions>(root, "positionManagement"),
+            });
         }
         return results;
     }
@@ -165,4 +175,15 @@ public sealed class ConfigLoader
     }
 
     private sealed record NewsWindowsWrapper(IReadOnlyList<NewsBlockWindow> Windows);
+
+    private static T? ParseOptional<T>(JsonElement root, string propertyName) where T : class
+    {
+        if (!root.TryGetProperty(propertyName, out var elem)) return null;
+        var opts = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter() },
+        };
+        return JsonSerializer.Deserialize<T>(elem.GetRawText(), opts);
+    }
 }
