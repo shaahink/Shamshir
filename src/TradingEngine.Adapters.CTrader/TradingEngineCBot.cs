@@ -69,20 +69,24 @@ public class TradingEngineCBot : Robot
         var symbols = SymbolString.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         var periods = Periods.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         var subs = new List<(string sym, string tf)>();
-        foreach (var sym in symbols)
-            foreach (var period in periods)
-            {
-                var tf = ParseTimeFrame(period);
-                var bars = MarketData.GetBars(tf, sym);
-                _subscriptions.Add(bars);
-                subs.Add((sym, period));
-            }
+        for (int i = 0; i < symbols.Length; i++)
+        {
+            var sym = symbols[i];
+            var period = i < periods.Length ? periods[i] : periods[^1];
+            var tf = ParseTimeFrame(period);
+            var bars = MarketData.GetBars(tf, sym);
+            _subscriptions.Add(bars);
+            subs.Add((sym, period));
+        }
+
+        Print($"CBOT|SUBS|{string.Join(", ", subs.Select(s => $"{s.sym}:{s.tf}"))}");
 
         var helloMsg = Serialize("hello", new
         {
             v = 1,
             symbols = symbols,
             periods = periods,
+            subs = subs.Select(s => new { s.sym, tf = s.tf }).ToArray(),
             barsLoaded = _subscriptions.Sum(s => s.Count)
         });
         _dealer.SendFrame(helloMsg);
