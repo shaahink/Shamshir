@@ -32,9 +32,11 @@ public static class EngineHostFactory
     public static IHost Create(EngineHostOptions options)
     {
         var catalog = new SymbolCatalog(options.SolutionRoot);
-        var symbols = options.SymbolNames.Count > 0
-            ? catalog.ResolveAll(options.SymbolNames)
-            : catalog.GetAll();
+        // Always load all symbols from config so strategies can resolve their configured
+        // symbols regardless of which ones are selected for the backtest run.
+        // SymbolNames controls which symbols get bars fed through the broker adapter.
+        var symbols = catalog.GetAll();
+        Console.WriteLine($"[EngineHostFactory] Loaded {symbols.Count} symbols from catalog (selected: {(options.SymbolNames.Count > 0 ? string.Join(",", options.SymbolNames) : "all")})");
 
         return Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder()
             .ConfigureLogging(l => l
