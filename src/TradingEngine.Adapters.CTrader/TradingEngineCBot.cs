@@ -40,6 +40,7 @@ public class TradingEngineCBot : Robot
     private readonly HashSet<(string symbol, string tf, DateTime openTime)> _publishedBars = new();
     private readonly List<Bars> _subscriptions = new();
     private readonly Dictionary<long, Guid> _positionMap = new();
+    private readonly HashSet<long> _commandCloses = new();
     private volatile bool _connected;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -304,6 +305,7 @@ public class TradingEngineCBot : Robot
             {
                 var clientOrderId = orderGuid;
                 var result = ClosePosition(pos);
+                _commandCloses.Add(pos.Id);
                 Diag($"CLOSE_POS|{positionIdStr}|success={result?.IsSuccessful}");
                 if (result?.IsSuccessful == true) PublishAccount();
                 return MakeExecResult(clientOrderId.ToString(), "close", pos.Id,
@@ -369,6 +371,14 @@ public class TradingEngineCBot : Robot
             var sym = Symbols.GetSymbol(pos.SymbolName);
             var lots = sym is not null ? pos.VolumeInUnits / sym.LotSize : pos.VolumeInUnits / 100_000.0;
             var closePrice = pos.CurrentPrice > 0 ? pos.CurrentPrice : pos.EntryPrice;
+
+            if (_commandCloses.Remove(pos.Id))
+            {
+                // Command-initiated close: exec already reported via bar_result.execs[]
+                _positionMap.Remove(pos.Id);
+                PublishAccount();
+                return;
+            }
 
             var execJson = Serialize("exec", new
             {
