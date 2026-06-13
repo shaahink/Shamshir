@@ -113,10 +113,7 @@ public sealed class RiskManager(
         }
         else
         {
-            var entryPrice = intent.LimitPrice ?? new Price(currentMid);
-            var slPips = PipCalculator.Distance(entryPrice, intent.StopLoss, symbolInfo);
-            var pipValue = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, getCrossRate);
-            var newPositionRisk = (decimal)slPips.Value * pipValue * (decimal)symbolInfo.MaxLots;
+            var newPositionRisk = equity.Equity * (decimal)profile.RiskPerTradePercent;
 
             if ((totalOpenRisk + newPositionRisk) / equity.Equity > (decimal)profile.MaxExposurePercent)
                 violations.Add(new("MAX_EXPOSURE", "Max total exposure exceeded"));

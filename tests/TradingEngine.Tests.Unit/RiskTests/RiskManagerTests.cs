@@ -169,6 +169,22 @@ public sealed class RiskManagerTests
     }
 
     [Fact]
+    public void Validate_TypicalMarketOrder_DoesNotTriggerMaxExposure()
+    {
+        // EURUSD market order, 20-pip SL, $100k equity, standard profile (maxExposurePercent 0.05),
+        // no open positions. Must NOT contain a MAX_EXPOSURE violation.
+        var intent20PipSl = new TradeIntent(
+            Symbol.Parse("EURUSD"), TradeDirection.Long, OrderType.Market, null,
+            new Price(1.0980m), null, "strat-1", "standard", "Test signal", DateTime.UtcNow);
+
+        var rm = MakeRm();
+        var snap = Snapshot(100_000);
+        var v = rm.Validate(intent20PipSl, snap, Profile, 1.1000m);
+
+        v.Should().NotContain(x => x.Code == "MAX_EXPOSURE");
+    }
+
+    [Fact]
     public void Circuit_WinFromNearLimit_AllowsContinuedTrading()
     {
         var tracker = new DrawdownTracker();
