@@ -40,6 +40,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public ConcurrentQueue<string> LogLines { get; init; } = new();
         public CancellationTokenSource? CancellationSource { get; set; }
         public Task? RunTask { get; set; }
+        public IHost? EngineHost { get; set; }
+        public int BarCount { get; set; }
+        public string SimTime { get; set; } = "";
         public IReadOnlyList<string> GetLogs() => LogLines.ToArray();
     }
 
@@ -250,9 +253,19 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var solutionRoot = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
 
+        var state = _runs[runId];
         var progressCallback = new Progress<BacktestProgressEvent>(evt =>
         {
             _journal.Write(runId, evt.EventType, evt.Message);
+            if (evt.EventType == "BAR")
+            {
+                state.BarCount++;
+                if (evt.Message.Length > 4 && evt.Message.StartsWith("Bar "))
+                {
+                    var spaceIdx = evt.Message.IndexOf(' ', 4);
+                    state.SimTime = spaceIdx > 0 ? evt.Message[4..spaceIdx] : evt.Message[4..];
+                }
+            }
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
@@ -271,6 +284,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             Progress = progressCallback,
             MinLogLevel = LogLevel.Warning,
         });
+        state.EngineHost = innerHost;
         EngineHostFactory.WireEventHandlers(innerHost);
         EngineHostFactory.WireRiskRules(innerHost);
 

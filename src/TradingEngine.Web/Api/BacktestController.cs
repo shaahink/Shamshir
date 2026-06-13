@@ -74,6 +74,19 @@ public sealed class BacktestController : ControllerBase
         return Ok(new { runId, status = state?.Status ?? "unknown" });
     }
 
+    private object? ResolveGovernor(BacktestOrchestrator.BacktestRunState state)
+    {
+        try
+        {
+            var host = state.EngineHost;
+            if (host is null) return null;
+            var gov = host.Services.GetRequiredService<ITradingGovernor>();
+            var snap = gov.GetSnapshot();
+            return new { state = snap.State.ToString(), reason = snap.Reason };
+        }
+        catch { return null; }
+    }
+
     [HttpGet("{runId}/status")]
     public IActionResult Status(string runId)
     {
@@ -86,6 +99,10 @@ public sealed class BacktestController : ControllerBase
             runId = state.RunId,
             status = state.Status,
             startedAt = state.StartedAt,
+            barCount = state.BarCount,
+            simTime = state.SimTime,
+            logs = state.GetLogs(),
+            governor = ResolveGovernor(state),
             result = state.Result is not null ? new
             {
                 state.Result.NetProfit,

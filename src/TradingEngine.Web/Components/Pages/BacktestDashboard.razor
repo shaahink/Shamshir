@@ -45,7 +45,7 @@
                 <thead><tr><th>Time</th><th>Strat</th><th>Dir</th><th>Lots</th><th>Entry</th><th>Exit</th><th>PnL</th><th>R</th></tr></thead>
                 <tbody>
                     @foreach (var t in _trades)
-                    { <tr class="@(t.PnL >= 0 ? "table-success" : "table-danger")"><td>@t.ClosedAt.ToString("MM-dd HH:mm")</td><td>@t.Strategy[..Math.Min(4,t.Strategy.Length)]</td><td>@t.Dir</td><td>@t.Lots:F2</td><td>@t.Entry:F5</td><td>@t.Exit:F5</td><td>@t.PnL:F2</td><td>@t.R:F2</td></tr> }
+                    { <tr class="@(t.PnL >= 0 ? "table-success" : "table-danger")"><td>@t.ClosedAt.ToString("MM-dd HH:mm")</td><td>@t.Strategy[..Math.Min(4,t.Strategy.Length)]</td><td>@t.Dir</td><td>@($"{t.Lots:F2}")</td><td>@($"{t.Entry:F5}")</td><td>@($"{t.Exit:F5}")</td><td>@($"{t.PnL:F2}")</td><td>@($"{t.R:F2}")</td></tr> }
                 </tbody>
             </table>
         </div></div>

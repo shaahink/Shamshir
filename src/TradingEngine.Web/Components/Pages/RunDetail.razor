@@ -27,11 +27,11 @@ else
         <div class="col-md-4">
             <div class="card mb-2"><div class="card-header">Summary</div><div class="card-body">
                 <table class="table table-sm"><tbody>
-                    <tr><td>Net P&L</td><td class="text-@(_run.NetProfit >= 0 ? "success" : "danger")">$@_run.NetProfit:N2</td></tr>
+                    <tr><td>Net P&L</td><td class="text-@(_run.NetProfit >= 0 ? "success" : "danger")">@($"{_run.NetProfit:N2}")</td></tr>
                     <tr><td>Trades</td><td>@_run.TotalTrades</td></tr>
                     <tr><td>Wins</td><td>@_run.WinningTrades</td></tr>
-                    <tr><td>Win Rate</td><td>@_run.WinRatePct:F1%</td></tr>
-                    <tr><td>Max DD</td><td>@_run.MaxDrawdownPct:F2%</td></tr>
+                    <tr><td>Win Rate</td><td>@($"{_run.WinRatePct:F1}%")</td></tr>
+                    <tr><td>Max DD</td><td>@($"{_run.MaxDrawdownPct:F2}%")</td></tr>
                 </tbody></table>
             </div></div>
         </div>
