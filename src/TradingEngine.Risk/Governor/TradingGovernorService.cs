@@ -11,9 +11,10 @@ public sealed class TradingGovernorService : ITradingGovernor
     private GovernorTradingState _state = GovernorTradingState.Normal;
     private int _consecutiveLosses;
     private int _coolingOffBarsRemaining;
-    private decimal _dayRealizedPnLPercent;
+    private decimal _dayNetPnLFraction;
     private string _reason = "Initial";
     private bool _profitLockedToday;
+    private decimal _lastSizeMultiplier = 1.0m;
 
     public TradingGovernorService(
         GovernorOptions options,
@@ -30,14 +31,17 @@ public sealed class TradingGovernorService : ITradingGovernor
         if (!_options.Enabled)
             return new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "Disabled");
 
-        _dayRealizedPnLPercent = context.DayRealizedPnLPercent;
+        _dayNetPnLFraction = context.DayNetPnLFraction;
 
         var maxDailyLoss = (decimal)context.Rules.MaxDailyLossPercent;
         var dailyDdFraction = maxDailyLoss > 0
-            ? context.DayRealizedPnLPercent / maxDailyLoss
+            ? Math.Max(0m, -_dayNetPnLFraction) / maxDailyLoss
             : 0m;
 
-        var (candidateState, candidateMultiplier, candidateReason) = DetermineState(dailyDdFraction);
+        var (candidateState, candidateMultiplier, candidateReason) = DetermineState(dailyDdFraction, context);
+        _state = candidateState;
+        _reason = candidateReason;
+        _lastSizeMultiplier = candidateMultiplier;
         return new GovernorDecision(
             candidateState is GovernorTradingState.Normal or GovernorTradingState.Reduced,
             candidateMultiplier,
@@ -45,16 +49,22 @@ public sealed class TradingGovernorService : ITradingGovernor
             candidateReason);
     }
 
-    private (GovernorTradingState State, decimal Multiplier, string Reason) DetermineState(decimal dailyDdFraction)
+    private (GovernorTradingState State, decimal Multiplier, string Reason) DetermineState(
+        decimal dailyDdFraction, GovernorContext context)
     {
+        var maxDailyLoss = (decimal)context.Rules.MaxDailyLossPercent;
+
         if (_state == GovernorTradingState.HardStop)
             return (GovernorTradingState.HardStop, 0m, "HardStop: protection mode active");
 
         if (_coolingOffBarsRemaining > 0)
             return (GovernorTradingState.CoolingOff, 0m, $"CoolingOff: {_coolingOffBarsRemaining} bars remaining");
 
-        if (_state == GovernorTradingState.SoftStop || _profitLockedToday)
-            return (_state, 0m, _reason);
+        if (_profitLockedToday)
+            return (GovernorTradingState.ProfitLocked, 0m, _reason);
+
+        if (_state == GovernorTradingState.SoftStop)
+            return (GovernorTradingState.SoftStop, 0m, _reason);
 
         var bands = _options.LossBandFractions;
         var multipliers = _options.LossBandMultipliers;
@@ -88,10 +98,11 @@ public sealed class TradingGovernorService : ITradingGovernor
 
         var baseMultiplier = ApplyStreakMultiplier(1.0m);
 
-        if (_options.ProfitLockEnabled && !_profitLockedToday && dailyDdFraction <= -(decimal)_options.ProfitLockFraction)
+        if (_options.ProfitLockEnabled && !_profitLockedToday
+            && context.DayNetPnLFraction >= (decimal)_options.ProfitLockFraction * maxDailyLoss)
         {
             _profitLockedToday = true;
-            _reason = $"ProfitLocked: daily gain {(-dailyDdFraction):P1} >= {_options.ProfitLockFraction:P0} threshold";
+            _reason = $"ProfitLocked: daily gain {context.DayNetPnLFraction:P1} >= {_options.ProfitLockFraction:P0} threshold";
             return (GovernorTradingState.ProfitLocked, 0m, _reason);
         }
 
@@ -111,13 +122,22 @@ public sealed class TradingGovernorService : ITradingGovernor
         return baseMultiplier;
     }
 
-    public GovernorSnapshot GetSnapshot() => new(
-        _state,
-        ApplyStreakMultiplier(1.0m) < 1.0m ? (decimal)_options.StreakMultiplier : 1.0m,
-        _consecutiveLosses,
-        _dayRealizedPnLPercent,
-        _dayRealizedPnLPercent,
-        _reason);
+    public GovernorSnapshot GetSnapshot()
+    {
+        var maxDailyLoss = (decimal)(_options.LossBandFractions.Length > 0 ? _options.LossBandFractions[^1] : 1);
+        var dailyDdFraction = maxDailyLoss > 0
+            ? Math.Max(0m, -_dayNetPnLFraction) / maxDailyLoss
+            : 0m;
+        var distanceToLimit = dailyDdFraction < 1 ? 1 - dailyDdFraction : 0m;
+
+        return new(
+            _state,
+            _lastSizeMultiplier,
+            _consecutiveLosses,
+            _dayNetPnLFraction,
+            distanceToLimit,
+            _reason);
+    }
 
     public void OnTradeClosed(TradeResult result)
     {
@@ -125,7 +145,7 @@ public sealed class TradingGovernorService : ITradingGovernor
         {
             _consecutiveLosses = 0;
         }
-        else
+        else if (result.NetPnL.Amount < 0)
         {
             _consecutiveLosses++;
         }

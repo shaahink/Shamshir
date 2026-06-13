@@ -17,7 +17,7 @@ public record GovernorDecision(
     string Reason);
 
 public record GovernorContext(
-    decimal DayRealizedPnLPercent,
+    decimal DayNetPnLFraction,
     decimal DayStartEquity,
     decimal CurrentEquity,
     int ConsecutiveLosses,
@@ -27,6 +27,6 @@ public record GovernorSnapshot(
     GovernorTradingState State,
     decimal SizeMultiplier,
     int ConsecutiveLosses,
-    decimal DayRealizedPnLPercent,
+    decimal DayNetPnLFraction,
     decimal DistanceToDailyLimitFraction,
     string Reason);

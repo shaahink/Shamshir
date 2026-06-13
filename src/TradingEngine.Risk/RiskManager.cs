@@ -73,9 +73,11 @@ public sealed class RiskManager(
 
         if (governor is not null)
         {
+            var dayStart = drawdownTracker.DailyStartEquity;
+            var dayPnLFraction = dayStart > 0 ? (equity.Equity - dayStart) / dayStart : 0m;
             var governorCtx = new GovernorContext(
-                equity.CurrentDailyDrawdown,
-                equity.DailyStartEquity,
+                dayPnLFraction,
+                dayStart,
                 equity.Equity,
                 0,
                 ActiveRuleSet ?? new PropFirmRuleSet("none", "None", "Fixed", 0.05, 0.10, 0.10, 0,

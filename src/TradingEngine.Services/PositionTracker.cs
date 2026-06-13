@@ -11,7 +11,9 @@ public sealed class PositionTracker(
     EngineRunContext runContext,
     IEngineClock clock,
     ILogger<PositionTracker> logger,
-    EngineMode engineMode = EngineMode.Backtest)
+    EngineMode engineMode = EngineMode.Backtest,
+    ITradingGovernor? governor = null,
+    ISignalGate? signalGate = null)
 {
     private readonly Dictionary<Guid, (OrderRequest Request, decimal FilledLots)> _pendingOrders = new();
     private readonly Dictionary<Guid, Position> _openPositions = new();
@@ -92,6 +94,8 @@ public sealed class PositionTracker(
             new Money(riskAmount, "USD"));
         positionManager.RegisterPosition(position, posConfig);
 
+        signalGate?.OnPositionOpened(position.StrategyId, position.Symbol.Value, position.Direction, clock.UtcNow);
+
         logger.LogInformation("Opened. Id={Id} Symbol={Symbol} Dir={Dir} Lots={Lots} Entry={Entry:F5}",
             position.Id, position.Symbol, position.Direction, position.Lots, position.EntryPrice.Value);
     }
@@ -111,9 +115,10 @@ public sealed class PositionTracker(
 
         var (_, riskProfileId) = _pendingRisk.GetValueOrDefault(evt.OrderId, (0m, "standard"));
 
+        TradeResult tradeResult = default!;
         foreach (var s in strategies.Where(s => s.Id == pos.StrategyId))
         {
-            var tradeResult = new TradeResult(Guid.NewGuid(), pos.Id, pos.Symbol, pos.Direction, pos.Lots,
+            tradeResult = new TradeResult(Guid.NewGuid(), pos.Id, pos.Symbol, pos.Direction, pos.Lots,
                 pos.EntryPrice, new Price(fillPrice), pos.CurrentStopLoss, pos.TakeProfit,
                 pos.OpenedAtUtc, clock.UtcNow, pnl, Money.Zero(pnl.Currency), Money.Zero(pnl.Currency),
                 pnl, new Pips(0), 0, new Pips(0), new Pips(0),
@@ -121,6 +126,9 @@ public sealed class PositionTracker(
             s.OnTradeResult(tradeResult);
             await eventBus.PublishAsync(new TradeClosed(tradeResult, runContext.RunId, clock.UtcNow), CancellationToken.None);
         }
+
+        governor?.OnTradeClosed(tradeResult);
+        signalGate?.OnPositionClosed(pos.StrategyId, pos.Symbol.Value, pos.Direction, exitReason, clock.UtcNow);
 
         logger.LogInformation("Closed. Id={Id} Exit={Exit:F5} PnL={PnL:F2} Reason={Reason}", pos.Id, fillPrice, pnl.Amount, exitReason);
     }
