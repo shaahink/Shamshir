@@ -180,8 +180,6 @@ public sealed class EngineWorker : BackgroundService
                 if (accountUpdate is not null)
                     HandleAccountUpdate(accountUpdate);
 
-                _governor?.OnBar(tick.TimestampUtc);
-
                 if (_dataFeed is not null && _broker is SimulatedBrokerAdapter sim)
                     sim.OnTickReceived(tick);
 
@@ -236,6 +234,9 @@ public sealed class EngineWorker : BackgroundService
                     if (barSnapshot is null) continue;
 
                     BuildIndicatorSnapshot(bar.Symbol);
+
+                    _governor?.OnBar(bar.OpenTimeUtc);
+                    _signalGate?.OnBar(bar.OpenTimeUtc);
 
                     var regime = _regimeDetector.Detect(bar.Symbol,
                         barSnapshot[bar.Timeframe],

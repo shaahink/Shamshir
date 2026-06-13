@@ -92,6 +92,27 @@ public sealed class TradingGovernorServiceTests
         gov.GetSnapshot().ConsecutiveLosses.Should().Be(2);
     }
 
+    [Fact]
+    public void OnBar_SameTimestampTwice_DecrementsOnce()
+    {
+        var options = StandardOptions() with { StreakPauseAt = 1, CoolingOffBars = 5 };
+        var gov = MakeGovernor(options);
+        // Trigger cooling-off with a loss
+        gov.OnTradeClosed(LossTrade());
+        var ctx = ContextWithDayPnl(0m);
+        var decision = gov.Evaluate(ctx);
+        decision.State.Should().Be(GovernorTradingState.CoolingOff);
+        decision.AllowNewTrades.Should().BeFalse();
+
+        var t1 = new DateTime(2024, 6, 1, 9, 0, 0, DateTimeKind.Utc);
+        // 5 calls with same timestamp => only 1 unique bar tick
+        gov.OnBar(t1); gov.OnBar(t1); gov.OnBar(t1); gov.OnBar(t1); gov.OnBar(t1);
+
+        // 4 bars must remain => still CoolingOff
+        var snapshot = gov.GetSnapshot();
+        snapshot.State.Should().Be(GovernorTradingState.CoolingOff);
+    }
+
     private static TradeResult LossTrade() => new(
         Guid.NewGuid(), Guid.NewGuid(), Symbol.Parse("EURUSD"), TradeDirection.Long, 0.1m,
         new Price(1.1000m), new Price(1.1000m), new Price(0m), null, DateTime.UtcNow, DateTime.UtcNow,

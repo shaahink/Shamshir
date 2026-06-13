@@ -6,6 +6,7 @@ public sealed class SignalGateService : ISignalGate
 {
     private readonly ConcurrentDictionary<string, ReentryOptions> _configs = new();
     private readonly ConcurrentDictionary<string, CooldownState> _cooldowns = new();
+    private DateTime _lastBarTimeUtc;
 
     public void RegisterStrategy(IStrategyConfig config)
     {
@@ -54,6 +55,9 @@ public sealed class SignalGateService : ISignalGate
 
     public void OnBar(DateTime barTimeUtc)
     {
+        if (barTimeUtc <= _lastBarTimeUtc) return;
+        _lastBarTimeUtc = barTimeUtc;
+
         foreach (var key in _cooldowns.Keys.ToList())
         {
             var state = _cooldowns[key];

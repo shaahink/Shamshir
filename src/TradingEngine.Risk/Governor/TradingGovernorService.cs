@@ -15,6 +15,7 @@ public sealed class TradingGovernorService : ITradingGovernor
     private string _reason = "Initial";
     private bool _profitLockedToday;
     private decimal _lastSizeMultiplier = 1.0m;
+    private DateTime _lastBarTimeUtc;
 
     public TradingGovernorService(
         GovernorOptions options,
@@ -153,6 +154,10 @@ public sealed class TradingGovernorService : ITradingGovernor
 
     public void OnBar(DateTime barOpenTimeUtc)
     {
+        // Idempotent per timestamp: multi-symbol/multi-TF calls resolve to fastest timeframe rate.
+        if (barOpenTimeUtc <= _lastBarTimeUtc) return;
+        _lastBarTimeUtc = barOpenTimeUtc;
+
         if (_coolingOffBarsRemaining > 0)
         {
             _coolingOffBarsRemaining--;
