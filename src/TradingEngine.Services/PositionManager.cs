@@ -11,6 +11,7 @@ public sealed class PositionManager(
     private readonly HashSet<Guid> _beApplied = new();
     private readonly Dictionary<Guid, decimal> _highWaterBid = new();
     private readonly Dictionary<Guid, decimal> _lowWaterAsk = new();
+    private readonly Dictionary<Guid, decimal> _initialSlDistance = new();
 
     public void RegisterPosition(Position position, PositionManagementConfig config)
     {
@@ -31,6 +32,7 @@ public sealed class PositionManager(
         _beApplied.Remove(positionId);
         _highWaterBid.Remove(positionId);
         _lowWaterAsk.Remove(positionId);
+        _initialSlDistance.Remove(positionId);
     }
 
     public IReadOnlyList<PositionModification> Evaluate(
@@ -116,8 +118,15 @@ public sealed class PositionManager(
                 ? config.TrailingStop.SteppedRLevels
                 : new[] { 1.0, 2.0, 3.0 };
 
+            var initialSl = _initialSlDistance.GetValueOrDefault(position.Id);
+            if (initialSl <= 0)
+            {
+                initialSl = Math.Abs(position.EntryPrice.Value - position.CurrentStopLoss.Value);
+                _initialSlDistance[position.Id] = initialSl;
+            }
+
             var steppedSl = TrailingHelpers.SteppedRTrail(
-                position, currentTick.Bid, currentTick.Ask, steppedRLevels, symbolInfo);
+                position, currentTick.Bid, currentTick.Ask, steppedRLevels, initialSl, symbolInfo);
             if (steppedSl.HasValue)
             {
                 mods.Add(new MoveStopLoss(position.Id, steppedSl.Value));

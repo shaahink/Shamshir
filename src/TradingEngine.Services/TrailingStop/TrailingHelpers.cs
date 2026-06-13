@@ -145,20 +145,19 @@ public static class TrailingHelpers
         decimal currentBid,
         decimal currentAsk,
         double[] rLevels,
+        decimal initialSlDistance,
         SymbolInfo symbol)
     {
-        var slDistance = Math.Abs(position.EntryPrice.Value - position.CurrentStopLoss.Value);
-
         if (position.Direction == TradeDirection.Long)
         {
             var currentProfit = currentBid - position.EntryPrice.Value;
             for (var i = rLevels.Length - 1; i >= 0; i--)
             {
-                if (currentProfit >= slDistance * (decimal)rLevels[i])
+                if (currentProfit >= initialSlDistance * (decimal)rLevels[i])
                 {
                     var newSl = i == 0
                         ? position.EntryPrice.Value
-                        : position.EntryPrice.Value + slDistance * (decimal)rLevels[i - 1];
+                        : position.EntryPrice.Value + initialSlDistance * (decimal)rLevels[i - 1];
                     newSl = RoundToTickSize(newSl, symbol.TickSize);
                     return newSl > position.CurrentStopLoss.Value ? new Price(newSl) : null;
                 }
@@ -169,11 +168,11 @@ public static class TrailingHelpers
             var currentProfit = position.EntryPrice.Value - currentAsk;
             for (var i = rLevels.Length - 1; i >= 0; i--)
             {
-                if (currentProfit >= slDistance * (decimal)rLevels[i])
+                if (currentProfit >= initialSlDistance * (decimal)rLevels[i])
                 {
                     var newSl = i == 0
                         ? position.EntryPrice.Value
-                        : position.EntryPrice.Value - slDistance * (decimal)rLevels[i - 1];
+                        : position.EntryPrice.Value - initialSlDistance * (decimal)rLevels[i - 1];
                     newSl = RoundToTickSize(newSl, symbol.TickSize);
                     return newSl < position.CurrentStopLoss.Value ? new Price(newSl) : null;
                 }
