@@ -621,11 +621,11 @@ public sealed class EngineWorker : BackgroundService
         var now = _clock.UtcNow;
         var isoWeek = ISOWeek.GetWeekOfYear(now);
         var month = now.Month;
-        var dayOfYear = now.DayOfYear;
+        var dailyKey = now.Year * 1000 + now.DayOfYear;
 
-        if (dayOfYear != _lastResetDayOfYear)
+        if (dailyKey != _lastResetDayOfYear)
         {
-            _lastResetDayOfYear = dayOfYear;
+            _lastResetDayOfYear = dailyKey;
             _governor?.OnDailyReset();
             _riskManager.OnDailyReset(update.Equity);
         }

@@ -144,8 +144,9 @@ public sealed class PositionTracker(
         var reducedPosition = pos with { Lots = remainingLots };
         _openPositions[evt.OrderId] = reducedPosition;
 
-        var (_, riskProfileId) = _pendingRisk.GetValueOrDefault(evt.OrderId, (0m, "standard"));
-        riskManager.RegisterPosition(pos.Id, pos.StrategyId, 0);
+        var (riskAmount, riskProfileId) = _pendingRisk.GetValueOrDefault(evt.OrderId, (0m, "standard"));
+        var proportionalRisk = pos.Lots > 0 ? riskAmount * remainingLots / pos.Lots : 0m;
+        riskManager.RegisterPosition(pos.Id, pos.StrategyId, proportionalRisk);
 
         await eventBus.PublishAsync(new PositionPartiallyClosed(
             pos.Id, closedLots, remainingLots, fillPrice, clock.UtcNow), CancellationToken.None);

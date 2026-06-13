@@ -32,6 +32,8 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
     private decimal _currentBalance;
     private readonly Dictionary<Guid, PendingOrder> _pendingOrders = new();
     private readonly Dictionary<Guid, SimPosition> _openPositions = new();
+    private decimal _lastBid;
+    private decimal _lastAsk;
 
     public SimulatedBrokerAdapter()
     {
@@ -145,6 +147,11 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                     _openPositions.Remove(positionId);
                 else
                     pos.Lots = remaining;
+
+                _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                    positionId, OrderState.Filled,
+                    new Price(pos.Direction == TradeDirection.Long ? _lastBid : _lastAsk),
+                    lots, null, BrokerTimeUtc));
             }
         }
         return Task.CompletedTask;
@@ -153,6 +160,8 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
     public void OnTickReceived(Tick tick)
     {
         BrokerTimeUtc = tick.TimestampUtc;
+        _lastBid = tick.Bid;
+        _lastAsk = tick.Ask;
 
         lock (_pendingOrders)
         {

@@ -80,7 +80,7 @@ public sealed class PositionManager(
 
         if (config.TrailingStop.Method == TrailingMethod.AtrMultiple && !_beApplied.Contains(position.Id))
         {
-            var atrValue = ComputeAtr(recentBars, config);
+            var atrValue = ComputeAtr(recentBars, config, symbolInfo);
             var atrMultiple = GetEffectiveAtrMultiple(config);
 
             var atrTrail = TrailingHelpers.AtrTrail(
@@ -100,7 +100,7 @@ public sealed class PositionManager(
             var lookback = config.TrailingStop.StructureLookbackBars > 0
                 ? config.TrailingStop.StructureLookbackBars
                 : 10;
-            var atrValue = ComputeAtr(recentBars, config);
+            var atrValue = ComputeAtr(recentBars, config, symbolInfo);
             var atrMultiple = GetEffectiveAtrMultiple(config);
 
             var structureSl = TrailingHelpers.StructureTrail(
@@ -156,20 +156,17 @@ public sealed class PositionManager(
         return mods;
     }
 
-    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config)
+    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config, SymbolInfo symbolInfo)
     {
-        if (recentBars.Count == 0) return config.TrailingStop.AtrMultiple * 0.0001;
+        var fallback = (double)symbolInfo.PipSize;
+        if (recentBars.Count == 0) return config.TrailingStop.AtrMultiple * fallback;
         var atrValue = indicatorService.Atr(recentBars, Math.Min(14, recentBars.Count));
-        if (atrValue <= 0) atrValue = config.TrailingStop.AtrMultiple * 0.0001;
+        if (atrValue <= 0) atrValue = config.TrailingStop.AtrMultiple * fallback;
         return atrValue;
     }
 
     private double GetEffectiveAtrMultiple(PositionManagementConfig config)
     {
-        if (!config.TrailingStop.RideEnabled) return config.TrailingStop.AtrMultiple;
-
-        return config.TrailingStop.AtrMultiple > 0
-            ? config.TrailingStop.RideRelaxedAtrMultiple
-            : config.TrailingStop.AtrMultiple;
+        return config.TrailingStop.AtrMultiple;
     }
 }

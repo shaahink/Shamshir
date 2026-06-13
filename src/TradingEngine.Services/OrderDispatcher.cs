@@ -32,7 +32,9 @@ public sealed class OrderDispatcher(
         var lots = riskManager.CalculateLotSize(intent, equity, profile, currentMid);
         var riskAmount = (decimal)slDistance.Value * pipValue * lots;
 
-        if (!riskManager.ValidateBudgetEntry(riskAmount, equity, riskAmount))
+        var perTradeRiskAmount = equity.Equity * (decimal)profile.RiskPerTradePercent;
+
+        if (!riskManager.ValidateBudgetEntry(riskAmount, equity, perTradeRiskAmount))
         {
             var riskPerLot = (decimal)slDistance.Value * pipValue;
             var originalLots = lots;
@@ -42,14 +44,14 @@ public sealed class OrderDispatcher(
                 lots = Math.Floor(lots / symbolInfo.LotStep) * symbolInfo.LotStep;
                 if (lots < symbolInfo.MinLots) break;
                 riskAmount = riskPerLot * lots;
-                if (riskManager.ValidateBudgetEntry(riskAmount, equity, riskAmount))
+                if (riskManager.ValidateBudgetEntry(riskAmount, equity, perTradeRiskAmount))
                 {
                     logger.LogWarning("Downsized: Strategy={Strategy} Symbol={Symbol} lots {Original}→{New} for budget",
                         intent.StrategyId, intent.Symbol, originalLots, lots);
                     break;
                 }
             }
-            if (lots < symbolInfo.MinLots || !riskManager.ValidateBudgetEntry(riskAmount, equity, riskAmount))
+            if (lots < symbolInfo.MinLots || !riskManager.ValidateBudgetEntry(riskAmount, equity, perTradeRiskAmount))
             {
                 logger.LogWarning("BudgetBlocked: Strategy={Strategy} Symbol={Symbol} lots={Lots} risk={Risk:F2}",
                     intent.StrategyId, intent.Symbol, originalLots, riskAmount);
