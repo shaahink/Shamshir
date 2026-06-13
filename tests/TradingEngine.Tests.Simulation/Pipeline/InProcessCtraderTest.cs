@@ -89,8 +89,14 @@ public sealed class InProcessCtraderTest : IAsyncDisposable
 
                 var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
                     0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
+                var gbpUsd = new SymbolInfo(Symbol.Parse("GBPUSD"), SymbolCategory.Forex, "GBP", "USD",
+                    0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
+                var usdJpy = new SymbolInfo(Symbol.Parse("USDJPY"), SymbolCategory.Forex, "USD", "JPY",
+                    0.001m, 0.001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
                 var symbolRegistry = new SymbolInfoRegistry();
                 symbolRegistry.Register(symbolInfo);
+                symbolRegistry.Register(gbpUsd);
+                symbolRegistry.Register(usdJpy);
                 services.AddSingleton<ISymbolInfoRegistry>(_ => symbolRegistry);
 
                 var crossRateStore = new CrossRateStore();
@@ -100,6 +106,8 @@ public sealed class InProcessCtraderTest : IAsyncDisposable
                 services.AddSingleton<INewsFilter>(_ => new NewsFilter());
                 services.AddSingleton<SessionFilter>();
                 services.AddSingleton<DrawdownTracker>();
+                services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
+                services.AddSingleton<ISignalGate, SignalGateService>();
                 services.AddSingleton<RiskManager>();
                 services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
                 services.AddSingleton(new SizingPolicyOptions());
@@ -170,10 +178,13 @@ public sealed class InProcessCtraderTest : IAsyncDisposable
                         Strategies = new StrategyServices
                         {
                             Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
-                            StrategyBank = Substitute.For<IStrategyBank>(),
+                            StrategyBank = new StrategyBankService(
+                                sp.GetRequiredService<StrategyRegistry>(), null,
+                                sp.GetRequiredService<ILogger<StrategyBankService>>()),
                             RegimeDetector = Substitute.For<IRegimeDetector>(),
                             OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                             PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                            SignalGate = sp.GetRequiredService<ISignalGate>(),
                         },
                         Persistence = new PersistenceServices
                         {

@@ -60,6 +60,8 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                 services.AddSingleton<INewsFilter>(_ => new NewsFilter());
                 services.AddSingleton<SessionFilter>();
                 services.AddSingleton<DrawdownTracker>();
+                services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
+                services.AddSingleton<ISignalGate, SignalGateService>();
                 services.AddSingleton<RiskManager>();
                 services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
                 services.AddSingleton(new SizingPolicyOptions());
@@ -129,6 +131,7 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                             RegimeDetector = Substitute.For<IRegimeDetector>(),
                             OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                             PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                            SignalGate = sp.GetRequiredService<ISignalGate>(),
                         },
                         Persistence = new PersistenceServices
                         {
