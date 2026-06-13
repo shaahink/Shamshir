@@ -113,6 +113,32 @@ public sealed class TradingGovernorServiceTests
         snapshot.State.Should().Be(GovernorTradingState.CoolingOff);
     }
 
+    [Fact]
+    public void Governor_BlocksTrading_AtSoftStop_Band()
+    {
+        var options = StandardOptions() with { LossBandMultipliers = [0.5, 0.0] };
+        var gov = MakeGovernor(options);
+        // -3% day loss => 60% of 5% daily limit => hits SoftStop band (0.6)
+        var lossCtx = ContextWithDayPnl(-0.03m);
+
+        var decision = gov.Evaluate(lossCtx);
+        decision.State.Should().Be(GovernorTradingState.SoftStop);
+        decision.AllowNewTrades.Should().BeFalse();
+        decision.SizeMultiplier.Should().Be(0m);
+    }
+
+    [Fact]
+    public void Governor_EnablesTrading_WhenDisabled()
+    {
+        var options = StandardOptions() with { Enabled = false };
+        var gov = MakeGovernor(options);
+        var lossCtx = ContextWithDayPnl(-0.03m);
+
+        var decision = gov.Evaluate(lossCtx);
+        decision.AllowNewTrades.Should().BeTrue();
+        decision.State.Should().Be(GovernorTradingState.Normal);
+    }
+
     private static TradeResult LossTrade() => new(
         Guid.NewGuid(), Guid.NewGuid(), Symbol.Parse("EURUSD"), TradeDirection.Long, 0.1m,
         new Price(1.1000m), new Price(1.1000m), new Price(0m), null, DateTime.UtcNow, DateTime.UtcNow,
