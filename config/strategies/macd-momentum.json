@@ -21,7 +21,7 @@
     "atrPeriod": 14,
     "slAtrMultiple": 2.0,
     "tpRrMultiple": 3.0
-  }
+  },
   "reentry": {
     "blockWhileSameDirectionOpen": true,
     "cooldownBarsAfterSl": 5,

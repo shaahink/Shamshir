@@ -25,7 +25,7 @@
     "fastPeriod": 20,
     "slowPeriod": 50,
     "atrPeriod": 14
-  }
+  },
   "reentry": {
     "blockWhileSameDirectionOpen": true,
     "cooldownBarsAfterSl": 5,
