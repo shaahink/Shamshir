@@ -26,6 +26,7 @@ public sealed record EngineHostOptions
     public IReadOnlyList<string> SymbolNames { get; init; } = [];
     public IProgress<BacktestProgressEvent>? Progress { get; init; }
     public LogLevel MinLogLevel { get; init; } = LogLevel.Information;
+    public LoadedConfig? PreloadedConfig { get; init; }
 }
 
 public static class EngineHostFactory
@@ -66,8 +67,7 @@ public static class EngineHostFactory
                 services.AddSingleton<RiskManager>();
                 services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
 
-                var configLoader = new ConfigLoader(options.SolutionRoot);
-                var loadedConfig = configLoader.Load();
+                var loadedConfig = options.PreloadedConfig ?? new ConfigLoader(options.SolutionRoot).Load();
                 services.AddSingleton(loadedConfig);
 
                 services.AddSingleton(loadedConfig.SizingPolicy);

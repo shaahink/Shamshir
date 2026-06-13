@@ -86,38 +86,41 @@ public sealed class ExperimentRunner
                     var foldRole = folds.Count == 1 ? "Test" : "Train";
                     var foldLabel = folds.Count == 1 ? "Full" : $"Fold{fi}";
 
-                    var trainRunId = $"{experimentId:N[..8]}-{runIndex++}";
-                    await RunSingleAsync(
+                    var trainRunId = $"{experimentId.ToString("N")[..8]}-{runIndex++}";
+                    var (trainTrades, trainEquity) = await RunSingleAsync(
                         variantConfig, spec, variant.Label,
-                        trainFrom, trainTo, foldRole, fi,
+                        trainFrom, trainTo, "Train", fi,
                         trainRunId, experimentId, ct);
 
                     if (folds.Count > 1)
                     {
-                        var testRunId = $"{experimentId:N[..8]}-{runIndex++}";
-                        await RunSingleAsync(
+                        var testRunId = $"{experimentId.ToString("N")[..8]}-{runIndex++}";
+                        var (testTrades, testEquity) = await RunSingleAsync(
                             variantConfig, spec, variant.Label,
                             testFrom, testTo, "Test", fi,
                             testRunId, experimentId, ct);
+
+                        var rules = variantConfig.PropFirms.First();
+                        variantFolds.Add(VariantScorer.ScoreFold(
+                            trainTrades, trainEquity, rules, fi, "Train", _passEstimator));
+                        variantFolds.Add(VariantScorer.ScoreFold(
+                            testTrades, testEquity, rules, fi, "Test", _passEstimator));
+
+                        _logger.LogInformation("  Fold {Index}: Train composite={Train:F3} Test composite={Test:F3}",
+                            fi,
+                            variantFolds[^2].Composite,
+                            variantFolds[^1].Composite);
                     }
+                    else
+                    {
+                        var rules = variantConfig.PropFirms.First();
+                        var foldScore = VariantScorer.ScoreFold(
+                            trainTrades, trainEquity, rules, fi, "Test", _passEstimator);
+                        variantFolds.Add(foldScore);
 
-                    var trades = await _tradeRepo.GetByDateRangeAsync(
-                        testFrom.ToDateTime(TimeOnly.MinValue),
-                        testTo.ToDateTime(TimeOnly.MaxValue),
-                        ct);
-
-                    var equity = await _equityRepo.GetByDateRangeAsync(
-                        testFrom.ToDateTime(TimeOnly.MinValue),
-                        testTo.ToDateTime(TimeOnly.MaxValue),
-                        ct);
-
-                    var rules = variantConfig.PropFirms.First();
-                    var foldScore = VariantScorer.ScoreFold(
-                        trades, equity, rules, fi, foldRole, _passEstimator);
-                    variantFolds.Add(foldScore);
-
-                    _logger.LogInformation("  Fold {Index} {Role}: composite={Composite:F3} trades={Trades}",
-                        fi, foldRole, foldScore.Composite, foldScore.TotalTrades);
+                        _logger.LogInformation("  Fold {Index} {Role}: composite={Composite:F3} trades={Trades}",
+                            fi, foldScore.FoldRole, foldScore.Composite, foldScore.TotalTrades);
+                    }
                 }
 
                 var variantScore = VariantScorer.ScoreVariant(
@@ -183,7 +186,7 @@ public sealed class ExperimentRunner
         }
     }
 
-    private async Task RunSingleAsync(
+    private async Task<(IReadOnlyList<TradeResult> Trades, IReadOnlyList<EquitySnapshot> Equity)> RunSingleAsync(
         LoadedConfig config,
         ExperimentSpec spec,
         string variantLabel,
@@ -199,7 +202,7 @@ public sealed class ExperimentRunner
         var timeframe = Enum.TryParse<Timeframe>(spec.Timeframes[0], out var tf) ? tf : Timeframe.H1;
         var from = runFrom.ToDateTime(TimeOnly.MinValue);
         var to = runTo.ToDateTime(TimeOnly.MaxValue);
-        var dbPath = Path.Combine(Path.GetTempPath(), $"exp_{experimentId:N}_{runId}.db");
+        var dbPath = Path.Combine(Path.GetTempPath(), $"exp_{experimentId:N}.db");
 
         var host = EngineHostFactory.Create(new EngineHostOptions
         {
@@ -215,12 +218,16 @@ public sealed class ExperimentRunner
             SolutionRoot = _solutionRoot,
             SymbolNames = spec.Symbols.ToList(),
             MinLogLevel = LogLevel.Warning,
+            PreloadedConfig = config,
         });
 
         EngineHostFactory.WireEventHandlers(host);
         EngineHostFactory.WireRiskRules(host);
 
         await host.StartAsync(ct);
+
+        var runTrades = new List<TradeResult>();
+        var runEquity = new List<EquitySnapshot>();
 
         try
         {
@@ -231,6 +238,18 @@ public sealed class ExperimentRunner
             await barHandler.FlushRemainingAsync();
 
             await Task.Delay(2_000, ct);
+
+            try
+            {
+                var scopedTradeRepo = host.Services.GetRequiredService<ITradeRepository>();
+                runTrades = (await scopedTradeRepo.GetByDateRangeAsync(from, to, ct)).ToList();
+                var scopedEquityRepo = host.Services.GetRequiredService<IEquityRepository>();
+                runEquity = (await scopedEquityRepo.GetByDateRangeAsync(from, to, ct)).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to query run data for scoring {RunId}", runId);
+            }
 
             var summary = await _backtestRunRepo.GetByIdAsync(runId, ct);
             if (summary is not null)
@@ -252,6 +271,8 @@ public sealed class ExperimentRunner
             host.Dispose();
             TryDeleteDb(dbPath);
         }
+
+        return (runTrades.AsReadOnly(), runEquity.AsReadOnly());
     }
 
     private async Task CreateExperimentAsync(Guid id, ExperimentSpec spec, CancellationToken ct)
