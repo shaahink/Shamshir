@@ -27,7 +27,7 @@ public sealed class SignalGateService : ISignalGate
         if (!_configs.TryGetValue(strategyId, out var opts))
             opts = new ReentryOptions();
 
-        if (opts.BlockWhileSameDirectionOpen && opts.CooldownBarsAfterEntry > 0)
+        if (opts.CooldownBarsAfterEntry > 0)
         {
             var key = CooldownKey(strategyId, symbol, direction);
             _cooldowns[key] = new CooldownState(opts.CooldownBarsAfterEntry, "entry");

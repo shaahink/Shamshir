@@ -21,7 +21,8 @@ public sealed class ComposedStrategy : IStrategy
         ISignalProvider signal,
         IExitBehavior exit,
         IEnumerable<IEntryFilter>? filters = null,
-        IEnumerable<IPositionBehavior>? behaviors = null)
+        IEnumerable<IPositionBehavior>? behaviors = null,
+        ReentryOptions? reentry = null)
     {
         Id = id;
         DisplayName = displayName;
@@ -29,7 +30,7 @@ public sealed class ComposedStrategy : IStrategy
         _exit = exit;
         _filters = filters?.ToList() ?? [];
         PositionBehaviors = behaviors?.ToList() ?? [];
-        Config = new ComposedStrategyConfig(id, displayName);
+        Config = new ComposedStrategyConfig(id, displayName, reentry);
     }
 
     public TradeIntent? Evaluate(MarketContext context)
@@ -89,7 +90,7 @@ public sealed class ComposedStrategy : IStrategy
     }
 }
 
-internal sealed record ComposedStrategyConfig(string Id, string DisplayName) : IStrategyConfig
+internal sealed record ComposedStrategyConfig(string Id, string DisplayName, ReentryOptions? ReentryOverride = null) : IStrategyConfig
 {
     public bool Enabled => true;
     public IReadOnlyList<string> Symbols => [];
@@ -98,5 +99,5 @@ internal sealed record ComposedStrategyConfig(string Id, string DisplayName) : I
     public RegimeFilterOptions RegimeFilter => new();
     public OrderEntryOptions OrderEntry => new();
     public PositionManagementOptions PositionManagement => new();
-    public ReentryOptions Reentry => new();
+    public ReentryOptions Reentry => ReentryOverride ?? new();
 }

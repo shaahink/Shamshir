@@ -105,6 +105,12 @@ public sealed class EngineWorker : BackgroundService
         _logger.LogInformation("Engine starting. Mode={Mode} Strategies={Count}",
             _engineMode, _strategies.Count);
 
+        if (_signalGate is not null)
+        {
+            foreach (var s in _strategies)
+                _signalGate.RegisterStrategy(s.Config);
+        }
+
         if (_broker is NetMQBrokerAdapter mqAdapter)
             mqAdapter.OnConnected = ResetState;
 

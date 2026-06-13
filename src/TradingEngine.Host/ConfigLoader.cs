@@ -27,6 +27,7 @@ public sealed record StrategyConfigEntry(
     public RegimeFilterOptions? RegimeFilter { get; init; }
     public OrderEntryOptions? OrderEntry { get; init; }
     public PositionManagementOptions? PositionManagement { get; init; }
+    public ReentryOptions? Reentry { get; init; }
 }
 
 public sealed class ConfigLoader
@@ -117,6 +118,7 @@ public sealed class ConfigLoader
                 RegimeFilter = ParseOptional<RegimeFilterOptions>(root, "regimeFilter"),
                 OrderEntry = ParseOptional<OrderEntryOptions>(root, "orderEntry"),
                 PositionManagement = ParseOptional<PositionManagementOptions>(root, "positionManagement"),
+                Reentry = ParseOptional<ReentryOptions>(root, "reentry"),
             });
         }
         return results;
