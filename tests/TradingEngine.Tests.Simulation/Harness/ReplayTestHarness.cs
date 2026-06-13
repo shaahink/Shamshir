@@ -109,17 +109,18 @@ public sealed class ReplayTestHarness : IAsyncDisposable
 
                 services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
                 services.AddSingleton<IRegimeDetector>(_ => Substitute.For<IRegimeDetector>());
-                services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
-                    new StrategyRegistry(),
-                    null,
-                    sp.GetRequiredService<ILogger<StrategyBankService>>()));
 
+                var strategy = new AlwaysSignalStrategy();
+                services.AddSingleton<IEnumerable<IStrategy>>(sp => [strategy]);
+
+                var strategyBank = Substitute.For<IStrategyBank>();
+                strategyBank.GetActive(Arg.Any<Symbol>(), Arg.Any<Timeframe>(), Arg.Any<MarketRegime>())
+                    .Returns(new[] { strategy });
+                services.AddSingleton<IStrategyBank>(_ => strategyBank);
+                services.AddSingleton<ISignalGate, SignalGateService>();
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
                 services.AddSingleton<IPositionManager, PositionManager>();
-
-                var strategy = new AlwaysSignalStrategy();
-                services.AddSingleton<IEnumerable<IStrategy>>(_ => [strategy]);
 
                 services.AddSingleton<EngineWorkerDependencies>(sp => new EngineWorkerDependencies
                 {
@@ -149,6 +150,7 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                         RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
                         OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                         PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                        SignalGate = sp.GetRequiredService<ISignalGate>(),
                     },
                     Persistence = new PersistenceServices
                     {

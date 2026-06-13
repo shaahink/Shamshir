@@ -94,9 +94,9 @@ public sealed class PipelineEventWriter : IPipelineJournal, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _channel.Writer.Complete();
-        _cts.Cancel();
+        try { _channel.Writer.Complete(); } catch { }
+        try { _cts.Cancel(); } catch { }
         try { await _flushTask; } catch { }
-        _cts.Dispose();
+        try { _cts.Dispose(); } catch { }
     }
 }

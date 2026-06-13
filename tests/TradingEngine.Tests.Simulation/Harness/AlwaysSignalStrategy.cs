@@ -45,7 +45,7 @@ internal sealed record AlwaysSignalConfig : IStrategyConfig
     public string Id => "always-signal";
     public string DisplayName => "Always Signal";
     public bool Enabled => true;
-    public IReadOnlyList<string> Symbols => [];
+    public IReadOnlyList<string> Symbols => ["EURUSD"];
     public string RiskProfileId => "standard";
     public Timeframe Timeframe => Timeframe.H1;
     public RegimeFilterOptions RegimeFilter => new();
