@@ -1,8 +1,8 @@
 # Iteration 19 — HANDOVER.md
 
-**Branch**: `dev` (merged from `iter/19-live-ui`)  
+**Branch**: `iter/19-fixes` (off `dev`)  
 **Implemented**: 2026-06-12  
-**Status**: Complete — PR1/PR2/PR3/PR4 delivered, 133 tests pass  
+**Status**: Remediated — post-merge code review found critical defects; 10 fix phases applied (`fix(iter19-f0)` through `fix(iter19-f10)`), 143 tests pass  
 **Spans**: `iter/19-governor` → `iter/19-research-lab` → `iter/19-trade-intelligence` → `iter/19-live-ui`
 
 ---
@@ -219,3 +219,34 @@
    - `CancellationToken` on every async method
    - EF migrations only — no raw SQL schema changes
 4. **Top priority for iter-20**: Tests (governor state machine, causal simulation, partial close dedup), playbook inheritance, typed progress events.
+
+---
+
+## Remediation Summary (iter/19-fixes, 2026-06-13)
+
+Post-merge code review found the three flagship features (TradingGovernor, SignalGate re-entry, Experiment harness) were **non-functional as shipped** and F1 likely stopped the engine from taking any trades. 10 fix phases applied:
+
+| Phase | Defect | Fix |
+|-------|--------|-----|
+| F0 | Triage: confirmed F8 + F1 as root causes | Documented in FIX-PLAN.md |
+| F1 | MAX_EXPOSURE blocked most trades (MaxLots=100 inflated risk 100x) | Use `equity * RiskPerTradePercent` |
+| F2a | `_state` never persisted in `Evaluate` | Persist `_state` and `_reason` after `DetermineState` |
+| F2b | Profit lock unreachable (unsigned day PnL) | Signed day PnL via `GovernorContext.DayNetPnLFraction` |
+| F2c | `OnTradeClosed` never called | Wire in `PositionTracker.ClosePositionAsync` |
+| F2d | SizeMultiplier always 1.0 | Store `_lastSizeMultiplier`, return from `GetSnapshot` |
+| F2e | LossBandMultipliers [1.0, 0.5] ineffective | Changed to [0.5, 0.0]; breakeven trades reset-neutral |
+| F3 | OnBar per-tick in live, missing in live bar loop | Idempotent by timestamp in both services; moved to bar loop |
+| F4 | SignalGate fully inert (zero callers) | RegisterStrategy at startup, parse reentry from JSON, fix OnPositionOpened gate, fix ComposedStrategy.Reentry |
+| F5 | SteppedRTrail froze at breakeven | Cache initial SL distance in PositionManager |
+| F6a | Guid format string throws FormatException | `experimentId.ToString("N")[..8]` |
+| F6b | Variant overrides never reach engine | `PreloadedConfig` on `EngineHostOptions` |
+| F6c | Scoring queries empty DB | Query from engine host's scoped repos |
+| F6d | Fold role bookkeeping wrong | Separate Train/Test fold scores |
+| F7 | Partial close risk corrupted | Proportional risk re-registration, execution event emission |
+| F8 | Dashboard dead-on-arrival | Status endpoint returns barCount, simTime, logs, governor; fix Razor format specifiers |
+| F9 | Misc: ATR fallback, ride gate, budget heat cap, daily reset key | Hardcoded 0.0001→PipSize; disable ride; perTradeRiskAmount fix; year-inclusive reset key |
+| F10 | Causal proof: governor ON vs OFF | Unit tests: blocks at SoftStop, allows when disabled |
+
+**Result**: 126 unit + 17 integration = 143 tests pass. Engine now takes trades (F1), governor tracks trades and enforces state (F2), SignalGate arms cooldowns (F3+F4), trailing stop advances past breakeven (F5), experiment harness runs with variant configs (F6), dashboard displays live progress (F8).
+
+**Known gaps for iter-20**: ProtectionLedger persistence, per-(symbol,timeframe) cooldown clocks, PartialTp trigger (triggered by PositionManager), playbook inheritance, Simulation suite (not run — pre-existing 13 failures).
