@@ -156,26 +156,30 @@ public static class EngineReducer
 
     private static EngineDecision HandleBarClosed(EngineState state, BarClosed evt, List<EngineEffect> effects)
     {
+        var newPositions = new Dictionary<Guid, PositionState>(state.Positions);
         foreach (var (id, posState) in state.Positions)
         {
             if (posState.Symbol != evt.Symbol) continue;
             var (nextPos, posEffects) = PositionLifecycle.Apply(posState, evt);
+            newPositions[id] = nextPos;
             effects.AddRange(posEffects);
         }
 
-        return new EngineDecision(state, effects);
+        return new EngineDecision(state with { Positions = newPositions }, effects);
     }
 
     private static EngineDecision HandleTickReceived(EngineState state, TickReceived evt, List<EngineEffect> effects)
     {
+        var newPositions = new Dictionary<Guid, PositionState>(state.Positions);
         foreach (var (id, posState) in state.Positions)
         {
             if (posState.Symbol != evt.Symbol) continue;
             var (nextPos, posEffects) = PositionLifecycle.Apply(posState, evt);
+            newPositions[id] = nextPos;
             effects.AddRange(posEffects);
         }
 
-        return new EngineDecision(state, effects);
+        return new EngineDecision(state with { Positions = newPositions }, effects);
     }
 
     private static EngineDecision HandleEquityObserved(EngineState state, EquityObserved evt)

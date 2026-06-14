@@ -106,13 +106,17 @@ public static class PositionLifecycle
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleOpenBar(
         PositionState state, BarClosed evt)
     {
-        return (state, []);
+        var highWater = state.HighWater == 0 ? evt.Close : Math.Max(state.HighWater, evt.High);
+        var lowWater = state.LowWater == 0 ? evt.Close : Math.Min(state.LowWater, evt.Low);
+        return (state with { HighWater = highWater, LowWater = lowWater }, []);
     }
 
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleOpenTick(
         PositionState state, TickReceived evt)
     {
-        return (state, []);
+        var highWater = state.HighWater == 0 ? evt.Bid : Math.Max(state.HighWater, evt.Bid);
+        var lowWater = state.LowWater == 0 ? evt.Ask : Math.Min(state.LowWater, evt.Ask);
+        return (state with { HighWater = highWater, LowWater = lowWater }, []);
     }
 
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleReducingFilled(
@@ -154,4 +158,127 @@ public static class PositionLifecycle
             limitPrice ?? stopLoss, stopLoss, takeProfit,
             DateTime.MinValue, strategyId, PositionPhase.Intended);
     }
+
+    public static Price? TrailStepPips(PositionState state, decimal bid, decimal ask, Pips stepPips, SymbolInfo symbol)
+    {
+        var step = (decimal)stepPips.Value * symbol.PipSize;
+        if (state.Direction == TradeDirection.Long)
+        {
+            var newSl = bid - step;
+            return newSl > state.CurrentStopLoss.Value ? new Price(RoundToTick(newSl, symbol.TickSize)) : null;
+        }
+        else
+        {
+            var newSl = ask + step;
+            return newSl < state.CurrentStopLoss.Value ? new Price(RoundToTick(newSl, symbol.TickSize)) : null;
+        }
+    }
+
+    public static Price? TrailAtr(PositionState state, decimal highWater, decimal lowWater, double atr, double multiplier, SymbolInfo symbol)
+    {
+        var offset = (decimal)(atr * multiplier);
+        if (state.Direction == TradeDirection.Long)
+        {
+            var newSl = highWater - offset;
+            return newSl > state.CurrentStopLoss.Value ? new Price(RoundToTick(newSl, symbol.TickSize)) : null;
+        }
+        else
+        {
+            var newSl = lowWater + offset;
+            return newSl < state.CurrentStopLoss.Value ? new Price(RoundToTick(newSl, symbol.TickSize)) : null;
+        }
+    }
+
+    public static Price? TryBreakeven(PositionState state, decimal bid, decimal ask, double triggerR, Pips bufferPips, SymbolInfo symbol)
+    {
+        var slDistance = Math.Abs(state.EntryPrice.Value - state.CurrentStopLoss.Value);
+        var triggerDistance = slDistance * (decimal)triggerR;
+        var buffer = (decimal)bufferPips.Value * symbol.PipSize;
+        if (state.Direction == TradeDirection.Long)
+        {
+            var inProfit = bid - state.EntryPrice.Value;
+            if (inProfit < triggerDistance) return null;
+            var beSl = state.EntryPrice.Value + buffer;
+            return beSl > state.CurrentStopLoss.Value ? new Price(RoundToTick(beSl, symbol.TickSize)) : null;
+        }
+        else
+        {
+            var inProfit = state.EntryPrice.Value - ask;
+            if (inProfit < triggerDistance) return null;
+            var beSl = state.EntryPrice.Value - buffer;
+            return beSl < state.CurrentStopLoss.Value ? new Price(RoundToTick(beSl, symbol.TickSize)) : null;
+        }
+    }
+
+    public static Price? TrailStructure(PositionState state, IReadOnlyList<Bar> recentBars, int lookback, double atr, double multiplier, SymbolInfo symbol)
+    {
+        var offset = (decimal)(atr * multiplier);
+        var window = recentBars.TakeLast(Math.Min(lookback + 2, recentBars.Count)).ToList();
+        if (window.Count < 3) return null;
+        decimal? swingLevel = null;
+        if (state.Direction == TradeDirection.Long)
+        {
+            for (var i = window.Count - 2; i >= 1; i--)
+            {
+                if (window[i].Low < window[i - 1].Low && window[i].Low < window[i + 1].Low)
+                { swingLevel = window[i].Low; break; }
+            }
+            if (swingLevel.HasValue)
+            {
+                var newSl = RoundToTick(swingLevel.Value - offset, symbol.TickSize);
+                return newSl > state.CurrentStopLoss.Value ? new Price(newSl) : null;
+            }
+        }
+        else
+        {
+            for (var i = window.Count - 2; i >= 1; i--)
+            {
+                if (window[i].High > window[i - 1].High && window[i].High > window[i + 1].High)
+                { swingLevel = window[i].High; break; }
+            }
+            if (swingLevel.HasValue)
+            {
+                var newSl = RoundToTick(swingLevel.Value + offset, symbol.TickSize);
+                return newSl < state.CurrentStopLoss.Value ? new Price(newSl) : null;
+            }
+        }
+        return null;
+    }
+
+    public static Price? TrailSteppedR(PositionState state, decimal bid, decimal ask, double[] rLevels, SymbolInfo symbol)
+    {
+        var initialSl = state.InitialSlDistance > 0
+            ? state.InitialSlDistance
+            : Math.Abs(state.EntryPrice.Value - state.CurrentStopLoss.Value);
+        if (state.Direction == TradeDirection.Long)
+        {
+            var profit = bid - state.EntryPrice.Value;
+            for (var i = rLevels.Length - 1; i >= 0; i--)
+            {
+                if (profit >= initialSl * (decimal)rLevels[i])
+                {
+                    var newSl = i == 0 ? state.EntryPrice.Value : state.EntryPrice.Value + initialSl * (decimal)rLevels[i - 1];
+                    newSl = RoundToTick(newSl, symbol.TickSize);
+                    return newSl > state.CurrentStopLoss.Value ? new Price(newSl) : null;
+                }
+            }
+        }
+        else
+        {
+            var profit = state.EntryPrice.Value - ask;
+            for (var i = rLevels.Length - 1; i >= 0; i--)
+            {
+                if (profit >= initialSl * (decimal)rLevels[i])
+                {
+                    var newSl = i == 0 ? state.EntryPrice.Value : state.EntryPrice.Value - initialSl * (decimal)rLevels[i - 1];
+                    newSl = RoundToTick(newSl, symbol.TickSize);
+                    return newSl < state.CurrentStopLoss.Value ? new Price(newSl) : null;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static decimal RoundToTick(decimal price, decimal tickSize)
+        => Math.Round(price / tickSize) * tickSize;
 }

@@ -13,4 +13,8 @@ public sealed record PositionState(
     string StrategyId,
     PositionPhase Phase,
     decimal FilledLots = 0,
-    string? RejectionReason = null);
+    string? RejectionReason = null,
+    decimal HighWater = 0,
+    decimal LowWater = 0,
+    bool BreakevenApplied = false,
+    decimal InitialSlDistance = 0);

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using TradingEngine.Engine;
 
 namespace TradingEngine.Services;
 
@@ -7,7 +8,12 @@ public sealed class PositionManager(
     IIndicatorService indicatorService,
     ILogger<PositionManager> logger) : IPositionManager
 {
-    private readonly Dictionary<Guid, (Position Pos, PositionManagementConfig Config, PositionLifecycleState State)> _tracked = new();
+    private const string StateActive = "Active";
+    private const string StateBreakevenSet = "BreakevenSet";
+    private const string StateTrailing = "Trailing";
+    private const string StateClosed = "Closed";
+
+    private readonly Dictionary<Guid, (Position Pos, PositionManagementConfig Config, string State)> _tracked = new();
     private readonly HashSet<Guid> _beApplied = new();
     private readonly Dictionary<Guid, decimal> _highWaterBid = new();
     private readonly Dictionary<Guid, decimal> _lowWaterAsk = new();
@@ -15,7 +21,7 @@ public sealed class PositionManager(
 
     public void RegisterPosition(Position position, PositionManagementConfig config)
     {
-        _tracked[position.Id] = (position, config, PositionLifecycleState.Active);
+        _tracked[position.Id] = (position, config, StateActive);
         _highWaterBid[position.Id] = position.EntryPrice.Value;
         _lowWaterAsk[position.Id] = position.EntryPrice.Value;
         logger.LogInformation("Position state changed. Id={Id} From=None To=Active", position.Id);
@@ -25,8 +31,7 @@ public sealed class PositionManager(
     {
         if (_tracked.TryGetValue(positionId, out var entry))
         {
-            var prevState = entry.State;
-            logger.LogInformation("Position state changed. Id={Id} From={From} To=Closed", positionId, prevState);
+            logger.LogInformation("Position state changed. Id={Id} From={From} To=Closed", positionId, entry.State);
         }
         _tracked.Remove(positionId);
         _beApplied.Remove(positionId);
@@ -40,7 +45,7 @@ public sealed class PositionManager(
     {
         if (!_tracked.TryGetValue(position.Id, out var entry)) return [];
         var (_, config, state) = entry;
-        if (state == PositionLifecycleState.Closed) return [];
+        if (state == StateClosed) return [];
 
         var mods = new List<PositionModification>();
         var symbolInfo = symbolRegistry.Get(position.Symbol);
@@ -54,27 +59,27 @@ public sealed class PositionManager(
 
         if (config.UseBreakeven && !_beApplied.Contains(position.Id))
         {
-            var newBeSl = TrailingHelpers.Breakeven(
-                position, currentTick.Bid, currentTick.Ask,
+            var beSl = PositionLifecycle.TryBreakeven(
+                ToPositionState(position), currentTick.Bid, currentTick.Ask,
                 config.BreakevenTriggerR, config.BreakevenBufferPips, symbolInfo);
-            if (newBeSl.HasValue)
+            if (beSl.HasValue)
             {
                 _beApplied.Add(position.Id);
-                mods.Add(new MoveStopLoss(position.Id, newBeSl.Value));
-                newState = PositionLifecycleState.BreakevenSet;
-                logger.LogDebug("Breakeven applied. Id={Id} NewSl={Sl:F5}", position.Id, newBeSl.Value.Value);
+                mods.Add(new MoveStopLoss(position.Id, beSl.Value));
+                newState = StateBreakevenSet;
+                logger.LogDebug("Breakeven applied. Id={Id} NewSl={Sl:F5}", position.Id, beSl.Value.Value);
             }
         }
 
-        if (config.TrailingStop.Method == TrailingMethod.StepPips && !_beApplied.Contains(position.Id) && state != PositionLifecycleState.BreakevenSet)
+        if (config.TrailingStop.Method == TrailingMethod.StepPips && !_beApplied.Contains(position.Id) && state != StateBreakevenSet)
         {
-            var trailingSl = TrailingHelpers.StepTrail(
-                position, currentTick.Bid, currentTick.Ask,
+            var trailingSl = PositionLifecycle.TrailStepPips(
+                ToPositionState(position), currentTick.Bid, currentTick.Ask,
                 new Pips(config.TrailingStop.StepPips), symbolInfo);
             if (trailingSl.HasValue)
             {
                 mods.Add(new MoveStopLoss(position.Id, trailingSl.Value));
-                newState = PositionLifecycleState.Trailing;
+                newState = StateTrailing;
             }
         }
 
@@ -82,41 +87,37 @@ public sealed class PositionManager(
         {
             var atrValue = ComputeAtr(recentBars, config, symbolInfo);
             var atrMultiple = GetEffectiveAtrMultiple(config);
-
-            var atrTrail = TrailingHelpers.AtrTrail(
-                position,
+            var atrTrail = PositionLifecycle.TrailAtr(
+                ToPositionState(position),
                 _highWaterBid.GetValueOrDefault(position.Id, position.EntryPrice.Value),
                 _lowWaterAsk.GetValueOrDefault(position.Id, position.EntryPrice.Value),
                 atrValue, atrMultiple, symbolInfo);
             if (atrTrail.HasValue)
             {
                 mods.Add(new MoveStopLoss(position.Id, atrTrail.Value));
-                newState = PositionLifecycleState.Trailing;
+                newState = StateTrailing;
             }
         }
 
         if (config.TrailingStop.Method == TrailingMethod.Structure && !_beApplied.Contains(position.Id))
         {
             var lookback = config.TrailingStop.StructureLookbackBars > 0
-                ? config.TrailingStop.StructureLookbackBars
-                : 10;
+                ? config.TrailingStop.StructureLookbackBars : 10;
             var atrValue = ComputeAtr(recentBars, config, symbolInfo);
             var atrMultiple = GetEffectiveAtrMultiple(config);
-
-            var structureSl = TrailingHelpers.StructureTrail(
-                position, recentBars, lookback, atrValue, atrMultiple, symbolInfo);
+            var structureSl = PositionLifecycle.TrailStructure(
+                ToPositionState(position), recentBars, lookback, atrValue, atrMultiple, symbolInfo);
             if (structureSl.HasValue)
             {
                 mods.Add(new MoveStopLoss(position.Id, structureSl.Value));
-                newState = PositionLifecycleState.Trailing;
+                newState = StateTrailing;
             }
         }
 
         if (config.TrailingStop.Method == TrailingMethod.SteppedR && !_beApplied.Contains(position.Id))
         {
             var steppedRLevels = config.TrailingStop.SteppedRLevels is { Length: > 0 }
-                ? config.TrailingStop.SteppedRLevels
-                : new[] { 1.0, 2.0, 3.0 };
+                ? config.TrailingStop.SteppedRLevels : new[] { 1.0, 2.0, 3.0 };
 
             var initialSl = _initialSlDistance.GetValueOrDefault(position.Id);
             if (initialSl <= 0)
@@ -125,25 +126,26 @@ public sealed class PositionManager(
                 _initialSlDistance[position.Id] = initialSl;
             }
 
-            var steppedSl = TrailingHelpers.SteppedRTrail(
-                position, currentTick.Bid, currentTick.Ask, steppedRLevels, initialSl, symbolInfo);
+            var ps = ToPositionState(position) with { InitialSlDistance = initialSl };
+            var steppedSl = PositionLifecycle.TrailSteppedR(
+                ps, currentTick.Bid, currentTick.Ask, steppedRLevels, symbolInfo);
             if (steppedSl.HasValue)
             {
                 mods.Add(new MoveStopLoss(position.Id, steppedSl.Value));
-                newState = PositionLifecycleState.Trailing;
+                newState = StateTrailing;
             }
         }
 
         if (config.TrailingStop.Method == TrailingMethod.BreakevenThenTrail && !_beApplied.Contains(position.Id))
         {
-            var beTrail = TrailingHelpers.Breakeven(
-                position, currentTick.Bid, currentTick.Ask,
+            var beSl = PositionLifecycle.TryBreakeven(
+                ToPositionState(position), currentTick.Bid, currentTick.Ask,
                 config.TrailingStop.BreakevenTriggerR, new Pips(1), symbolInfo);
-            if (beTrail.HasValue)
+            if (beSl.HasValue)
             {
                 _beApplied.Add(position.Id);
-                mods.Add(new MoveStopLoss(position.Id, beTrail.Value));
-                newState = PositionLifecycleState.BreakevenSet;
+                mods.Add(new MoveStopLoss(position.Id, beSl.Value));
+                newState = StateBreakevenSet;
             }
         }
 
@@ -154,6 +156,14 @@ public sealed class PositionManager(
         }
 
         return mods;
+    }
+
+    private static PositionState ToPositionState(Position p)
+    {
+        return new PositionState(
+            p.Id, p.OrderId, p.Symbol, p.Direction, p.Lots,
+            p.EntryPrice, p.CurrentStopLoss, p.TakeProfit,
+            p.OpenedAtUtc, p.StrategyId, PositionPhase.Open, p.Lots);
     }
 
     private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config, SymbolInfo symbolInfo)
