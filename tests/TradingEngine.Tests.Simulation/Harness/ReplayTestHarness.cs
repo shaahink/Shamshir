@@ -118,6 +118,8 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                     .Returns(new[] { strategy });
                 services.AddSingleton<IStrategyBank>(_ => strategyBank);
                 services.AddSingleton<ISignalGate, SignalGateService>();
+                services.AddSingleton<IDecisionJournal>(_ => Substitute.For<IDecisionJournal>());
+                services.AddSingleton<IEquitySink>(_ => Substitute.For<IEquitySink>());
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
                 services.AddSingleton<IPositionManager, PositionManager>();

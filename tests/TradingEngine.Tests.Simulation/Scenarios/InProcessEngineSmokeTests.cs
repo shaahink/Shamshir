@@ -93,6 +93,8 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
 
                 services.AddSingleton<IPositionManager, PositionManager>();
                 services.AddSingleton<IEventBus, TypedEventBus>();
+                services.AddSingleton<IDecisionJournal>(_ => Substitute.For<IDecisionJournal>());
+                services.AddSingleton<IEquitySink>(_ => Substitute.For<IEquitySink>());
                 services.AddSingleton<EquityPersistenceHandler>();
                 services.AddSingleton<TradePersistenceHandler>();
                 services.AddSingleton<BarEvaluationHandler>();
