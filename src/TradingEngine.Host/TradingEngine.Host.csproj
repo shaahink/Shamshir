@@ -23,5 +23,6 @@
     <ProjectReference Include="..\TradingEngine.Infrastructure\TradingEngine.Infrastructure.csproj" />
     <ProjectReference Include="..\TradingEngine.Services\TradingEngine.Services.csproj" />
     <ProjectReference Include="..\TradingEngine.Strategies\TradingEngine.Strategies.csproj" />
+    <ProjectReference Include="..\TradingEngine.Experiments\TradingEngine.Experiments.csproj" />
   </ItemGroup>
 </Project>

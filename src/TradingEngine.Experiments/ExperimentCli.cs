@@ -1,18 +1,11 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using TradingEngine.Application.Experiments;
-using TradingEngine.Domain.Experiments;
-using TradingEngine.Infrastructure.Persistence;
-using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Risk.Compliance;
 
-namespace TradingEngine.Host.Experiments;
+namespace TradingEngine.Experiments;
 
 public static class ExperimentCli
 {
-    public static void Run(ReadOnlySpan<string> args)
+    public static void Run(ReadOnlySpan<string> args, Action<IServiceCollection>? registerHostServices = null)
     {
         if (args.Length == 0)
         {
@@ -26,7 +19,7 @@ public static class ExperimentCli
         switch (verb)
         {
             case "run":
-                RunExperiment(rest);
+                RunExperiment(rest, registerHostServices);
                 break;
             case "report":
                 ShowReport(rest);
@@ -40,7 +33,7 @@ public static class ExperimentCli
         }
     }
 
-    private static void RunExperiment(ReadOnlySpan<string> args)
+    private static void RunExperiment(ReadOnlySpan<string> args, Action<IServiceCollection>? registerHostServices = null)
     {
         if (args.Length == 0)
         {
@@ -87,6 +80,7 @@ public static class ExperimentCli
             foreach (var si in catalog.GetAll()) reg.Register(si);
             return reg;
         });
+        registerHostServices?.Invoke(services);
         services.AddSingleton<ExperimentRunner>(sp => new ExperimentRunner(
             sp.GetRequiredService<IBarRepository>(),
             sp.GetRequiredService<IPassProbabilityEstimator>(),
@@ -95,6 +89,7 @@ public static class ExperimentCli
             sp.GetRequiredService<ITradeRepository>(),
             sp.GetRequiredService<IEquityRepository>(),
             sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<IExperimentHostFactory>(),
             sp.GetRequiredService<ILogger<ExperimentRunner>>()
         ));
 

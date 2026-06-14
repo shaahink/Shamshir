@@ -1,12 +1,4 @@
-using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using TradingEngine.Domain.Experiments;
-using TradingEngine.Infrastructure.Adapters;
-using TradingEngine.Infrastructure.Persistence.Entities;
-
-namespace TradingEngine.Host.Experiments;
+namespace TradingEngine.Experiments;
 
 public sealed class ExperimentRunner
 {
@@ -17,6 +9,7 @@ public sealed class ExperimentRunner
     private readonly ITradeRepository _tradeRepo;
     private readonly IEquityRepository _equityRepo;
     private readonly ISymbolInfoRegistry _symbolRegistry;
+    private readonly IExperimentHostFactory _hostFactory;
     private readonly string _solutionRoot;
     private readonly ILogger<ExperimentRunner> _logger;
 
@@ -28,6 +21,7 @@ public sealed class ExperimentRunner
         ITradeRepository tradeRepo,
         IEquityRepository equityRepo,
         ISymbolInfoRegistry symbolRegistry,
+        IExperimentHostFactory hostFactory,
         ILogger<ExperimentRunner> logger)
     {
         _barRepo = barRepo;
@@ -37,6 +31,7 @@ public sealed class ExperimentRunner
         _tradeRepo = tradeRepo;
         _equityRepo = equityRepo;
         _symbolRegistry = symbolRegistry;
+        _hostFactory = hostFactory;
         _solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         _logger = logger;
     }
@@ -204,7 +199,7 @@ public sealed class ExperimentRunner
         var to = runTo.ToDateTime(TimeOnly.MaxValue);
         var dbPath = Path.Combine(Path.GetTempPath(), $"exp_{experimentId:N}.db");
 
-        var host = EngineHostFactory.Create(new EngineHostOptions
+        var host = _hostFactory.Create(new EngineHostOptions
         {
             RunId = runId,
             Mode = EngineMode.Backtest,
@@ -221,8 +216,8 @@ public sealed class ExperimentRunner
             PreloadedConfig = config,
         });
 
-        EngineHostFactory.WireEventHandlers(host);
-        EngineHostFactory.WireRiskRules(host);
+        _hostFactory.WireEventHandlers(host);
+        _hostFactory.WireRiskRules(host);
 
         await host.StartAsync(ct);
 

@@ -6,7 +6,7 @@ global using Microsoft.EntityFrameworkCore;
 global using Microsoft.Data.Sqlite;
 global using TradingEngine.Domain;
 global using TradingEngine.Application;
-global using TradingEngine.Host.Experiments;
+global using TradingEngine.Experiments;
 global using TradingEngine.Infrastructure;
 global using TradingEngine.Infrastructure.Events;
 global using TradingEngine.Infrastructure.Persistence;

@@ -1,4 +1,4 @@
-namespace TradingEngine.Host;
+namespace TradingEngine.Domain;
 
 public sealed record BacktestProgressEvent(
     string RunId,

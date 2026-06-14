@@ -8,7 +8,7 @@ global using TradingEngine.Application;
 global using TradingEngine.Domain;
 global using TradingEngine.Domain.Events;
 global using TradingEngine.Domain.Experiments;
-global using TradingEngine.Host.Experiments;
+global using TradingEngine.Experiments;
 global using TradingEngine.Risk;
 global using TradingEngine.Risk.Compliance;
 global using TradingEngine.Risk.Filters;

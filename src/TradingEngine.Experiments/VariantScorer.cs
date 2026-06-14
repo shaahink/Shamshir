@@ -1,6 +1,4 @@
-using TradingEngine.Domain.Experiments;
-
-namespace TradingEngine.Host.Experiments;
+namespace TradingEngine.Experiments;
 
 public static class VariantScorer
 {

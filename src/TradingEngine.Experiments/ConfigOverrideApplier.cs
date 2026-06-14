@@ -1,8 +1,7 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
-namespace TradingEngine.Host.Experiments;
+namespace TradingEngine.Experiments;
 
 public static class ConfigOverrideApplier
 {

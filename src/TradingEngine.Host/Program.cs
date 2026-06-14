@@ -10,7 +10,10 @@ public static class Program
     {
         if (args.Length >= 1 && args[0] == "experiment")
         {
-            ExperimentCli.Run(args.AsSpan(1));
+            ExperimentCli.Run(args.AsSpan(1), services =>
+            {
+                services.AddSingleton<IExperimentHostFactory, ExperimentHostFactoryAdapter>();
+            });
             return;
         }
 

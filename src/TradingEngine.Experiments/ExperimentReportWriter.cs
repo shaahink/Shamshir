@@ -1,8 +1,6 @@
 using System.Text;
-using System.Text.Json;
-using TradingEngine.Domain.Experiments;
 
-namespace TradingEngine.Host.Experiments;
+namespace TradingEngine.Experiments;
 
 public static class ExperimentReportWriter
 {

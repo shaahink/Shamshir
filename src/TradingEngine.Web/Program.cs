@@ -29,6 +29,7 @@ builder.Services.AddScoped<IPipelineEventRepository, SqlitePipelineEventReposito
 builder.Services.AddScoped<IExperimentRepository, SqliteExperimentRepository>();
 builder.Services.AddScoped<ITradeRepository, SqliteTradeRepository>();
 builder.Services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+builder.Services.AddSingleton<IExperimentHostFactory, ExperimentHostFactoryAdapter>();
 builder.Services.AddTransient<ExperimentRunner>();
 builder.Services.AddSingleton<BacktestProgressStore>();
 builder.Services.AddSingleton<BacktestJournal>();
