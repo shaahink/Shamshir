@@ -43,6 +43,7 @@ public sealed record PersistenceServices
 {
     public required IEventBus EventBus { get; init; }
     public required PersistenceService Persistence { get; init; }
+    public EffectExecutor? EffectExecutor { get; init; }
     public IEquitySink? EquitySink { get; init; }
     public IProgress<BacktestProgressEvent>? Progress { get; init; }
     public IPipelineJournal? Journal { get; init; }

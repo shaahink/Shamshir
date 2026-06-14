@@ -150,6 +150,7 @@ public static class Program
             builder.Services.AddSingleton<IStrategyBank, StrategyBankService>();
             builder.Services.AddSingleton<OrderDispatcher>();
             builder.Services.AddSingleton<PositionTracker>();
+            builder.Services.AddSingleton<EffectExecutor>();
             builder.Services.AddSingleton<ISignalGate, SignalGateService>();
 
             if (mode == EngineMode.Backtest)
@@ -233,6 +234,7 @@ public static class Program
                 {
                     EventBus = sp.GetRequiredService<IEventBus>(),
                     Persistence = sp.GetRequiredService<PersistenceService>(),
+                    EffectExecutor = sp.GetRequiredService<EffectExecutor>(),
                     EquitySink = sp.GetService<IEquitySink>(),
                     Progress = null,
                     Journal = null,
