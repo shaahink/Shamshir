@@ -34,6 +34,12 @@ public static class EngineReducer
             case EquityObserved equity:
                 return HandleEquityObserved(state, equity);
 
+            case DayRolled day:
+                return HandleDayRolled(state, day);
+
+            case WeekRolled week:
+                return HandleWeekRolled(state, week);
+
             default:
                 return new EngineDecision(state, effects);
         }
@@ -163,9 +169,33 @@ public static class EngineReducer
             var (nextPos, posEffects) = PositionLifecycle.Apply(posState, evt);
             newPositions[id] = nextPos;
             effects.AddRange(posEffects);
+
+            if (nextPos.Phase is PositionPhase.Open or PositionPhase.Reducing)
+            {
+                var exit = DetectSlTpExit(nextPos, evt);
+                if (exit is not null)
+                {
+                    effects.Add(new CloseOpenPosition(nextPos.PositionId, exit));
+                }
+            }
         }
 
         return new EngineDecision(state with { Positions = newPositions }, effects);
+    }
+
+    private static string? DetectSlTpExit(PositionState state, BarClosed bar)
+    {
+        if (state.Direction == TradeDirection.Long)
+        {
+            if (bar.Low <= state.CurrentStopLoss.Value) return "SL";
+            if (state.TakeProfit is not null && bar.High >= state.TakeProfit.Value.Value) return "TP";
+        }
+        else
+        {
+            if (bar.High >= state.CurrentStopLoss.Value) return "SL";
+            if (state.TakeProfit is not null && bar.Low <= state.TakeProfit.Value.Value) return "TP";
+        }
+        return null;
     }
 
     private static EngineDecision HandleTickReceived(EngineState state, TickReceived evt, List<EngineEffect> effects)
@@ -185,6 +215,19 @@ public static class EngineReducer
     private static EngineDecision HandleEquityObserved(EngineState state, EquityObserved evt)
     {
         var newDrawdown = DrawdownReducer.Apply(state.Drawdown, evt.Equity);
+        return new EngineDecision(state with { Drawdown = newDrawdown }, []);
+    }
+
+    private static EngineDecision HandleDayRolled(EngineState state, DayRolled evt)
+    {
+        var newGovernor = GovernorMachine.ApplyDailyReset(state.Governor);
+        var newDrawdown = DrawdownReducer.ApplyDailyReset(state.Drawdown, state.Drawdown.DailyStartEquity);
+        return new EngineDecision(state with { Governor = newGovernor, Drawdown = newDrawdown }, []);
+    }
+
+    private static EngineDecision HandleWeekRolled(EngineState state, WeekRolled evt)
+    {
+        var newDrawdown = DrawdownReducer.ApplyWeeklyReset(state.Drawdown, state.Drawdown.WeeklyStartEquity);
         return new EngineDecision(state with { Drawdown = newDrawdown }, []);
     }
 

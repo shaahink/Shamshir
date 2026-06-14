@@ -17,3 +17,7 @@ public record OrderRejected(Guid OrderId, Symbol Symbol, string Reason, DateTime
 public record CloseRequested(Guid PositionId, string Reason, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 
 public record EquityObserved(decimal Equity, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+
+public record DayRolled(DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+
+public record WeekRolled(DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);

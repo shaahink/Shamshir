@@ -77,7 +77,7 @@ public sealed class EngineReducerTests
     {
         var state = new EngineState(
             new Dictionary<Guid, PositionState>(),
-            GovernorTradingState.Normal, "Initial", 1.0m,
+            new GovernorState(GovernorTradingState.Normal, 0, 0, 0, 1.0m, false, "Initial"),
             DrawdownReducer.CreateInitial(100_000),
             0);
 

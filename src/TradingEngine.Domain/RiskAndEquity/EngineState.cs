@@ -2,17 +2,13 @@ namespace TradingEngine.Domain;
 
 public sealed record EngineState(
     IReadOnlyDictionary<Guid, PositionState> Positions,
-    GovernorTradingState GovernorState,
-    string GovernorReason,
-    decimal GovernorSizeMultiplier,
+    GovernorState Governor,
     DrawdownState Drawdown,
     int OpenPositionCount)
 {
     public static EngineState Empty => new(
         new Dictionary<Guid, PositionState>(),
-        GovernorTradingState.Normal,
-        "Initial",
-        1.0m,
+        new GovernorState(GovernorTradingState.Normal, 0, 0, 0, 1.0m, false, "Initial"),
         new DrawdownState(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "Fixed"),
         0);
 }
