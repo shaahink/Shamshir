@@ -88,14 +88,21 @@ public static class PositionLifecycle
             return (reducing, []);
         }
 
-        var closed = state with { Phase = PositionPhase.Closed };
-        return (closed, []);
+        var exitReason = state.CloseReason ?? "FORCE";
+        var closed = state with { Phase = PositionPhase.Closed, CloseReason = exitReason };
+        var effects = new List<EngineEffect>
+        {
+            new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, closed.Lots,
+                closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
+                closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc)
+        };
+        return (closed, effects);
     }
 
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleCloseRequested(
         PositionState state, CloseRequested evt)
     {
-        var closing = state with { Phase = PositionPhase.Closing };
+        var closing = state with { Phase = PositionPhase.Closing, CloseReason = evt.Reason };
         var effects = new List<EngineEffect>
         {
             new CloseOpenPosition(state.PositionId, evt.Reason)
@@ -128,8 +135,15 @@ public static class PositionLifecycle
             return (stillReducing, []);
         }
 
-        var closed = state with { Phase = PositionPhase.Closed, Lots = 0 };
-        return (closed, []);
+        var exitReason = state.CloseReason ?? "FORCE";
+        var closed = state with { Phase = PositionPhase.Closed, Lots = 0, CloseReason = exitReason };
+        var effects = new List<EngineEffect>
+        {
+            new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
+                closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
+                closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc)
+        };
+        return (closed, effects);
     }
 
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleClosingFilled(
@@ -145,8 +159,15 @@ public static class PositionLifecycle
             return (partialClose, []);
         }
 
-        var closed = state with { Phase = PositionPhase.Closed, Lots = 0 };
-        return (closed, []);
+        var exitReason = state.CloseReason ?? "FORCE";
+        var closed = state with { Phase = PositionPhase.Closed, Lots = 0, CloseReason = exitReason };
+        var effects = new List<EngineEffect>
+        {
+            new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
+                closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
+                closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc)
+        };
+        return (closed, effects);
     }
 
     public static PositionState CreateIntended(

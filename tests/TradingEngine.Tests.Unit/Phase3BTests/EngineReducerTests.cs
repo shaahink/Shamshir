@@ -124,4 +124,47 @@ public sealed class EngineReducerTests
         state.Positions.Should().HaveCount(1);
         state.Positions.Values.First().Phase.Should().Be(PositionPhase.Open);
     }
+
+    [Fact]
+    public void Close_emits_TradeClosed_with_correct_pnl()
+    {
+        var state = EngineState.Empty;
+        var symbol = Symbol.Parse("EURUSD");
+        var orderId = Guid.NewGuid();
+
+        var submitted = new OrderSubmitted(orderId, symbol, TradeDirection.Long, 0.1m, null, "test", DateTime.UtcNow);
+        var r1 = EngineReducer.Apply(state, submitted);
+        var posId = r1.State.Positions.Values.First().PositionId;
+
+        var filled = new OrderFilled(orderId, symbol, 0.1m, new Price(1.0850m), DateTime.UtcNow.AddSeconds(1));
+        var r2 = EngineReducer.Apply(r1.State, filled);
+
+        r2.State.Positions.Should().HaveCount(1);
+        r2.State.Positions[posId].Phase.Should().Be(PositionPhase.Open);
+
+        var closeRequested = new CloseRequested(posId, "SL hit", DateTime.UtcNow.AddMinutes(1));
+        var r3 = EngineReducer.Apply(r2.State, closeRequested);
+
+        r3.Effects.Should().ContainSingle(e => e is CloseOpenPosition);
+        var closeEffect = r3.Effects.OfType<CloseOpenPosition>().Single();
+        closeEffect.Reason.Should().Be("SL hit");
+
+        var closeFillPrice = new Price(1.0821m);
+        var closeFill = new OrderFilled(orderId, symbol, 0.1m, closeFillPrice, DateTime.UtcNow.AddMinutes(2));
+        var r4 = EngineReducer.Apply(r3.State, closeFill);
+
+        r4.State.Positions.Should().BeEmpty();
+        r4.Effects.Should().ContainSingle(e => e is PublishTradeClosed);
+
+        var tradeClosed = r4.Effects.OfType<PublishTradeClosed>().Single();
+        tradeClosed.Symbol.Should().Be(symbol);
+        tradeClosed.Direction.Should().Be(TradeDirection.Long);
+        tradeClosed.Lots.Should().Be(0.1m);
+        tradeClosed.EntryPrice.Should().Be(new Price(1.0850m));
+        tradeClosed.ExitPrice.Should().Be(closeFillPrice);
+        tradeClosed.ExitReason.Should().Be("SL hit");
+
+        var grossPnlPips = (1.0850m - 1.0821m) / 0.0001m; // 29 pips loss for long
+        grossPnlPips.Should().Be(29);
+    }
 }

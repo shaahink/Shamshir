@@ -85,6 +85,7 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton<OrderDispatcher>();
         services.AddSingleton<PositionTracker>();
         services.AddSingleton<EffectExecutor>();
+        services.AddSingleton<IEffectExecutor>(sp => sp.GetRequiredService<EffectExecutor>());
         services.AddSingleton<ISignalGate, SignalGateService>();
 
         if (options.Mode == EngineMode.Backtest)

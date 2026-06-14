@@ -11,3 +11,5 @@ public record ModifyTakeProfit(Guid PositionId, Price NewTakeProfit) : EngineEff
 public record CloseOpenPosition(Guid PositionId, string Reason) : EngineEffect;
 
 public record RecordDecisionEvent(DecisionRecord Decision) : EngineEffect;
+
+public record PublishTradeClosed(Guid PositionId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price ExitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, string ExitReason, DateTime ClosedAtUtc, DateTime OpenedAtUtc, string? RiskProfileId = null) : EngineEffect;

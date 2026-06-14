@@ -17,4 +17,5 @@ public sealed record PositionState(
     decimal HighWater = 0,
     decimal LowWater = 0,
     bool BreakevenApplied = false,
-    decimal InitialSlDistance = 0);
+    decimal InitialSlDistance = 0,
+    string? CloseReason = null);

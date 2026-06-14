@@ -151,6 +151,7 @@ public static class Program
             builder.Services.AddSingleton<OrderDispatcher>();
             builder.Services.AddSingleton<PositionTracker>();
             builder.Services.AddSingleton<EffectExecutor>();
+            builder.Services.AddSingleton<IEffectExecutor>(sp => sp.GetRequiredService<EffectExecutor>());
             builder.Services.AddSingleton<ISignalGate, SignalGateService>();
 
             if (mode == EngineMode.Backtest)

@@ -9,10 +9,9 @@ public sealed class PositionTracker(
     IRiskManager riskManager,
     IPositionManager positionManager,
     IEventBus eventBus,
-    EngineRunContext runContext,
     IEngineClock clock,
     ILogger<PositionTracker> logger,
-    ITradingGovernor? governor = null,
+    IEffectExecutor? effectExecutor = null,
     ISignalGate? signalGate = null)
 {
     private EngineState _state = EngineState.Empty;
@@ -54,12 +53,12 @@ public sealed class PositionTracker(
         _state = decision.State;
     }
 
-    public async Task OnExecutionAsync(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
+    public async Task<IReadOnlyList<EngineEffect>?> OnExecutionAsync(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
     {
         if (_processedExecutionIds.Contains(evt.OrderId) && !_state.Positions.Any(kv => kv.Value.OrderId == evt.OrderId))
         {
             logger.LogWarning("Duplicate execution event skipped. OrderId={OrderId}", evt.OrderId);
-            return;
+            return null;
         }
         _processedExecutionIds.Add(evt.OrderId);
 
@@ -77,11 +76,17 @@ public sealed class PositionTracker(
         var afterPhase = FindPhaseIn(decision.State, evt.OrderId);
         _state = decision.State;
 
+        foreach (var effect in decision.Effects)
+        {
+            if (effect is PublishTradeClosed && effectExecutor is not null)
+                await effectExecutor.ExecuteAsync(effect, CancellationToken.None);
+        }
+
         if (afterPhase == PositionPhase.Rejected)
         {
             _pendingIntent.Remove(evt.OrderId);
             logger.LogWarning("Order rejected. Id={Id} Reason={Reason}", evt.OrderId, evt.RejectionReason ?? "unknown");
-            return;
+            return decision.Effects;
         }
 
         if (beforePhase == PositionPhase.Intended || beforePhase == PositionPhase.Submitted)
@@ -94,7 +99,7 @@ public sealed class PositionTracker(
             {
                 logger.LogInformation("Partial fill. OrderId={OrderId} Filled={Filled}", evt.OrderId, evt.FilledLots);
             }
-            return;
+            return decision.Effects;
         }
 
         var fillPrice = evt.FillPrice?.Value ?? 0;
@@ -102,14 +107,16 @@ public sealed class PositionTracker(
         if (afterPhase == PositionPhase.Reducing)
         {
             await HandlePartialCloseAsync(evt, fillPrice, strategies);
-            return;
+            return decision.Effects;
         }
 
         if (afterPhase == PositionPhase.Closed)
         {
             await ClosePositionAsync(evt, fillPrice, strategies);
-            return;
+            return decision.Effects;
         }
+
+        return decision.Effects;
     }
 
     private void OnOpened(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
@@ -143,45 +150,13 @@ public sealed class PositionTracker(
     private async Task ClosePositionAsync(ExecutionEvent evt, decimal fillPrice, IEnumerable<IStrategy> strategies)
     {
         var ps = _state.Positions.Values.FirstOrDefault(p => p.OrderId == evt.OrderId);
-        if (ps is null && !TryBuildPosition(evt.OrderId, fillPrice, out var pos)) return;
-
-        Position position;
-        if (ps is not null)
-        {
-            position = ToPosition(ps);
-        }
-        else
-        {
-            pos = default!;
-            return;
-        }
-
-        var symbolInfo = symbolRegistry.Get(position.Symbol);
-        var pnl = PipCalculator.GrossPnL(position.Direction, position.EntryPrice, new Price(fillPrice), position.Lots, symbolInfo, crossRateProvider);
-        var exitReason = DetermineExitReason(position, fillPrice);
+        if (ps is null) return;
 
         _processedExecutionIds.Remove(evt.OrderId);
-        riskManager.DeregisterPosition(position.Id);
-        positionManager.DeregisterPosition(position.Id);
+        riskManager.DeregisterPosition(ps.PositionId);
+        positionManager.DeregisterPosition(ps.PositionId);
 
-        var (_, _, riskProfileId) = _pendingIntent.GetValueOrDefault(evt.OrderId, (default!, 0m, "standard"));
-
-        TradeResult tradeResult = default!;
-        foreach (var s in strategies.Where(s => s.Id == position.StrategyId))
-        {
-            tradeResult = new TradeResult(Guid.NewGuid(), position.Id, position.Symbol, position.Direction, position.Lots,
-                position.EntryPrice, new Price(fillPrice), position.CurrentStopLoss, position.TakeProfit,
-                position.OpenedAtUtc, clock.UtcNow, pnl, Money.Zero(pnl.Currency), Money.Zero(pnl.Currency),
-                pnl, new Pips(0), 0, new Pips(0), new Pips(0),
-                exitReason, position.StrategyId, riskProfileId);
-            s.OnTradeResult(tradeResult);
-            await eventBus.PublishAsync(new TradeClosed(tradeResult, runContext.RunId, clock.UtcNow), CancellationToken.None);
-        }
-
-        governor?.OnTradeClosed(tradeResult);
-        signalGate?.OnPositionClosed(position.StrategyId, position.Symbol.Value, position.Direction, exitReason, clock.UtcNow);
-
-        logger.LogInformation("Closed. Id={Id} Exit={Exit:F5} PnL={PnL:F2} Reason={Reason}", position.Id, fillPrice, pnl.Amount, exitReason);
+        logger.LogInformation("Closed. Id={Id} Exit={Exit:F5} Reason={Reason}", ps.PositionId, fillPrice, ps.CloseReason ?? "FORCE");
     }
 
     private async Task HandlePartialCloseAsync(ExecutionEvent evt, decimal fillPrice, IEnumerable<IStrategy> strategies)

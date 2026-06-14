@@ -14,27 +14,25 @@ public sealed class PositionLifecycleGoldenTests
         return r;
     }
 
-    private static (PositionTracker tracker, IPositionManager posMgr, IEventBus eventBus, IRiskManager riskMgr, ITradingGovernor governor) CreateTracker()
+    private static (PositionTracker tracker, IPositionManager posMgr, IEventBus eventBus, IRiskManager riskMgr) CreateTracker()
     {
         var registry = CreateRegistry();
         var crossRate = new Func<string, string, decimal>((_, _) => 1m);
         var riskMgr = Substitute.For<IRiskManager>();
         var posMgr = new PositionManager(registry, Substitute.For<IIndicatorService>(), Substitute.For<ILogger<PositionManager>>());
         var eventBus = Substitute.For<IEventBus>();
-        var runCtx = new EngineRunContext("golden-test");
         var clock = Substitute.For<IEngineClock>();
         clock.UtcNow.Returns(DateTime.UtcNow);
         var logger = Substitute.For<ILogger<PositionTracker>>();
-        var governor = Substitute.For<ITradingGovernor>();
 
-        var tracker = new PositionTracker(registry, crossRate, riskMgr, posMgr, eventBus, runCtx, clock, logger, governor);
-        return (tracker, posMgr, eventBus, riskMgr, governor);
+        var tracker = new PositionTracker(registry, crossRate, riskMgr, posMgr, eventBus, clock, logger);
+        return (tracker, posMgr, eventBus, riskMgr);
     }
 
     [Fact]
     public async Task FullFill_CreatesPosition()
     {
-        var (tracker, _, eventBus, riskMgr, _) = CreateTracker();
+        var (tracker, _, eventBus, riskMgr) = CreateTracker();
 
         var intent = new TradeIntent(Symbol.Parse("EURUSD"), TradeDirection.Long, OrderType.Market, null,
             new Price(1.0850m), new Price(1.0821m), "test", "standard", "", DateTime.UtcNow);
@@ -57,7 +55,7 @@ public sealed class PositionLifecycleGoldenTests
     [Fact]
     public async Task PartialThenFullFill_EventuallyCreatesPosition()
     {
-        var (tracker, _, eventBus, riskMgr, _) = CreateTracker();
+        var (tracker, _, eventBus, riskMgr) = CreateTracker();
 
         var intent = new TradeIntent(Symbol.Parse("EURUSD"), TradeDirection.Long, OrderType.Market, null,
             new Price(1.0850m), new Price(1.0821m), "test", "standard", "", DateTime.UtcNow);
@@ -81,7 +79,7 @@ public sealed class PositionLifecycleGoldenTests
     [Fact]
     public async Task DuplicateExecution_WhilePositionOpen_ClosesPosition()
     {
-        var (tracker, _, eventBus, riskMgr, _) = CreateTracker();
+        var (tracker, _, eventBus, riskMgr) = CreateTracker();
 
         var intent = new TradeIntent(Symbol.Parse("EURUSD"), TradeDirection.Long, OrderType.Market, null,
             new Price(1.0850m), new Price(1.0821m), "test", "standard", "", DateTime.UtcNow);
@@ -104,7 +102,7 @@ public sealed class PositionLifecycleGoldenTests
     [Fact]
     public async Task CloseAtSL_RemovesPosition_EmitsTradeClosed()
     {
-        var (tracker, _, eventBus, riskMgr, governor) = CreateTracker();
+        var (tracker, _, eventBus, riskMgr) = CreateTracker();
 
         var intent = new TradeIntent(Symbol.Parse("EURUSD"), TradeDirection.Long, OrderType.Market, null,
             new Price(1.0850m), new Price(1.0821m), "test", "standard", "", DateTime.UtcNow);
@@ -125,7 +123,7 @@ public sealed class PositionLifecycleGoldenTests
     [Fact]
     public async Task CloseAtTP_RemovesPosition()
     {
-        var (tracker, _, eventBus, riskMgr, _) = CreateTracker();
+        var (tracker, _, eventBus, riskMgr) = CreateTracker();
 
         var intent = new TradeIntent(Symbol.Parse("EURUSD"), TradeDirection.Long, OrderType.Market, null,
             new Price(1.0850m), new Price(1.0821m), "test", "standard", "", DateTime.UtcNow);
@@ -147,7 +145,7 @@ public sealed class PositionLifecycleGoldenTests
     [Fact]
     public async Task ForceClose_RemovesPosition()
     {
-        var (tracker, _, eventBus, riskMgr, _) = CreateTracker();
+        var (tracker, _, eventBus, riskMgr) = CreateTracker();
 
         var intent = new TradeIntent(Symbol.Parse("EURUSD"), TradeDirection.Long, OrderType.Market, null,
             new Price(1.0850m), new Price(1.0821m), "test", "standard", "", DateTime.UtcNow);
@@ -168,7 +166,7 @@ public sealed class PositionLifecycleGoldenTests
     [Fact]
     public async Task OrderRejected_RemovesFromPending()
     {
-        var (tracker, _, eventBus, riskMgr, _) = CreateTracker();
+        var (tracker, _, eventBus, riskMgr) = CreateTracker();
 
         var intent = new TradeIntent(Symbol.Parse("EURUSD"), TradeDirection.Long, OrderType.Market, null,
             new Price(1.0850m), new Price(1.0821m), "test", "standard", "", DateTime.UtcNow);

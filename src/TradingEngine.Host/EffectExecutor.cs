@@ -1,9 +1,10 @@
 using Microsoft.Extensions.Logging;
 using TradingEngine.Domain.Events;
+using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Host;
 
-public sealed class EffectExecutor
+public sealed class EffectExecutor : IEffectExecutor
 {
     private readonly IBrokerAdapter _broker;
     private readonly IEventBus _eventBus;
@@ -13,6 +14,11 @@ public sealed class EffectExecutor
     private readonly string _runId;
     private readonly IEngineClock _clock;
     private readonly ILogger<EffectExecutor> _logger;
+    private readonly ISymbolInfoRegistry _symbolRegistry;
+    private readonly Func<string, string, decimal> _crossRateProvider;
+    private readonly IReadOnlyList<IStrategy> _strategies;
+    private readonly ITradingGovernor? _governor;
+    private readonly ISignalGate? _signalGate;
 
     public EffectExecutor(
         IBrokerAdapter broker,
@@ -22,7 +28,12 @@ public sealed class EffectExecutor
         IProgress<BacktestProgressEvent>? progress,
         EngineRunContext runContext,
         IEngineClock clock,
-        ILogger<EffectExecutor> logger)
+        ILogger<EffectExecutor> logger,
+        ISymbolInfoRegistry symbolRegistry,
+        Func<string, string, decimal> crossRateProvider,
+        IReadOnlyList<IStrategy> strategies,
+        ITradingGovernor? governor = null,
+        ISignalGate? signalGate = null)
     {
         _broker = broker;
         _eventBus = eventBus;
@@ -32,6 +43,11 @@ public sealed class EffectExecutor
         _runId = runContext.RunId;
         _clock = clock;
         _logger = logger;
+        _symbolRegistry = symbolRegistry;
+        _crossRateProvider = crossRateProvider;
+        _strategies = strategies;
+        _governor = governor;
+        _signalGate = signalGate;
     }
 
     public async Task ExecuteAsync(EngineEffect effect, CancellationToken ct)
@@ -64,6 +80,37 @@ public sealed class EffectExecutor
             case RecordDecisionEvent record:
                 _decisionJournal.Record(record.Decision);
                 break;
+
+            case PublishTradeClosed tradeClosed:
+                await HandlePublishTradeClosed(tradeClosed, ct);
+                break;
         }
+    }
+
+    private async Task HandlePublishTradeClosed(PublishTradeClosed effect, CancellationToken ct)
+    {
+        var symbolInfo = _symbolRegistry.Get(effect.Symbol);
+        var pnl = PipCalculator.GrossPnL(effect.Direction, effect.EntryPrice, effect.ExitPrice,
+            effect.Lots, symbolInfo, _crossRateProvider);
+
+        var tradeResult = new TradeResult(Guid.NewGuid(), effect.PositionId, effect.Symbol, effect.Direction,
+            effect.Lots, effect.EntryPrice, effect.ExitPrice, effect.StopLoss, effect.TakeProfit,
+            effect.OpenedAtUtc, effect.ClosedAtUtc, pnl, Money.Zero(pnl.Currency), Money.Zero(pnl.Currency),
+            pnl, new Pips(0), 0, new Pips(0), new Pips(0),
+            effect.ExitReason, effect.StrategyId, effect.RiskProfileId ?? "standard");
+
+        foreach (var s in _strategies.Where(s => s.Id == effect.StrategyId))
+        {
+            s.OnTradeResult(tradeResult);
+        }
+
+        await _eventBus.PublishAsync(new TradeClosed(tradeResult, _runId, effect.ClosedAtUtc), ct);
+
+        _governor?.OnTradeClosed(tradeResult);
+        _signalGate?.OnPositionClosed(effect.StrategyId, effect.Symbol.Value, effect.Direction,
+            effect.ExitReason, effect.ClosedAtUtc);
+
+        _logger.LogInformation("CLOSED|{Symbol}|{Dir}|Exit={Exit:F5}|PnL={PnL:F2}|Reason={Reason}",
+            effect.Symbol.Value, effect.Direction, effect.ExitPrice.Value, pnl.Amount, effect.ExitReason);
     }
 }
