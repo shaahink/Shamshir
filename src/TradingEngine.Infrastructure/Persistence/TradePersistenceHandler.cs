@@ -1,7 +1,7 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 
-namespace TradingEngine.Host;
+namespace TradingEngine.Infrastructure.Persistence;
 
 public sealed class TradePersistenceHandler : IEventHandler<TradeClosed>, IAsyncDisposable
 {

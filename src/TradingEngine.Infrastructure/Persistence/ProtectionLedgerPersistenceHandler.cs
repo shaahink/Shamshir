@@ -1,10 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TradingEngine.Domain.Events;
-using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
 
-namespace TradingEngine.Host;
+namespace TradingEngine.Infrastructure.Persistence;
 
 public sealed class ProtectionLedgerPersistenceHandler : IEventHandler<GovernorStateChanged>, IAsyncDisposable
 {

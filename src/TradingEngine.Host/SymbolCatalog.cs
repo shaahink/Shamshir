@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace TradingEngine.Host;
 
 public sealed class SymbolCatalog

@@ -10,6 +10,7 @@ global using TradingEngine.Risk.Sizing;
 global using TradingEngine.Risk.Governor;
 global using TradingEngine.Infrastructure;
 global using TradingEngine.Infrastructure.Adapters;
+global using TradingEngine.Infrastructure.Configuration;
 global using TradingEngine.Infrastructure.Indicators;
 global using TradingEngine.Services;
 global using TradingEngine.Services.Helpers;

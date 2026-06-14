@@ -3,7 +3,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace TradingEngine.Host;
+namespace TradingEngine.Infrastructure.Events;
 
 public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IAsyncDisposable
 {

@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace TradingEngine.Host;
+namespace TradingEngine.Infrastructure.Configuration;
 
 public sealed record LoadedConfig(
     IReadOnlyList<PropFirmRuleSet> PropFirms,
