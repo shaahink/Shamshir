@@ -180,17 +180,9 @@ public sealed class EngineWorker : BackgroundService
                         _clock.UtcNow));
                 }
 
-                if (_riskManager.ConsumeForceClosePending())
-                {
-                    _logger.LogCritical("Force-close triggered. Closing {Count} open positions",
-                        _positionTracker.OpenPositions.Count);
-                    foreach (var (_, pos) in _positionTracker.OpenPositions.ToList())
-                        await _broker.ClosePositionAsync(pos.Id, ct);
-                }
-
                     var accountUpdate = Interlocked.Exchange(ref _latestAccountUpdate, null);
                 if (accountUpdate is not null)
-                    HandleAccountUpdate(accountUpdate);
+                    await HandleAccountUpdateAsync(accountUpdate);
 
                 if (_dataFeed is not null && _broker is SimulatedBrokerAdapter sim)
                     sim.OnTickReceived(tick);
@@ -428,7 +420,7 @@ public sealed class EngineWorker : BackgroundService
     private async Task RunBacktestLoopAsync(CancellationToken ct)
     {
         var initAcct = await _broker.AccountStream.ReadAsync(ct);
-        HandleAccountUpdate(initAcct);
+        await HandleAccountUpdateAsync(initAcct);
 
         _backtestDriver = new BacktestDriver(
             _broker, _positionTracker, _orderDispatcher, _riskManager,
@@ -473,7 +465,7 @@ public sealed class EngineWorker : BackgroundService
         }
     }
 
-    private void HandleAccountUpdate(AccountUpdate update)
+    private async Task HandleAccountUpdateAsync(AccountUpdate update)
     {
         _drawdownTracker.InitializeIfNeeded(update.Balance);
         _riskManager.UpdateEquityLevels(update.Equity);
@@ -489,6 +481,7 @@ public sealed class EngineWorker : BackgroundService
                     $"Daily DD at {_riskManager.CurrentState.DailyDrawdownUsed:P1} >= {ruleSet.MaxDailyLossPercent * (double)_sizingPolicy.FlattenAtFraction:P1} hard limit",
                     ProtectionCause.DailyDrawdown);
                 _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — daily DD");
+                await _positionTracker.RequestForceCloseAllAsync("DailyDD");
             }
             else if (_riskManager.CurrentState.MaxDrawdownUsed >= (decimal)ruleSet.MaxTotalLossPercent * flattenFraction)
             {
@@ -496,6 +489,7 @@ public sealed class EngineWorker : BackgroundService
                     $"Max DD at {_riskManager.CurrentState.MaxDrawdownUsed:P1} >= {ruleSet.MaxTotalLossPercent * (double)_sizingPolicy.FlattenAtFraction:P1} hard limit",
                     ProtectionCause.MaxDrawdown);
                 _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — max DD");
+                await _positionTracker.RequestForceCloseAllAsync("MaxDD");
             }
         }
 

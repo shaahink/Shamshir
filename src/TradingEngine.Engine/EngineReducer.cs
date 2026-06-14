@@ -40,6 +40,9 @@ public static class EngineReducer
             case WeekRolled week:
                 return HandleWeekRolled(state, week);
 
+            case ForceCloseAllRequested forceClose:
+                return HandleForceCloseAll(state, forceClose);
+
             default:
                 return new EngineDecision(state, effects);
         }
@@ -234,5 +237,15 @@ public static class EngineReducer
     private static PositionState? FindPositionByOrderId(EngineState state, Guid orderId)
     {
         return state.Positions.Values.FirstOrDefault(p => p.OrderId == orderId);
+    }
+
+    private static EngineDecision HandleForceCloseAll(EngineState state, ForceCloseAllRequested evt)
+    {
+        var effects = new List<EngineEffect>();
+        foreach (var (posId, _) in state.Positions)
+        {
+            effects.Add(new CloseOpenPosition(posId, evt.Reason));
+        }
+        return new EngineDecision(state, effects);
     }
 }

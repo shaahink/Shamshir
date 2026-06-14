@@ -13,7 +13,6 @@ public interface IRiskManager
     void OnMonthlyReset(decimal currentEquity);
     void RegisterPosition(Guid positionId, string strategyId, decimal openRiskAmount);
     void DeregisterPosition(Guid positionId);
-    bool ConsumeForceClosePending();
     void EnterProtectionMode(string reason, ProtectionCause cause);
     bool ValidateBudgetEntry(decimal newRiskAmount, EquitySnapshot equity, decimal perTradeRiskAmount);
 }

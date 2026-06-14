@@ -60,7 +60,6 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                 riskManager.ValidateBudgetEntry(Arg.Any<decimal>(),
                     Arg.Any<EquitySnapshot>(), Arg.Any<decimal>())
                     .Returns(true);
-                riskManager.ConsumeForceClosePending().Returns(false);
                 riskManager.InitialBalance.Returns(10_000m);
                 riskManager.CurrentState.Returns(
                     new ExtendedRiskState

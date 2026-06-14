@@ -53,6 +53,19 @@ public sealed class PositionTracker(
         _state = decision.State;
     }
 
+    public async Task RequestForceCloseAllAsync(string reason)
+    {
+        var evt = new ForceCloseAllRequested(reason, clock.UtcNow);
+        var decision = EngineReducer.Apply(_state, evt);
+        _state = decision.State;
+
+        if (effectExecutor is not null)
+        {
+            foreach (var effect in decision.Effects)
+                await effectExecutor.ExecuteAsync(effect, CancellationToken.None);
+        }
+    }
+
     public async Task<IReadOnlyList<EngineEffect>?> OnExecutionAsync(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
     {
         if (_processedExecutionIds.Contains(evt.OrderId) && !_state.Positions.Any(kv => kv.Value.OrderId == evt.OrderId))

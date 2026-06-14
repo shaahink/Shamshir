@@ -196,4 +196,27 @@ public sealed class EngineReducerTests
         r4.Effects.OfType<DeregisterRisk>().Single().PositionId.Should().Be(posId);
         r4.State.Positions.Should().BeEmpty();
     }
+
+    [Fact]
+    public void Breach_emits_close_effects_for_all_open_positions()
+    {
+        var state = EngineState.Empty;
+        var symbol = Symbol.Parse("EURUSD");
+
+        var o1 = Guid.NewGuid();
+        var o2 = Guid.NewGuid();
+        var r1 = EngineReducer.Apply(state, new OrderSubmitted(o1, symbol, TradeDirection.Long, 0.1m, null, "s1", DateTime.UtcNow));
+        var r2 = EngineReducer.Apply(r1.State, new OrderFilled(o1, symbol, 0.1m, new Price(1.1000m), DateTime.UtcNow.AddSeconds(1)));
+        var r3 = EngineReducer.Apply(r2.State, new OrderSubmitted(o2, symbol, TradeDirection.Short, 0.05m, null, "s2", DateTime.UtcNow));
+        var r4 = EngineReducer.Apply(r3.State, new OrderFilled(o2, symbol, 0.05m, new Price(1.1020m), DateTime.UtcNow.AddSeconds(2)));
+
+        r4.State.Positions.Should().HaveCount(2);
+
+        var forceClose = new ForceCloseAllRequested("MaxDD", DateTime.UtcNow.AddMinutes(1));
+        var result = EngineReducer.Apply(r4.State, forceClose);
+
+        result.Effects.Should().HaveCount(2);
+        result.Effects.Should().AllBeOfType<CloseOpenPosition>();
+        result.Effects.OfType<CloseOpenPosition>().Should().OnlyContain(e => e.Reason == "MaxDD");
+    }
 }

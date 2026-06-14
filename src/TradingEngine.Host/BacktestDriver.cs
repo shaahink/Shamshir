@@ -92,15 +92,6 @@ public sealed class BacktestDriver
                     _governor?.OnBar(bar.OpenTimeUtc);
                     _signalGate?.OnBar(bar.OpenTimeUtc);
 
-                    if (_riskManager.ConsumeForceClosePending())
-                    {
-                        _logger.LogCritical("Force-close triggered in backtest loop. Closing {Count} open positions",
-                            _positionTracker.OpenPositions.Count);
-                        foreach (var (_, pos) in _positionTracker.OpenPositions.ToList())
-                            await _broker.ClosePositionAsync(pos.Id, ct);
-                        await DrainExecutionStreamAsync();
-                    }
-
                     Interlocked.Increment(ref _barCount);
                     var byTf = _bars.GetOrAdd(bar.Symbol, _ => new());
                     var list = byTf.GetOrAdd(bar.Timeframe, _ => new());

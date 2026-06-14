@@ -29,7 +29,6 @@ public sealed class RiskManager(
     private IPropFirmComplianceService? _complianceService;
     private SizeModifierPipeline? _sizePipeline;
     private ProtectionCause _protectionCause = ProtectionCause.None;
-    private bool _forceClosePending;
     private readonly Dictionary<Guid, (string StrategyId, decimal Risk)> _openPositionRisk = new();
 
     public void SetActiveRuleSet(PropFirmRuleSet ruleSet)
@@ -52,15 +51,7 @@ public sealed class RiskManager(
     {
         _protectionCause = cause;
         CurrentState = CurrentState with { InProtectionMode = true, ProtectionReason = reason, TradingAllowed = false };
-
-        if (ActiveRuleSet?.ForceCloseOnBreach == true
-            && (cause == ProtectionCause.MaxDrawdown || cause == ProtectionCause.DailyDrawdown))
-        {
-            _forceClosePending = true;
-        }
     }
-
-    public bool ConsumeForceClosePending() => Interlocked.Exchange(ref _forceClosePending, false);
 
     public void RegisterPosition(Guid positionId, string strategyId, decimal openRiskAmount)
         => _openPositionRisk[positionId] = (strategyId, openRiskAmount);
