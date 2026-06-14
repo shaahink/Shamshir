@@ -116,6 +116,17 @@ public static class EngineHostFactory
                 services.AddSingleton<PositionTracker>();
                 services.AddSingleton<ISignalGate, SignalGateService>();
 
+                if (options.Mode == EngineMode.Backtest)
+                {
+                    var buffered = new BufferedEquitySink();
+                    services.AddSingleton<IEquitySink>(buffered);
+                    services.AddSingleton<IAccountSnapshotStore>(buffered);
+                }
+                else
+                {
+                    services.AddSingleton<IEquitySink, PersistentEquitySink>();
+                }
+
                 if (options.Progress is not null)
                 {
                     services.AddSingleton(options.Progress);
@@ -171,6 +182,7 @@ public static class EngineHostFactory
                         {
                             EventBus = sp.GetRequiredService<IEventBus>(),
                             Persistence = sp.GetRequiredService<PersistenceService>(),
+                            EquitySink = sp.GetService<IEquitySink>(),
                             Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
                             Journal = sp.GetRequiredService<IPipelineJournal>(),
                         },

@@ -144,6 +144,17 @@ public static class Program
             builder.Services.AddSingleton<PositionTracker>();
             builder.Services.AddSingleton<ISignalGate, SignalGateService>();
 
+            if (mode == EngineMode.Backtest)
+            {
+                var buffered = new BufferedEquitySink();
+                builder.Services.AddSingleton<IEquitySink>(buffered);
+                builder.Services.AddSingleton<IAccountSnapshotStore>(buffered);
+            }
+            else
+            {
+                builder.Services.AddSingleton<IEquitySink, PersistentEquitySink>();
+            }
+
             builder.Services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
             builder.Services.AddSingleton<ISizeModifier, DrawdownSizeModifier>();
             builder.Services.AddSingleton<ISizeModifier, AtrRegimeSizeModifier>();
@@ -214,6 +225,7 @@ public static class Program
                 {
                     EventBus = sp.GetRequiredService<IEventBus>(),
                     Persistence = sp.GetRequiredService<PersistenceService>(),
+                    EquitySink = sp.GetService<IEquitySink>(),
                     Progress = null,
                     Journal = null,
                 },

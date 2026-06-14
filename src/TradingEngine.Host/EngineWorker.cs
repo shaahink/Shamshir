@@ -15,6 +15,7 @@ public sealed class EngineWorker : BackgroundService
     private readonly IRiskProfileResolver _riskProfileResolver;
     private readonly Func<string, string, decimal> _crossRateProvider;
     private readonly PersistenceService _persistence;
+    private readonly IEquitySink? _equitySink;
     private readonly OrderDispatcher _orderDispatcher;
     private readonly PositionTracker _positionTracker;
     private readonly DrawdownTracker _drawdownTracker;
@@ -46,6 +47,7 @@ public sealed class EngineWorker : BackgroundService
         _riskProfileResolver = deps.Risk.RiskProfileResolver;
         _crossRateProvider = deps.Risk.CrossRateProvider;
         _persistence = deps.Persistence.Persistence;
+        _equitySink = deps.Persistence.EquitySink;
         _orderDispatcher = deps.Strategies.OrderDispatcher;
         _positionTracker = deps.Strategies.PositionTracker;
         _drawdownTracker = deps.Risk.DrawdownTracker;
@@ -658,8 +660,14 @@ public sealed class EngineWorker : BackgroundService
             _drawdownTracker.PeakEquity, _drawdownTracker.DailyStartEquity,
             riskState.DailyDrawdownUsed, riskState.MaxDrawdownUsed, _engineMode);
         Volatile.Write(ref _currentEquity, equity);
-        if (_engineMode != EngineMode.Backtest)
-            _ = _persistence.SaveEquitySnapshotAsync(equity, CancellationToken.None);
+        if (_equitySink is not null)
+        {
+            _equitySink.Observe(new AccountSnapshot(
+                update.TimestampUtc, update.Balance, update.Equity, update.FloatingPnL,
+                _drawdownTracker.PeakEquity, _drawdownTracker.DailyStartEquity,
+                riskState.DailyDrawdownUsed, riskState.MaxDrawdownUsed,
+                _positionTracker.OpenPositions.Count));
+        }
         _ = _eventBus.PublishAsync(new EquityUpdated(equity, riskState, _clock.UtcNow), CancellationToken.None);
         _logger.LogInformation("ACCOUNT|balance={Balance:F2}|equity={Equity:F2}|dd={DD:P1}",
             update.Balance, update.Equity, riskState.DailyDrawdownUsed);
