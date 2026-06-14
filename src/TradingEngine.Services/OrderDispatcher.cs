@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Services;
@@ -9,6 +10,8 @@ public sealed class OrderDispatcher(
     IRiskProfileResolver riskProfileResolver,
     ISymbolInfoRegistry symbolRegistry,
     Func<string, string, decimal> crossRateProvider,
+    IDecisionJournal decisionJournal,
+    EngineRunContext runContext,
     ILogger<OrderDispatcher> logger)
 {
     public async Task<OrderContext?> DispatchAsync(
@@ -20,8 +23,21 @@ public sealed class OrderDispatcher(
 
         if (violations.Count > 0)
         {
+            var violationCodes = string.Join(", ", violations.Select(v => v.Code));
             logger.LogWarning("Blocked. Strategy={Strategy} Symbol={Symbol} Violations={V}",
-                intent.StrategyId, intent.Symbol, string.Join(", ", violations.Select(v => v.Code)));
+                intent.StrategyId, intent.Symbol, violationCodes);
+            decisionJournal.Record(new DecisionRecord(
+                runContext.RunId,
+                equity.TimestampUtc,
+                0,
+                intent.Symbol.Value,
+                intent.StrategyId,
+                null,
+                "OrderRejected",
+                violationCodes,
+                null,
+                $"Risk validation failed: {violationCodes}",
+                JsonSerializer.Serialize(new { violations = violations.Select(v => new { v.Code, v.Message }) })));
             return null;
         }
 
@@ -55,6 +71,18 @@ public sealed class OrderDispatcher(
             {
                 logger.LogWarning("BudgetBlocked: Strategy={Strategy} Symbol={Symbol} lots={Lots} risk={Risk:F2}",
                     intent.StrategyId, intent.Symbol, originalLots, riskAmount);
+                decisionJournal.Record(new DecisionRecord(
+                    runContext.RunId,
+                    equity.TimestampUtc,
+                    0,
+                    intent.Symbol.Value,
+                    intent.StrategyId,
+                    null,
+                    "OrderRejected",
+                    "BudgetBlocked",
+                    null,
+                    $"Budget exceeded: lots={originalLots:F4} risk={riskAmount:F2}",
+                    JsonSerializer.Serialize(new { originalLots, riskAmount })));
                 return null;
             }
         }
@@ -64,6 +92,19 @@ public sealed class OrderDispatcher(
 
         var orderReq = new OrderRequest(intent, lots, intent.Symbol, intent.Direction, OrderType.Market, intent.LimitPrice);
         var orderId = await broker.SubmitOrderAsync(orderReq, ct);
+
+        decisionJournal.Record(new DecisionRecord(
+            runContext.RunId,
+            equity.TimestampUtc,
+            0,
+            intent.Symbol.Value,
+            intent.StrategyId,
+            null,
+            "OrderSubmitted",
+            null,
+            null,
+            $"Order accepted: lots={lots:F4} risk={riskAmount:F2}",
+            JsonSerializer.Serialize(new { lots, riskAmount, entryPrice = entryPrice.Value, sl = intent.StopLoss.Value })));
 
         return new OrderContext(orderId, lots, riskAmount, profile);
     }

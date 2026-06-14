@@ -14,6 +14,10 @@ public sealed class PipelineEventMapping : IEntityTypeConfiguration<PipelineEven
         builder.Property(x => x.Stage).IsRequired().HasMaxLength(32);
         builder.Property(x => x.CorrelationId).HasMaxLength(64);
         builder.Property(x => x.DetailJson).HasMaxLength(4096);
+        builder.Property(x => x.PhaseBefore).HasMaxLength(32);
+        builder.Property(x => x.PhaseAfter).HasMaxLength(32);
+        builder.Property(x => x.GuardResult).HasMaxLength(64);
+        builder.Property(x => x.Reason).HasMaxLength(512);
         builder.HasIndex(x => new { x.RunId, x.Seq });
     }
 }

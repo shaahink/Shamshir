@@ -10,4 +10,8 @@ public sealed class PipelineEventEntity
     public DateTime SimTimeUtc { get; set; }
     public DateTime WallTimeUtc { get; set; }
     public string DetailJson { get; set; } = "{}";
+    public string? PhaseBefore { get; set; }
+    public string? PhaseAfter { get; set; }
+    public string? GuardResult { get; set; }
+    public string? Reason { get; set; }
 }

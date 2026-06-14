@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Host;
 
-public sealed class PipelineEventWriter : IPipelineJournal, IAsyncDisposable
+public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IAsyncDisposable
 {
     private readonly string _runId;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -26,6 +26,24 @@ public sealed class PipelineEventWriter : IPipelineJournal, IAsyncDisposable
         _scopeFactory = scopeFactory;
         _logger = logger;
         _flushTask = FlushLoopAsync(_cts.Token);
+    }
+
+    public void Record(DecisionRecord r)
+    {
+        var evt = new PipelineEvent(
+            Guid.NewGuid(),
+            r.RunId,
+            Interlocked.Increment(ref _seq),
+            r.Event,
+            r.Symbol ?? r.StrategyId,
+            r.SimTimeUtc,
+            DateTime.UtcNow,
+            r.DetailJson,
+            r.PhaseBefore,
+            r.PhaseAfter,
+            r.GuardResult,
+            r.Reason);
+        _channel.Writer.TryWrite(evt);
     }
 
     public void Write(string stage, string? correlationId, DateTime simTime, string detailJson = "{}")

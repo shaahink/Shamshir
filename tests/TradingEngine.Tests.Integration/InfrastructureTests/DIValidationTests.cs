@@ -55,6 +55,7 @@ public sealed class DIValidationTests
         // Trading services
         services.AddSingleton<IPositionManager, PositionManager>();
         services.AddSingleton<IEventBus, TypedEventBus>();
+        services.AddSingleton<IDecisionJournal>(_ => Substitute.For<IDecisionJournal>());
         services.AddSingleton<OrderDispatcher>();
         services.AddSingleton<PositionTracker>();
 

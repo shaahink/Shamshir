@@ -18,6 +18,10 @@ public sealed class SqlitePipelineEventRepository(TradingDbContext db) : IPipeli
             SimTimeUtc = e.SimTimeUtc,
             WallTimeUtc = e.WallTimeUtc,
             DetailJson = e.DetailJson,
+            PhaseBefore = e.PhaseBefore,
+            PhaseAfter = e.PhaseAfter,
+            GuardResult = e.GuardResult,
+            Reason = e.Reason,
         }).ToList();
 
         db.PipelineEvents.AddRange(entities);
@@ -31,7 +35,8 @@ public sealed class SqlitePipelineEventRepository(TradingDbContext db) : IPipeli
             .OrderBy(e => e.Seq)
             .Select(e => new PipelineEvent(
                 e.Id, e.RunId, e.Seq, e.Stage, e.CorrelationId,
-                e.SimTimeUtc, e.WallTimeUtc, e.DetailJson))
+                e.SimTimeUtc, e.WallTimeUtc, e.DetailJson,
+                e.PhaseBefore, e.PhaseAfter, e.GuardResult, e.Reason))
             .ToListAsync(ct);
     }
 }

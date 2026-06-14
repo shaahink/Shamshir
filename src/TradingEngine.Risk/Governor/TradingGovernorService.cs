@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Risk.Governor;
@@ -6,6 +7,9 @@ public sealed class TradingGovernorService : ITradingGovernor
 {
     private readonly GovernorOptions _options;
     private readonly DrawdownTracker _drawdownTracker;
+    private readonly IDecisionJournal? _decisionJournal;
+    private readonly string? _runId;
+    private readonly IEventBus? _eventBus;
     private readonly ILogger<TradingGovernorService> _logger;
 
     private GovernorTradingState _state = GovernorTradingState.Normal;
@@ -21,9 +25,23 @@ public sealed class TradingGovernorService : ITradingGovernor
         GovernorOptions options,
         DrawdownTracker drawdownTracker,
         ILogger<TradingGovernorService> logger)
+        : this(options, drawdownTracker, null, null, null, logger)
+    {
+    }
+
+    public TradingGovernorService(
+        GovernorOptions options,
+        DrawdownTracker drawdownTracker,
+        IDecisionJournal? decisionJournal,
+        EngineRunContext? runContext,
+        IEventBus? eventBus,
+        ILogger<TradingGovernorService> logger)
     {
         _options = options;
         _drawdownTracker = drawdownTracker;
+        _decisionJournal = decisionJournal;
+        _runId = runContext?.RunId;
+        _eventBus = eventBus;
         _logger = logger;
     }
 
@@ -39,10 +57,18 @@ public sealed class TradingGovernorService : ITradingGovernor
             ? Math.Max(0m, -_dayNetPnLFraction) / maxDailyLoss
             : 0m;
 
+        var oldState = _state;
+        var oldReason = _reason;
         var (candidateState, candidateMultiplier, candidateReason) = DetermineState(dailyDdFraction, context);
         _state = candidateState;
         _reason = candidateReason;
         _lastSizeMultiplier = candidateMultiplier;
+
+        if (candidateState != oldState)
+        {
+            EmitGovernorDecision(oldState, candidateState, candidateReason);
+        }
+
         return new GovernorDecision(
             candidateState is GovernorTradingState.Normal or GovernorTradingState.Reduced,
             candidateMultiplier,
@@ -166,8 +192,10 @@ public sealed class TradingGovernorService : ITradingGovernor
                 _logger.LogInformation("Governor: Cooling-off period ended");
                 if (_state != GovernorTradingState.HardStop)
                 {
+                    var oldState = _state;
                     _state = GovernorTradingState.Normal;
                     _reason = "Cooling-off complete";
+                    EmitGovernorDecision(oldState, GovernorTradingState.Normal, _reason);
                 }
             }
         }
@@ -179,12 +207,39 @@ public sealed class TradingGovernorService : ITradingGovernor
         if (_state is GovernorTradingState.SoftStop or GovernorTradingState.ProfitLocked
             or GovernorTradingState.Reduced or GovernorTradingState.CoolingOff)
         {
+            var oldState = _state;
             _state = GovernorTradingState.Normal;
-            _reason = "Daily reset";
+            var reason = "Daily reset";
+            _reason = reason;
+            EmitGovernorDecision(oldState, GovernorTradingState.Normal, reason);
         }
     }
 
     public void OnWeeklyReset()
     {
+    }
+
+    private void EmitGovernorDecision(GovernorTradingState from, GovernorTradingState to, string reason)
+    {
+        if (_decisionJournal is not null && _runId is not null)
+        {
+            _decisionJournal.Record(new DecisionRecord(
+                _runId,
+                DateTime.UtcNow,
+                0,
+                null,
+                null,
+                from.ToString(),
+                "GovernorStateChanged",
+                null,
+                to.ToString(),
+                reason,
+                "{}"));
+        }
+
+        if (_eventBus is not null)
+        {
+            _eventBus.PublishAsync(new GovernorStateChanged(from, to, reason, DateTime.UtcNow), CancellationToken.None);
+        }
     }
 }

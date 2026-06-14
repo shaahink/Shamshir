@@ -8,7 +8,11 @@ public sealed record PipelineEvent(
     string? CorrelationId,
     DateTime SimTimeUtc,
     DateTime WallTimeUtc,
-    string DetailJson);
+    string DetailJson,
+    string? PhaseBefore = null,
+    string? PhaseAfter = null,
+    string? GuardResult = null,
+    string? Reason = null);
 
 public interface IPipelineEventRepository
 {

@@ -22,7 +22,9 @@ public sealed class OrderDispatcherTests
             0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
 
         var logger = Substitute.For<ILogger<OrderDispatcher>>();
-        var dispatcher = new OrderDispatcher(rm, resolver, registry, (_, _) => 1, logger);
+        var journal = Substitute.For<IDecisionJournal>();
+        var runCtx = new EngineRunContext("test-run");
+        var dispatcher = new OrderDispatcher(rm, resolver, registry, (_, _) => 1, journal, runCtx, logger);
         var broker = Substitute.For<IBrokerAdapter>();
         broker.SubmitOrderAsync(Arg.Any<OrderRequest>(), Arg.Any<CancellationToken>())
             .Returns(Guid.NewGuid());

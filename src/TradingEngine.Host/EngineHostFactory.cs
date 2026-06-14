@@ -98,12 +98,14 @@ public static class EngineHostFactory
                     sp.GetRequiredService<IServiceScopeFactory>(),
                     sp.GetRequiredService<ILogger<PipelineEventWriter>>()));
                 services.AddSingleton<IPipelineJournal>(sp => sp.GetRequiredService<PipelineEventWriter>());
+                services.AddSingleton<IDecisionJournal>(sp => sp.GetRequiredService<PipelineEventWriter>());
 
                 services.AddSingleton<IPositionManager, PositionManager>();
                 services.AddSingleton<IEventBus, TypedEventBus>();
                 services.AddSingleton<EquityPersistenceHandler>();
                 services.AddSingleton<TradePersistenceHandler>();
                 services.AddSingleton<BarEvaluationHandler>();
+                services.AddSingleton<ProtectionLedgerPersistenceHandler>();
                 services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
                 services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
                 services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
@@ -190,6 +192,8 @@ public static class EngineHostFactory
             host.Services.GetRequiredService<TradePersistenceHandler>());
         eventBus.Subscribe<BarEvaluated>(
             host.Services.GetRequiredService<BarEvaluationHandler>());
+        eventBus.Subscribe<GovernorStateChanged>(
+            host.Services.GetRequiredService<ProtectionLedgerPersistenceHandler>());
     }
 
     public static void WireRiskRules(IHost host)
