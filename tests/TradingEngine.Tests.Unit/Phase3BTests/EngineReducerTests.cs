@@ -167,4 +167,33 @@ public sealed class EngineReducerTests
         var grossPnlPips = (1.0850m - 1.0821m) / 0.0001m; // 29 pips loss for long
         grossPnlPips.Should().Be(29);
     }
+
+    [Fact]
+    public void Open_then_close_emits_register_then_deregister()
+    {
+        var state = EngineState.Empty;
+        var symbol = Symbol.Parse("EURUSD");
+        var orderId = Guid.NewGuid();
+
+        var submitted = new OrderSubmitted(orderId, symbol, TradeDirection.Long, 0.1m, null, "test", DateTime.UtcNow);
+        var r1 = EngineReducer.Apply(state, submitted);
+
+        var filled = new OrderFilled(orderId, symbol, 0.1m, new Price(1.0850m), DateTime.UtcNow.AddSeconds(1));
+        var r2 = EngineReducer.Apply(r1.State, filled);
+
+        r2.Effects.Should().ContainSingle(e => e is RegisterRisk);
+        var reg = r2.Effects.OfType<RegisterRisk>().Single();
+        reg.StrategyId.Should().Be("test");
+
+        var posId = r2.State.Positions.Values.First().PositionId;
+        var closeRequested = new CloseRequested(posId, "TP hit", DateTime.UtcNow.AddMinutes(1));
+        var r3 = EngineReducer.Apply(r2.State, closeRequested);
+
+        var closeFill = new OrderFilled(orderId, symbol, 0.1m, new Price(1.0900m), DateTime.UtcNow.AddMinutes(2));
+        var r4 = EngineReducer.Apply(r3.State, closeFill);
+
+        r4.Effects.Should().Contain(e => e is DeregisterRisk);
+        r4.Effects.OfType<DeregisterRisk>().Single().PositionId.Should().Be(posId);
+        r4.State.Positions.Should().BeEmpty();
+    }
 }

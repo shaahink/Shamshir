@@ -58,7 +58,11 @@ public static class PositionLifecycle
                 FilledLots = state.Lots,
                 EntryPrice = evt.FillPrice
             };
-            return (open, []);
+            var effects = new List<EngineEffect>
+            {
+                new RegisterRisk(open.PositionId, open.StrategyId, 0)
+            };
+            return (open, effects);
         }
 
         var partial = state with
@@ -92,6 +96,7 @@ public static class PositionLifecycle
         var closed = state with { Phase = PositionPhase.Closed, CloseReason = exitReason };
         var effects = new List<EngineEffect>
         {
+            new DeregisterRisk(closed.PositionId),
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, closed.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc)
@@ -139,6 +144,7 @@ public static class PositionLifecycle
         var closed = state with { Phase = PositionPhase.Closed, Lots = 0, CloseReason = exitReason };
         var effects = new List<EngineEffect>
         {
+            new DeregisterRisk(closed.PositionId),
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc)
@@ -163,6 +169,7 @@ public static class PositionLifecycle
         var closed = state with { Phase = PositionPhase.Closed, Lots = 0, CloseReason = exitReason };
         var effects = new List<EngineEffect>
         {
+            new DeregisterRisk(closed.PositionId),
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc)

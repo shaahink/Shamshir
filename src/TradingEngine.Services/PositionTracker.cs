@@ -78,8 +78,14 @@ public sealed class PositionTracker(
 
         foreach (var effect in decision.Effects)
         {
-            if (effect is PublishTradeClosed && effectExecutor is not null)
-                await effectExecutor.ExecuteAsync(effect, CancellationToken.None);
+            var execEffect = effect;
+            if (execEffect is RegisterRisk reg && _pendingIntent.TryGetValue(evt.OrderId, out var pi))
+            {
+                execEffect = reg with { RiskAmount = pi.RiskAmount };
+            }
+
+            if (effectExecutor is not null)
+                await effectExecutor.ExecuteAsync(execEffect, CancellationToken.None);
         }
 
         if (afterPhase == PositionPhase.Rejected)
@@ -132,8 +138,6 @@ public sealed class PositionTracker(
             ps.Lots, ps.EntryPrice, ps.CurrentStopLoss, ps.TakeProfit,
             clock.UtcNow, ps.StrategyId);
 
-        riskManager.RegisterPosition(position.Id, position.StrategyId, riskAmount);
-
         var posConfig = new PositionManagementConfig(
             position.StrategyId,
             new TrailingConfig(TrailingMethod.AtrMultiple, 0, 1.0, 1.0),
@@ -153,8 +157,6 @@ public sealed class PositionTracker(
         if (ps is null) return;
 
         _processedExecutionIds.Remove(evt.OrderId);
-        riskManager.DeregisterPosition(ps.PositionId);
-        positionManager.DeregisterPosition(ps.PositionId);
 
         logger.LogInformation("Closed. Id={Id} Exit={Exit:F5} Reason={Reason}", ps.PositionId, fillPrice, ps.CloseReason ?? "FORCE");
     }

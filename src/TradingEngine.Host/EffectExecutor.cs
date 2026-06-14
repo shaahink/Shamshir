@@ -19,6 +19,8 @@ public sealed class EffectExecutor : IEffectExecutor
     private readonly IReadOnlyList<IStrategy> _strategies;
     private readonly ITradingGovernor? _governor;
     private readonly ISignalGate? _signalGate;
+    private readonly IRiskManager _riskManager;
+    private readonly IPositionManager _positionManager;
 
     public EffectExecutor(
         IBrokerAdapter broker,
@@ -32,6 +34,8 @@ public sealed class EffectExecutor : IEffectExecutor
         ISymbolInfoRegistry symbolRegistry,
         Func<string, string, decimal> crossRateProvider,
         IReadOnlyList<IStrategy> strategies,
+        IRiskManager riskManager,
+        IPositionManager positionManager,
         ITradingGovernor? governor = null,
         ISignalGate? signalGate = null)
     {
@@ -48,6 +52,8 @@ public sealed class EffectExecutor : IEffectExecutor
         _strategies = strategies;
         _governor = governor;
         _signalGate = signalGate;
+        _riskManager = riskManager;
+        _positionManager = positionManager;
     }
 
     public async Task ExecuteAsync(EngineEffect effect, CancellationToken ct)
@@ -83,6 +89,15 @@ public sealed class EffectExecutor : IEffectExecutor
 
             case PublishTradeClosed tradeClosed:
                 await HandlePublishTradeClosed(tradeClosed, ct);
+                break;
+
+            case RegisterRisk register:
+                _riskManager.RegisterPosition(register.PositionId, register.StrategyId, register.RiskAmount);
+                break;
+
+            case DeregisterRisk deregister:
+                _riskManager.DeregisterPosition(deregister.PositionId);
+                _positionManager.DeregisterPosition(deregister.PositionId);
                 break;
         }
     }
