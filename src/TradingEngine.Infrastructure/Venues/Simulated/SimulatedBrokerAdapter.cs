@@ -1,6 +1,6 @@
 using System.Threading.Channels;
 
-namespace TradingEngine.Infrastructure.Adapters;
+namespace TradingEngine.Infrastructure.Venues.Simulated;
 
 public sealed class SimulatedBrokerAdapter : IBrokerAdapter
 {

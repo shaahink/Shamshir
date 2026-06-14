@@ -10,6 +10,8 @@ global using TradingEngine.Host.Experiments;
 global using TradingEngine.Infrastructure;
 global using TradingEngine.Infrastructure.Events;
 global using TradingEngine.Infrastructure.Persistence;
+global using TradingEngine.Infrastructure.Transport.NetMq;
+global using TradingEngine.Infrastructure.Venues.CTrader;
 global using TradingEngine.Infrastructure.Persistence.Entities;
 global using TradingEngine.Infrastructure.Persistence.Repositories;
 global using TradingEngine.Infrastructure.Persistence.Reporting;

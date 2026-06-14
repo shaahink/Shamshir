@@ -21,7 +21,7 @@ public sealed class CtraderSerialCollection { }
 
 /// <summary>
 /// Shared harness for in-process engine + cTrader CLI diagnostic tests.
-/// Mirrors the dashboard backtest flow: EngineHostFactory.Create + NetMQBrokerAdapter.
+/// Mirrors the dashboard backtest flow: EngineHostFactory.Create + CTraderBrokerAdapter.
 /// </summary>
 public sealed class CtraderTestHarness : IAsyncDisposable
 {
@@ -122,10 +122,16 @@ public sealed class CtraderTestHarness : IAsyncDisposable
         {
             RunId = runId,
             Mode = EngineMode.Backtest,
-            AdapterFactory = sp => new NetMQBrokerAdapter(
-                $"tcp://127.0.0.1:{dataPort}",
-                $"tcp://*:{commandPort}",
-                sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()),
+            AdapterFactory = sp =>
+            {
+                var transportLogger = Substitute.For<ILogger<NetMqMessageTransport>>();
+                var adapterLogger = Substitute.For<ILogger<CTraderBrokerAdapter>>();
+                var transport = new NetMqMessageTransport(
+                    $"tcp://127.0.0.1:{dataPort}",
+                    $"tcp://*:{commandPort}",
+                    transportLogger);
+                return new CTraderBrokerAdapter(transport, adapterLogger);
+            },
             DbPath = _dbPath,
             SolutionRoot = SolutionRoot,
             SymbolNames = new[] { symbol },

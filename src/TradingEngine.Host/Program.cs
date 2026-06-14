@@ -50,10 +50,15 @@ public static class Program
             {
                 var dataPort = int.TryParse(builder.Configuration["Engine:Broker:NetMQ:DataPort"], out var dp) ? dp : 15555;
                 var commandPort = int.TryParse(builder.Configuration["Engine:Broker:NetMQ:CommandPort"], out var cp) ? cp : 15556;
-                builder.Services.AddSingleton<IBrokerAdapter>(sp => new NetMQBrokerAdapter(
-                    $"tcp://127.0.0.1:{dataPort}",
-                    $"tcp://*:{commandPort}",
-                    sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()));
+                builder.Services.AddSingleton<IBrokerAdapter>(sp =>
+                {
+                    var transport = new NetMqMessageTransport(
+                        $"tcp://127.0.0.1:{dataPort}",
+                        $"tcp://*:{commandPort}",
+                        sp.GetRequiredService<ILogger<NetMqMessageTransport>>());
+                    return new CTraderBrokerAdapter(transport,
+                        sp.GetRequiredService<ILogger<CTraderBrokerAdapter>>());
+                });
             }
             else
             {

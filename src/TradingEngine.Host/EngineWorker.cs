@@ -113,7 +113,7 @@ public sealed class EngineWorker : BackgroundService
                 _signalGate.RegisterStrategy(s.Config);
         }
 
-        if (_broker is NetMQBrokerAdapter mqAdapter)
+        if (_broker is CTraderBrokerAdapter mqAdapter)
             mqAdapter.OnConnected = ResetState;
 
         await _broker.ConnectAsync(ct);
@@ -547,7 +547,7 @@ public sealed class EngineWorker : BackgroundService
 
                     await DrainExecutionStreamAsync();
 
-                    if (_broker is NetMQBrokerAdapter netMq)
+                    if (_broker is CTraderBrokerAdapter netMq)
                         await _broker.CompleteBarAsync(netMq.CurrentBarSeq, ct);
                 }
                 catch (OperationCanceledException) { throw; }

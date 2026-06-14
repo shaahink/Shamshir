@@ -366,10 +366,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             Mode = EngineMode.Backtest,
             AdapterFactory = sp =>
             {
-                var adapter = new NetMQBrokerAdapter(
+                var transport = new NetMqMessageTransport(
                     $"tcp://127.0.0.1:{dataPort}",
                     $"tcp://*:{commandPort}",
-                    sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>());
+                    sp.GetRequiredService<ILogger<NetMqMessageTransport>>());
+                var adapter = new CTraderBrokerAdapter(transport,
+                    sp.GetRequiredService<ILogger<CTraderBrokerAdapter>>());
                 adapter.OnStatusChange = (type, msg) =>
                 {
                     _journal.Write(runId, type, msg);

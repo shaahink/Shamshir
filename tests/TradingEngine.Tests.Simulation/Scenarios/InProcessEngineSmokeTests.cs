@@ -42,10 +42,15 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                 services.AddSingleton(new EngineRunContext(runId));
 
                 services.AddSingleton<IBrokerAdapter>(sp =>
-                    new NetMQBrokerAdapter(
+                {
+                    var transportLogger = Substitute.For<ILogger<NetMqMessageTransport>>();
+                    var adapterLogger = Substitute.For<ILogger<CTraderBrokerAdapter>>();
+                    var transport = new NetMqMessageTransport(
                         $"tcp://127.0.0.1:{dataPort}",
                         $"tcp://*:{commandPort}",
-                        sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()));
+                        transportLogger);
+                    return new CTraderBrokerAdapter(transport, adapterLogger);
+                });
 
                 var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
                     0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
@@ -160,7 +165,7 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
         await Task.Delay(500, cts.Token);
 
         // Engine should be connected (ROUTER bound on command port)
-        var adapter = host.Services.GetRequiredService<IBrokerAdapter>() as NetMQBrokerAdapter;
+        var adapter = host.Services.GetRequiredService<IBrokerAdapter>() as CTraderBrokerAdapter;
         Assert.NotNull(adapter);
 
         // Clean stop
