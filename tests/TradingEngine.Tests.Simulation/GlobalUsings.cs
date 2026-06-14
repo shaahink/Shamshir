@@ -11,6 +11,7 @@ global using TradingEngine.Risk.Governor;
 global using TradingEngine.Infrastructure;
 global using TradingEngine.Infrastructure.Adapters;
 global using TradingEngine.Infrastructure.Indicators;
+global using TradingEngine.Services;
 global using TradingEngine.Services.Helpers;
 global using TradingEngine.Services.SLTPCalculation;
 global using TradingEngine.Strategies.BollingerSqueeze;
