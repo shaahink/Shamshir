@@ -56,7 +56,7 @@ public static class PositionLifecycle
             {
                 Phase = PositionPhase.Open,
                 FilledLots = state.Lots,
-                EntryPrice = state.EntryPrice
+                EntryPrice = evt.FillPrice
             };
             return (open, []);
         }

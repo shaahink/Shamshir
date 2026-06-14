@@ -55,7 +55,7 @@ public sealed class PositionLifecycleGoldenTests
     }
 
     [Fact]
-    public async Task PartialThenFullFill_SecondFillTreatedAsDuplicate_PositionNeverCreated()
+    public async Task PartialThenFullFill_EventuallyCreatesPosition()
     {
         var (tracker, _, eventBus, riskMgr, _) = CreateTracker();
 
@@ -74,7 +74,8 @@ public sealed class PositionLifecycleGoldenTests
         var remainder = new ExecutionEvent(orderId, OrderState.Filled, new Price(1.0852m), 0.1m, null, DateTime.UtcNow.AddMinutes(1));
         await tracker.OnExecutionAsync(remainder, []);
 
-        tracker.OpenPositions.Should().BeEmpty();
+        tracker.OpenPositions.Should().HaveCount(1);
+        tracker.OpenPositions.Values.First().Lots.Should().Be(0.2m);
     }
 
     [Fact]
