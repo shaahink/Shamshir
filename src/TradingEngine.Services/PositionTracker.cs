@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using TradingEngine.Engine;
 
 namespace TradingEngine.Services;
 
@@ -18,6 +19,7 @@ public sealed class PositionTracker(
     private readonly Dictionary<Guid, Position> _openPositions = new();
     private readonly Dictionary<Guid, (decimal RiskAmount, string RiskProfileId)> _pendingRisk = new();
     private readonly HashSet<Guid> _processedExecutionIds = [];
+    private readonly Dictionary<Guid, PositionState> _lifecycleStates = new();
 
     public IReadOnlyDictionary<Guid, Position> OpenPositions => _openPositions;
 
@@ -28,6 +30,16 @@ public sealed class PositionTracker(
     {
         _pendingOrders[orderId] = (request, 0m);
         _pendingRisk[orderId] = (riskAmount, riskProfileId ?? "standard");
+
+        var posState = PositionLifecycle.CreateIntended(
+            orderId, request.Intent.Symbol, request.Intent.Direction,
+            request.Lots, request.Intent.LimitPrice, request.Intent.StopLoss,
+            request.Intent.TakeProfit, request.Intent.StrategyId);
+
+        var submitted = new OrderSubmitted(orderId, request.Intent.Symbol, request.Intent.Direction,
+            request.Lots, request.Intent.LimitPrice, request.Intent.StrategyId, clock.UtcNow);
+        var (nextState, _) = PositionLifecycle.Apply(posState, submitted);
+        _lifecycleStates[orderId] = nextState;
     }
 
     public async Task OnExecutionAsync(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
@@ -39,64 +51,122 @@ public sealed class PositionTracker(
         }
         _processedExecutionIds.Add(evt.OrderId);
 
-        if (evt.NewState == OrderState.Rejected)
+        var engineEvent = ToEngineEvent(evt);
+        if (!_lifecycleStates.TryGetValue(evt.OrderId, out var posState))
         {
-            _pendingOrders.Remove(evt.OrderId);
-            _pendingRisk.Remove(evt.OrderId);
-            logger.LogWarning("Order rejected. Id={Id} Reason={Reason}", evt.OrderId, evt.RejectionReason ?? "unknown");
+            if (evt.NewState != OrderState.Filled || evt.FillPrice is null) return;
+            await ClosePositionAsync(evt, evt.FillPrice.Value.Value, strategies);
             return;
         }
 
-        if (evt.NewState != OrderState.Filled || evt.FillPrice is null) return;
-        var fillPrice = evt.FillPrice.Value.Value;
+        var (nextState, effects) = PositionLifecycle.Apply(posState, engineEvent);
+        _lifecycleStates[evt.OrderId] = nextState;
+
+        switch (nextState.Phase)
+        {
+            case PositionPhase.Rejected:
+                _pendingOrders.Remove(evt.OrderId);
+                _pendingRisk.Remove(evt.OrderId);
+                _lifecycleStates.Remove(evt.OrderId);
+                logger.LogWarning("Order rejected. Id={Id} Reason={Reason}", evt.OrderId, nextState.RejectionReason);
+                break;
+
+            case PositionPhase.Submitted:
+                // Partial fill during entry — update pending orders
+                if (_pendingOrders.TryGetValue(evt.OrderId, out var entry))
+                {
+                    if (nextState.FilledLots >= entry.Request.Lots)
+                    {
+                        _pendingOrders.Remove(evt.OrderId);
+                        _pendingRisk.Remove(evt.OrderId);
+                    }
+                    else
+                    {
+                        _pendingOrders[evt.OrderId] = (entry.Request, nextState.FilledLots);
+                    }
+                }
+                break;
+
+            case PositionPhase.Open:
+                OpenPosition(evt, nextState);
+                break;
+
+            case PositionPhase.Reducing:
+                if (_openPositions.TryGetValue(evt.OrderId, out var openPos))
+                {
+                    await HandlePartialCloseAsync(evt, evt.FillPrice?.Value ?? 0, openPos, strategies);
+                }
+                break;
+
+            case PositionPhase.Closed:
+                await ClosePositionAsync(evt, evt.FillPrice?.Value ?? 0, strategies);
+                break;
+
+            case PositionPhase.Closing:
+                break;
+        }
+    }
+
+    private EngineEvent ToEngineEvent(ExecutionEvent evt)
+    {
+        var symbol = GetSymbolForOrder(evt.OrderId);
+
+        return evt.NewState switch
+        {
+            OrderState.Rejected => new OrderRejected(evt.OrderId, symbol, evt.RejectionReason ?? "unknown", evt.TimestampUtc),
+            OrderState.Filled when evt.FillPrice is not null => new OrderFilled(evt.OrderId, symbol, evt.FilledLots, evt.FillPrice ?? new Price(0), evt.TimestampUtc),
+            OrderState.PartiallyFilled when evt.FillPrice is not null => new OrderPartiallyFilled(evt.OrderId, symbol, evt.FilledLots, evt.FillPrice ?? new Price(0), evt.TimestampUtc),
+            _ => new OrderFilled(evt.OrderId, symbol, evt.FilledLots, evt.FillPrice ?? new Price(0), evt.TimestampUtc)
+        };
+    }
+
+    private Symbol GetSymbolForOrder(Guid orderId)
+    {
+        if (_pendingOrders.TryGetValue(orderId, out var entry))
+            return entry.Request.Intent.Symbol;
+        if (_openPositions.TryGetValue(orderId, out var pos))
+            return pos.Symbol;
+        if (_lifecycleStates.TryGetValue(orderId, out var lc))
+            return lc.Symbol;
+        return Symbol.Parse("EURUSD");
+    }
+
+    private void OpenPosition(ExecutionEvent evt, PositionState state)
+    {
+        if (_openPositions.ContainsKey(evt.OrderId)) return;
 
         if (!_pendingOrders.TryGetValue(evt.OrderId, out var entry))
         {
-            if (_openPositions.TryGetValue(evt.OrderId, out var openPos)
-                && evt.FilledLots > 0 && evt.FilledLots < openPos.Lots - 0.0001m)
-            {
-                await HandlePartialCloseAsync(evt, fillPrice, openPos, strategies);
-                return;
-            }
-            await ClosePositionAsync(evt, fillPrice, strategies);
+            var position = new Position(
+                Guid.NewGuid(), evt.OrderId, state.Symbol, state.Direction,
+                state.Lots, state.EntryPrice, state.CurrentStopLoss, state.TakeProfit,
+                clock.UtcNow, state.StrategyId);
+            _openPositions[evt.OrderId] = position;
             return;
         }
 
-        var (order, currentFilled) = entry;
-        var newFilled = currentFilled + evt.FilledLots;
-
-        if (newFilled >= order.Lots)
-        {
-            _pendingOrders.Remove(evt.OrderId);
-            _pendingRisk.Remove(evt.OrderId);
-        }
-        else
-        {
-            _pendingOrders[evt.OrderId] = (order, newFilled);
-            logger.LogInformation("Partial fill. OrderId={OrderId} Filled={Filled}/{Requested}", evt.OrderId, newFilled, order.Lots);
-            return;
-        }
-
-        var position = new Position(
+        var (order, _) = entry;
+        var fillPrice = evt.FillPrice?.Value ?? 0;
+        var position2 = new Position(
             Guid.NewGuid(), evt.OrderId, order.Intent.Symbol, order.Intent.Direction,
             order.Lots, new Price(fillPrice), order.Intent.StopLoss, order.Intent.TakeProfit,
             clock.UtcNow, order.Intent.StrategyId);
 
-        _openPositions[evt.OrderId] = position;
-        var (riskAmount, riskProfileId) = _pendingRisk.GetValueOrDefault(evt.OrderId, (0m, "standard"));
-        riskManager.RegisterPosition(position.Id, position.StrategyId, riskAmount);
+        _openPositions[evt.OrderId] = position2;
+        var (riskAmount2, riskProfileId2) = _pendingRisk.GetValueOrDefault(evt.OrderId, (0m, "standard"));
+        riskManager.RegisterPosition(position2.Id, position2.StrategyId, riskAmount2);
 
         var posConfig = new PositionManagementConfig(
-            position.StrategyId,
+            position2.StrategyId,
             new TrailingConfig(TrailingMethod.AtrMultiple, 0, 1.0, 1.0),
             true, 1.0, new Pips(1),
-            new Money(riskAmount, "USD"));
-        positionManager.RegisterPosition(position, posConfig);
+            new Money(riskAmount2, "USD"));
+        positionManager.RegisterPosition(position2, posConfig);
 
-        signalGate?.OnPositionOpened(position.StrategyId, position.Symbol.Value, position.Direction, clock.UtcNow);
+        signalGate?.OnPositionOpened(position2.StrategyId, position2.Symbol.Value, position2.Direction, clock.UtcNow);
 
         logger.LogInformation("Opened. Id={Id} Symbol={Symbol} Dir={Dir} Lots={Lots} Entry={Entry:F5}",
-            position.Id, position.Symbol, position.Direction, position.Lots, position.EntryPrice.Value);
+            position2.Id, position2.Symbol, position2.Direction, position2.Lots, position2.EntryPrice.Value);
     }
 
     private async Task ClosePositionAsync(ExecutionEvent evt, decimal fillPrice, IEnumerable<IStrategy> strategies)
@@ -109,6 +179,7 @@ public sealed class PositionTracker(
 
         _openPositions.Remove(evt.OrderId);
         _processedExecutionIds.Remove(evt.OrderId);
+        _lifecycleStates.Remove(evt.OrderId);
         riskManager.DeregisterPosition(pos.Id);
         positionManager.DeregisterPosition(pos.Id);
 
