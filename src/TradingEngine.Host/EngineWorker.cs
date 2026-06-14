@@ -28,14 +28,17 @@ public sealed class EngineWorker : BackgroundService
     private readonly EngineRunContext _runContext;
     private readonly CrossRateStore _crossRateStore;
     private readonly ILogger<EngineWorker> _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly IProgress<BacktestProgressEvent>? _progress;
     private readonly IPipelineJournal? _journal;
+    private BacktestDriver? _backtestDriver;
 
 
     public EngineWorker(
         EngineWorkerDependencies deps,
         EngineRunContext runContext,
-        ILogger<EngineWorker> logger)
+        ILogger<EngineWorker> logger,
+        ILoggerFactory loggerFactory)
     {
         _broker = deps.Market.Broker;
         _riskManager = deps.Risk.RiskManager;
@@ -61,6 +64,7 @@ public sealed class EngineWorker : BackgroundService
         _engineMode = deps.Market.EngineMode;
         _dataFeed = deps.Market.DataFeed;
         _logger = logger;
+        _loggerFactory = loggerFactory;
         _progress = deps.Persistence.Progress;
         _journal = deps.Persistence.Journal;
     }
@@ -390,175 +394,14 @@ public sealed class EngineWorker : BackgroundService
         var initAcct = await _broker.AccountStream.ReadAsync(ct);
         HandleAccountUpdate(initAcct);
 
-        try
-        {
-            await foreach (var bar in _broker.BarStream.ReadAllAsync(ct))
-            {
-                try
-                {
-                    if (_broker is BacktestReplayAdapter replay)
-                        replay.SyncToBar(bar.Close, bar.OpenTimeUtc);
+        _backtestDriver = new BacktestDriver(
+            _broker, _positionTracker, _orderDispatcher, _riskManager,
+            _governor, _signalGate, _strategies, _strategyBank, _regimeDetector,
+            _indicators, _eventBus, _progress, _journal, _clock,
+            _crossRateStore, _runContext, _executionEventChannel,
+            _loggerFactory.CreateLogger<BacktestDriver>());
 
-                    UpdateCrossRates(bar);
-
-                    if (_broker.AccountStream.TryRead(out var acctUpdate))
-                        HandleAccountUpdate(acctUpdate);
-
-                    _governor?.OnBar(bar.OpenTimeUtc);
-                    _signalGate?.OnBar(bar.OpenTimeUtc);
-
-                    if (_riskManager.ConsumeForceClosePending())
-                    {
-                        _logger.LogCritical("Force-close triggered in backtest loop. Closing {Count} open positions",
-                            _positionTracker.OpenPositions.Count);
-                        foreach (var (_, pos) in _positionTracker.OpenPositions.ToList())
-                            await _broker.ClosePositionAsync(pos.Id, ct);
-                        await DrainExecutionStreamAsync();
-                    }
-
-                    Interlocked.Increment(ref _barCount);
-                    var byTf = _bars.GetOrAdd(bar.Symbol, _ => new());
-                    var list = byTf.GetOrAdd(bar.Timeframe, _ => new());
-                    int barCount;
-                    lock (list)
-                    {
-                        list.Add(bar);
-                        if (list.Count > MaxBarHistory) list.RemoveAt(0);
-                        barCount = list.Count;
-                    }
-
-                    await RecomputeIndicatorsAsync(bar.Symbol, bar.Timeframe, ct);
-
-                    _logger.LogDebug("BAR_EVAL|{Symbol}|{Tf}|openTime={OpenTime:yyyy-MM-dd HH:mm}|close={Close:F5}|bars={Count}|total={Total}",
-                        bar.Symbol.Value, bar.Timeframe, bar.OpenTimeUtc, bar.Close, barCount, Interlocked.Read(ref _barCount));
-
-                    _progress?.Report(new BacktestProgressEvent(
-                        _runContext.RunId, "BAR",
-                        $"Bar {bar.OpenTimeUtc:yyyy-MM-dd HH:mm} | close={bar.Close:F5} | total={Interlocked.Read(ref _barCount)}",
-                        _clock.UtcNow));
-
-                    var halfSpread = ResolveHalfSpread(bar.Symbol);
-                    var closeTick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread,
-                        bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
-                    var barSnapshot = BuildBarSnapshot(bar.Symbol);
-                    if (barSnapshot is null) continue;
-
-                    BuildIndicatorSnapshot(bar.Symbol);
-
-                    var btRegime = _regimeDetector.Detect(bar.Symbol,
-                        barSnapshot[bar.Timeframe],
-                        _reusableIndicatorDict);
-                    _currentRegimes[(bar.Symbol, bar.Timeframe)] = btRegime;
-                    var btActiveStrategies = _strategyBank.GetActive(bar.Symbol, bar.Timeframe, btRegime);
-
-                    foreach (var strategy in btActiveStrategies)
-                    {
-                        var totalBars = barSnapshot.Values.Sum(b => b.Count);
-                        if (totalBars < strategy.RequiredBarCount)
-                        {
-                            _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NEED_BARS|have={Have}|need={Need}",
-                                strategy.Id, bar.Symbol.Value, totalBars, strategy.RequiredBarCount);
-                            _ = _eventBus.PublishAsync(new BarEvaluated(
-                                _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
-                                strategy.Id, new Dictionary<string, double>(_reusableIndicatorDict),
-                                false, null, $"not enough bars (have {totalBars}, need {strategy.RequiredBarCount})",
-                                _clock.UtcNow), CancellationToken.None);
-                            continue;
-                        }
-
-                        var context = new MarketContext(bar.Symbol, closeTick, barSnapshot,
-                            _reusableIndicatorDict, _clock.UtcNow);
-                        var intent = strategy.Evaluate(context);
-
-                        _ = _eventBus.PublishAsync(new BarEvaluated(
-                            _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
-                            strategy.Id, new Dictionary<string, double>(_reusableIndicatorDict),
-                            intent is not null, intent?.Direction,
-                            intent?.Reason ?? "no signal",
-                            _clock.UtcNow), CancellationToken.None);
-
-                        if (intent is null)
-                        {
-                            _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NO_SIGNAL", strategy.Id, bar.Symbol.Value);
-                            continue;
-                        }
-
-                        _logger.LogInformation("SIGNAL|{Strategy}|{Symbol}|{Dir}|sl={SL:F5}|tp={TP}",
-                            strategy.Id, bar.Symbol.Value, intent.Direction,
-                            intent.StopLoss.Value, intent.TakeProfit?.Value.ToString("F5") ?? "none");
-                        _logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
-
-                        _progress?.Report(new BacktestProgressEvent(
-                            _runContext.RunId, "SIGNAL",
-                            $"SIGNAL {strategy.Id} {intent.Direction} sl={intent.StopLoss.Value:F5} tp={intent.TakeProfit?.Value.ToString("F5") ?? "none"} reason={intent.Reason}",
-                            _clock.UtcNow));
-
-                        var equity = Volatile.Read(ref _currentEquity);
-                        if (equity.Balance == 0)
-                        {
-                            _logger.LogWarning("DISPATCH_SKIP|{Strategy}|{Symbol}|reason=equity not initialized",
-                                strategy.Id, bar.Symbol.Value);
-                            continue;
-                        }
-                        var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, bar.Close, _broker, [], ct);
-                        if (orderCtx is null) continue;
-
-                        var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,
-                            intent.Direction, OrderType.Market, intent.LimitPrice);
-                        _positionTracker.TrackOrder(orderCtx.OrderId, orderReq, orderCtx.RiskAmount);
-
-                        _logger.LogInformation("ORDER|{Strategy}|{OrderId}|{Dir}|lots={Lots}|entry={Entry:F5}",
-                            strategy.Id, orderCtx.OrderId, intent.Direction, orderCtx.Lots, bar.Close);
-
-                        _progress?.Report(new BacktestProgressEvent(
-                            _runContext.RunId, "ORDER",
-                            $"ORDER {strategy.Id} {intent.Direction} lots={orderCtx.Lots:F2} entry≈{bar.Close:F5}",
-                            _clock.UtcNow));
-                    }
-
-                    _journal?.Write("BAR_EVAL", bar.Symbol.Value, bar.OpenTimeUtc);
-
-                    await DrainExecutionStreamAsync();
-
-                    foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())
-                    {
-                        if (pos.Symbol != bar.Symbol) continue;
-
-                        bool exit = false;
-                        if (pos.Direction == TradeDirection.Long)
-                        {
-                            if (bar.Low <= pos.CurrentStopLoss.Value) exit = true;
-                            else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) exit = true;
-                        }
-                        else
-                        {
-                            if (bar.High >= pos.CurrentStopLoss.Value) exit = true;
-                            else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) exit = true;
-                        }
-
-                        if (exit)
-                        {
-                            _logger.LogInformation("BAR_EXIT|{Id}|{Symbol}|sl={SL:F5}|tp={TP}|low={Low:F5}|high={High:F5}",
-                                orderId, pos.Symbol, pos.CurrentStopLoss.Value,
-                                pos.TakeProfit?.Value ?? 0, bar.Low, bar.High);
-                            await _broker.ClosePositionAsync(orderId, ct);
-                        }
-                    }
-
-                    await DrainExecutionStreamAsync();
-
-                    if (_broker is CTraderBrokerAdapter netMq)
-                        await _broker.CompleteBarAsync(netMq.CurrentBarSeq, ct);
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "BAR_PROC_ERR|{Symbol}|{OpenTime}", bar.Symbol, bar.OpenTimeUtc);
-                }
-            }
-        }
-        catch (OperationCanceledException) { }
-
+        await _backtestDriver.RunAsync(ct);
         _logger.LogDebug("Backtest loop stopped");
     }
 

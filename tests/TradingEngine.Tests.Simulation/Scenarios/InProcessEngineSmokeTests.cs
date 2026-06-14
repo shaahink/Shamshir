@@ -148,7 +148,8 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                         },
                     },
                     sp.GetRequiredService<EngineRunContext>(),
-                    sp.GetRequiredService<ILogger<EngineWorker>>()));
+                    sp.GetRequiredService<ILogger<EngineWorker>>(),
+                    sp.GetRequiredService<ILoggerFactory>()));
                 services.AddHostedService<EngineWorker>(sp =>
                     sp.GetRequiredService<EngineWorker>());
             })
