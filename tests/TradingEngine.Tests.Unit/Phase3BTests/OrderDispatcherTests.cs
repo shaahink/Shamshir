@@ -33,7 +33,7 @@ public sealed class OrderDispatcherTests
             new Price(1.08210m), new Price(1.08500m), "test", "standard", "", DateTime.UtcNow);
         var equity = new EquitySnapshot(DateTime.UtcNow, 100_000, 0, 100_000, 100_000, 100_000, 0, 0, EngineMode.Backtest);
 
-        var result = await dispatcher.DispatchAsync(intent, equity, 1.0850m, broker, CancellationToken.None);
+        var result = await dispatcher.DispatchAsync(intent, equity, 1.0850m, broker, [], CancellationToken.None);
 
         result.Should().NotBeNull();
         result!.Lots.Should().Be(0.1m);

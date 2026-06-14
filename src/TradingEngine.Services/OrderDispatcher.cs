@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Engine;
 
 namespace TradingEngine.Services;
 
@@ -16,7 +17,7 @@ public sealed class OrderDispatcher(
 {
     public async Task<OrderContext?> DispatchAsync(
         TradeIntent intent, EquitySnapshot equity, decimal currentMid,
-        IBrokerAdapter broker, CancellationToken ct)
+        IBrokerAdapter broker, IReadOnlyList<ProjectedPosition> openPositions, CancellationToken ct)
     {
         var profile = riskProfileResolver.Resolve(intent.RiskProfileId);
         var violations = riskManager.Validate(intent, equity, profile, currentMid);
@@ -46,6 +47,40 @@ public sealed class OrderDispatcher(
         var slDistance = PipCalculator.Distance(entryPrice, intent.StopLoss, symbolInfo);
         var pipValue = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, crossRateProvider);
         var lots = riskManager.CalculateLotSize(intent, equity, profile, currentMid);
+
+        var maxDailyLossPercent = (decimal)profile.MaxDailyDrawdownPercent;
+        var maxTotalLossPercent = (decimal)profile.MaxTotalDrawdownPercent;
+
+        var guardResult = RiskGate.ProjectWorstCase(
+            equity.Equity,
+            equity.DailyStartEquity,
+            equity.Balance,
+            maxDailyLossPercent,
+            maxTotalLossPercent,
+            "Fixed",
+            (decimal)slDistance.Value,
+            lots,
+            pipValue,
+            openPositions);
+
+        if (guardResult != RiskGate.Passed)
+        {
+            logger.LogWarning("RiskGate blocked. Strategy={Strategy} Symbol={Symbol} Guard={Guard}",
+                intent.StrategyId, intent.Symbol, guardResult);
+            decisionJournal.Record(new DecisionRecord(
+                runContext.RunId,
+                equity.TimestampUtc,
+                0,
+                intent.Symbol.Value,
+                intent.StrategyId,
+                null,
+                "OrderRejected",
+                guardResult,
+                null,
+                $"Worst-case DD projection breach: {guardResult}",
+                JsonSerializer.Serialize(new { lots, projectedGuard = guardResult })));
+            return null;
+        }
         var riskAmount = (decimal)slDistance.Value * pipValue * lots;
 
         var perTradeRiskAmount = equity.Equity * (decimal)profile.RiskPerTradePercent;

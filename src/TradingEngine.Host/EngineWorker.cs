@@ -317,7 +317,7 @@ public sealed class EngineWorker : BackgroundService
                                 strategy.Id, bar.Symbol.Value);
                             continue;
                         }
-                        var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, bar.Close, _broker, ct);
+                        var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, bar.Close, _broker, [], ct);
                         if (orderCtx is null) continue;
 
                         var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,
@@ -500,7 +500,7 @@ public sealed class EngineWorker : BackgroundService
                                 strategy.Id, bar.Symbol.Value);
                             continue;
                         }
-                        var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, bar.Close, _broker, ct);
+                        var orderCtx = await _orderDispatcher.DispatchAsync(intent, equity, bar.Close, _broker, [], ct);
                         if (orderCtx is null) continue;
 
                         var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,
