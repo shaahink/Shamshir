@@ -15,3 +15,5 @@ public record OrderPartiallyFilled(Guid OrderId, Symbol Symbol, decimal FilledLo
 public record OrderRejected(Guid OrderId, Symbol Symbol, string Reason, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 
 public record CloseRequested(Guid PositionId, string Reason, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+
+public record EquityObserved(decimal Equity, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
