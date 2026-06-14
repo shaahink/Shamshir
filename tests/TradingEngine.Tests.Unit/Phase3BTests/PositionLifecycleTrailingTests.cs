@@ -3,6 +3,7 @@ using TradingEngine.Engine;
 namespace TradingEngine.Tests.Unit.Phase3BTests;
 
 [Trait("Category", "Engine")]
+[Trait("Speed", "Fast")]
 public sealed class PositionLifecycleTrailingTests
 {
     private static readonly Symbol Eurusd = Symbol.Parse("EURUSD");

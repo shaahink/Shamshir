@@ -6,6 +6,7 @@ using NetMQ.Sockets;
 namespace TradingEngine.Tests.Simulation.Pipeline;
 
 [Trait("Category", "NetMQ")]
+[Trait("RequiresCTrader", "true")]
 public sealed class NetMQBridgeTest
 {
     [Fact(Timeout = 20_000)]
