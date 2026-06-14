@@ -31,7 +31,11 @@ public static class PositionLifecycle
         PositionState state, OrderSubmitted evt)
     {
         var newState = state with { Phase = PositionPhase.Submitted };
-        return (newState, []);
+        var effects = new List<EngineEffect>
+        {
+            Record(state, evt, newState, "Accepted")
+        };
+        return (newState, effects);
     }
 
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleRejected(
@@ -42,7 +46,11 @@ public static class PositionLifecycle
             Phase = PositionPhase.Rejected,
             RejectionReason = evt.Reason
         };
-        return (newState, []);
+        var effects = new List<EngineEffect>
+        {
+            Record(state, evt, newState, evt.Reason)
+        };
+        return (newState, effects);
     }
 
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleSubmittedFilled(
@@ -60,6 +68,7 @@ public static class PositionLifecycle
             };
             var effects = new List<EngineEffect>
             {
+                Record(state, evt, open, "Filled"),
                 new RegisterRisk(open.PositionId, open.StrategyId, 0)
             };
             return (open, effects);
@@ -70,7 +79,11 @@ public static class PositionLifecycle
             FilledLots = newFilled,
             Phase = PositionPhase.Submitted
         };
-        return (partial, []);
+        var partialEffects = new List<EngineEffect>
+        {
+            Record(state, evt, partial, "PartialFill")
+        };
+        return (partial, partialEffects);
     }
 
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleSubmittedPartialFill(
@@ -89,13 +102,18 @@ public static class PositionLifecycle
                 Phase = PositionPhase.Reducing,
                 Lots = state.Lots - evt.FilledLots
             };
-            return (reducing, []);
+            var reducingEffects = new List<EngineEffect>
+            {
+                Record(state, evt, reducing, "PartialClose")
+            };
+            return (reducing, reducingEffects);
         }
 
         var exitReason = state.CloseReason ?? "FORCE";
         var closed = state with { Phase = PositionPhase.Closed, CloseReason = exitReason };
         var effects = new List<EngineEffect>
         {
+            Record(state, evt, closed, exitReason),
             new DeregisterRisk(closed.PositionId),
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, closed.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
@@ -110,6 +128,7 @@ public static class PositionLifecycle
         var closing = state with { Phase = PositionPhase.Closing, CloseReason = evt.Reason };
         var effects = new List<EngineEffect>
         {
+            Record(state, evt, closing, evt.Reason),
             new CloseOpenPosition(state.PositionId, evt.Reason)
         };
         return (closing, effects);
@@ -120,7 +139,12 @@ public static class PositionLifecycle
     {
         var highWater = state.HighWater == 0 ? evt.Close : Math.Max(state.HighWater, evt.High);
         var lowWater = state.LowWater == 0 ? evt.Close : Math.Min(state.LowWater, evt.Low);
-        return (state with { HighWater = highWater, LowWater = lowWater }, []);
+        var next = state with { HighWater = highWater, LowWater = lowWater };
+        var effects = new List<EngineEffect>
+        {
+            Record(state, evt, next, "BarUpdate")
+        };
+        return (next, effects);
     }
 
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleOpenTick(
@@ -128,7 +152,12 @@ public static class PositionLifecycle
     {
         var highWater = state.HighWater == 0 ? evt.Bid : Math.Max(state.HighWater, evt.Bid);
         var lowWater = state.LowWater == 0 ? evt.Ask : Math.Min(state.LowWater, evt.Ask);
-        return (state with { HighWater = highWater, LowWater = lowWater }, []);
+        var next = state with { HighWater = highWater, LowWater = lowWater };
+        var effects = new List<EngineEffect>
+        {
+            Record(state, evt, next, "TickUpdate")
+        };
+        return (next, effects);
     }
 
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleReducingFilled(
@@ -137,13 +166,18 @@ public static class PositionLifecycle
         if (evt.FilledLots > 0 && evt.FilledLots < state.Lots - 0.0001m)
         {
             var stillReducing = state with { Lots = state.Lots - evt.FilledLots };
-            return (stillReducing, []);
+            var stillEffects = new List<EngineEffect>
+            {
+                Record(state, evt, stillReducing, "StillReducing")
+            };
+            return (stillReducing, stillEffects);
         }
 
         var exitReason = state.CloseReason ?? "FORCE";
         var closed = state with { Phase = PositionPhase.Closed, Lots = 0, CloseReason = exitReason };
         var effects = new List<EngineEffect>
         {
+            Record(state, evt, closed, exitReason),
             new DeregisterRisk(closed.PositionId),
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
@@ -162,13 +196,18 @@ public static class PositionLifecycle
                 Phase = PositionPhase.Reducing,
                 Lots = state.Lots - evt.FilledLots
             };
-            return (partialClose, []);
+            var partialEffects = new List<EngineEffect>
+            {
+                Record(state, evt, partialClose, "PartialCloseWhileClosing")
+            };
+            return (partialClose, partialEffects);
         }
 
         var exitReason = state.CloseReason ?? "FORCE";
         var closed = state with { Phase = PositionPhase.Closed, Lots = 0, CloseReason = exitReason };
         var effects = new List<EngineEffect>
         {
+            Record(state, evt, closed, exitReason),
             new DeregisterRisk(closed.PositionId),
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
@@ -309,4 +348,8 @@ public static class PositionLifecycle
 
     private static decimal RoundToTick(decimal price, decimal tickSize)
         => Math.Round(price / tickSize) * tickSize;
+
+    private static RecordDecisionEvent Record(PositionState before, EngineEvent evt, PositionState after, string reason)
+        => new(new DecisionRecord("", evt.OccurredAtUtc, 0, before.Symbol.Value, before.StrategyId,
+            before.Phase.ToString(), evt.GetType().Name, null, after.Phase.ToString(), reason, "{}"));
 }

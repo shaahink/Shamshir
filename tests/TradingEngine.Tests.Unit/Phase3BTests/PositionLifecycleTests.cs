@@ -21,7 +21,7 @@ public sealed class PositionLifecycleTests
         var (next, effects) = PositionLifecycle.Apply(state, evt);
 
         next.Phase.Should().Be(PositionPhase.Submitted);
-        effects.Should().BeEmpty();
+        effects.Should().Contain(e => e is RecordDecisionEvent);
     }
 
     [Fact]
@@ -161,8 +161,8 @@ public sealed class PositionLifecycleTests
         var (next, effects) = PositionLifecycle.Apply(state, closeReq);
 
         next.Phase.Should().Be(PositionPhase.Closing);
-        effects.Should().ContainSingle(e => e is CloseOpenPosition);
-        ((CloseOpenPosition)effects[0]).Reason.Should().Be("SL hit");
+        effects.Should().Contain(e => e is CloseOpenPosition);
+        effects.OfType<CloseOpenPosition>().Single().Reason.Should().Be("SL hit");
     }
 
     [Fact]
