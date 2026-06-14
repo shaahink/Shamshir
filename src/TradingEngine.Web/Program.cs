@@ -32,6 +32,7 @@ builder.Services.AddScoped<IEquityRepository, SqliteEquityRepository>();
 builder.Services.AddTransient<ExperimentRunner>();
 builder.Services.AddSingleton<BacktestProgressStore>();
 builder.Services.AddSingleton<BacktestJournal>();
+builder.Services.AddSingleton<RunProjection>();
 builder.Services.AddSingleton<BacktestOrchestrator>();
 builder.Services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
 builder.Services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
