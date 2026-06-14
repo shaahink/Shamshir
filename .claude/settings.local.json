@@ -31,7 +31,13 @@
       "PowerShell(Select-String *)",
       "PowerShell(Get-Content *)",
       "Bash(node *)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Skill(code-review)",
+      "Read(//c/Users/shahi/.claude/**)",
+      "Read(//c/Users/shahi/.claude/plugins/marketplaces/thedotmack/plugin/hooks/**)",
+      "Read(//c/Users/shahi/.claude/plugins/cache/thedotmack/claude-mem/**)",
+      "Bash(sed -n '159,211p' src/TradingEngine.Host/EngineWorker.cs)",
+      "Bash(sed -n '358,370p;530,597p' src/TradingEngine.Host/EngineWorker.cs)"
     ]
   }
 }

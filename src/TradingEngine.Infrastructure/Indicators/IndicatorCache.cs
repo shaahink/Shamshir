@@ -2,12 +2,18 @@ using System.Collections.Concurrent;
 
 namespace TradingEngine.Infrastructure.Indicators;
 
-internal sealed class IndicatorCache
+public sealed class IndicatorCache
 {
     private readonly ConcurrentDictionary<string, double> _cache = new();
 
-    public string BuildKey(Symbol symbol, Timeframe tf, string indicatorName, int period, int barCount)
+    public static string BuildKey(Symbol symbol, Timeframe tf, string indicatorName, int period, int barCount)
         => $"{symbol}:{tf}:{indicatorName}:{period}:{barCount}";
+
+    public static string BuildKey(Symbol symbol, IndicatorRequest req)
+    {
+        var tf = req.Timeframe == default ? Timeframe.H1 : req.Timeframe;
+        return $"{symbol}:{tf}:{req.Type}:{req.Period}:{req.StdDev:F2}:{req.Param1}:{req.Param2:F2}";
+    }
 
     public double? Get(string key)
     {

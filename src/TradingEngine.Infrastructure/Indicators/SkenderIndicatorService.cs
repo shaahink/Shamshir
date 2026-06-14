@@ -8,7 +8,7 @@ public sealed class SkenderIndicatorService : IIndicatorService
 
     public double Atr(IReadOnlyList<Bar> bars, int period)
     {
-        var key = _cache.BuildKey(bars[0].Symbol, bars[0].Timeframe, "ATR", period, bars.Count);
+        var key = IndicatorCache.BuildKey(bars[0].Symbol, bars[0].Timeframe, "ATR", period, bars.Count);
         var cached = _cache.Get(key);
         if (cached.HasValue) return cached.Value;
 
@@ -20,7 +20,7 @@ public sealed class SkenderIndicatorService : IIndicatorService
 
     public double Ema(IReadOnlyList<Bar> bars, int period)
     {
-        var key = _cache.BuildKey(bars[0].Symbol, bars[0].Timeframe, "EMA", period, bars.Count);
+        var key = IndicatorCache.BuildKey(bars[0].Symbol, bars[0].Timeframe, "EMA", period, bars.Count);
         var cached = _cache.Get(key);
         if (cached.HasValue) return cached.Value;
 
@@ -32,7 +32,7 @@ public sealed class SkenderIndicatorService : IIndicatorService
 
     public double Sma(IReadOnlyList<Bar> bars, int period)
     {
-        var key = _cache.BuildKey(bars[0].Symbol, bars[0].Timeframe, "SMA", period, bars.Count);
+        var key = IndicatorCache.BuildKey(bars[0].Symbol, bars[0].Timeframe, "SMA", period, bars.Count);
         var cached = _cache.Get(key);
         if (cached.HasValue) return cached.Value;
 

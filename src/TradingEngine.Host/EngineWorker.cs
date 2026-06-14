@@ -245,7 +245,7 @@ public sealed class EngineWorker : BackgroundService
                     var barSnapshot = BuildBarSnapshot(bar.Symbol);
                     if (barSnapshot is null) continue;
 
-                    BuildIndicatorSnapshot(bar.Symbol);
+                    BuildSharedIndicatorSnapshot(bar.Symbol);
 
                     _governor?.OnBar(bar.OpenTimeUtc);
                     _signalGate?.OnBar(bar.OpenTimeUtc);
@@ -259,25 +259,27 @@ public sealed class EngineWorker : BackgroundService
                     foreach (var strategy in activeStrategies)
                     {
                         var totalBars = barSnapshot.Values.Sum(b => b.Count);
+                        var strategyIndicators = BuildStrategyIndicatorValues(bar.Symbol, strategy);
+
                         if (totalBars < strategy.RequiredBarCount)
                         {
                             _logger.LogDebug("EVAL|{Strategy}|{Symbol}|NEED_BARS|have={Have}|need={Need}",
                                 strategy.Id, bar.Symbol.Value, totalBars, strategy.RequiredBarCount);
                             _ = _eventBus.PublishAsync(new BarEvaluated(
                                 _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
-                                strategy.Id, new Dictionary<string, double>(_reusableIndicatorDict),
+                                strategy.Id, new Dictionary<string, double>(strategyIndicators),
                                 false, null, $"not enough bars (have {totalBars}, need {strategy.RequiredBarCount})",
                                 _clock.UtcNow), CancellationToken.None);
                             continue;
                         }
 
                         var context = new MarketContext(bar.Symbol, closeTick, barSnapshot,
-                            _reusableIndicatorDict, _clock.UtcNow);
+                            strategyIndicators, _clock.UtcNow);
                         var intent = strategy.Evaluate(context);
 
                         _ = _eventBus.PublishAsync(new BarEvaluated(
                             _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
-                            strategy.Id, new Dictionary<string, double>(_reusableIndicatorDict),
+                            strategy.Id, new Dictionary<string, double>(strategyIndicators),
                             intent is not null, intent?.Direction,
                             intent?.Reason ?? "no signal",
                             _clock.UtcNow), CancellationToken.None);
@@ -296,7 +298,7 @@ public sealed class EngineWorker : BackgroundService
                                 _logger.LogInformation("SIGNAL_GATED|{Strategy}|{Symbol}|{Reason}", strategy.Id, intent.Symbol.Value, gateResult.Reason);
                                 _ = _eventBus.PublishAsync(new BarEvaluated(
                                     _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
-                                    strategy.Id, new Dictionary<string, double>(_reusableIndicatorDict),
+                                    strategy.Id, new Dictionary<string, double>(strategyIndicators),
                                     false, intent.Direction,
                                     $"REENTRY:{gateResult.Reason}",
                                     _clock.UtcNow), CancellationToken.None);
@@ -355,16 +357,50 @@ public sealed class EngineWorker : BackgroundService
         _logger.LogDebug("Bar processor stopped");
     }
 
-    private void BuildIndicatorSnapshot(Symbol symbol)
+    private void BuildSharedIndicatorSnapshot(Symbol symbol)
     {
         _reusableIndicatorDict.Clear();
-        var prefix = $"{symbol}:";
-        var prefixLen = prefix.Length;
-        foreach (var (key, value) in _indicatorValues)
+        foreach (var strategy in _strategies)
         {
-            if (key.StartsWith(prefix))
-                _reusableIndicatorDict[key[prefixLen..]] = value;
+            foreach (var req in strategy.RequiredIndicators)
+            {
+                var sigKey = IndicatorCache.BuildKey(symbol, req);
+                if (_indicatorValues.TryGetValue(sigKey, out var val))
+                    _reusableIndicatorDict[req.Key] = val;
+                if (_indicatorValues.TryGetValue($"{sigKey}_Upper", out var upper))
+                    _reusableIndicatorDict[$"{req.Key}_Upper"] = upper;
+                if (_indicatorValues.TryGetValue($"{sigKey}_Lower", out var lower))
+                    _reusableIndicatorDict[$"{req.Key}_Lower"] = lower;
+                if (_indicatorValues.TryGetValue($"{sigKey}_Signal", out var signal))
+                    _reusableIndicatorDict[$"{req.Key}_Signal"] = signal;
+                if (_indicatorValues.TryGetValue($"{sigKey}_Histogram", out var hist))
+                    _reusableIndicatorDict[$"{req.Key}_Histogram"] = hist;
+                if (_indicatorValues.TryGetValue($"{sigKey}_Direction", out var dir))
+                    _reusableIndicatorDict[$"{req.Key}_Direction"] = dir;
+            }
         }
+    }
+
+    private IReadOnlyDictionary<string, double> BuildStrategyIndicatorValues(Symbol symbol, IStrategy strategy)
+    {
+        var dict = new Dictionary<string, double>();
+        foreach (var req in strategy.RequiredIndicators)
+        {
+            var sigKey = IndicatorCache.BuildKey(symbol, req);
+            if (_indicatorValues.TryGetValue(sigKey, out var val))
+                dict[req.Key] = val;
+            if (_indicatorValues.TryGetValue($"{sigKey}_Upper", out var upper))
+                dict[$"{req.Key}_Upper"] = upper;
+            if (_indicatorValues.TryGetValue($"{sigKey}_Lower", out var lower))
+                dict[$"{req.Key}_Lower"] = lower;
+            if (_indicatorValues.TryGetValue($"{sigKey}_Signal", out var signal))
+                dict[$"{req.Key}_Signal"] = signal;
+            if (_indicatorValues.TryGetValue($"{sigKey}_Histogram", out var hist))
+                dict[$"{req.Key}_Histogram"] = hist;
+            if (_indicatorValues.TryGetValue($"{sigKey}_Direction", out var dir))
+                dict[$"{req.Key}_Direction"] = dir;
+        }
+        return dict;
     }
 
     private async Task ProcessAccountUpdatesAsync(CancellationToken ct)
@@ -549,44 +585,44 @@ public sealed class EngineWorker : BackgroundService
                         continue;
                 }
 
-                var baseKey = $"{symbol}:{req.Key}";
+                var sigKey = IndicatorCache.BuildKey(symbol, req);
                 switch (req.Type)
                 {
                     case IndicatorType.Atr:
-                        _indicatorValues[baseKey] = _indicators.Atr(reqBars, req.Period);
+                        _indicatorValues[sigKey] = _indicators.Atr(reqBars, req.Period);
                         break;
                     case IndicatorType.Ema:
-                        _indicatorValues[baseKey] = _indicators.Ema(reqBars, req.Period);
+                        _indicatorValues[sigKey] = _indicators.Ema(reqBars, req.Period);
                         break;
                     case IndicatorType.Rsi:
-                        _indicatorValues[baseKey] = _indicators.Rsi(reqBars, req.Period);
+                        _indicatorValues[sigKey] = _indicators.Rsi(reqBars, req.Period);
                         break;
                     case IndicatorType.Sma:
-                        _indicatorValues[baseKey] = _indicators.Sma(reqBars, req.Period);
+                        _indicatorValues[sigKey] = _indicators.Sma(reqBars, req.Period);
                         break;
                     case IndicatorType.Adx:
-                        _indicatorValues[baseKey] = _indicators.Adx(reqBars, req.Period);
+                        _indicatorValues[sigKey] = _indicators.Adx(reqBars, req.Period);
                         break;
                     case IndicatorType.BollingerBands:
                         var (upper, middle, lower) = _indicators.BollingerBands(reqBars, req.Period, req.StdDev);
-                        _indicatorValues[baseKey] = middle;
-                        _indicatorValues[$"{baseKey}_Upper"] = upper;
-                        _indicatorValues[$"{baseKey}_Lower"] = lower;
+                        _indicatorValues[sigKey] = middle;
+                        _indicatorValues[$"{sigKey}_Upper"] = upper;
+                        _indicatorValues[$"{sigKey}_Lower"] = lower;
                         break;
                     case IndicatorType.Macd:
                         var macdFast = req.Period;
                         var macdSlow = req.Param1 > 0 ? req.Param1 : 26;
                         var macdSig = (int)(req.Param2 > 0 ? req.Param2 : 9);
                         var macd = _indicators.Macd(reqBars, macdFast, macdSlow, macdSig);
-                        _indicatorValues[baseKey] = macd.MacdLine;
-                        _indicatorValues[$"{baseKey}_Signal"] = macd.Signal;
-                        _indicatorValues[$"{baseKey}_Histogram"] = macd.Histogram;
+                        _indicatorValues[sigKey] = macd.MacdLine;
+                        _indicatorValues[$"{sigKey}_Signal"] = macd.Signal;
+                        _indicatorValues[$"{sigKey}_Histogram"] = macd.Histogram;
                         break;
                     case IndicatorType.SuperTrend:
                         var stMult = req.Param2 > 0 ? req.Param2 : 3.0;
                         var st = _indicators.SuperTrend(reqBars, req.Period, stMult);
-                        _indicatorValues[baseKey] = st.Line;
-                        _indicatorValues[$"{baseKey}_Direction"] = st.Direction;
+                        _indicatorValues[sigKey] = st.Line;
+                        _indicatorValues[$"{sigKey}_Direction"] = st.Direction;
                         break;
                 }
             }
