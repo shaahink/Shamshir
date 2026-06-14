@@ -2,10 +2,8 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using TradingEngine.Infrastructure.Persistence;
-using TradingEngine.Infrastructure.Persistence.Entities;
 
-namespace TradingEngine.Host;
+namespace TradingEngine.Infrastructure.Persistence;
 
 public sealed class BarEvaluationHandler : IEventHandler<BarEvaluated>, IAsyncDisposable
 {
