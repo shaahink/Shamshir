@@ -11,7 +11,6 @@ public sealed class PositionTracker(
     EngineRunContext runContext,
     IEngineClock clock,
     ILogger<PositionTracker> logger,
-    EngineMode engineMode = EngineMode.Backtest,
     ITradingGovernor? governor = null,
     ISignalGate? signalGate = null)
 {
@@ -122,7 +121,7 @@ public sealed class PositionTracker(
                 pos.EntryPrice, new Price(fillPrice), pos.CurrentStopLoss, pos.TakeProfit,
                 pos.OpenedAtUtc, clock.UtcNow, pnl, Money.Zero(pnl.Currency), Money.Zero(pnl.Currency),
                 pnl, new Pips(0), 0, new Pips(0), new Pips(0),
-                exitReason, pos.StrategyId, riskProfileId, engineMode);
+                exitReason, pos.StrategyId, riskProfileId);
             s.OnTradeResult(tradeResult);
             await eventBus.PublishAsync(new TradeClosed(tradeResult, runContext.RunId, clock.UtcNow), CancellationToken.None);
         }

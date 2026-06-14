@@ -14,7 +14,7 @@ public sealed class PositionLifecycleGoldenTests
         return r;
     }
 
-    private static (PositionTracker tracker, IPositionManager posMgr, IEventBus eventBus, IRiskManager riskMgr, ITradingGovernor governor) CreateTracker(EngineMode mode = EngineMode.Backtest)
+    private static (PositionTracker tracker, IPositionManager posMgr, IEventBus eventBus, IRiskManager riskMgr, ITradingGovernor governor) CreateTracker()
     {
         var registry = CreateRegistry();
         var crossRate = new Func<string, string, decimal>((_, _) => 1m);
@@ -27,7 +27,7 @@ public sealed class PositionLifecycleGoldenTests
         var logger = Substitute.For<ILogger<PositionTracker>>();
         var governor = Substitute.For<ITradingGovernor>();
 
-        var tracker = new PositionTracker(registry, crossRate, riskMgr, posMgr, eventBus, runCtx, clock, logger, mode, governor);
+        var tracker = new PositionTracker(registry, crossRate, riskMgr, posMgr, eventBus, runCtx, clock, logger, governor);
         return (tracker, posMgr, eventBus, riskMgr, governor);
     }
 

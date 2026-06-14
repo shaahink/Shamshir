@@ -112,7 +112,7 @@ public class EnginePurityTests
             $"TradingEngine.Engine must not reference ILogger, DateTime, or EF types.\n{string.Join("\n", violations)}");
     }
 
-    [Fact(Skip = "Enabled in Phase 6 — EngineMode currently leaks into PositionTracker (Services) and Risk types")]
+    [Fact]
     public void EngineMode_only_in_host_and_infrastructure()
     {
         // This test will be un-skipped in Phase 6 when EngineMode is confined to Host/Infrastructure/composition.
