@@ -24,6 +24,18 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     public Action? OnConnected { get; set; }
     public Action<string, string>? OnStatusChange { get; set; }
 
+    /// <summary>Fired on every cBot hello (connect + reconnect) with the venue-reported open
+    /// positions and account, so the engine can reconcile its position tracker (V1/V2).</summary>
+    public Action<AccountState>? OnReconcile { get; set; }
+
+    /// <summary>Fired when the venue confirms a stop-loss/take-profit modify (V3 writeback).</summary>
+    public Action<Guid, Price, Price?>? OnStopModified { get; set; }
+
+    // Last venue-authoritative account snapshot, parsed from the cBot hello. Returned by
+    // GetAccountStateAsync so startup/reconnect reconciliation sees real open positions
+    // instead of the old (0,0,[]) stub (V1).
+    private volatile AccountState _lastKnownState = new(0, 0, []);
+
     public DateTime BrokerTimeUtc { get; private set; } = DateTime.UtcNow;
     public bool IsConnected => _transport.IsConnected;
 
@@ -124,6 +136,22 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                             _transport.Send(identity, helloAck);
                             _logger.LogInformation("CTRADER|HELLO_ACK_SENT|handshake complete");
                             _journal?.Write("CONNECTED", null, DateTime.UtcNow);
+
+                            // V1/V2 — capture the venue's open-position snapshot and reconcile.
+                            var state = ParseHelloState(doc.RootElement);
+                            _lastKnownState = state;
+                            if (state.OpenPositions.Count > 0 || state.Balance > 0)
+                            {
+                                _logger.LogInformation("CTRADER|RECONCILE_SNAPSHOT|balance={Balance}|equity={Equity}|positions={Count}",
+                                    state.Balance, state.Equity, state.OpenPositions.Count);
+                                OnReconcile?.Invoke(state);
+                            }
+
+                            // V5 — a hello means (re)connection; re-flush any commands that were
+                            // queued while disconnected so they ride the next bar_done envelope.
+                            // (The transport's OnConnected only fires on the first identity, so a
+                            // reconnect would otherwise never re-flush.)
+                            FlushPendingCommands();
                             break;
 
                         case "bar":
@@ -217,6 +245,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             foreach (var ex in execs.EnumerateArray())
             {
                 count++;
+                if (TryHandleModifyConfirmation(ex)) { continue; }
                 var exec = ParseExecution(ex);
                 TryWriteExec(exec);
             }
@@ -237,9 +266,72 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     private void HandleExecEvent(JsonElement root)
     {
+        if (TryHandleModifyConfirmation(root)) { return; }
         var exec = ParseExecution(root);
         TryWriteExec(exec);
         _execsReceived++;
+    }
+
+    // V3 — a venue-confirmed SL/TP modification. Routed to OnStopModified (writeback) instead
+    // of the execution stream, which only carries fills/closes/rejections.
+    private bool TryHandleModifyConfirmation(JsonElement ex)
+    {
+        var kind = ex.TryGetProperty("kind", out var k) ? k.GetString() : null;
+        if (kind != "modify") return false;
+
+        var orderId = ex.TryGetProperty("clientOrderId", out var oid) && oid.GetString() is { } oidStr
+            ? Guid.Parse(oidStr) : Guid.Empty;
+        var state = ex.TryGetProperty("state", out var st) ? st.GetString() : null;
+        if (orderId == Guid.Empty || state != "Filled")
+        {
+            _logger.LogWarning("CTRADER|MODIFY_REJECTED|order={Order}|state={State}", orderId, state);
+            return true;
+        }
+
+        var newSl = ParseDecimalOrNull(ex, "slPrice");
+        var newTp = ParseDecimalOrNull(ex, "tpPrice");
+        if (newSl is > 0m)
+        {
+            var tp = newTp is > 0m ? new Price(newTp.Value) : (Price?)null;
+            _logger.LogInformation("CTRADER|MODIFY_CONFIRMED|order={Order}|sl={Sl}|tp={Tp}", orderId, newSl, newTp);
+            OnStopModified?.Invoke(orderId, new Price(newSl.Value), tp);
+        }
+        return true;
+    }
+
+    private AccountState ParseHelloState(JsonElement root)
+    {
+        var balance = root.TryGetProperty("account", out var acct) && acct.TryGetProperty("balance", out var b)
+            ? b.GetDecimal() : 0m;
+        var equity = root.TryGetProperty("account", out var acct2) && acct2.TryGetProperty("equity", out var e)
+            ? e.GetDecimal() : 0m;
+
+        var positions = new List<OpenPositionInfo>();
+        if (root.TryGetProperty("positions", out var pos) && pos.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var p in pos.EnumerateArray())
+            {
+                if (!p.TryGetProperty("clientOrderId", out var cid) || cid.GetString() is not { } cidStr
+                    || !Guid.TryParse(cidStr, out var orderId))
+                {
+                    continue; // a position the engine never opened (no durable Guid) — cannot manage it
+                }
+
+                var symbol = Symbol.Parse(p.GetProperty("symbol").GetString()!);
+                var direction = Enum.Parse<TradeDirection>(p.GetProperty("direction").GetString()!, ignoreCase: true);
+                var lots = p.GetProperty("lots").GetDecimal();
+                var entry = p.GetProperty("entryPrice").GetDecimal();
+                var sl = p.TryGetProperty("stopLoss", out var slEl) ? slEl.GetDecimal() : 0m;
+                var tp = p.TryGetProperty("takeProfit", out var tpEl) ? tpEl.GetDecimal() : 0m;
+
+                positions.Add(new OpenPositionInfo(
+                    orderId, symbol, direction, lots, new Price(entry),
+                    new Price(sl > 0m ? sl : entry),
+                    tp > 0m ? new Price(tp) : null));
+            }
+        }
+
+        return new AccountState(balance, equity, positions);
     }
 
     private void HandleStats(JsonElement root)
@@ -283,15 +375,21 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         };
     }
 
+    // Pending commands (queued while disconnected, or re-queued from a failed bar-done) are moved
+    // back into the per-bar buffer so they ride the NEXT bar_done envelope. They are never sent as
+    // standalone messages — the cBot only processes commands inside a bar_done, so an individual
+    // send would be silently dropped (V5).
     private void FlushPendingCommands()
     {
         if (!IsConnected) return;
+        var moved = 0;
         while (_pendingCommands.TryDequeue(out var cmd))
         {
-            var json = JsonSerializer.Serialize(cmd, cmd.GetType(), JsonOpts);
-            _transport.Send(_cBotIdentity!, json);
-            _logger.LogInformation("CTRADER|FLUSH_PENDING|type={Type}", cmd.GetType().Name);
+            lock (_bufferLock) { _bufferedCommands.Add(cmd); }
+            moved++;
         }
+        if (moved > 0)
+            _logger.LogInformation("CTRADER|FLUSH_PENDING|requeued={Count}|destination=next_bar_done", moved);
     }
 
     public Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
@@ -414,14 +512,24 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         }
         else
         {
-            _logger.LogWarning("CTRADER|BAR_DONE_FAILED|seq={Seq}|reason=cBot not connected", seq);
+            // V5 — disconnected at bar-done. Do NOT drop the drained commands: re-queue them so the
+            // next reconnect (FlushPendingCommands → buffer → next bar_done) still delivers them.
+            foreach (var cmd in commands)
+                _pendingCommands.Enqueue(cmd);
+            _logger.LogWarning("CTRADER|BAR_DONE_FAILED|seq={Seq}|reason=cBot not connected|requeued={Count}",
+                seq, commands.Length);
         }
 
         await Task.CompletedTask;
     }
 
+    // V1 — returns the latest venue snapshot parsed from the cBot hello (open positions + account),
+    // not the old (0,0,[]) stub. Empty until the first hello arrives.
     public Task<AccountState> GetAccountStateAsync(CancellationToken ct)
-        => Task.FromResult(new AccountState(0, 0, []));
+        => Task.FromResult(_lastKnownState);
+
+    public void RegisterReconcileHandler(Action<AccountState> handler) => OnReconcile = handler;
+    public void RegisterStopModifiedHandler(Action<Guid, Price, Price?> handler) => OnStopModified = handler;
 
     private static decimal? ParseDecimalOrNull(JsonElement element, string propertyName)
     {

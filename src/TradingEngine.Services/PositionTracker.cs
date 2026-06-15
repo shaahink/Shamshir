@@ -61,6 +61,94 @@ public sealed class PositionTracker(
         finally { _mutex.Release(); }
     }
 
+    /// <summary>
+    /// V1/V2 — seed the tracker from the venue's open-position snapshot (startup/reconnect
+    /// reconciliation). For each venue position the engine is not already tracking, drives the
+    /// lifecycle FSM (Submitted → Filled) so it lands in the Open phase and registers it with the
+    /// position manager and risk manager. Idempotent: positions already tracked (matched by the
+    /// engine OrderId/clientOrderId) are skipped, so repeated reconnects don't duplicate.
+    /// </summary>
+    public void SeedOpenPositions(IReadOnlyList<OpenPositionInfo> venuePositions, IEnumerable<IStrategy> strategies)
+    {
+        _mutex.Wait();
+        try
+        {
+            foreach (var info in venuePositions)
+            {
+                if (_state.Positions.Values.Any(p => p.OrderId == info.PositionId))
+                {
+                    continue; // already tracking this position — resync is a no-op
+                }
+
+                var intent = new TradeIntent(
+                    info.Symbol, info.Direction, OrderType.Market, null,
+                    info.CurrentStopLoss, info.TakeProfit, "reconciled", "standard",
+                    "Reconciled from venue snapshot", clock.UtcNow);
+                var request = new OrderRequest(intent, info.Lots, info.Symbol, info.Direction, OrderType.Market, null);
+                _pendingIntent[info.PositionId] = (request, 0m, "standard");
+
+                var submitted = new OrderSubmitted(
+                    info.PositionId, info.Symbol, info.Direction, info.Lots, null,
+                    intent.StrategyId, clock.UtcNow, info.CurrentStopLoss, info.TakeProfit);
+                _state = EngineReducer.Apply(_state, submitted).State;
+
+                var filled = new OrderFilled(info.PositionId, info.Symbol, info.Lots, info.EntryPrice, clock.UtcNow);
+                _state = EngineReducer.Apply(_state, filled).State;
+
+                var ps = _state.Positions.Values.FirstOrDefault(p => p.OrderId == info.PositionId);
+                if (ps is null || ps.Phase != PositionPhase.Open) { continue; }
+
+                var position = ToPosition(ps);
+                var posConfig = new PositionManagementConfig(
+                    position.StrategyId,
+                    new TrailingConfig(TrailingMethod.AtrMultiple, 0, 1.0, 1.0),
+                    true, 1.0, new Pips(1), new Money(0m, "USD"));
+                positionManager.RegisterPosition(position, posConfig);
+                riskManager.RegisterPosition(position.Id, position.StrategyId, 0m);
+                signalGate?.OnPositionOpened(position.StrategyId, position.Symbol.Value, position.Direction, clock.UtcNow);
+
+                logger.LogInformation("RECONCILED|Id={Id}|Order={Order}|{Symbol}|{Dir}|lots={Lots}|entry={Entry:F5}|sl={Sl:F5}",
+                    position.Id, position.OrderId, position.Symbol, position.Direction,
+                    position.Lots, position.EntryPrice.Value, position.CurrentStopLoss.Value);
+            }
+        }
+        finally { _mutex.Release(); }
+    }
+
+    /// <summary>
+    /// V3 — write a venue-confirmed stop-loss/take-profit back onto the tracked position so the
+    /// engine's risk/exit view (and backtest SL/TP simulation) follows the venue after a trailing
+    /// modify, instead of drifting from a stale, fire-and-forget value.
+    /// </summary>
+    public void ConfirmStopLoss(Guid orderId, Price newStopLoss, Price? newTakeProfit)
+    {
+        _mutex.Wait();
+        try
+        {
+            var ps = _state.Positions.Values.FirstOrDefault(p => p.OrderId == orderId);
+            if (ps is null)
+            {
+                logger.LogWarning("SL_WRITEBACK_NO_POSITION|order={Order}", orderId);
+                return;
+            }
+
+            var updated = ps with
+            {
+                CurrentStopLoss = newStopLoss,
+                TakeProfit = newTakeProfit ?? ps.TakeProfit,
+            };
+            var newPositions = new Dictionary<Guid, PositionState>(_state.Positions)
+            {
+                [ps.PositionId] = updated,
+            };
+            _state = _state with { Positions = newPositions };
+
+            logger.LogInformation("SL_WRITEBACK|order={Order}|sl={Sl:F5}|tp={Tp}",
+                orderId, newStopLoss.Value, newTakeProfit?.Value.ToString("F5") ?? "unchanged");
+        }
+        finally { _mutex.Release(); }
+    }
+
     public async Task RequestForceCloseAllAsync(string reason)
     {
         await _mutex.WaitAsync();

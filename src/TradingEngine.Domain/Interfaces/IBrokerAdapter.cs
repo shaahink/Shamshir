@@ -31,6 +31,17 @@ public interface IBrokerAdapter
     /// transports (cTrader) need it; others ignore it.</summary>
     void RegisterConnectedHandler(Action handler) { }
 
+    /// <summary>Register a callback fired when the venue reports its open-position snapshot
+    /// (on connect and on every reconnect). The engine uses it to seed/resync its position
+    /// tracker from positions that already exist at the venue (V1/V2). No-op for venues that
+    /// have no out-of-band positions (simulated/replay).</summary>
+    void RegisterReconcileHandler(Action<AccountState> handler) { }
+
+    /// <summary>Register a callback fired when the venue confirms a stop-loss/take-profit
+    /// modification, so the engine can write the venue-authoritative SL/TP back onto its
+    /// position state (V3 — trailing). No-op for fire-and-forget venues.</summary>
+    void RegisterStopModifiedHandler(Action<Guid, Price, Price?> handler) { }
+
     /// <summary>Observe each processed tick. A simulated venue uses this to drive fills against
     /// resting orders; live/replay venues ignore it.</summary>
     void OnTickObserved(Tick tick) { }

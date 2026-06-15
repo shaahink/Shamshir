@@ -82,13 +82,20 @@ public class TradingEngineCBot : Robot
 
         Print($"CBOT|SUBS|{string.Join(", ", subs.Select(s => $"{s.sym}:{s.tf}"))}");
 
+        // V1/V2 — rebuild the Guid↔venue-id map from existing positions (durable Guid in Comment)
+        // and announce the open-position snapshot in the hello so the engine can reconcile.
+        RebuildPositionMap();
+        var positionSnapshot = BuildPositionSnapshot();
+
         var helloMsg = Serialize("hello", new
         {
             v = 1,
             symbols = symbols,
             periods = periods,
             subs = subs.Select(s => new { s.sym, tf = s.tf }).ToArray(),
-            barsLoaded = _subscriptions.Sum(s => s.Count)
+            barsLoaded = _subscriptions.Sum(s => s.Count),
+            account = new { balance = Account.Balance, equity = Account.Equity },
+            positions = positionSnapshot
         });
         _dealer.SendFrame(helloMsg);
         Print($"CBOT|HELLO_SENT|subs={subs.Count}|barsLoaded={_subscriptions.Sum(s => s.Count)}");
@@ -219,6 +226,11 @@ public class TradingEngineCBot : Robot
                                     var result = ExecuteClosePartialPosition(cmd);
                                     execs.Add(result);
                                 }
+                                else if (cmdType == "modify_order")
+                                {
+                                    var result = ExecuteModifyOrder(cmd);
+                                    execs.Add(result);
+                                }
                                 else if (cmdType == "shutdown")
                                 {
                                     Print("CBOT|SHUTDOWN|received via bar_done");
@@ -275,7 +287,9 @@ public class TradingEngineCBot : Robot
         var tradeType = direction == "Long" ? TradeType.Buy : TradeType.Sell;
         var volumeInUnits = Math.Floor(lots * sym.LotSize / sym.VolumeInUnitsStep) * sym.VolumeInUnitsStep;
 
-        var result = ExecuteMarketOrder(tradeType, symbol, volumeInUnits, "Shamshir", null, null);
+        // V2 — persist the engine clientOrderId in the position Comment so the Guid↔venue-id map
+        // can be rebuilt after a cBot restart/reconnect (see RebuildPositionMap).
+        var result = ExecuteMarketOrder(tradeType, symbol, volumeInUnits, "Shamshir", null, null, clientOrderId);
         if (result?.IsSuccessful == true)
         {
             var pos = result.Position;
@@ -348,6 +362,106 @@ public class TradingEngineCBot : Robot
         }
         Print($"CBOT|CLOSE_PARTIAL_NOT_FOUND|positionId={positionIdStr}");
         return MakeExecResult(Guid.Empty.ToString(), "partial_close", 0, "Rejected", 0, 0, "Position not found: " + positionIdStr);
+    }
+
+    // V3 — apply a stop-loss/take-profit modification and echo the venue-confirmed levels so the
+    // engine can write them back. Previously modify_order commands were silently dropped (the
+    // bar_done loop had no branch for them), so trailing-stop updates never reached the venue.
+    private object ExecuteModifyOrder(JsonElement cmd)
+    {
+        var orderIdStr = cmd.GetProperty("orderId").GetString()!;
+        var newSl = cmd.TryGetProperty("newSl", out var slEl) ? slEl.GetDouble() : 0.0;
+        var newTp = cmd.TryGetProperty("newTp", out var tpEl) ? tpEl.GetDouble() : 0.0;
+
+        foreach (var pos in Positions)
+        {
+            if (_positionMap.TryGetValue(pos.Id, out var guid) && guid.ToString() == orderIdStr)
+            {
+                var appliedSl = newSl > 0 ? newSl : (pos.StopLoss ?? 0.0);
+                var appliedTp = newTp > 0 ? newTp : (pos.TakeProfit ?? 0.0);
+                try
+                {
+#pragma warning disable CS0618
+                    var result = ModifyPosition(pos, appliedSl > 0 ? appliedSl : (double?)null,
+                        appliedTp > 0 ? appliedTp : (double?)null);
+#pragma warning restore CS0618
+                    Diag($"MODIFY|{orderIdStr}|sl={appliedSl:F5}|tp={appliedTp:F5}|success={result?.IsSuccessful}");
+                    return MakeModifyResult(guid.ToString(), pos.Id,
+                        result?.IsSuccessful == true ? "Filled" : "Rejected", appliedSl, appliedTp);
+                }
+                catch (Exception ex)
+                {
+                    Print($"CBOT|MODIFY_ERR|{orderIdStr}|{ex.Message}");
+                    return MakeModifyResult(guid.ToString(), pos.Id, "Rejected", 0, 0);
+                }
+            }
+        }
+        Print($"CBOT|MODIFY_NOT_FOUND|orderId={orderIdStr}");
+        return MakeModifyResult(Guid.Empty.ToString(), 0, "Rejected", 0, 0);
+    }
+
+    private static object MakeModifyResult(string clientOrderId, long positionId, string state,
+        double slPrice, double tpPrice)
+    {
+        return new
+        {
+            clientOrderId,
+            kind = "modify",
+            positionId,
+            state,
+            slPrice,
+            tpPrice,
+            fillPrice = 0.0,
+            filledLots = 0.0,
+            reason = (string?)null,
+            simTime = DateTime.UtcNow.ToString("o")
+        };
+    }
+
+    // V2 — rebuild the venue-id → engine-Guid map from positions that survived a cBot restart,
+    // reading the durable Guid stored in each Shamshir position's Comment.
+    private void RebuildPositionMap()
+    {
+        var remapped = 0;
+        foreach (var pos in Positions)
+        {
+            if (pos.Label != "Shamshir") continue;
+            if (Guid.TryParse(pos.Comment, out var guid))
+            {
+                _positionMap[pos.Id] = guid;
+                remapped++;
+            }
+            else
+            {
+                Print($"CBOT|REMAP_SKIP|posId={pos.Id}|no durable Guid in comment");
+            }
+        }
+        Print($"CBOT|REMAP|positions={remapped}");
+    }
+
+    // V1 — snapshot of currently-open Shamshir positions, keyed by the engine clientOrderId Guid,
+    // for the engine to reconcile its tracker after a (re)connect.
+    private object[] BuildPositionSnapshot()
+    {
+        var list = new List<object>();
+        foreach (var pos in Positions)
+        {
+            if (!_positionMap.TryGetValue(pos.Id, out var guid)) continue;
+            var sym = Symbols.GetSymbol(pos.SymbolName);
+            var lots = sym is not null ? pos.VolumeInUnits / sym.LotSize : pos.VolumeInUnits / 100_000.0;
+            list.Add(new
+            {
+                clientOrderId = guid.ToString(),
+                symbol = pos.SymbolName,
+                direction = pos.TradeType == TradeType.Buy ? "Long" : "Short",
+                lots,
+                entryPrice = pos.EntryPrice,
+                stopLoss = pos.StopLoss ?? 0.0,
+                takeProfit = pos.TakeProfit ?? 0.0,
+                venuePositionId = pos.Id
+            });
+        }
+        return list.ToArray();
     }
 
     private static object MakeExecResult(string clientOrderId, string kind, long positionId,

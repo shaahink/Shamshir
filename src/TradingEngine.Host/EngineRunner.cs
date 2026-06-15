@@ -96,6 +96,22 @@ public sealed class EngineRunner
 
         _broker.RegisterConnectedHandler(ResetState);
 
+        // V1/V2 — when the venue reports its open positions (connect + every reconnect), seed the
+        // tracker so the engine can manage/trail/force-close positions that already exist at the
+        // venue after a restart. Idempotent: SeedOpenPositions skips positions already tracked.
+        _broker.RegisterReconcileHandler(state =>
+        {
+            if (state.Balance > 0)
+            {
+                _riskManager.UpdateEquityLevels(state.Equity);
+            }
+            _positionTracker.SeedOpenPositions(state.OpenPositions, _strategies);
+        });
+
+        // V3 — write venue-confirmed SL/TP modifications back onto the tracked position.
+        _broker.RegisterStopModifiedHandler((orderId, sl, tp) =>
+            _positionTracker.ConfirmStopLoss(orderId, sl, tp));
+
         await _broker.ConnectAsync(ct);
 
         try
