@@ -56,15 +56,19 @@ backtest loops (`_tradingLoop.ProcessBarAsync(bar, ct)`). `BarCount`/`Reset` mov
 Behaviour-preserving (Unit 163, Goldens 7 green). It can now be driven directly with a fake
 broker + the real risk pipeline, no IHost.
 
-**AGENT TODO:**
-- Add a fast unit test that constructs `TradingLoop` directly (fake `IBrokerAdapter`, real
-  `OrderDispatcher`/`PositionTracker`/`IndicatorSnapshotService`, NSubstitute for the rest)
-  and drives one bar to a `TrackOrder` — the template the FTMO suite reuses.
-- Point `EngineHarnessBuilder` at `TradingLoop` directly for the deterministic FTMO tests
-  (drive bars synchronously, assert on `RiskManager.Drawdown`/journal) — this sidesteps the
-  IHost entirely and is the preferred path over booting `EngineWorker`.
+Done: `TradingLoopDirectTests.TradingLoop_DrivenDirectly_ProducesAnOrder` constructs
+`TradingLoop` with a fake broker + real `OrderDispatcher`/`PositionTracker`/
+`IndicatorSnapshotService` (NSubstitute for the rest), drives 8 bars, asserts an order is
+submitted — green in ~1s, no IHost. **This is the template the FTMO suite reuses.**
 
-**Gate:** the direct `TradingLoop` unit test is green and runs in <1s.
+**AGENT TODO:**
+- Point `EngineHarnessBuilder` at `TradingLoop` directly for the deterministic FTMO tests:
+  reuse the `TradingLoopDirectTests` wiring but swap the substitute `IRiskManager` for a
+  **real `RiskManager`** (with an active prop-firm rule set via `WireRiskRules`) and a real
+  persistence path, drive bars synchronously, and assert on `RiskManager.Drawdown` / the
+  journal. This sidesteps the IHost entirely — the preferred path over booting `EngineWorker`.
+
+**Gate:** ✅ the direct `TradingLoop` unit test is green and runs in <1s.
 
 ---
 
