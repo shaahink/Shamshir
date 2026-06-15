@@ -14,6 +14,11 @@ public sealed class EngineHarnessBuilder
     private string _runId = "harness-run";
     private IReadOnlyList<Bar> _bars = [];
     private readonly List<IStrategy> _strategies = [];
+    private decimal _flattenAtFraction = 0.9m;
+    private bool _enableBreachWatchdog = true;
+
+    public EngineHarnessBuilder WithFlattenAtFraction(decimal fraction) { _flattenAtFraction = fraction; return this; }
+    public EngineHarnessBuilder WithoutBreachWatchdog() { _enableBreachWatchdog = false; return this; }
 
     public EngineHarnessBuilder WithSymbol(Symbol symbol) { _symbol = symbol; return this; }
     public EngineHarnessBuilder WithInitialBalance(decimal balance) { _initialBalance = balance; return this; }
@@ -104,7 +109,7 @@ public sealed class EngineHarnessBuilder
 
         return Task.FromResult(new EngineHarness(
             tradingLoop, fakeVenue, positionTracker, riskManager, strategies,
-            initialBalance, symbolRegistry, equity));
+            initialBalance, symbolRegistry, equity, _flattenAtFraction, _enableBreachWatchdog));
     }
 
     private static PropFirmRuleSet MakeRuleSet(string id) => new(
@@ -121,6 +126,8 @@ public sealed class EngineHarness : IAsyncDisposable
     private decimal InitialBalance { get; }
     private ISymbolInfoRegistry SymbolRegistry { get; }
     private MutableBox<EquitySnapshot> EquityBox { get; }
+    private decimal FlattenAtFraction { get; }
+    private bool EnableBreachWatchdog { get; }
 
     public RiskManager Risk { get; }
     public FakeVenue Venue { get; }
@@ -131,7 +138,7 @@ public sealed class EngineHarness : IAsyncDisposable
         TradingLoop loop, FakeVenue venue, PositionTracker positionTracker,
         RiskManager risk, IReadOnlyList<IStrategy> strategies,
         decimal initialBalance, ISymbolInfoRegistry symbolRegistry,
-        MutableBox<EquitySnapshot> equityBox)
+        MutableBox<EquitySnapshot> equityBox, decimal flattenAtFraction, bool enableBreachWatchdog)
     {
         Loop = loop;
         Venue = venue;
@@ -140,6 +147,8 @@ public sealed class EngineHarness : IAsyncDisposable
         InitialBalance = initialBalance;
         SymbolRegistry = symbolRegistry;
         EquityBox = equityBox;
+        FlattenAtFraction = flattenAtFraction;
+        EnableBreachWatchdog = enableBreachWatchdog;
         Risk = risk;
     }
 
@@ -159,6 +168,9 @@ public sealed class EngineHarness : IAsyncDisposable
 
             Risk.UpdateEquityLevels(equity);
 
+            if (EnableBreachWatchdog)
+                await CheckBreachAsync();
+
             await Loop.ProcessBarAsync(bar, ct);
 
             await DrainFillsAsync();
@@ -172,6 +184,33 @@ public sealed class EngineHarness : IAsyncDisposable
         }
 
         Risk.UpdateEquityLevels(equity);
+        if (EnableBreachWatchdog)
+            await CheckBreachAsync();
+    }
+
+    private async Task CheckBreachAsync()
+    {
+        var ruleSet = Risk.ActiveRuleSet;
+        if (ruleSet is null || Risk.CurrentState.InProtectionMode)
+            return;
+
+        var dailyLimit = (decimal)ruleSet.MaxDailyLossPercent * FlattenAtFraction;
+        var maxLimit = (decimal)ruleSet.MaxTotalLossPercent * FlattenAtFraction;
+
+        if (Risk.CurrentState.DailyDrawdownUsed >= dailyLimit)
+        {
+            Risk.EnterProtectionMode(
+                $"Daily DD at {Risk.CurrentState.DailyDrawdownUsed:P1} >= {dailyLimit:P1}",
+                ProtectionCause.DailyDrawdown);
+            await Tracker.RequestForceCloseAllAsync("DailyDD");
+        }
+        else if (Risk.CurrentState.MaxDrawdownUsed >= maxLimit)
+        {
+            Risk.EnterProtectionMode(
+                $"Max DD at {Risk.CurrentState.MaxDrawdownUsed:P1} >= {maxLimit:P1}",
+                ProtectionCause.MaxDrawdown);
+            await Tracker.RequestForceCloseAllAsync("MaxDD");
+        }
     }
 
     private async Task DrainFillsAsync()
