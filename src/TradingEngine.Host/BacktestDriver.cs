@@ -89,7 +89,6 @@ public sealed class BacktestDriver
                     if (_broker.AccountStream.TryRead(out var acctUpdate))
                         HandleAccountUpdate(acctUpdate);
 
-                    _governor?.OnBar(bar.OpenTimeUtc);
                     _signalGate?.OnBar(bar.OpenTimeUtc);
 
                     Interlocked.Increment(ref _barCount);

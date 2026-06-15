@@ -237,7 +237,6 @@ public sealed class EngineWorker : BackgroundService
 
                     BuildSharedIndicatorSnapshot(bar.Symbol);
 
-                    _governor?.OnBar(bar.OpenTimeUtc);
                     _signalGate?.OnBar(bar.OpenTimeUtc);
 
                     var regime = _regimeDetector.Detect(bar.Symbol,
@@ -499,15 +498,15 @@ public sealed class EngineWorker : BackgroundService
         if (dailyKey != _lastResetDayOfYear)
         {
             _lastResetDayOfYear = dailyKey;
-            _governor?.OnDailyReset();
             _riskManager.OnDailyReset(update.Equity);
+            _ = _eventBus.PublishAsync(new DayRolled(now), CancellationToken.None);
         }
         if (isoWeek != _lastResetIsoWeek)
         {
             _lastResetIsoWeek = isoWeek;
             _riskManager.OnWeeklyReset(update.Equity);
-            _governor?.OnWeeklyReset();
-            _governor?.OnDailyReset(); // daily reset on new week
+            _ = _eventBus.PublishAsync(new WeekRolled(now), CancellationToken.None);
+            _ = _eventBus.PublishAsync(new DayRolled(now), CancellationToken.None);
             _ = _eventBus.PublishAsync(new WeeklyEquitySnapshotTaken(
                 new EquitySnapshot(update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
                     _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,

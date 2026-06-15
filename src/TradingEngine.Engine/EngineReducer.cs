@@ -183,7 +183,9 @@ public static class EngineReducer
             }
         }
 
-        return new EngineDecision(state with { Positions = newPositions }, effects);
+        var newGovernor = GovernorMachine.ApplyBar(state.Governor);
+
+        return new EngineDecision(state with { Positions = newPositions, Governor = newGovernor }, effects);
     }
 
     private static string? DetectSlTpExit(PositionState state, BarClosed bar)
