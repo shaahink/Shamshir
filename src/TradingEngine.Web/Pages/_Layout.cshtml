@@ -5,26 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Shamshir Trading Engine</title>
     <link rel="stylesheet" href="/css/site.css" />
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8/dist/browser/signalr.min.js"></script>
 </head>
 <body>
-    <nav class="navbar">
-        <a class="brand" href="/">Shamshir Engine</a>
-        <div class="nav-links">
-            <a href="/">Dashboard</a>
-            <a href="/trades">Trades</a>
-            <a href="/performance">Performance</a>
-            <a href="/backtests">Backtests</a>
-            <a href="/events">Events</a>
+    <div class="app-shell">
+        <nav class="sidebar">
+            <a class="brand" href="/">Shamshir</a>
+            <div class="nav-group">
+                <div class="nav-group-title">LIVE</div>
+                <a href="/" class="nav-item">Engine</a>
+                <a href="/compliance" class="nav-item">Compliance</a>
+            </div>
+            <div class="nav-group">
+                <div class="nav-group-title">RESEARCH</div>
+                <a href="/backtests/new" class="nav-item">New Backtest</a>
+                <a href="/runs" class="nav-item">Runs</a>
+                <a href="/trades" class="nav-item">Trades</a>
+            </div>
+            <div class="nav-group">
+                <div class="nav-group-title">LIBRARY</div>
+                <a href="/strategies" class="nav-item">Strategies</a>
+                <a href="/events" class="nav-item">Events</a>
+            </div>
+        </nav>
+        <div class="main-area">
+            @if (ViewData["RunId"] is string runId)
+            {
+                @await Html.PartialAsync("Shared/_RunNav", runId)
+            }
+            <main class="content">
+                @RenderBody()
+            </main>
         </div>
-    </nav>
-    <main class="container">
-        @RenderBody()
-    </main>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
-    <script src="/js/charts.js"></script>
-    <!-- iter-21 U1 — live run channel (SignalR). The chart-stack consolidation is U0. -->
-    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8/dist/browser/signalr.min.js"></script>
+    </div>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

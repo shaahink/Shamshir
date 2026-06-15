@@ -31,14 +31,49 @@
 
 <div class="card">
     <h2>Equity Curve</h2>
-    <canvas id="equityChart" height="300"></canvas>
+    <div id="equityChart" style="height:300px;display:none"></div>
+    <div id="equityEmpty" class="empty" style="display:none">
+        <span class="empty-icon">--</span>
+        <span>No equity data available yet</span>
+    </div>
+    <div id="equityError" class="empty" style="display:none">
+        <span class="empty-icon">!</span>
+        <span>Failed to load equity data</span>
+    </div>
 </div>
 
 @section Scripts {
-    <script>
-        fetch('/api/equity')
-            .then(r => r.json())
-            .then(data => renderEquityCurve('equityChart', data))
-            .catch(() => {});
+    <script type="module">
+        import { equityChart } from '/js/charts/index.js';
+        const container = document.getElementById('equityChart');
+        const empty = document.getElementById('equityEmpty');
+        const error = document.getElementById('equityError');
+
+        async function loadEquity() {
+            try {
+                const r = await fetch('/api/equity');
+                if (!r.ok) throw new Error(r.statusText);
+                const data = await r.json();
+                if (data && data.length > 0) {
+                    container.style.display = 'block';
+                    empty.style.display = 'none';
+                    const points = data.map(p => ({
+                        time: Math.floor(new Date(p.simTimeUtc).getTime() / 1000),
+                        equity: p.equity
+                    }));
+                    equityChart(container, points);
+                } else {
+                    container.style.display = 'none';
+                    empty.style.display = 'flex';
+                }
+            } catch (e) {
+                container.style.display = 'none';
+                empty.style.display = 'none';
+                error.style.display = 'flex';
+                console.error('Equity chart load failed', e);
+            }
+        }
+
+        loadEquity();
     </script>
 }
