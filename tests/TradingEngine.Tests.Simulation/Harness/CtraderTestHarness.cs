@@ -17,7 +17,26 @@ using TradingEngine.Services;
 namespace TradingEngine.Tests.Simulation.Harness;
 
 [CollectionDefinition("CtraderSerial", DisableParallelization = true)]
-public sealed class CtraderSerialCollection { }
+public sealed class CtraderSerialCollection : ICollectionFixture<CtraderTestFixture> { }
+
+public sealed class CtraderTestFixture : IAsyncLifetime
+{
+    public Task InitializeAsync()
+    {
+        CtraderProcessGuard.KillStrays();
+        return Task.CompletedTask;
+    }
+
+    public Task DisposeAsync()
+    {
+        var count = CtraderProcessGuard.StrayCount();
+        if (count > 0)
+        {
+            CtraderProcessGuard.KillStrays();
+        }
+        return Task.CompletedTask;
+    }
+}
 
 /// <summary>
 /// Shared harness for in-process engine + cTrader CLI diagnostic tests.
