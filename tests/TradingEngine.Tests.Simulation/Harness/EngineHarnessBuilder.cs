@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using TradingEngine.Application;
 using TradingEngine.Host;
 using TradingEngine.Risk;
 using TradingEngine.Risk.Sizing;
@@ -48,7 +49,7 @@ public sealed class EngineHarnessBuilder
         var newsFilter = Substitute.For<INewsFilter>();
         var sessionFilter = new SessionFilter();
         var currencyExposure = Substitute.For<ICurrencyExposureTracker>();
-        var sizingPolicy = new SizingPolicyOptions();
+        var sizingPolicy = new SizingPolicyOptions { FlattenAtFraction = (double)_flattenAtFraction };
         var riskManager = new RiskManager(
             symbolRegistry, crossRate, newsFilter, sessionFilter, clock,
             currencyExposure, governor: null, sizingPolicy);
@@ -102,6 +103,19 @@ public sealed class EngineHarnessBuilder
             NullLogger<PositionTracker>.Instance,
             harnessEffectExecutor);
 
+        var crossRateStore = new CrossRateStore();
+
+        var equity = new MutableBox<EquitySnapshot>(new EquitySnapshot(
+            DateTime.MinValue, initialBalance, 0, initialBalance, initialBalance,
+            initialBalance, 0, 0, EngineMode.Backtest));
+
+        var accountProcessor = new AccountProcessor(
+            riskManager, positionTracker, sizingPolicy,
+            eventBus, clock, EngineMode.Backtest,
+            crossRateStore, equitySink: null,
+            setEquity: snapshot => equity.Value = snapshot,
+            NullLogger.Instance);
+
         var dispatcher = new OrderDispatcher(
             riskManager, riskProfileResolver, symbolRegistry, crossRate,
             decisionJournal, runContext, NullLogger<OrderDispatcher>.Instance);
@@ -116,10 +130,6 @@ public sealed class EngineHarnessBuilder
         regimeDetector.Detect(Arg.Any<Symbol>(), Arg.Any<IReadOnlyList<Bar>>(), Arg.Any<Dictionary<string, double>>())
             .ReturnsForAnyArgs(MarketRegime.Trending);
 
-        var equity = new MutableBox<EquitySnapshot>(new EquitySnapshot(
-            DateTime.MinValue, initialBalance, 0, initialBalance, initialBalance,
-            initialBalance, 0, 0, EngineMode.Backtest));
-
         var tradingLoop = new TradingLoop(
             fakeVenue, indicatorSnapshot, dispatcher, positionTracker,
             strategyBank, regimeDetector, signalGate: null, symbolRegistry,
@@ -131,7 +141,7 @@ public sealed class EngineHarnessBuilder
         return Task.FromResult(new EngineHarness(
             tradingLoop, fakeVenue, positionTracker, riskManager, strategies,
             initialBalance, symbolRegistry, equity, _flattenAtFraction, _enableBreachWatchdog,
-            eventBus, decisionJournal));
+            eventBus, decisionJournal, accountProcessor));
     }
 
     private static PropFirmRuleSet MakeRuleSet(string id) => new(
@@ -151,7 +161,6 @@ public sealed class HarnessEffectExecutor : IEffectExecutor
     {
         switch (effect)
         {
-            case CloseOpenPosition:
             case SubmitOrder:
             case ModifyStopLoss:
             case ModifyTakeProfit:
@@ -173,6 +182,7 @@ public sealed class EngineHarness : IAsyncDisposable
     private decimal FlattenAtFraction { get; }
     private bool EnableBreachWatchdog { get; }
     private CollectingEventBus EventBus { get; }
+    private AccountProcessor AccountProcessor { get; }
 
     public RiskManager Risk { get; }
     public FakeVenue Venue { get; }
@@ -185,7 +195,8 @@ public sealed class EngineHarness : IAsyncDisposable
         RiskManager risk, IReadOnlyList<IStrategy> strategies,
         decimal initialBalance, ISymbolInfoRegistry symbolRegistry,
         MutableBox<EquitySnapshot> equityBox, decimal flattenAtFraction, bool enableBreachWatchdog,
-        CollectingEventBus eventBus, InMemoryDecisionJournal decisionJournal)
+        CollectingEventBus eventBus, InMemoryDecisionJournal decisionJournal,
+        AccountProcessor accountProcessor)
     {
         Loop = loop;
         Venue = venue;
@@ -198,12 +209,14 @@ public sealed class EngineHarness : IAsyncDisposable
         EnableBreachWatchdog = enableBreachWatchdog;
         EventBus = eventBus;
         DecisionJournal = decisionJournal;
+        AccountProcessor = accountProcessor;
         Risk = risk;
     }
 
     public async Task DriveBarsAsync(IReadOnlyList<Bar> bars, CancellationToken ct = default)
     {
         var equity = InitialBalance;
+        var balance = InitialBalance;
         var closedPnlBaseline = 0m;
 
         for (var i = 0; i < bars.Count; i++)
@@ -220,7 +233,14 @@ public sealed class EngineHarness : IAsyncDisposable
             Risk.UpdateEquityLevels(equity);
 
             if (EnableBreachWatchdog)
-                await CheckBreachAsync();
+            {
+                await AccountProcessor.HandleAsync(new AccountUpdate(balance, equity, 0, bar.OpenTimeUtc));
+            }
+
+            if (Risk.CurrentState.InProtectionMode)
+            {
+                break;
+            }
 
             await Loop.ProcessBarAsync(bar, ct);
 
@@ -237,32 +257,10 @@ public sealed class EngineHarness : IAsyncDisposable
         }
 
         Risk.UpdateEquityLevels(equity);
-        if (EnableBreachWatchdog)
-            await CheckBreachAsync();
-    }
-
-    private async Task CheckBreachAsync()
-    {
-        var constraints = Risk.Constraints;
-        if (constraints is null || Risk.CurrentState.InProtectionMode)
-            return;
-
-        var dailyLimit = constraints.MaxDailyLoss * FlattenAtFraction;
-        var maxLimit = constraints.MaxTotalLoss * FlattenAtFraction;
-
-        if (Risk.CurrentState.DailyDrawdownUsed >= dailyLimit)
+        if (EnableBreachWatchdog && !Risk.CurrentState.InProtectionMode)
         {
-            Risk.EnterProtectionMode(
-                $"Daily DD at {Risk.CurrentState.DailyDrawdownUsed:P1} >= {dailyLimit:P1}",
-                ProtectionCause.DailyDrawdown);
-            await Tracker.RequestForceCloseAllAsync("DailyDD");
-        }
-        else if (Risk.CurrentState.MaxDrawdownUsed >= maxLimit)
-        {
-            Risk.EnterProtectionMode(
-                $"Max DD at {Risk.CurrentState.MaxDrawdownUsed:P1} >= {maxLimit:P1}",
-                ProtectionCause.MaxDrawdown);
-            await Tracker.RequestForceCloseAllAsync("MaxDD");
+            await AccountProcessor.HandleAsync(new AccountUpdate(balance, equity, 0,
+                bars.Count > 0 ? bars[^1].OpenTimeUtc : DateTime.UtcNow));
         }
     }
 

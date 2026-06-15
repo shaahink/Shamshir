@@ -93,7 +93,7 @@ public sealed class FakeVenue : IBrokerAdapter
 
     private async Task WriteCloseFill(Guid positionId, CancellationToken ct, decimal? partialLots = null)
     {
-        var exitPrice = _exitPrices.TryGetValue(positionId, out var ep) ? ep : new Price(0);
+        var exitPrice = _exitPrices.TryGetValue(positionId, out var ep) ? ep : new Price(CurrentMarketPrice);
         _exitPrices.Remove(positionId);
 
         decimal? grossProfit = null;
