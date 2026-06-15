@@ -83,7 +83,7 @@ public sealed class TradingLoopDirectTests
         var loop = new TradingLoop(
             broker, indicatorSnapshot, dispatcher, positionTracker,
             strategyBank, regimeDetector, signalGate: null, symbolRegistry,
-            eventBus, clock, runContext, () => equity, progress: null, journal: null,
+            eventBus, clock, runContext, (_, _) => 1m, () => equity, progress: null, journal: null,
             NullLogger.Instance);
 
         // AlwaysSignalStrategy fires a Long once bar count exceeds 5. Drive 8 bars.

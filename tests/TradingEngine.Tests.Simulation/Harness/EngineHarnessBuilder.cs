@@ -110,6 +110,7 @@ public sealed class EngineHarnessBuilder
             fakeVenue, indicatorSnapshot, dispatcher, positionTracker,
             strategyBank, regimeDetector, signalGate: null, symbolRegistry,
             eventBus, clock, runContext,
+            getCrossRate: crossRate,
             currentEquity: () => equity.Value,
             progress: null, journal: null, NullLogger.Instance);
 

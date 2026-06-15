@@ -24,6 +24,7 @@ public sealed class TradingLoop(
     IEventBus eventBus,
     IEngineClock clock,
     EngineRunContext runContext,
+    Func<string, string, decimal> getCrossRate,
     Func<EquitySnapshot> currentEquity,
     IProgress<BacktestProgressEvent>? progress,
     IPipelineJournal? journal,
@@ -178,7 +179,10 @@ public sealed class TradingLoop(
             var symbolInfo = symbolRegistry.Get(pos.Symbol);
             var slDistance = Math.Abs(pos.EntryPrice.Value - pos.CurrentStopLoss.Value);
             var slPips = slDistance / symbolInfo.PipSize;
-            var pipValue = symbolInfo.PipSize * symbolInfo.ContractSize;
+            // Use the cross-rate-aware pip value (same path as the candidate order in OrderDispatcher),
+            // not the naive PipSize*ContractSize, so the portfolio worst-case is correct for
+            // non-account-currency-quoted symbols (e.g. USDJPY, EURGBP).
+            var pipValue = PipCalculator.PipValuePerLot(symbolInfo, pos.EntryPrice.Value, getCrossRate);
             result.Add(new ProjectedPosition(slPips, pos.Lots, pipValue));
         }
         return result;

@@ -70,6 +70,7 @@ public sealed class EngineRunner
             _broker, _indicatorSnapshot, deps.Strategies.OrderDispatcher, _positionTracker,
             deps.Strategies.StrategyBank, deps.Strategies.RegimeDetector, _signalGate,
             deps.Market.SymbolRegistry, deps.Persistence.EventBus, _clock, runContext,
+            _crossRateStore.Convert,
             () => Volatile.Read(ref _currentEquity), _progress, deps.Persistence.Journal, logger);
     }
 
