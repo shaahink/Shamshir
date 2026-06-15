@@ -42,8 +42,8 @@ public sealed class EngineHarnessBuilder
         symbolRegistry.Get(symbol).Returns(symbolInfo);
 
         Func<string, string, decimal> crossRate = (_, _) => 1.0m;
-        var clock = Substitute.For<IEngineClock>();
-        clock.UtcNow.Returns(_ => DateTime.UtcNow);
+        var clock = new ManualClock();
+        clock.UtcNow = DateTime.UtcNow;
 
         var newsFilter = Substitute.For<INewsFilter>();
         var sessionFilter = new SessionFilter();
@@ -71,9 +71,11 @@ public sealed class EngineHarnessBuilder
             Enumerable.Empty<ISizeModifier>(), NullLogger<SizeModifierPipeline>.Instance);
         riskManager.SetSizePipeline(sizePipeline);
 
-        var eventBus = Substitute.For<IEventBus>();
-        var decisionJournal = Substitute.For<IDecisionJournal>();
-        var positionManager = Substitute.For<IPositionManager>();
+        var eventBus = new CollectingEventBus();
+        var decisionJournal = new InMemoryDecisionJournal();
+
+        var indicators = Substitute.For<IIndicatorService>();
+        var positionManager = new PositionManager(symbolRegistry, indicators, NullLogger<PositionManager>.Instance);
 
         var riskProfileResolver = Substitute.For<IRiskProfileResolver>();
         riskProfileResolver.Resolve(Arg.Any<string>()).Returns(new RiskProfile(
@@ -82,15 +84,28 @@ public sealed class EngineHarnessBuilder
 
         var runContext = new EngineRunContext(_runId);
 
+        var fakeVenue = new FakeVenue(symbolRegistry, crossRate);
+
+        var effectExecutor = new EffectExecutor(
+            fakeVenue, eventBus, decisionJournal,
+            equitySink: null, progress: null,
+            runContext, clock,
+            NullLogger<EffectExecutor>.Instance,
+            symbolRegistry, crossRate, strategies,
+            riskManager, positionManager,
+            governor: null, signalGate: null);
+
+        var harnessEffectExecutor = new HarnessEffectExecutor(effectExecutor);
+
         var positionTracker = new PositionTracker(
             symbolRegistry, crossRate, riskManager, positionManager, eventBus, clock,
-            NullLogger<PositionTracker>.Instance);
+            NullLogger<PositionTracker>.Instance,
+            harnessEffectExecutor);
 
         var dispatcher = new OrderDispatcher(
             riskManager, riskProfileResolver, symbolRegistry, crossRate,
             decisionJournal, runContext, NullLogger<OrderDispatcher>.Instance);
 
-        var indicators = Substitute.For<IIndicatorService>();
         var indicatorSnapshot = new IndicatorSnapshotService(indicators, strategies);
 
         var strategyBank = Substitute.For<IStrategyBank>();
@@ -101,7 +116,6 @@ public sealed class EngineHarnessBuilder
         regimeDetector.Detect(Arg.Any<Symbol>(), Arg.Any<IReadOnlyList<Bar>>(), Arg.Any<Dictionary<string, double>>())
             .ReturnsForAnyArgs(MarketRegime.Trending);
 
-        var fakeVenue = new FakeVenue();
         var equity = new MutableBox<EquitySnapshot>(new EquitySnapshot(
             DateTime.MinValue, initialBalance, 0, initialBalance, initialBalance,
             initialBalance, 0, 0, EngineMode.Backtest));
@@ -116,7 +130,8 @@ public sealed class EngineHarnessBuilder
 
         return Task.FromResult(new EngineHarness(
             tradingLoop, fakeVenue, positionTracker, riskManager, strategies,
-            initialBalance, symbolRegistry, equity, _flattenAtFraction, _enableBreachWatchdog));
+            initialBalance, symbolRegistry, equity, _flattenAtFraction, _enableBreachWatchdog,
+            eventBus, decisionJournal));
     }
 
     private static PropFirmRuleSet MakeRuleSet(string id) => new(
@@ -124,6 +139,28 @@ public sealed class EngineHarnessBuilder
         "BalancePlusFloating", "22:00:00", "UTC",
         false, "High", 0, 0,
         false, "21:00:00", "20:00:00", "NextTradingDay", false);
+}
+
+public sealed class HarnessEffectExecutor : IEffectExecutor
+{
+    private readonly EffectExecutor _inner;
+
+    public HarnessEffectExecutor(EffectExecutor inner) => _inner = inner;
+
+    public async Task ExecuteAsync(EngineEffect effect, CancellationToken ct)
+    {
+        switch (effect)
+        {
+            case CloseOpenPosition:
+            case SubmitOrder:
+            case ModifyStopLoss:
+            case ModifyTakeProfit:
+                break;
+            default:
+                await _inner.ExecuteAsync(effect, ct);
+                break;
+        }
+    }
 }
 
 public sealed class EngineHarness : IAsyncDisposable
@@ -135,17 +172,20 @@ public sealed class EngineHarness : IAsyncDisposable
     private MutableBox<EquitySnapshot> EquityBox { get; }
     private decimal FlattenAtFraction { get; }
     private bool EnableBreachWatchdog { get; }
+    private CollectingEventBus EventBus { get; }
 
     public RiskManager Risk { get; }
     public FakeVenue Venue { get; }
     public PositionTracker Tracker { get; }
+    public InMemoryDecisionJournal DecisionJournal { get; }
     public long BarCount => Loop.BarCount;
 
     public EngineHarness(
         TradingLoop loop, FakeVenue venue, PositionTracker positionTracker,
         RiskManager risk, IReadOnlyList<IStrategy> strategies,
         decimal initialBalance, ISymbolInfoRegistry symbolRegistry,
-        MutableBox<EquitySnapshot> equityBox, decimal flattenAtFraction, bool enableBreachWatchdog)
+        MutableBox<EquitySnapshot> equityBox, decimal flattenAtFraction, bool enableBreachWatchdog,
+        CollectingEventBus eventBus, InMemoryDecisionJournal decisionJournal)
     {
         Loop = loop;
         Venue = venue;
@@ -156,17 +196,21 @@ public sealed class EngineHarness : IAsyncDisposable
         EquityBox = equityBox;
         FlattenAtFraction = flattenAtFraction;
         EnableBreachWatchdog = enableBreachWatchdog;
+        EventBus = eventBus;
+        DecisionJournal = decisionJournal;
         Risk = risk;
     }
 
     public async Task DriveBarsAsync(IReadOnlyList<Bar> bars, CancellationToken ct = default)
     {
         var equity = InitialBalance;
+        var closedPnlBaseline = 0m;
 
         for (var i = 0; i < bars.Count; i++)
         {
             var bar = bars[i];
             Venue.BrokerTimeUtc = bar.OpenTimeUtc;
+            Venue.CurrentMarketPrice = bar.Close;
 
             EquityBox.Value = new EquitySnapshot(
                 bar.OpenTimeUtc, equity, 0, equity,
@@ -186,8 +230,10 @@ public sealed class EngineHarness : IAsyncDisposable
 
             await DrainFillsAsync();
 
-            var closedPnL = ApproximateClosedPnL();
-            equity += closedPnL;
+            var totalClosedPnl = EventBus.OfType<TradeClosed>().Sum(tc => tc.Result.NetPnL.Amount);
+            var delta = totalClosedPnl - closedPnlBaseline;
+            closedPnlBaseline = totalClosedPnl;
+            equity += delta;
         }
 
         Risk.UpdateEquityLevels(equity);
@@ -222,8 +268,6 @@ public sealed class EngineHarness : IAsyncDisposable
 
     private readonly List<ClosedTrade> _closedTrades = [];
 
-    /// <summary>Trades closed during the run, with the venue-confirmed exit reason — lets tests
-    /// assert the journal/ledger labels exits accurately (TP / SL / DailyDD / MaxDD), not "FORCE".</summary>
     public IReadOnlyList<ClosedTrade> ClosedTrades => _closedTrades;
 
     private async Task DrainFillsAsync()
@@ -250,40 +294,25 @@ public sealed class EngineHarness : IAsyncDisposable
             if (pos.Symbol != bar.Symbol) continue;
 
             string? reason = null;
+            Price? exitPrice = null;
             if (pos.Direction == TradeDirection.Long)
             {
-                if (bar.Low <= pos.CurrentStopLoss.Value) { reason = "SL"; }
-                else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) { reason = "TP"; }
+                if (bar.Low <= pos.CurrentStopLoss.Value) { reason = "SL"; exitPrice = pos.CurrentStopLoss; }
+                else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) { reason = "TP"; exitPrice = pos.TakeProfit.Value; }
             }
             else
             {
-                if (bar.High >= pos.CurrentStopLoss.Value) { reason = "SL"; }
-                else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) { reason = "TP"; }
+                if (bar.High >= pos.CurrentStopLoss.Value) { reason = "SL"; exitPrice = pos.CurrentStopLoss; }
+                else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) { reason = "TP"; exitPrice = pos.TakeProfit.Value; }
             }
 
-            if (reason is not null)
+            if (reason is not null && exitPrice is not null)
             {
-                // Stamp the detected reason before the venue close, mirroring EngineRunner, so the
-                // close fill records "SL"/"TP" rather than the generic "FORCE".
                 Tracker.SetCloseReason(orderId, reason);
+                Venue.SetExitPrice(orderId, exitPrice.Value);
                 await Venue.ClosePositionAsync(orderId, ct);
             }
         }
-    }
-
-    private int _lastCloseCount;
-
-    private decimal ApproximateClosedPnL()
-    {
-        var totalCloses = Venue.CloseRequests.Count;
-        var newCloses = totalCloses - _lastCloseCount;
-        _lastCloseCount = totalCloses;
-
-        if (newCloses <= 0) return 0;
-
-        var symbolInfo = SymbolRegistry.Get(Symbol.Parse("EURUSD"));
-        var pipValuePerLot = symbolInfo.PipSize * symbolInfo.ContractSize;
-        return newCloses * -50m * pipValuePerLot * 0.01m;
     }
 
     public async ValueTask DisposeAsync()
