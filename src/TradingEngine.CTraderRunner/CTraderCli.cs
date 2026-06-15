@@ -24,6 +24,10 @@ public sealed class CTraderCli
         string[] extraArgs,
         CancellationToken ct = default)
     {
+        // Arm the kill-on-close reaper before spawning, so ctrader-cli and any of its own
+        // children die with this process even if the run is cancelled or the host crashes.
+        ChildProcessReaper.EnsureCurrentProcessInKillOnCloseJob();
+
         var stdOut = new StringBuilder();
         var stdErr = new StringBuilder();
 

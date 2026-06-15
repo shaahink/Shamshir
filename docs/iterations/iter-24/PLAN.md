@@ -15,7 +15,54 @@ vuln-as-error (`NU1903 MessagePack`). Build/test the test projects directly, e.g
 
 ---
 
+## Phase 0 — Test infrastructure (do this FIRST; it unblocks proving everything else)
+
+The current tests can't actually validate money/risk behaviour, and they leak processes.
+Two design problems and one seam:
+
+### 0a. Deterministic FTMO harness — `EngineHarnessBuilder` (skeleton landed, compiles)
+`ReplayTestHarness` is unusable as an assertion vehicle: it **mocks `IRiskManager`** (so it
+can't assert real drawdown/limits) and it blocks on `BarStream.Completion` + a hardcoded
+`Task.Delay(5_000)` + host shutdown (~60s floor that times out any real-work test).
+
+A skeleton `tests/.../Harness/EngineHarnessBuilder.cs` + `EngineHarness` is in place. The
+reusable **`WaitForQuiescenceAsync`** (stop on "all fed bars consumed and settled", no
+wall-clock delay) is implemented. **AGENT TODO:**
+- Implement `BuildAsync`: compose via the real `AddRisk` / `AddPersistence` / `AddStrategies`
+  / `AddEventInfrastructure` / `AddEngineWorker` extensions, swap in a deterministic in-memory
+  broker (real in-memory `IBarRepository` → `BacktestReplayAdapter` is fine), call
+  `WireRiskRules` so the prop-firm rule set is active, subscribe the persistence handlers.
+- Expose `barsConsumed`/`barsFed` from the fake broker so `WaitForQuiescenceAsync` works.
+- Move `BacktestActuallyTradesTests` onto this harness and **un-skip it** (RED→GREEN).
+
+**Gate:** `BacktestActuallyTradesTests` green in <10s with a real `RiskManager`.
+
+### 0b. Process-leak fix — `ChildProcessReaper` (landed) + sweep (TODO)
+Root cause of the recurring orphan: `CTraderCli` launched `ctrader-cli` via CliWrap; on
+cancel/crash only the direct child was killed, so the CLI's own children survived (one was
+found alive for **2 days**). Fixed with `src/TradingEngine.CTraderRunner/ChildProcessReaper.cs`
+— a Windows Job Object (`KILL_ON_JOB_CLOSE`) the current process joins, so every descendant
+dies when the launcher exits. `CTraderCli.BacktestAsync` now arms it before spawning.
+**AGENT TODO:** verify `CtraderTestHarness` exits leave no `ctrader-cli` (assert via a
+collection-fixture teardown that `Get-Process ctrader-cli` is empty), and add a defensive
+sweep helper for CI.
+
+**Gate:** running the full cTrader test suite twice leaves zero `ctrader-cli` processes.
+
+### 0c. Testability seam — extract `TradingLoop` (design change)
+The per-bar body now lives in `EngineWorker.ProcessSingleBarAsync` (private, inside a
+`BackgroundService`) — so it can only be exercised through a full host. Extract it into a
+standalone `TradingLoop` class taking explicit collaborators, and have `EngineWorker`
+delegate (both live and backtest). Then the harness — and focused unit tests — can drive
+`TradingLoop.ProcessBarAsync(bar)` directly with a fake broker and the real risk pipeline,
+asserting on `RiskManager.Drawdown` / the journal, with no IHost.
+
+**Gate:** a unit test constructs `TradingLoop` (no IHost) and drives one bar to an order.
+
+---
+
 ## Phase 1 — One trading loop (the core fix)
+**(P1 loop unification + delete BacktestDriver is DONE in commit iter24-p1; remaining items below)**
 
 **Goal:** a single `TradingLoop` used by both live and backtest; delete `BacktestDriver`;
 backtest actually trades and enforces constraints.
