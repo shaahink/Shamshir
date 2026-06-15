@@ -163,6 +163,10 @@ public static class EngineReducer
         return new EngineDecision(state with { Positions = newPositions }, effects);
     }
 
+    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
+    // BarClosed is never constructed anywhere; this branch, GovernorMachine.ApplyBar,
+    // and DetectSlTpExit are dead. The live breach watchdog uses AccountProcessor;
+    // backtest SL/TP exits are simulated in EngineRunner.SimulateBarExitsAsync.
     private static EngineDecision HandleBarClosed(EngineState state, BarClosed evt, List<EngineEffect> effects)
     {
         var newPositions = new Dictionary<Guid, PositionState>(state.Positions);
@@ -203,6 +207,9 @@ public static class EngineReducer
         return null;
     }
 
+    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
+    // TickReceived is never constructed; tick-to-execution runs via the live
+    // MarketEventSource consumers, not through the reducer.
     private static EngineDecision HandleTickReceived(EngineState state, TickReceived evt, List<EngineEffect> effects)
     {
         var newPositions = new Dictionary<Guid, PositionState>(state.Positions);
@@ -217,12 +224,18 @@ public static class EngineReducer
         return new EngineDecision(state with { Positions = newPositions }, effects);
     }
 
+    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
+    // EquityObserved is never constructed; equity tracking runs imperatively
+    // via RiskManager.UpdateEquityLevels, not through the reducer.
     private static EngineDecision HandleEquityObserved(EngineState state, EquityObserved evt)
     {
         var newDrawdown = DrawdownReducer.Apply(state.Drawdown, evt.Equity);
         return new EngineDecision(state with { Drawdown = newDrawdown }, []);
     }
 
+    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
+    // DayRolled is published to EventBus but never fed to the reducer; daily reset
+    // runs imperatively via AccountProcessor / RiskManager.OnDailyReset.
     private static EngineDecision HandleDayRolled(EngineState state, DayRolled evt)
     {
         var newGovernor = GovernorMachine.ApplyDailyReset(state.Governor);
@@ -230,6 +243,9 @@ public static class EngineReducer
         return new EngineDecision(state with { Governor = newGovernor, Drawdown = newDrawdown }, []);
     }
 
+    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
+    // WeekRolled is published to EventBus but never fed to the reducer; weekly reset
+    // runs imperatively via AccountProcessor / RiskManager.OnWeeklyReset.
     private static EngineDecision HandleWeekRolled(EngineState state, WeekRolled evt)
     {
         var newDrawdown = DrawdownReducer.ApplyWeeklyReset(state.Drawdown, state.Drawdown.WeeklyStartEquity);
