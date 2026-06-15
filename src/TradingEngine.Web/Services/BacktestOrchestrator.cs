@@ -56,6 +56,17 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public int Breaches;
         public readonly Queue<DecisionRecordView> RecentJournal = new();
         public long Seq;
+
+        // iter-24/21 — engine equity snapshot fields, populated from AccountSnapshotStore
+        // after the run completes for the final RunProgress envelope.
+        public decimal Equity;
+        public decimal Balance;
+        public decimal DailyDdPct;
+        public decimal MaxDdPct;
+        public decimal DistanceToDailyLimit;
+        public int OpenPositions;
+        public string? GovernorState;
+        public string? GovernorReason;
     }
 
     public BacktestOrchestrator(
@@ -89,9 +100,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             state.RunId, status, simTime,
             BarsProcessed: state.BarCount, BarsTotal: 0, Percent: 0, EtaSeconds: null,
             WallElapsedMs: elapsedMs, BarsPerSec: barsPerSec,
-            Equity: 0, Balance: 0, OpenPositions: 0,
-            DailyDdPct: 0, MaxDdPct: 0, DistanceToDailyLimit: 0,
-            GovernorState: null, GovernorReason: null,
+            Equity: state.Equity, Balance: state.Balance, OpenPositions: state.OpenPositions,
+            DailyDdPct: state.DailyDdPct, MaxDdPct: state.MaxDdPct,
+            DistanceToDailyLimit: state.DistanceToDailyLimit,
+            GovernorState: state.GovernorState, GovernorReason: state.GovernorReason,
             Counters: new RunCounters(state.Signals, state.Orders, state.Fills,
                 state.Closes, state.Rejections, state.Breaches),
             RecentJournal: journal);
@@ -216,6 +228,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             }
 
             var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
+
+            await PopulateEquityStateAsync(state, runId);
 
             result = result with
             {
@@ -638,6 +652,32 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         {
             _logger.LogWarning(ex, "Failed to query trade stats for {RunId}", runId);
             return new(0, 0, 0, 0, 0);
+        }
+    }
+
+    private async Task PopulateEquityStateAsync(BacktestRunState state, string runId)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var snapshotStore = scope.ServiceProvider.GetService<IAccountSnapshotStore>();
+            if (snapshotStore is null) return;
+
+            var snapshots = await snapshotStore.GetByRunIdAsync(runId, CancellationToken.None);
+            var latest = snapshots.LastOrDefault();
+
+            if (latest is not null)
+            {
+                state.Equity = latest.Equity;
+                state.Balance = latest.Balance;
+                state.DailyDdPct = latest.DailyDrawdown;
+                state.MaxDdPct = latest.MaxDrawdown;
+                state.OpenPositions = latest.OpenPositions;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to populate equity state for {RunId}", runId);
         }
     }
 }
