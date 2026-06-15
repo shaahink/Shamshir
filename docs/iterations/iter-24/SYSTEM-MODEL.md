@@ -180,14 +180,12 @@ Audit of account snapshotting, cTrader wiring, and how positions track the lates
 state. Ordered by money/data risk. **All are findings for the agent — no code changed.**
 
 **Money accuracy (highest):**
-- **M1 — venue PnL is discarded; recorded PnL ignores costs.** `ExecutionEvent` carries the venue's
-  authoritative `GrossProfit/NetProfit/Commission/Swap` (`CTraderBrokerAdapter.cs:278-281`), but the
-  `PublishTradeClosed` effect doesn't carry them and `EffectExecutor.HandlePublishTradeClosed`
-  **recomputes gross via `PipCalculator` and sets commission=0, swap=0, net=gross**
-  (`EffectExecutor.cs:108-114`). Every recorded trade PnL is cost-free, so the trade ledger diverges
-  from account equity; strategy `OnTradeResult`, the governor, and stats all train on optimistic PnL.
-  Fix: thread the venue `NetProfit/Commission/Swap` through `PositionTracker → PublishTradeClosed`
-  and prefer them over recomputed PnL when present (recompute only for the simulated venue).
+- **M1 — venue PnL is discarded; recorded PnL ignores costs. ✅ FIXED (iter-24).** `PublishTradeClosed`
+  now carries optional `GrossProfit/NetProfit/Commission/Swap`; `PositionTracker.OnExecutionAsync`
+  enriches the close effect from the `ExecutionEvent`, and `EffectExecutor` prefers the venue figures
+  (commission/swap-inclusive net) when present, recomputing gross only for the simulated venue (null PnL).
+  Trade ledger now matches account equity on the live venue. (Residual: simulated/backtest venue still
+  has no commission/swap model — fine, it reports null.)
 - **M2 — disconnected close writes a synthetic fill at `Price(1.0)`** (`CTraderBrokerAdapter.cs:347`).
   If that exec is processed, PnL is computed against 1.0 = garbage. Mark it non-PnL or skip ledger.
 
@@ -202,8 +200,9 @@ state. Ordered by money/data risk. **All are findings for the agent — no code 
 - **V3 — SL/TP modifications are fire-and-forget.** `ModifyOrderAsync` is buffered with no confirmation;
   verify the venue-confirmed SL is written back to `PositionState.CurrentStopLoss` (trailing). If not,
   the engine's risk/exit view drifts from the venue, and backtest `SimulateBarExits` exits on a stale SL.
-- **V4 — exec dedup full-clears at 500** (`CTraderBrokerAdapter.cs:439`): after the clear a re-sent
-  duplicate slips through → double-applied execution / double PnL. Use bounded LRU eviction.
+- **V4 — exec dedup full-clears at 500. ✅ FIXED (iter-24).** Replaced the `HashSet.Clear()` with a
+  bounded LRU (`_recentExecOrder` queue) that evicts the single oldest signature, so a re-sent
+  duplicate is still caught instead of slipping through.
 - **V5 — buffered commands lost on mid-bar disconnect**: `_bufferedCommands` flush only on
   `CompleteBarAsync`; a disconnect before bar-done drops queued orders/closes (only `_pendingCommands`
   re-flush). Dropped-order risk.

@@ -204,15 +204,17 @@ Full prioritized list with file:line in `SYSTEM-MODEL.md §3.6`. These are corre
 in how the engine talks to cTrader and keeps positions in sync with venue-confirmed state. Suggested
 order (highest money/data risk first), each its own small phase with a test:
 
-1. **M1 — use venue-authoritative PnL.** Thread `NetProfit/Commission/Swap` from `ExecutionEvent`
-   through `PositionTracker → PublishTradeClosed`; `EffectExecutor` prefers them over recomputed gross
-   (recompute only for the simulated venue). Gate: a fill carrying commission/swap yields a `TradeResult`
-   whose net ≠ gross and matches the venue figure.
+1. **M1 — use venue-authoritative PnL. ✅ DONE (iter-24).** `PublishTradeClosed` carries optional
+   `GrossProfit/NetProfit/Commission/Swap`; `PositionTracker` enriches the close effect from the
+   `ExecutionEvent`; `EffectExecutor` prefers venue net/commission/swap, recomputing only when null
+   (simulated venue). **AGENT TODO:** add the asserting test (a close exec with commission/swap →
+   `TradeResult.NetPnL ≠ GrossPnL` and equals the venue figure) — needs the live/fake-transport harness.
 2. **V1 — startup/reconnect position reconciliation.** Implement `GetAccountStateAsync` for cTrader and
    seed `PositionTracker` from venue-open positions on connect; add a resync on reconnect. Gate: engine
    restarted with an open venue position can force-close it.
 3. **V2 — durable Guid↔venue-position-id mapping** that survives reconnect (engine or cBot side).
-4. **V4 / V5 — exec dedup LRU (no full-clear) + don't drop `_bufferedCommands` on mid-bar disconnect.**
+4. **V4 ✅ DONE (iter-24)** — exec dedup is now a bounded LRU (single-oldest eviction). **V5 TODO** —
+   don't drop `_bufferedCommands` on mid-bar disconnect (re-queue them like `_pendingCommands`).
 5. **M2 — disconnected-close synthetic `Price(1.0)` fill** must not enter the PnL ledger.
 6. **V3 — write venue-confirmed SL back to `PositionState.CurrentStopLoss`** after a modify (trailing).
 7. **A1–A4 — account/reset edges:** key resets on the update timestamp (not `_clock.UtcNow`); honor

@@ -38,6 +38,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private long _execsReceived;
     private long _execsDeduped;
     private readonly HashSet<string> _recentExecSigs = new();
+    private readonly Queue<string> _recentExecOrder = new();
     private const int MaxRecentExecSigs = 500;
     private readonly CancellationTokenSource _cts = new();
 
@@ -436,8 +437,11 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                 Interlocked.Increment(ref _execsDeduped);
                 return;
             }
-            if (_recentExecSigs.Count > MaxRecentExecSigs)
-                _recentExecSigs.Clear();
+            // Bounded LRU: evict the single oldest signature, never the whole set — a full clear
+            // would let a re-sent duplicate slip through and be applied twice.
+            _recentExecOrder.Enqueue(sig);
+            if (_recentExecOrder.Count > MaxRecentExecSigs)
+                _recentExecSigs.Remove(_recentExecOrder.Dequeue());
         }
         _execChannel.Writer.TryWrite(exec);
     }

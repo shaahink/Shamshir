@@ -105,13 +105,21 @@ public sealed class EffectExecutor : IEffectExecutor
     private async Task HandlePublishTradeClosed(PublishTradeClosed effect, CancellationToken ct)
     {
         var symbolInfo = _symbolRegistry.Get(effect.Symbol);
-        var pnl = PipCalculator.GrossPnL(effect.Direction, effect.EntryPrice, effect.ExitPrice,
+        var recomputedGross = PipCalculator.GrossPnL(effect.Direction, effect.EntryPrice, effect.ExitPrice,
             effect.Lots, symbolInfo, _crossRateProvider);
+
+        // Prefer the venue-authoritative PnL (commission/swap-inclusive) when the live venue reported
+        // it; only fall back to the price-recomputed gross for the simulated venue.
+        var currency = recomputedGross.Currency;
+        var gross = effect.GrossProfit is { } g ? new Money(g, currency) : recomputedGross;
+        var commission = new Money(effect.Commission ?? 0m, currency);
+        var swap = new Money(effect.Swap ?? 0m, currency);
+        var net = effect.NetProfit is { } n ? new Money(n, currency) : gross;
 
         var tradeResult = new TradeResult(Guid.NewGuid(), effect.PositionId, effect.Symbol, effect.Direction,
             effect.Lots, effect.EntryPrice, effect.ExitPrice, effect.StopLoss, effect.TakeProfit,
-            effect.OpenedAtUtc, effect.ClosedAtUtc, pnl, Money.Zero(pnl.Currency), Money.Zero(pnl.Currency),
-            pnl, new Pips(0), 0, new Pips(0), new Pips(0),
+            effect.OpenedAtUtc, effect.ClosedAtUtc, gross, commission, swap,
+            net, new Pips(0), 0, new Pips(0), new Pips(0),
             effect.ExitReason, effect.StrategyId, effect.RiskProfileId ?? "standard");
 
         foreach (var s in _strategies.Where(s => s.Id == effect.StrategyId))
@@ -125,7 +133,7 @@ public sealed class EffectExecutor : IEffectExecutor
         _signalGate?.OnPositionClosed(effect.StrategyId, effect.Symbol.Value, effect.Direction,
             effect.ExitReason, effect.ClosedAtUtc);
 
-        _logger.LogInformation("CLOSED|{Symbol}|{Dir}|Exit={Exit:F5}|PnL={PnL:F2}|Reason={Reason}",
-            effect.Symbol.Value, effect.Direction, effect.ExitPrice.Value, pnl.Amount, effect.ExitReason);
+        _logger.LogInformation("CLOSED|{Symbol}|{Dir}|Exit={Exit:F5}|Gross={Gross:F2}|Net={Net:F2}|Reason={Reason}",
+            effect.Symbol.Value, effect.Direction, effect.ExitPrice.Value, gross.Amount, net.Amount, effect.ExitReason);
     }
 }

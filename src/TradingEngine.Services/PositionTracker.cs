@@ -123,6 +123,18 @@ public sealed class PositionTracker(
             {
                 execEffect = reg with { RiskAmount = pi.RiskAmount };
             }
+            // Carry the venue-authoritative PnL (commission/swap-inclusive) from the execution event
+            // onto the close effect so the ledger matches the account, not a cost-free recompute.
+            else if (execEffect is PublishTradeClosed tc && evt.NetProfit is not null)
+            {
+                execEffect = tc with
+                {
+                    GrossProfit = evt.GrossProfit,
+                    NetProfit = evt.NetProfit,
+                    Commission = evt.Commission,
+                    Swap = evt.Swap,
+                };
+            }
 
             if (effectExecutor is not null)
                 await effectExecutor.ExecuteAsync(execEffect, CancellationToken.None);
