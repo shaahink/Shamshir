@@ -323,13 +323,21 @@ public class TradingEngineCBot : Robot
             if (_positionMap.TryGetValue(pos.Id, out var orderGuid) && orderGuid.ToString() == positionIdStr)
             {
                 var clientOrderId = orderGuid;
+                // Capture realized PnL BEFORE closing — at the close instant the position's
+                // floating Gross/Net P&L equals what's realized. Previously MakeExecResult
+                // hard-coded 0, so every engine-requested close (SL/TP via the engine's exit
+                // simulation, force-close) recorded $0 PnL in the ledger while only cTrader's own
+                // async closes carried real PnL. This corrupted the ledger for most trades.
+                var grossProfit = pos.GrossProfit;
+                var netProfit = pos.NetProfit;
                 var result = ClosePosition(pos);
                 _commandCloses.Add(pos.Id);
-                Diag($"CLOSE_POS|{positionIdStr}|success={result?.IsSuccessful}");
+                Diag($"CLOSE_POS|{positionIdStr}|success={result?.IsSuccessful}|net={netProfit:F2}");
                 if (result?.IsSuccessful == true) PublishAccount();
                 return MakeExecResult(clientOrderId.ToString(), "close", pos.Id,
                     result?.IsSuccessful == true ? "Filled" : "Rejected",
-                    pos.CurrentPrice > 0 ? pos.CurrentPrice : 0d, pos.VolumeInUnits / (Symbols.GetSymbol(pos.SymbolName)?.LotSize ?? 100000.0), null);
+                    pos.CurrentPrice > 0 ? pos.CurrentPrice : 0d, pos.VolumeInUnits / (Symbols.GetSymbol(pos.SymbolName)?.LotSize ?? 100000.0), null,
+                    grossProfit, netProfit);
             }
         }
         Print($"CBOT|CLOSE_NOT_FOUND|positionId={positionIdStr}");
@@ -351,13 +359,19 @@ public class TradingEngineCBot : Robot
                 var volumeInUnits = (int)((double)closeLots * lotSize);
                 if (volumeInUnits <= 0) volumeInUnits = 1000;
 
+                // Realized PnL for the closed portion ≈ full-position floating PnL scaled by the
+                // fraction of volume being closed (captured before the close).
+                var fraction = pos.VolumeInUnits > 0 ? Math.Min(1.0, volumeInUnits / (double)pos.VolumeInUnits) : 1.0;
+                var grossProfit = pos.GrossProfit * fraction;
+                var netProfit = pos.NetProfit * fraction;
                 var result = ClosePosition(pos, volumeInUnits);
-                Diag($"CLOSE_PARTIAL|{positionIdStr}|lots={closeLots}|units={volumeInUnits}|success={result?.IsSuccessful}");
+                Diag($"CLOSE_PARTIAL|{positionIdStr}|lots={closeLots}|units={volumeInUnits}|success={result?.IsSuccessful}|net={netProfit:F2}");
                 if (result?.IsSuccessful == true) PublishAccount();
 
                 return MakeExecResult(clientOrderId.ToString(), "partial_close", pos.Id,
                     result?.IsSuccessful == true ? "Filled" : "Rejected",
-                    pos.CurrentPrice > 0 ? pos.CurrentPrice : 0d, (double)closeLots, null);
+                    pos.CurrentPrice > 0 ? pos.CurrentPrice : 0d, (double)closeLots, null,
+                    grossProfit, netProfit);
             }
         }
         Print($"CBOT|CLOSE_PARTIAL_NOT_FOUND|positionId={positionIdStr}");
@@ -465,7 +479,8 @@ public class TradingEngineCBot : Robot
     }
 
     private static object MakeExecResult(string clientOrderId, string kind, long positionId,
-        string state, double fillPrice, double filledLots, string? reason)
+        string state, double fillPrice, double filledLots, string? reason,
+        double grossProfit = 0.0, double netProfit = 0.0)
     {
         return new
         {
@@ -477,8 +492,8 @@ public class TradingEngineCBot : Robot
             filledLots,
             reason,
             simTime = DateTime.UtcNow.ToString("o"),
-            grossProfit = 0.0,
-            netProfit = 0.0
+            grossProfit,
+            netProfit
         };
     }
 

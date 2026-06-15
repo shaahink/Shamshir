@@ -61,6 +61,19 @@ public sealed class CtraderScenarioTests
         var syntheticCloses = trades.Count(t => t.ExitPrice == 0m);
         syntheticCloses.Should().BeLessThanOrEqualTo(1,
             "only the single end-of-run open position should be flattened by a synthetic zero-price close");
+
+        // PnL integrity: a closed trade with a real exit price and a non-trivial price move MUST
+        // carry non-zero PnL. This previously failed — engine-requested closes (close_position)
+        // recorded $0 PnL because the cBot hard-coded grossProfit/netProfit=0 in MakeExecResult
+        // (real PnL only came through cTrader's own async closes). A 96-pip adverse move was
+        // booked as $0.00. Fixed by capturing the realized PnL before ClosePosition.
+        var realMovers = trades
+            .Where(t => t.ExitPrice > 0 && t.Lots >= 0.05m && Math.Abs(t.ExitPrice - t.EntryPrice) > 0.0010m)
+            .ToList();
+        realMovers.Should().NotBeEmpty("the 3-day window should contain trades with real price movement");
+        realMovers.Should().OnlyContain(t => t.NetPnL != 0m,
+            "a trade with a >10-pip move on >=0.05 lots cannot have exactly $0 PnL — that is the " +
+            "hard-coded-zero-PnL bug in the cBot's command-close path");
     }
 
     [Fact(Timeout = 180_000)]
