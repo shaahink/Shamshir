@@ -44,7 +44,8 @@ public sealed class EngineWorker : BackgroundService
     _strategies = deps.Strategies.Strategies.ToList();
     _indicators = deps.Market.Indicators;
     _indicatorSnapshot = new IndicatorSnapshotService(_indicators, _strategies);
-        _eventBus = deps.Persistence.EventBus;
+    _marketEvents = new MarketEventSource(_broker, _executionEventChannel, logger);
+    _eventBus = deps.Persistence.EventBus;
         _clock = deps.Market.Clock;
         _symbolRegistry = deps.Market.SymbolRegistry;
         _riskProfileResolver = deps.Risk.RiskProfileResolver;
@@ -69,6 +70,7 @@ public sealed class EngineWorker : BackgroundService
     }
 
     private readonly IndicatorSnapshotService _indicatorSnapshot;
+    private readonly MarketEventSource _marketEvents;
 
     private EquitySnapshot _currentEquity = new(DateTime.MinValue, 0, 0, 0, 0, 0, 0, 0, EngineMode.Backtest);
 
@@ -80,7 +82,6 @@ public sealed class EngineWorker : BackgroundService
             SingleReader = true
         });
 
-    private AccountUpdate? _latestAccountUpdate;
     private const int MaxBarHistory = 500;
     private long _tickCount;
     private long _barCount;
@@ -94,7 +95,6 @@ public sealed class EngineWorker : BackgroundService
     private void ResetState()
     {
         _indicatorSnapshot.Reset();
-        Interlocked.Exchange(ref _latestAccountUpdate, null);
         Volatile.Write(ref _currentEquity, new EquitySnapshot(DateTime.MinValue, 0, 0, 0, 0, 0, 0, 0, _engineMode));
         Interlocked.Exchange(ref _tickCount, 0);
         Interlocked.Exchange(ref _barCount, 0);
@@ -143,9 +143,9 @@ public sealed class EngineWorker : BackgroundService
             await Task.WhenAll(
                 ProcessTicksAsync(ct),
                 ProcessBarsAsync(ct),
-                ProcessAccountUpdatesAsync(ct),
-                ProcessExecutionEventsAsync(ct),
-                ProcessAccountQueueAsync(ct));
+                _marketEvents.ProcessAccountUpdatesAsync(ct),
+            _marketEvents.ProcessExecutionEventsAsync(ct),
+            _marketEvents.ProcessAccountQueueAsync(ct, HandleAccountUpdateAsync));
         }
 
         _logger.LogInformation("Engine stopped. Ticks={Ticks} Bars={Bars}",
@@ -329,7 +329,7 @@ public sealed class EngineWorker : BackgroundService
 
                     _journal?.Write("BAR_EVAL", bar.Symbol.Value, bar.OpenTimeUtc);
 
-                    await DrainExecutionStreamAsync();
+                    await _marketEvents.DrainExecutionStreamAsync(_positionTracker, _strategies, _progress, _runContext.RunId, _clock);
 
                     // Per-bar SL/TP evaluation removed from live path — belongs in RunBacktestLoopAsync.
                     // Live broker manages orders server-side; engine must not second-guess SL/TP.
@@ -349,28 +349,6 @@ public sealed class EngineWorker : BackgroundService
 
 
 
-    private async Task ProcessAccountUpdatesAsync(CancellationToken ct)
-    {
-        try
-        {
-            _logger.LogDebug("Account update processor started");
-            await foreach (var update in _broker.AccountStream.ReadAllAsync(ct))
-                Interlocked.Exchange(ref _latestAccountUpdate, update);
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    private async Task ProcessExecutionEventsAsync(CancellationToken ct)
-    {
-        try
-        {
-            _logger.LogDebug("Execution event processor started");
-            await foreach (var evt in _broker.ExecutionStream.ReadAllAsync(ct))
-                await _executionEventChannel.Writer.WriteAsync(evt, ct);
-        }
-        catch (OperationCanceledException) { }
-    }
-
     private async Task RunBacktestLoopAsync(CancellationToken ct)
     {
         var initAcct = await _broker.AccountStream.ReadAsync(ct);
@@ -385,49 +363,6 @@ public sealed class EngineWorker : BackgroundService
 
         await _backtestDriver.RunAsync(ct);
         _logger.LogDebug("Backtest loop stopped");
-    }
-
-    private async Task ProcessAccountQueueAsync(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
-        {
-            var accountUpdate = Interlocked.Exchange(ref _latestAccountUpdate, null);
-            if (accountUpdate is not null)
-                await HandleAccountUpdateAsync(accountUpdate);
-            await Task.Delay(100, ct);
-        }
-    }
-
-    private async Task DrainExecutionStreamAsync()
-    {
-        while (_executionEventChannel.Reader.TryRead(out var execEvent))
-        {
-            await _positionTracker.OnExecutionAsync(execEvent, _strategies);
-            var state = execEvent.NewState;
-            _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
-                execEvent.OrderId, state,
-                execEvent.FillPrice?.Value.ToString("F5") ?? "none",
-                execEvent.FilledLots);
-
-            _progress?.Report(new BacktestProgressEvent(
-                _runContext.RunId, state == OrderState.Rejected ? "REJECTED" : "EXEC",
-                $"EXEC {execEvent.OrderId} [{state}] fill={execEvent.FillPrice?.Value.ToString("F5") ?? "none"} lots={execEvent.FilledLots}{(state == OrderState.Rejected ? " reason=" + (execEvent.RejectionReason ?? "?") : "")}",
-                _clock.UtcNow));
-        }
-        while (_broker.ExecutionStream.TryRead(out var execEvent))
-        {
-            await _positionTracker.OnExecutionAsync(execEvent, _strategies);
-            var state = execEvent.NewState;
-            _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
-                execEvent.OrderId, state,
-                execEvent.FillPrice?.Value.ToString("F5") ?? "none",
-                execEvent.FilledLots);
-
-            _progress?.Report(new BacktestProgressEvent(
-                _runContext.RunId, state == OrderState.Rejected ? "REJECTED" : "EXEC",
-                $"EXEC {execEvent.OrderId} [{state}] fill={execEvent.FillPrice?.Value.ToString("F5") ?? "none"} lots={execEvent.FilledLots}{(state == OrderState.Rejected ? " reason=" + (execEvent.RejectionReason ?? "?") : "")}",
-                _clock.UtcNow));
-        }
     }
 
     private async Task HandleAccountUpdateAsync(AccountUpdate update)
