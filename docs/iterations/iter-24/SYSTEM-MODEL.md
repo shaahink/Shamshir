@@ -175,6 +175,51 @@ still takes `EngineMode` only to stamp `EquitySnapshot.Mode` — push that onto 
   `decimal` at every use (precision smell on money math).
 - `DrawdownReducer.ApplyMonthlyReset` exists but no `MonthRolled` reducer path exists.
 
+### 3.6 Venue / account / PnL audit (findings only — iter-24, not yet fixed)
+Audit of account snapshotting, cTrader wiring, and how positions track the latest venue-confirmed
+state. Ordered by money/data risk. **All are findings for the agent — no code changed.**
+
+**Money accuracy (highest):**
+- **M1 — venue PnL is discarded; recorded PnL ignores costs.** `ExecutionEvent` carries the venue's
+  authoritative `GrossProfit/NetProfit/Commission/Swap` (`CTraderBrokerAdapter.cs:278-281`), but the
+  `PublishTradeClosed` effect doesn't carry them and `EffectExecutor.HandlePublishTradeClosed`
+  **recomputes gross via `PipCalculator` and sets commission=0, swap=0, net=gross**
+  (`EffectExecutor.cs:108-114`). Every recorded trade PnL is cost-free, so the trade ledger diverges
+  from account equity; strategy `OnTradeResult`, the governor, and stats all train on optimistic PnL.
+  Fix: thread the venue `NetProfit/Commission/Swap` through `PositionTracker → PublishTradeClosed`
+  and prefer them over recomputed PnL when present (recompute only for the simulated venue).
+- **M2 — disconnected close writes a synthetic fill at `Price(1.0)`** (`CTraderBrokerAdapter.cs:347`).
+  If that exec is processed, PnL is computed against 1.0 = garbage. Mark it non-PnL or skip ledger.
+
+**Venue ↔ engine state (high):**
+- **V1 — no startup/reconnect position reconciliation.** `GetAccountStateAsync` returns `(0,0,[])`
+  (`CTraderBrokerAdapter.cs:419`); `EngineRunner` only logs `OpenPositions.Count` and never seeds
+  `PositionTracker` from venue-open positions. After a restart/reconnect with live positions the engine
+  is blind to them — can't manage, trail, or force-close them on breach. Real money risk.
+- **V2 — Guid clientOrderId vs venue positionId.** The engine keys everything by its own `Guid` and
+  sends it as `positionId` on close/modify; the Guid↔cTrader-position-id map lives only in the cBot and
+  is lost on reconnect → existing positions become un-closeable. Needs a durable mapping + resync.
+- **V3 — SL/TP modifications are fire-and-forget.** `ModifyOrderAsync` is buffered with no confirmation;
+  verify the venue-confirmed SL is written back to `PositionState.CurrentStopLoss` (trailing). If not,
+  the engine's risk/exit view drifts from the venue, and backtest `SimulateBarExits` exits on a stale SL.
+- **V4 — exec dedup full-clears at 500** (`CTraderBrokerAdapter.cs:439`): after the clear a re-sent
+  duplicate slips through → double-applied execution / double PnL. Use bounded LRU eviction.
+- **V5 — buffered commands lost on mid-bar disconnect**: `_bufferedCommands` flush only on
+  `CompleteBarAsync`; a disconnect before bar-done drops queued orders/closes (only `_pendingCommands`
+  re-flush). Dropped-order risk.
+
+**Account snapshot / resets (medium):**
+- **A1 — reset boundaries keyed on `_clock.UtcNow`**, not the account update's timestamp
+  (`AccountProcessor.cs:74-77`) → daily/weekly DD baseline can latch at the wrong instant → FTMO
+  daily-loss miscalc (matters most live, where engine clock ≠ venue time).
+- **A2 — daily-reset baseline is always `update.Equity`** (`OnDailyReset`) regardless of `DailyDdBase`;
+  positions spanning midnight bake floating PnL into the new daily-start → wrong daily-DD denominator.
+- **A3 — first account update with Balance==0** initializes drawdown base 0 (`AccountProcessor.cs:48`)
+  → `ValidateBudgetEntry` returns false (blocks all trades) / divide-by-zero risk until a real balance
+  arrives. cTrader's empty `GetAccountStateAsync` makes this the normal startup path.
+- **A4 — FloatingPnL defined two ways**: `equity−balance` (bar / bar_result) vs the explicit
+  `floatingPnL` field (acct sub-message) — drift if venue `equity` excludes floating.
+
 ---
 
 ## 4. The unification thesis (what "strong core" means here)

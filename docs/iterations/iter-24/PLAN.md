@@ -199,6 +199,29 @@ test); single class owns `DrawdownState`.
 
 ---
 
+## Phase 6 — Venue / account / PnL integrity (findings backlog from the iter-24 audit)
+Full prioritized list with file:line in `SYSTEM-MODEL.md §3.6`. These are correctness/money risks
+in how the engine talks to cTrader and keeps positions in sync with venue-confirmed state. Suggested
+order (highest money/data risk first), each its own small phase with a test:
+
+1. **M1 — use venue-authoritative PnL.** Thread `NetProfit/Commission/Swap` from `ExecutionEvent`
+   through `PositionTracker → PublishTradeClosed`; `EffectExecutor` prefers them over recomputed gross
+   (recompute only for the simulated venue). Gate: a fill carrying commission/swap yields a `TradeResult`
+   whose net ≠ gross and matches the venue figure.
+2. **V1 — startup/reconnect position reconciliation.** Implement `GetAccountStateAsync` for cTrader and
+   seed `PositionTracker` from venue-open positions on connect; add a resync on reconnect. Gate: engine
+   restarted with an open venue position can force-close it.
+3. **V2 — durable Guid↔venue-position-id mapping** that survives reconnect (engine or cBot side).
+4. **V4 / V5 — exec dedup LRU (no full-clear) + don't drop `_bufferedCommands` on mid-bar disconnect.**
+5. **M2 — disconnected-close synthetic `Price(1.0)` fill** must not enter the PnL ledger.
+6. **V3 — write venue-confirmed SL back to `PositionState.CurrentStopLoss`** after a modify (trailing).
+7. **A1–A4 — account/reset edges:** key resets on the update timestamp (not `_clock.UtcNow`); honor
+   `DailyDdBase` in `OnDailyReset`; guard Balance==0 init; unify FloatingPnL definition.
+
+**Gate:** each item has a focused test asserting on `TradeResult` / `DrawdownState` / position state.
+
+---
+
 ## Out of scope (carry-forward)
 - Strategy-bank / regime tuning, Blazor UI, Scrutor assembly scanning, retiring
   `TradingGovernorService` (tracked in iter-23 handover deferred list).
