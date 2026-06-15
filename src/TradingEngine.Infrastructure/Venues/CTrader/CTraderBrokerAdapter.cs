@@ -374,6 +374,10 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    public void RegisterConnectedHandler(Action handler) => OnConnected = handler;
+
+    public Task CompleteBarAsync(CancellationToken ct) => CompleteBarAsync(CurrentBarSeq, ct);
+
     public async Task CompleteBarAsync(long seq, CancellationToken ct)
     {
         object[] commands;

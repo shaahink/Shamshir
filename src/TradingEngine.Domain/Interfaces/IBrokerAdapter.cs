@@ -24,6 +24,24 @@ public interface IBrokerAdapter
     bool IsConnected { get; }
 
     Task CompleteBarAsync(long seq, CancellationToken ct) => Task.CompletedTask;
+
+    // -- Venue hooks (default no-ops) so the engine never type-sniffs concrete adapters. --
+
+    /// <summary>Register a callback fired whenever the venue (re)connects. Only stateful
+    /// transports (cTrader) need it; others ignore it.</summary>
+    void RegisterConnectedHandler(Action handler) { }
+
+    /// <summary>Observe each processed tick. A simulated venue uses this to drive fills against
+    /// resting orders; live/replay venues ignore it.</summary>
+    void OnTickObserved(Tick tick) { }
+
+    /// <summary>Observe each processed bar. A replay venue uses this to advance its clock and
+    /// last price so fills price correctly; others ignore it.</summary>
+    void OnBarObserved(Bar bar) { }
+
+    /// <summary>Signal the engine finished a bar (lock-step venues block the feed until this).
+    /// The adapter supplies its own sequence; non-lock-step venues are a no-op.</summary>
+    Task CompleteBarAsync(CancellationToken ct) => Task.CompletedTask;
 }
 
 public record AccountState(decimal Balance, decimal Equity, IReadOnlyList<OpenPositionInfo> OpenPositions);

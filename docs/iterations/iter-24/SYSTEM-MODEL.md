@@ -148,6 +148,25 @@ guards its three mutators (`TrackOrder`, `OnExecutionAsync`, `RequestForceCloseA
 **Residual (agent):** add a live-path concurrency stress test (many fills + force-close racing
 `TrackOrder`) to lock the invariant in.
 
+### 3.4b Venue / backtest-mode coupling in the engine (PARTIALLY FIXED — iter-24)
+The engine core (`EngineRunner`) used to **type-sniff concrete adapters** — `is CTraderBrokerAdapter`
+(reconnect handler + lock-step `CompleteBarAsync(CurrentBarSeq)`), `is SimulatedBrokerAdapter`
+(`OnTickReceived`), `is BacktestReplayAdapter` (`SyncToBar`). That coupled the engine to specific
+venue implementations and to backtest internals.
+
+**Fixed:** these four behaviours are now **default-no-op methods on `IBrokerAdapter`** —
+`RegisterConnectedHandler`, `OnTickObserved`, `OnBarObserved`, `CompleteBarAsync(ct)` — each
+overridden by the venue that needs it. `EngineRunner` calls them polymorphically and **no longer
+references any concrete adapter type**.
+
+**Residual (agent) — the deeper one:** `EngineRunner` still branches `if (_engineMode == Backtest)`
+into two top-level loops — `RunBacktestLoopAsync` (bar-stepped, synchronous fills, per-bar account
+pump, lock-step) vs the live `Task.WhenAll` of async stream pumps. This is a real *pacing* difference,
+but it's the last big backtest coupling. Target: an `IEnginePacer` / venue-drive abstraction that
+owns pacing (the venue decides bar-stepped vs async) so the engine runs one path. Also: `AccountProcessor`
+still takes `EngineMode` only to stamp `EquitySnapshot.Mode` — push that onto the snapshot source.
+`DataFeedService` still sniffs `SimulatedBrokerAdapter` 3× (feed-side, lower priority).
+
 ### 3.5 Known smaller defects found while modeling
 - `OrderDispatcher.DispatchAsync` is called with `openPositions: []` from **both**
   loops (`EngineWorker.cs:313`, `BacktestDriver.cs:178`) → the worst-case portfolio DD

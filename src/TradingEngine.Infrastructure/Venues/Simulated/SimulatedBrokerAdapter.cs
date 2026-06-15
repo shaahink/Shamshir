@@ -157,6 +157,8 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         return Task.CompletedTask;
     }
 
+    public void OnTickObserved(Tick tick) => OnTickReceived(tick);
+
     public void OnTickReceived(Tick tick)
     {
         BrokerTimeUtc = tick.TimestampUtc;

@@ -93,8 +93,7 @@ public sealed class EngineRunner
                 _signalGate.RegisterStrategy(s.Config);
         }
 
-        if (_broker is CTraderBrokerAdapter mqAdapter)
-            mqAdapter.OnConnected = ResetState;
+        _broker.RegisterConnectedHandler(ResetState);
 
         await _broker.ConnectAsync(ct);
 
@@ -145,9 +144,9 @@ public sealed class EngineRunner
             {
                 Interlocked.Increment(ref _tickCount);
 
-                if (_dataFeed is not null && _broker is SimulatedBrokerAdapter sim)
+                if (_dataFeed is not null)
                 {
-                    sim.OnTickReceived(tick);
+                    _broker.OnTickObserved(tick);
                 }
 
                 if (_logger.IsEnabled(LogLevel.Trace))
@@ -195,8 +194,7 @@ public sealed class EngineRunner
             {
                 try
                 {
-                    if (_broker is BacktestReplayAdapter replay)
-                        replay.SyncToBar(bar.Close, bar.OpenTimeUtc);
+                    _broker.OnBarObserved(bar);
 
                     UpdateCrossRates(bar);
 
@@ -215,8 +213,7 @@ public sealed class EngineRunner
                     // simulate it against the bar range, then drain the resulting fills.
                     await SimulateBarExitsAsync(bar, ct);
 
-                    if (_broker is CTraderBrokerAdapter netMq)
-                        await _broker.CompleteBarAsync(netMq.CurrentBarSeq, ct);
+                    await _broker.CompleteBarAsync(ct);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)

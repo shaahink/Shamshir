@@ -90,6 +90,25 @@ Behaviour-preserving (Unit 163, Golden+Loop 8 green).
 **AGENT TODO:** add a live-path concurrency stress test (many fills + force-close racing TrackOrder)
 to lock the invariant in; consider draining remaining executions on shutdown.
 
+### 0f. Decouple the engine from concrete venues (DONE; deeper part queued)
+`EngineRunner` no longer type-sniffs `CTraderBrokerAdapter` / `SimulatedBrokerAdapter` /
+`BacktestReplayAdapter`. The four sniffed behaviours are now default-no-op `IBrokerAdapter` methods
+(`RegisterConnectedHandler`, `OnTickObserved`, `OnBarObserved`, `CompleteBarAsync(ct)`) overridden by
+the venue that needs them (see `SYSTEM-MODEL §3.4b`). Behaviour-preserving (Unit 163, Golden+Loop 8).
+
+**AGENT TODO (architecture):** remove the last backtest branch — `if (_engineMode == Backtest)` still
+forks `EngineRunner` into two top-level loops. Introduce an `IEnginePacer` (or venue-drive) abstraction
+that owns pacing (bar-stepped+synchronous-fills vs async streams) so the engine runs ONE path. Then
+`EngineMode` leaves the run logic entirely (it only stamps `EquitySnapshot.Mode` via `AccountProcessor`).
+Also de-sniff `DataFeedService` (3× `SimulatedBrokerAdapter`). Related core review the user flagged —
+queue as separate findings: **journaling** (`IPipelineJournal` + `IDecisionJournal` both map to
+`PipelineEventWriter` — confirm one writer, no double-write; ensure `RecordDecisionEvent` effects and
+`OrderDispatcher`'s journal entries don't duplicate), **account sizing** (`RiskManager.CalculateLotSize`
++ `SizeModifierPipeline` — verify one sizing path, decimal money math per §3.5), **closing** (SL/TP exit
+reason determined in 3 places per §3.3 — unify), and **venue state syncing** (reconnect → `ResetState`
+now via `RegisterConnectedHandler`; verify startup reconciliation + mid-session reconnect replays open
+positions correctly).
+
 ---
 
 ## Phase 1 — One trading loop (the core fix)
