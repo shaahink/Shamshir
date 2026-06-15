@@ -37,10 +37,9 @@ public sealed record ConstraintSet(
     /// RiskProfile limits where they overlap (daily/max DD percents).
     /// </summary>
     /// <summary>
-    /// Project from both config sources. Note: <see cref="RiskProfile"/> fields (RiskPerTradePercent,
-    /// MaxDailyDrawdownPercent, MaxTotalDrawdownPercent, MaxExposurePercent) are stored as percentages
-    /// (1.0 = 1%, 5.0 = 5%) and must be divided by 100. <see cref="PropFirmRuleSet"/> fields are
-    /// stored as fractions (0.05 = 5%) and need no conversion.
+    /// Project from both config sources. <see cref="RiskProfile"/> fields and
+    /// <see cref="PropFirmRuleSet"/> fields are normalized to decimal fractions
+    /// (0.05 = 5%). Where they overlap, PropFirmRuleSet limits take precedence.
     /// </summary>
     public static ConstraintSet Resolve(RiskProfile profile, PropFirmRuleSet ruleSet)
     {
@@ -56,9 +55,9 @@ public sealed record ConstraintSet(
             DrawdownType: ruleSet.DrawdownType,
             DailyDdBase: ruleSet.DailyDdBase,
 
-            RiskPerTrade: (decimal)profile.RiskPerTradePercent / 100m,
+            RiskPerTrade: (decimal)profile.RiskPerTradePercent,
             MaxConcurrentPositions: profile.MaxConcurrentPositions,
-            MaxExposure: (decimal)profile.MaxExposurePercent / 100m,
+            MaxExposure: (decimal)profile.MaxExposurePercent,
 
             AllowTradesDuringNews: ruleSet.AllowTradesDuringNews,
             AllowWeekendHolding: ruleSet.AllowWeekendHolding,

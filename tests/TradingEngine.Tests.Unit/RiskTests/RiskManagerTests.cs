@@ -23,6 +23,7 @@ public sealed class RiskManagerTests
             Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
         rm.InitializeDrawdownIfNeeded(initialBalance);
         rm.SetActiveRuleSet(FtmoRules);
+        rm.SetConstraints(ConstraintSet.Resolve(Profile, FtmoRules));
         return rm;
     }
 
@@ -155,6 +156,7 @@ public sealed class RiskManagerTests
             Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
         rm.InitializeDrawdownIfNeeded(100_000m);
         rm.SetActiveRuleSet(FtmoRules);
+        rm.SetConstraints(ConstraintSet.Resolve(Profile, FtmoRules));
 
         rm.UpdateEquityLevels(94_900m);
         var freshState = rm.CurrentState;
@@ -195,6 +197,7 @@ public sealed class RiskManagerTests
             Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
         rm.InitializeDrawdownIfNeeded(100_000m);
         rm.SetActiveRuleSet(FtmoRules);
+        rm.SetConstraints(ConstraintSet.Resolve(Profile, FtmoRules));
 
         rm.UpdateEquityLevels(95_500m);
         var state = rm.CurrentState;

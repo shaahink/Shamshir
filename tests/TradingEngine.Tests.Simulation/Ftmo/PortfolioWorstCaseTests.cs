@@ -62,8 +62,8 @@ public sealed class PortfolioWorstCaseTests
         // The second order: 1 open × $100 = $100 worst-case → projected equity = 9900
         //   daily floor = 10000 × (1 - 0.01) = 9900 → 9900 >= 9900 → passes (edge case)
         // The third order: 2 open × $100 = $200 → projected = 9800 < 9900 → blocked.
-        harness.Venue.SubmittedOrders.Count.Should().BeInRange(1, 3,
-            "orders beyond the portfolio worst-case limit must be blocked");
+        harness.Venue.SubmittedOrders.Count.Should().BeInRange(1, 1,
+            "with un-normalized risk, the N+1th order is blocked by worst-case projection");
         harness.Tracker.OpenPositions.Count.Should().Be(harness.Venue.SubmittedOrders.Count,
             "all submitted orders should be open (no SL hit on flat bars)");
     }

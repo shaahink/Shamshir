@@ -58,7 +58,7 @@ public sealed class EngineHarnessBuilder
         riskManager.InitializeDrawdown(initialBalance, "Fixed");
 
         var riskProfile = new RiskProfile(
-            "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,
+            "standard", "Standard", 0.01, 0.05, 0.10, 100.0, 0.10, 0.5, 0.1, 5,
             false, _ruleSetId, LotSizingMethod.PercentRisk, 0.1m, 0m, 0.25, 1.5, 3);
         var constraints = ConstraintSet.Resolve(riskProfile, ruleSet);
         riskManager.SetConstraints(constraints);
@@ -77,7 +77,7 @@ public sealed class EngineHarnessBuilder
 
         var riskProfileResolver = Substitute.For<IRiskProfileResolver>();
         riskProfileResolver.Resolve(Arg.Any<string>()).Returns(new RiskProfile(
-            "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,
+            "standard", "Standard", 0.01, 0.05, 0.10, 100.0, 0.10, 0.5, 0.1, 5,
             false, _ruleSetId, LotSizingMethod.PercentRisk, 0.1m, 0m, 0.25, 1.5, 3));
 
         var runContext = new EngineRunContext(_runId);
