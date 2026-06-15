@@ -3,6 +3,7 @@ global using NSubstitute;
 global using Xunit;
 global using Microsoft.Extensions.Logging;
 global using TradingEngine.Domain;
+global using TradingEngine.Application;
 global using TradingEngine.Risk;
 global using TradingEngine.Risk.Compliance;
 global using TradingEngine.Risk.Filters;
