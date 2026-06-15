@@ -14,36 +14,36 @@ else
         <div class="card"><h2>Symbol</h2><div class="value">@Model.Trade.Symbol</div></div>
         <div class="card"><h2>Direction</h2><div class="value">@Model.Trade.Direction</div></div>
         <div class="card"><h2>Lots</h2><div class="value">@Model.Trade.Lots</div></div>
-        <div class="card"><h2>Net PnL</h2><div class="value @(Model.Trade.NetPnLAmount >= 0 ? "positive" : "negative")">@Model.Trade.NetPnLAmount:F2</div></div>
+        <div class="card"><h2>Net PnL</h2><div class="value @(Model.Trade.NetPnLAmount >= 0 ? "positive" : "negative")">@Model.Trade.NetPnLAmount.ToString("F2")</div></div>
     </div>
     <div class="grid">
-        <div class="card"><h2>Entry</h2><div class="value">@Model.Trade.EntryPrice:F5</div></div>
-        <div class="card"><h2>Exit</h2><div class="value">@Model.Trade.ExitPrice:F5</div></div>
-        <div class="card"><h2>SL</h2><div class="value">@Model.Trade.StopLoss:F5</div></div>
+        <div class="card"><h2>Entry</h2><div class="value">@Model.Trade.EntryPrice.ToString("F5")</div></div>
+        <div class="card"><h2>Exit</h2><div class="value">@Model.Trade.ExitPrice.ToString("F5")</div></div>
+        <div class="card"><h2>SL</h2><div class="value">@Model.Trade.StopLoss.ToString("F5")</div></div>
         <div class="card"><h2>TP</h2><div class="value">@(Model.Trade.TakeProfit?.ToString("F5") ?? "N/A")</div></div>
     </div>
     <div class="grid">
-        <div class="card"><h2>R Multiple</h2><div class="value">@Model.Trade.RMultiple:F2</div></div>
+        <div class="card"><h2>R Multiple</h2><div class="value">@Model.Trade.RMultiple.ToString("F2")</div></div>
         <div class="card"><h2>Exit Reason</h2><div class="value">@Model.Trade.ExitReason</div></div>
-        <div class="card"><h2>MAE</h2><div class="value">@Model.Trade.MaxAdverseExcursion:F1 pips</div></div>
-        <div class="card"><h2>MFE</h2><div class="value">@Model.Trade.MaxFavorableExcursion:F1 pips</div></div>
+        <div class="card"><h2>MAE</h2><div class="value">@Model.Trade.MaxAdverseExcursion.ToString("F1") pips</div></div>
+        <div class="card"><h2>MFE</h2><div class="value">@Model.Trade.MaxFavorableExcursion.ToString("F1") pips</div></div>
     </div>
     <div class="card">
         <h2>Chart</h2>
         <div style="position:relative;height:120px;background:#1e1e1e;border-radius:4px;overflow:hidden;display:flex;align-items:center;padding:0 1rem;">
             <div style="position:absolute;left:1rem;top:50%;transform:translateY(-50%);font-size:0.8rem;color:#8b949e;">
-                Entry<br/><span style="color:#58a6ff;font-weight:bold;">@Model.Trade.EntryPrice:F5</span><br/>
+                Entry<br/><span style="color:#58a6ff;font-weight:bold;">@Model.Trade.EntryPrice.ToString("F5")</span><br/>
                 <span style="font-size:0.7rem;">@Model.Trade.OpenedAtUtc.ToString("MMM dd HH:mm")</span>
             </div>
             <div style="flex:1;height:4px;margin:0 1rem;background:linear-gradient(to right, #58a6ff, @(Model.Trade.NetPnLAmount >= 0 ? "#3fb950" : "#f85149"));border-radius:2px;"></div>
             <div style="font-size:0.8rem;color:#8b949e;">
-                Exit<br/><span style="color:@(Model.Trade.NetPnLAmount >= 0 ? "#3fb950" : "#f85149");font-weight:bold;">@Model.Trade.ExitPrice:F5</span><br/>
+                Exit<br/><span style="color:@(Model.Trade.NetPnLAmount >= 0 ? "#3fb950" : "#f85149");font-weight:bold;">@Model.Trade.ExitPrice.ToString("F5")</span><br/>
                 <span style="font-size:0.7rem;">@Model.Trade.ClosedAtUtc.ToString("MMM dd HH:mm")</span>
             </div>
         </div>
         <div style="margin-top:0.5rem;text-align:right;font-size:0.8rem;">
-            PnL: <strong style="color:@(Model.Trade.NetPnLAmount >= 0 ? "#3fb950" : "#f85149")">@Model.Trade.NetPnLAmount:F2 @Model.Trade.NetPnLCurrency</strong>
-            &nbsp;|&nbsp; R: <strong style="color:@(Model.Trade.RMultiple >= 0 ? "#3fb950" : "#f85149")">@Model.Trade.RMultiple:F2</strong>
+            PnL: <strong style="color:@(Model.Trade.NetPnLAmount >= 0 ? "#3fb950" : "#f85149")">@Model.Trade.NetPnLAmount.ToString("F2") @Model.Trade.NetPnLCurrency</strong>
+            &nbsp;|&nbsp; R: <strong style="color:@(Model.Trade.RMultiple >= 0 ? "#3fb950" : "#f85149")">@Model.Trade.RMultiple.ToString("F2")</strong>
         </div>
     </div>
 }

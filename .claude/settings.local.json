@@ -44,7 +44,8 @@
       "PowerShell($p = Get-CimInstance Win32_Process -Filter \"Name='dotnet.exe'\"; \"count=$\\($p.Count\\)\"; $p | ForEach-Object { \"{0}: {1}\" -f $_.ProcessId, \\($_.CommandLine -replace '\\\\s+',' ' | ForEach-Object { if\\($_\\){ $_.Substring\\(0,[Math]::Min\\(90,$_.Length\\)\\) } }\\) })",
       "PowerShell($c = Get-Process ctrader-cli -ErrorAction SilentlyContinue; if \\($c\\) { \"ctrader-cli STILL running: $\\($c.Id\\)\" } else { \"no ctrader-cli running — clean\" })",
       "Bash(xargs cat)",
-      "PowerShell(dotnet test *)"
+      "PowerShell(dotnet test *)",
+      "PowerShell(dotnet build *)"
     ]
   }
 }

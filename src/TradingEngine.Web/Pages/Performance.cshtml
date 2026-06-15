@@ -7,8 +7,8 @@
 <div class="grid">
     <div class="card"><h2>Total Trades</h2><div class="value">@Model.TotalTrades</div></div>
     <div class="card"><h2>Win Rate</h2><div class="value">@Model.WinRate.ToString("P1")</div></div>
-    <div class="card"><h2>Net PnL</h2><div class="value @(Model.NetPnL >= 0 ? "positive" : "negative")">@Model.NetPnL:F2</div></div>
-    <div class="card"><h2>Avg Hold Hours</h2><div class="value">@Model.AvgHoldHours:F1</div></div>
+    <div class="card"><h2>Net PnL</h2><div class="value @(Model.NetPnL >= 0 ? "positive" : "negative")">@Model.NetPnL.ToString("F2")</div></div>
+    <div class="card"><h2>Avg Hold Hours</h2><div class="value">@Model.AvgHoldHours.ToString("F1")</div></div>
 </div>
 <div class="card">
     <h2>Equity Curve</h2>

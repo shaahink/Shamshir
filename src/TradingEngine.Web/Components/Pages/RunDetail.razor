@@ -14,8 +14,8 @@ else
     <div class="row mb-3">
         <div class="col-3"><strong>Symbol:</strong> @_run.Symbol</div>
         <div class="col-3"><strong>Period:</strong> @_run.Period</div>
-        <div class="col-3"><strong>Range:</strong> @_run.BacktestFrom:yyyy-MM-dd → @_run.BacktestTo:yyyy-MM-dd</div>
-        <div class="col-3"><strong>Balance:</strong> $@_run.InitialBalance:N0</div>
+        <div class="col-3"><strong>Range:</strong> @_run.BacktestFrom.ToString("yyyy-MM-dd") → @_run.BacktestTo.ToString("yyyy-MM-dd")</div>
+        <div class="col-3"><strong>Balance:</strong> $@_run.InitialBalance.ToString("N0")</div>
     </div>
 
     <div class="row mb-3">
@@ -46,7 +46,7 @@ else
                         @if (_breakdowns is not null)
                         {
                             @foreach (var b in _breakdowns)
-                            { <tr><td>@b.StrategyId</td><td>@b.TotalBarsEvaluated</td><td>@b.SignalsFired</td><td>@b.TradesOpened</td><td>@b.Wins</td><td>@b.Losses</td><td>@b.WinRatePct:F1%</td><td>@string.Join(", ", b.TopRejections)</td></tr> }
+                            { <tr><td>@b.StrategyId</td><td>@b.TotalBarsEvaluated</td><td>@b.SignalsFired</td><td>@b.TradesOpened</td><td>@b.Wins</td><td>@b.Losses</td><td>@b.WinRatePct.ToString("F1")%</td><td>@string.Join(", ", b.TopRejections)</td></tr> }
                         }
                     </tbody>
                 </table>
