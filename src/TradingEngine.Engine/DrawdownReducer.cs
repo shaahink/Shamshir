@@ -4,12 +4,17 @@ public static class DrawdownReducer
 {
     public static DrawdownState Apply(DrawdownState state, decimal equity)
     {
-        var peakEquity = equity > state.PeakEquity ? equity : state.PeakEquity;
-        var dailyStartEquity = state.DailyStartEquity;
+        if (!state.IsInitialized) return state;
 
-        var currentDailyDrawdown = dailyStartEquity > 0
-            ? Math.Max(0m, (dailyStartEquity - equity) / dailyStartEquity)
-            : 0m;
+        var peakEquity = equity > state.PeakEquity ? equity : state.PeakEquity;
+
+        var currentDailyDrawdown = state.DailyDdBaseMode == "DailyStart"
+            ? state.DailyStartEquity > 0
+                ? Math.Max(0m, (state.DailyStartEquity - equity) / state.DailyStartEquity)
+                : 0m
+            : state.InitialAccountBalance > 0
+                ? Math.Max(0m, (state.InitialAccountBalance - equity) / state.InitialAccountBalance)
+                : 0m;
 
         var currentWeeklyDrawdown = state.WeeklyStartEquity > 0
             ? Math.Max(0m, (state.WeeklyStartEquity - equity) / state.WeeklyStartEquity)
@@ -47,15 +52,33 @@ public static class DrawdownReducer
             0,
             0,
             0,
-            drawdownType);
+            drawdownType,
+            "InitialBalance",
+            true,
+            []);
     }
 
     public static DrawdownState ApplyDailyReset(DrawdownState state, decimal currentEquity)
     {
+        var window = new List<decimal>(state.VelocityWindow) { state.CurrentMaxDrawdown };
+        while (window.Count > 5)
+            window.RemoveAt(0);
+
+        var drawdownVelocity = state.DrawdownVelocity;
+        if (window.Count >= 2)
+        {
+            double sum = 0;
+            for (int i = 1; i < window.Count; i++)
+                sum += (double)(window[i] - window[i - 1]);
+            drawdownVelocity = (decimal)(sum / (window.Count - 1));
+        }
+
         return state with
         {
             DailyStartEquity = currentEquity,
             CurrentDailyDrawdown = 0,
+            DrawdownVelocity = drawdownVelocity,
+            VelocityWindow = window,
         };
     }
 

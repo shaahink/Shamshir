@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Serilog;
 using TradingEngine.Infrastructure.Events;
 
@@ -81,8 +81,6 @@ public static class Program
             {
                 builder.Services.AddSingleton<IMarketDataProvider, LiveMarketDataProvider>();
             }
-
-            builder.Services.AddSingleton<DrawdownTracker>();
 
             builder.Services.AddSingleton<ISymbolInfoRegistry>(sp =>
             {
@@ -215,9 +213,7 @@ public static class Program
                 },
                 Risk = new RiskServices
                 {
-                    RiskManager = sp.GetRequiredService<IRiskManager>(),
-                    DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
-                    RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
+                    RiskManager = sp.GetRequiredService<IRiskManager>(),                    RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
                     CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
                     Governor = sp.GetRequiredService<ITradingGovernor>(),
                     SizingPolicy = sp.GetRequiredService<SizingPolicyOptions>(),
@@ -272,14 +268,14 @@ public static class Program
                 var passEstimator = app.Services.GetRequiredService<IPassProbabilityEstimator>();
                 var complianceSvc = new PropFirmComplianceService(
                     ruleSet,
-                    app.Services.GetRequiredService<DrawdownTracker>(),
+                    rm,
                     app.Services.GetRequiredService<IEngineClock>(),
                     passEstimator);
                 rm.SetComplianceService(complianceSvc);
             }
             else
             {
-                Log.Warning("No PropFirmRuleSet found for id={Id} — risk gates disabled", activeRuleSetId);
+                Log.Warning("No PropFirmRuleSet found for id={Id} � risk gates disabled", activeRuleSetId);
             }
 
             var sizePipeline = app.Services.GetRequiredService<SizeModifierPipeline>();

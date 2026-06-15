@@ -3,7 +3,6 @@ namespace TradingEngine.Tests.Simulation.Harness;
 public sealed class DrawdownTestHarness
 {
     private readonly RiskManager _riskManager;
-    private readonly DrawdownTracker _tracker;
     private decimal _currentBalance;
 
     private static readonly PropFirmRuleSet FtmoRules = new(
@@ -22,15 +21,13 @@ public sealed class DrawdownTestHarness
         registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
             0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
 
-        _tracker = new DrawdownTracker();
-        _tracker.Initialize(initialBalance);
-
         var gov = Substitute.For<ITradingGovernor>();
         gov.Evaluate(Arg.Any<GovernorContext>())
             .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
-        _riskManager = new RiskManager(_tracker, registry, (_, _) => 1m,
+        _riskManager = new RiskManager(registry, (_, _) => 1m,
             new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
             Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
+        _riskManager.InitializeDrawdownIfNeeded(initialBalance);
         _riskManager.SetActiveRuleSet(FtmoRules);
     }
 

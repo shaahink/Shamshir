@@ -48,7 +48,7 @@ public static class EngineHostFactory
             var passEstimator = host.Services.GetRequiredService<IPassProbabilityEstimator>();
             var complianceSvc = new PropFirmComplianceService(
                 ruleSet,
-                host.Services.GetRequiredService<DrawdownTracker>(),
+                rm,
                 host.Services.GetRequiredService<IEngineClock>(),
                 passEstimator);
             rm.SetComplianceService(complianceSvc);

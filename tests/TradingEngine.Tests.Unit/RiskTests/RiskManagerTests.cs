@@ -13,16 +13,15 @@ public sealed class RiskManagerTests
 
     private static RiskManager MakeRm(decimal initialBalance = 100_000)
     {
-        var tracker = new DrawdownTracker();
-        tracker.Initialize(initialBalance);
         var registry = new SymbolInfoRegistry();
         registry.Register(EurUsd());
         var gov = Substitute.For<ITradingGovernor>();
         gov.Evaluate(Arg.Any<GovernorContext>())
             .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
-        var rm = new RiskManager(tracker, registry, (_, _) => 1m,
+        var rm = new RiskManager(registry, (_, _) => 1m,
             new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
             Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
+        rm.InitializeDrawdownIfNeeded(initialBalance);
         rm.SetActiveRuleSet(FtmoRules);
         return rm;
     }
@@ -146,16 +145,15 @@ public sealed class RiskManagerTests
     [Fact]
     public void Circuit_LossUpdatesTracker_SnapshotBlocksNextTrade()
     {
-        var tracker = new DrawdownTracker();
-        tracker.Initialize(100_000);
         var registry = new SymbolInfoRegistry();
         registry.Register(EurUsd());
         var gov = Substitute.For<ITradingGovernor>();
         gov.Evaluate(Arg.Any<GovernorContext>())
             .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
-        var rm = new RiskManager(tracker, registry, (_, _) => 1m,
+        var rm = new RiskManager(registry, (_, _) => 1m,
             new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
             Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
+        rm.InitializeDrawdownIfNeeded(100_000m);
         rm.SetActiveRuleSet(FtmoRules);
 
         rm.UpdateEquityLevels(94_900m);
@@ -187,16 +185,15 @@ public sealed class RiskManagerTests
     [Fact]
     public void Circuit_WinFromNearLimit_AllowsContinuedTrading()
     {
-        var tracker = new DrawdownTracker();
-        tracker.Initialize(100_000);
         var registry = new SymbolInfoRegistry();
         registry.Register(EurUsd());
         var gov = Substitute.For<ITradingGovernor>();
         gov.Evaluate(Arg.Any<GovernorContext>())
             .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
-        var rm = new RiskManager(tracker, registry, (_, _) => 1m,
+        var rm = new RiskManager(registry, (_, _) => 1m,
             new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
             Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
+        rm.InitializeDrawdownIfNeeded(100_000m);
         rm.SetActiveRuleSet(FtmoRules);
 
         rm.UpdateEquityLevels(95_500m);

@@ -1,3 +1,5 @@
+using TradingEngine.Engine;
+
 namespace TradingEngine.Tests.Unit.Risk;
 
 [Trait("Category", "Risk")]
@@ -14,21 +16,19 @@ public sealed class ComplianceServiceTests
         RequireProfitTarget = true,
     };
 
-    private static (PropFirmComplianceService, DrawdownTracker) Make(decimal initial = 100_000)
+    private static PropFirmComplianceService Make(decimal initial = 100_000)
     {
-        var tracker = new DrawdownTracker();
-        tracker.Initialize(initial);
+        var riskManager = Substitute.For<IRiskManager>();
+        riskManager.Drawdown.Returns(DrawdownReducer.CreateInitial(initial));
         var estimator = Substitute.For<IPassProbabilityEstimator>();
         var clock = new StubClock(DateTime.UtcNow);
-        var svc = new PropFirmComplianceService(Rules, tracker, clock, estimator);
-        return (svc, tracker);
+        return new PropFirmComplianceService(Rules, riskManager, clock, estimator);
     }
 
     [Fact]
     public void WeeklyDDLimit_Blocks_WhenWeeklyLossExceeds4Pct()
     {
-        var (svc, tracker) = Make();
-        tracker.OnEquityUpdate(95_000);
+        var svc = Make();
         var state = new ExtendedRiskState { WeeklyDrawdownUsed = 0.05m };
 
         var result = svc.ValidateSignal(null!, state, null!);
@@ -38,7 +38,7 @@ public sealed class ComplianceServiceTests
     [Fact]
     public void MonthlyDDLimit_Blocks_WhenMonthlyLossExceeds8Pct()
     {
-        var (svc, _) = Make();
+        var svc = Make();
         var state = new ExtendedRiskState { MonthlyDrawdownUsed = 0.09m };
 
         var result = svc.ValidateSignal(null!, state, null!);
@@ -53,8 +53,9 @@ public sealed class ComplianceServiceTests
         estimator.Estimate(Arg.Any<PassProbabilityInput>()).Returns(expected);
 
         var clock = new StubClock(DateTime.UtcNow);
-        var tracker = new DrawdownTracker(); tracker.Initialize(100_000);
-        var svc = new PropFirmComplianceService(Rules, tracker, clock, estimator);
+        var riskManager = Substitute.For<IRiskManager>();
+        riskManager.Drawdown.Returns(DrawdownReducer.CreateInitial(100_000));
+        var svc = new PropFirmComplianceService(Rules, riskManager, clock, estimator);
 
         var result = svc.EstimatePassProbability(new PassProbabilityInput());
         result.ProbabilityOfPass.Should().Be(0.85);
@@ -63,10 +64,11 @@ public sealed class ComplianceServiceTests
     [Fact]
     public void PassProbability_ReturnsZero_WhenHistoryEmpty()
     {
-        var tracker = new DrawdownTracker(); tracker.Initialize(100_000);
         var estimator = new PassProbabilityEstimator();
         var clock = new StubClock(DateTime.UtcNow);
-        var svc = new PropFirmComplianceService(Rules, tracker, clock, estimator);
+        var riskManager = Substitute.For<IRiskManager>();
+        riskManager.Drawdown.Returns(DrawdownReducer.CreateInitial(100_000));
+        var svc = new PropFirmComplianceService(Rules, riskManager, clock, estimator);
 
         var result = svc.EstimatePassProbability(new PassProbabilityInput { HistoricalDailyPnL = [] });
         result.ProbabilityOfPass.Should().Be(0);
@@ -75,7 +77,7 @@ public sealed class ComplianceServiceTests
     [Fact]
     public void ValidSignal_Passes_WhenNoLimitsExceeded()
     {
-        var (svc, _) = Make();
+        var svc = Make();
         var state = new ExtendedRiskState();
 
         var result = svc.ValidateSignal(null!, state, null!);

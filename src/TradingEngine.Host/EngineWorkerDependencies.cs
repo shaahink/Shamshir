@@ -22,7 +22,6 @@ public sealed record MarketServices
 public sealed record RiskServices
 {
     public required IRiskManager RiskManager { get; init; }
-    public required DrawdownTracker DrawdownTracker { get; init; }
     public required IRiskProfileResolver RiskProfileResolver { get; init; }
     public required Func<string, string, decimal> CrossRateProvider { get; init; }
     public ITradingGovernor? Governor { get; init; }

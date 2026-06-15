@@ -18,7 +18,6 @@ public sealed class EngineWorker : BackgroundService
     private readonly IEquitySink? _equitySink;
     private readonly OrderDispatcher _orderDispatcher;
     private readonly PositionTracker _positionTracker;
-    private readonly DrawdownTracker _drawdownTracker;
     private readonly SizingPolicyOptions _sizingPolicy;
     private readonly ITradingGovernor? _governor;
     private readonly ISignalGate? _signalGate;
@@ -53,7 +52,6 @@ public sealed class EngineWorker : BackgroundService
         _equitySink = deps.Persistence.EquitySink;
         _orderDispatcher = deps.Strategies.OrderDispatcher;
         _positionTracker = deps.Strategies.PositionTracker;
-        _drawdownTracker = deps.Risk.DrawdownTracker;
         _sizingPolicy = deps.Risk.SizingPolicy;
         _governor = deps.Risk.Governor;
         _signalGate = deps.Strategies.SignalGate;
@@ -467,7 +465,7 @@ public sealed class EngineWorker : BackgroundService
 
     private async Task HandleAccountUpdateAsync(AccountUpdate update)
     {
-        _drawdownTracker.InitializeIfNeeded(update.Balance);
+        _riskManager.InitializeDrawdownIfNeeded(update.Balance);
         _riskManager.UpdateEquityLevels(update.Equity);
 
         var ruleSet = _riskManager.ActiveRuleSet;
@@ -512,7 +510,7 @@ public sealed class EngineWorker : BackgroundService
             _governor?.OnDailyReset(); // daily reset on new week
             _ = _eventBus.PublishAsync(new WeeklyEquitySnapshotTaken(
                 new EquitySnapshot(update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
-                    _drawdownTracker.PeakEquity, _drawdownTracker.DailyStartEquity,
+                    _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,
                     _riskManager.CurrentState.WeeklyDrawdownUsed, _riskManager.CurrentState.MaxDrawdownUsed, _engineMode),
                 _riskManager.CurrentState, _clock.UtcNow), CancellationToken.None);
         }
@@ -522,7 +520,7 @@ public sealed class EngineWorker : BackgroundService
             _riskManager.OnMonthlyReset(update.Equity);
             _ = _eventBus.PublishAsync(new MonthlyEquitySnapshotTaken(
                 new EquitySnapshot(update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
-                    _drawdownTracker.PeakEquity, _drawdownTracker.DailyStartEquity,
+                    _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,
                     _riskManager.CurrentState.MonthlyDrawdownUsed, _riskManager.CurrentState.MaxDrawdownUsed, _engineMode),
                 _riskManager.CurrentState, _clock.UtcNow), CancellationToken.None);
         }
@@ -530,14 +528,14 @@ public sealed class EngineWorker : BackgroundService
         var riskState = _riskManager.CurrentState;
         var equity = new EquitySnapshot(
             update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
-            _drawdownTracker.PeakEquity, _drawdownTracker.DailyStartEquity,
+            _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,
             riskState.DailyDrawdownUsed, riskState.MaxDrawdownUsed, _engineMode);
         Volatile.Write(ref _currentEquity, equity);
         if (_equitySink is not null)
         {
             _equitySink.Observe(new AccountSnapshot(
                 update.TimestampUtc, update.Balance, update.Equity, update.FloatingPnL,
-                _drawdownTracker.PeakEquity, _drawdownTracker.DailyStartEquity,
+                _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,
                 riskState.DailyDrawdownUsed, riskState.MaxDrawdownUsed,
                 _positionTracker.OpenPositions.Count));
         }

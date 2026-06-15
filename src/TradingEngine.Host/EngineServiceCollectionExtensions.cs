@@ -38,8 +38,7 @@ public static class EngineServiceCollectionExtensions
             new ConfigurableNewsFilter(
                 sp.GetRequiredService<LoadedConfig>().NewsWindows));
         services.AddSingleton<SessionFilter>();
-        services.AddSingleton<DrawdownTracker>();
-        services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
+                services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
         services.AddSingleton<RiskManager>();
         services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
 
@@ -134,7 +133,6 @@ public static class EngineServiceCollectionExtensions
             Risk = new RiskServices
             {
                 RiskManager = sp.GetRequiredService<IRiskManager>(),
-                DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
                 RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
                 CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
                 Governor = sp.GetRequiredService<ITradingGovernor>(),

@@ -27,7 +27,6 @@ public sealed class TradingGovernorServiceTests
     {
         return new TradingGovernorService(
             options ?? StandardOptions(),
-            new DrawdownTracker(),
             Substitute.For<ILogger<TradingGovernorService>>());
     }
 

@@ -64,7 +64,6 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
 
                 services.AddSingleton<INewsFilter>(_ => new NewsFilter());
                 services.AddSingleton<SessionFilter>();
-                services.AddSingleton<DrawdownTracker>();
                 services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
                 services.AddSingleton<ISignalGate, SignalGateService>();
                 services.AddSingleton<RiskManager>();
@@ -125,7 +124,6 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                         Risk = new RiskServices
                         {
                             RiskManager = sp.GetRequiredService<IRiskManager>(),
-                            DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
                             RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
                             CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
                             Governor = sp.GetRequiredService<ITradingGovernor>(),

@@ -6,7 +6,6 @@ namespace TradingEngine.Risk.Governor;
 public sealed class TradingGovernorService : ITradingGovernor
 {
     private readonly GovernorOptions _options;
-    private readonly DrawdownTracker _drawdownTracker;
     private readonly IDecisionJournal? _decisionJournal;
     private readonly string? _runId;
     private readonly IEventBus? _eventBus;
@@ -23,22 +22,19 @@ public sealed class TradingGovernorService : ITradingGovernor
 
     public TradingGovernorService(
         GovernorOptions options,
-        DrawdownTracker drawdownTracker,
         ILogger<TradingGovernorService> logger)
-        : this(options, drawdownTracker, null, null, null, logger)
+        : this(options, null, null, null, logger)
     {
     }
 
     public TradingGovernorService(
         GovernorOptions options,
-        DrawdownTracker drawdownTracker,
         IDecisionJournal? decisionJournal,
         EngineRunContext? runContext,
         IEventBus? eventBus,
         ILogger<TradingGovernorService> logger)
     {
         _options = options;
-        _drawdownTracker = drawdownTracker;
         _decisionJournal = decisionJournal;
         _runId = runContext?.RunId;
         _eventBus = eventBus;

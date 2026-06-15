@@ -3,10 +3,12 @@ namespace TradingEngine.Domain;
 public interface IRiskManager
 {
     decimal InitialBalance { get; }
+    DrawdownState Drawdown { get; }
     decimal CalculateLotSize(TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid);
     IReadOnlyList<RiskViolation> Validate(TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid);
     ExtendedRiskState CurrentState { get; }
     PropFirmRuleSet? ActiveRuleSet { get; }
+    void InitializeDrawdownIfNeeded(decimal initialBalance, string drawdownType = "Fixed");
     void UpdateEquityLevels(decimal rawEquity);
     void OnDailyReset(decimal currentEquity);
     void OnWeeklyReset(decimal currentEquity);

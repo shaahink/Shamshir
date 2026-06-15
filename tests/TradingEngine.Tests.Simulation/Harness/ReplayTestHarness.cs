@@ -75,7 +75,6 @@ public sealed class ReplayTestHarness : IAsyncDisposable
 
                 services.AddSingleton<ITradingGovernor>(_ => governor);
                 services.AddSingleton<IRiskManager>(_ => riskManager);
-                services.AddSingleton<DrawdownTracker>();
 
                 var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
                     0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
@@ -138,7 +137,6 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                     Risk = new RiskServices
                     {
                         RiskManager = sp.GetRequiredService<IRiskManager>(),
-                        DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
                         RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
                         CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
                         Governor = sp.GetRequiredService<ITradingGovernor>(),

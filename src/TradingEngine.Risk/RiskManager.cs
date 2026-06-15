@@ -1,10 +1,10 @@
+using TradingEngine.Engine;
 using TradingEngine.Risk.Compliance;
 using TradingEngine.Risk.Sizing;
 
 namespace TradingEngine.Risk;
 
 public sealed class RiskManager(
-    DrawdownTracker drawdownTracker,
     ISymbolInfoRegistry symbolRegistry,
     Func<string, string, decimal> getCrossRate,
     INewsFilter newsFilter,
@@ -15,8 +15,20 @@ public sealed class RiskManager(
     SizingPolicyOptions sizingPolicy) : IRiskManager
 {
     private readonly ICurrencyExposureTracker _currencyExposure = currencyExposure;
+    public DrawdownState Drawdown { get; private set; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "Fixed");
 
-    public decimal InitialBalance => drawdownTracker.InitialAccountBalance;
+    public decimal InitialBalance => Drawdown.InitialAccountBalance;
+
+    public void InitializeDrawdown(decimal initialBalance, string drawdownType = "Fixed")
+    {
+        Drawdown = DrawdownReducer.CreateInitial(initialBalance, drawdownType);
+    }
+
+    public void InitializeDrawdownIfNeeded(decimal initialBalance, string drawdownType = "Fixed")
+    {
+        if (!Drawdown.IsInitialized)
+            InitializeDrawdown(initialBalance, drawdownType);
+    }
 
     public ExtendedRiskState CurrentState { get; private set; } = new()
     {
@@ -34,7 +46,7 @@ public sealed class RiskManager(
     public void SetActiveRuleSet(PropFirmRuleSet ruleSet)
     {
         ActiveRuleSet = ruleSet;
-        drawdownTracker.DailyDdBaseMode = ruleSet.DailyDdBase;
+        Drawdown = Drawdown with { DailyDdBaseMode = ruleSet.DailyDdBase.ToString() };
     }
 
     public void SetComplianceService(IPropFirmComplianceService svc)
@@ -64,7 +76,7 @@ public sealed class RiskManager(
 
         if (governor is not null)
         {
-            var dayStart = drawdownTracker.DailyStartEquity;
+            var dayStart = Drawdown.DailyStartEquity;
             var dayPnLFraction = dayStart > 0 ? (equity.Equity - dayStart) / dayStart : 0m;
             var governorCtx = new GovernorContext(
                 dayPnLFraction,
@@ -163,8 +175,8 @@ public sealed class RiskManager(
         var totalOpenRisk = _openPositionRisk.Values.Sum(v => v.Risk);
 
         var dailyDdBase = ruleSet.DailyDdBase == DailyDdBase.DailyStart
-            ? drawdownTracker.DailyStartEquity
-            : drawdownTracker.InitialAccountBalance;
+            ? Drawdown.DailyStartEquity
+            : Drawdown.InitialAccountBalance;
 
         if (dailyDdBase <= 0) return false;
 
@@ -190,21 +202,21 @@ public sealed class RiskManager(
 
     public void UpdateEquityLevels(decimal rawEquity)
     {
-        drawdownTracker.OnEquityUpdate(rawEquity);
+        Drawdown = DrawdownReducer.Apply(Drawdown, rawEquity);
         CurrentState = CurrentState with
         {
-            DailyDrawdownUsed = drawdownTracker.CurrentDailyDrawdown,
-            WeeklyDrawdownUsed = drawdownTracker.CurrentWeeklyDrawdown,
-            MonthlyDrawdownUsed = drawdownTracker.CurrentMonthlyDrawdown,
-            MaxDrawdownUsed = drawdownTracker.CurrentMaxDrawdown,
-            DrawdownVelocity = drawdownTracker.DrawdownVelocity,
-            IsDrawdownAccelerating = drawdownTracker.IsAccelerating,
+            DailyDrawdownUsed = Drawdown.CurrentDailyDrawdown,
+            WeeklyDrawdownUsed = Drawdown.CurrentWeeklyDrawdown,
+            MonthlyDrawdownUsed = Drawdown.CurrentMonthlyDrawdown,
+            MaxDrawdownUsed = Drawdown.CurrentMaxDrawdown,
+            DrawdownVelocity = Drawdown.DrawdownVelocity,
+            IsDrawdownAccelerating = Drawdown.IsAccelerating,
         };
     }
 
     public void OnDailyReset(decimal currentEquity)
     {
-        drawdownTracker.OnDailyReset(currentEquity);
+        Drawdown = DrawdownReducer.ApplyDailyReset(Drawdown, currentEquity);
         if (CurrentState.InProtectionMode && _protectionCause == ProtectionCause.DailyDrawdown)
         {
             _protectionCause = ProtectionCause.None;
@@ -214,13 +226,13 @@ public sealed class RiskManager(
 
     public void OnWeeklyReset(decimal currentEquity)
     {
-        drawdownTracker.OnWeeklyReset(currentEquity);
+        Drawdown = DrawdownReducer.ApplyWeeklyReset(Drawdown, currentEquity);
         _complianceService?.OnWeeklyReset(clock.UtcNow, currentEquity);
     }
 
     public void OnMonthlyReset(decimal currentEquity)
     {
-        drawdownTracker.OnMonthlyReset(currentEquity);
+        Drawdown = DrawdownReducer.ApplyMonthlyReset(Drawdown, currentEquity);
         _complianceService?.OnMonthlyReset(clock.UtcNow, currentEquity);
     }
 }
