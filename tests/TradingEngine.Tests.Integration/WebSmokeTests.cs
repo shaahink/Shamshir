@@ -105,8 +105,8 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
         var response = await _client.GetAsync("/");
         var body = await response.Content.ReadAsStringAsync();
 
-        body.Should().Contain("navbar");
-        body.Should().Contain("Shamshir Engine");
+        body.Should().Contain("sidebar");
+        body.Should().Contain("Shamshir");
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
         var body = await response.Content.ReadAsStringAsync();
 
         // Extract all hrefs from nav links
-        var navLinks = new[] { "/", "/trades", "/performance", "/backtests", "/events" };
+        var navLinks = new[] { "/", "/trades", "/performance", "/backtests", "/events", "/strategies", "/compliance" };
         foreach (var link in navLinks)
         {
             var linkResponse = await _client.GetAsync(link);

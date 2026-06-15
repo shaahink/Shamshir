@@ -14,4 +14,5 @@ public sealed class PipelineEventEntity
     public string? PhaseAfter { get; set; }
     public string? GuardResult { get; set; }
     public string? Reason { get; set; }
+    public string? StrategyId { get; set; }
 }

@@ -36,7 +36,7 @@ public sealed class RunProjection
             e.Seq,
             e.SimTimeUtc,
             e.CorrelationId,
-            null,
+            e.StrategyId,
             e.Stage,
             e.GuardResult,
             e.PhaseBefore,

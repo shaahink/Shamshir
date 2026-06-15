@@ -42,7 +42,8 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
             r.PhaseBefore,
             r.PhaseAfter,
             r.GuardResult,
-            r.Reason);
+            r.Reason,
+            r.StrategyId);
         _channel.Writer.TryWrite(evt);
     }
 
