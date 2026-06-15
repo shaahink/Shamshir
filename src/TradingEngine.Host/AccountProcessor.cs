@@ -45,7 +45,9 @@ public sealed class AccountProcessor
 
     public async Task HandleAsync(AccountUpdate update)
     {
-        _riskManager.InitializeDrawdownIfNeeded(update.Balance);
+        if (update.Balance > 0)
+            _riskManager.InitializeDrawdownIfNeeded(update.Balance);
+
         _riskManager.UpdateEquityLevels(update.Equity);
 
         var constraints = _riskManager.Constraints;
@@ -71,7 +73,7 @@ public sealed class AccountProcessor
             }
         }
 
-        var now = _clock.UtcNow;
+        var now = update.TimestampUtc;
         var isoWeek = ISOWeek.GetWeekOfYear(now);
         var month = now.Month;
         var dailyKey = now.Year * 1000 + now.DayOfYear;

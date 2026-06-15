@@ -347,7 +347,10 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         {
             _execChannel.Writer.TryWrite(
                 new ExecutionEvent(positionId, OrderState.Filled,
-                    new Price(1m), 0, "FORCE_CLOSE_ENGINE_SHUTDOWN", BrokerTimeUtc));
+                    new Price(0m), 0, "FORCE_CLOSE_ENGINE_SHUTDOWN", BrokerTimeUtc)
+                {
+                    GrossProfit = 0m, NetProfit = 0m, Commission = 0m, Swap = 0m
+                });
             return Task.CompletedTask;
         }
         var cmd = new { type = "close_position", positionId = positionId.ToString() };
