@@ -41,11 +41,11 @@ public sealed class EngineWorker : BackgroundService
     {
         _broker = deps.Market.Broker;
         _riskManager = deps.Risk.RiskManager;
-    _strategies = deps.Strategies.Strategies.ToList();
-    _indicators = deps.Market.Indicators;
-    _indicatorSnapshot = new IndicatorSnapshotService(_indicators, _strategies);
-    _marketEvents = new MarketEventSource(_broker, _executionEventChannel, logger);
-    _eventBus = deps.Persistence.EventBus;
+        _strategies = deps.Strategies.Strategies.ToList();
+        _indicators = deps.Market.Indicators;
+        _indicatorSnapshot = new IndicatorSnapshotService(_indicators, _strategies);
+        _marketEvents = new MarketEventSource(_broker, _executionEventChannel, logger);
+        _eventBus = deps.Persistence.EventBus;
         _clock = deps.Market.Clock;
         _symbolRegistry = deps.Market.SymbolRegistry;
         _riskProfileResolver = deps.Risk.RiskProfileResolver;
@@ -67,10 +67,14 @@ public sealed class EngineWorker : BackgroundService
         _loggerFactory = loggerFactory;
         _progress = deps.Persistence.Progress;
         _journal = deps.Persistence.Journal;
+        _accountProcessor = new AccountProcessor(_riskManager, _positionTracker, _sizingPolicy,
+            _eventBus, _clock, _engineMode, _crossRateStore, _equitySink,
+            e => Volatile.Write(ref _currentEquity, e), logger);
     }
 
     private readonly IndicatorSnapshotService _indicatorSnapshot;
     private readonly MarketEventSource _marketEvents;
+    private readonly AccountProcessor _accountProcessor;
 
     private EquitySnapshot _currentEquity = new(DateTime.MinValue, 0, 0, 0, 0, 0, 0, 0, EngineMode.Backtest);
 
@@ -82,13 +86,8 @@ public sealed class EngineWorker : BackgroundService
             SingleReader = true
         });
 
-    private const int MaxBarHistory = 500;
     private long _tickCount;
     private long _barCount;
-
-    private int _lastResetIsoWeek = -1;
-    private int _lastResetMonth = -1;
-    private int _lastResetDayOfYear = -1;
 
     private readonly Dictionary<(Symbol, Timeframe), MarketRegime> _currentRegimes = new();
 
@@ -145,7 +144,7 @@ public sealed class EngineWorker : BackgroundService
                 ProcessBarsAsync(ct),
                 _marketEvents.ProcessAccountUpdatesAsync(ct),
             _marketEvents.ProcessExecutionEventsAsync(ct),
-            _marketEvents.ProcessAccountQueueAsync(ct, HandleAccountUpdateAsync));
+            _marketEvents.ProcessAccountQueueAsync(ct, _accountProcessor.HandleAsync));
         }
 
         _logger.LogInformation("Engine stopped. Ticks={Ticks} Bars={Bars}",
@@ -213,7 +212,7 @@ public sealed class EngineWorker : BackgroundService
                     lock (list)
                     {
                         list.Add(bar);
-                        if (list.Count > MaxBarHistory)
+                        if (list.Count > 500)
                             list.RemoveAt(0);
                         barCount = list.Count;
                     }
@@ -352,7 +351,7 @@ public sealed class EngineWorker : BackgroundService
     private async Task RunBacktestLoopAsync(CancellationToken ct)
     {
         var initAcct = await _broker.AccountStream.ReadAsync(ct);
-        await HandleAccountUpdateAsync(initAcct);
+        await _accountProcessor.HandleAsync(initAcct);
 
         _backtestDriver = new BacktestDriver(
             _broker, _positionTracker, _orderDispatcher, _riskManager,
@@ -363,87 +362,6 @@ public sealed class EngineWorker : BackgroundService
 
         await _backtestDriver.RunAsync(ct);
         _logger.LogDebug("Backtest loop stopped");
-    }
-
-    private async Task HandleAccountUpdateAsync(AccountUpdate update)
-    {
-        _riskManager.InitializeDrawdownIfNeeded(update.Balance);
-        _riskManager.UpdateEquityLevels(update.Equity);
-
-        var ruleSet = _riskManager.ActiveRuleSet;
-        if (ruleSet is not null && !_riskManager.CurrentState.InProtectionMode)
-        {
-            var flattenFraction = (decimal)_sizingPolicy.FlattenAtFraction;
-
-            if (_riskManager.CurrentState.DailyDrawdownUsed >= (decimal)ruleSet.MaxDailyLossPercent * flattenFraction)
-            {
-                _riskManager.EnterProtectionMode(
-                    $"Daily DD at {_riskManager.CurrentState.DailyDrawdownUsed:P1} >= {ruleSet.MaxDailyLossPercent * (double)_sizingPolicy.FlattenAtFraction:P1} hard limit",
-                    ProtectionCause.DailyDrawdown);
-                _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — daily DD");
-                await _positionTracker.RequestForceCloseAllAsync("DailyDD");
-            }
-            else if (_riskManager.CurrentState.MaxDrawdownUsed >= (decimal)ruleSet.MaxTotalLossPercent * flattenFraction)
-            {
-                _riskManager.EnterProtectionMode(
-                    $"Max DD at {_riskManager.CurrentState.MaxDrawdownUsed:P1} >= {ruleSet.MaxTotalLossPercent * (double)_sizingPolicy.FlattenAtFraction:P1} hard limit",
-                    ProtectionCause.MaxDrawdown);
-                _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — max DD");
-                await _positionTracker.RequestForceCloseAllAsync("MaxDD");
-            }
-        }
-
-        var now = _clock.UtcNow;
-        var isoWeek = ISOWeek.GetWeekOfYear(now);
-        var month = now.Month;
-        var dailyKey = now.Year * 1000 + now.DayOfYear;
-
-        if (dailyKey != _lastResetDayOfYear)
-        {
-            _lastResetDayOfYear = dailyKey;
-            _riskManager.OnDailyReset(update.Equity);
-            _ = _eventBus.PublishAsync(new DayRolled(now), CancellationToken.None);
-        }
-        if (isoWeek != _lastResetIsoWeek)
-        {
-            _lastResetIsoWeek = isoWeek;
-            _riskManager.OnWeeklyReset(update.Equity);
-            _ = _eventBus.PublishAsync(new WeekRolled(now), CancellationToken.None);
-            _ = _eventBus.PublishAsync(new DayRolled(now), CancellationToken.None);
-            _ = _eventBus.PublishAsync(new WeeklyEquitySnapshotTaken(
-                new EquitySnapshot(update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
-                    _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,
-                    _riskManager.CurrentState.WeeklyDrawdownUsed, _riskManager.CurrentState.MaxDrawdownUsed, _engineMode),
-                _riskManager.CurrentState, _clock.UtcNow), CancellationToken.None);
-        }
-        if (month != _lastResetMonth)
-        {
-            _lastResetMonth = month;
-            _riskManager.OnMonthlyReset(update.Equity);
-            _ = _eventBus.PublishAsync(new MonthlyEquitySnapshotTaken(
-                new EquitySnapshot(update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
-                    _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,
-                    _riskManager.CurrentState.MonthlyDrawdownUsed, _riskManager.CurrentState.MaxDrawdownUsed, _engineMode),
-                _riskManager.CurrentState, _clock.UtcNow), CancellationToken.None);
-        }
-
-        var riskState = _riskManager.CurrentState;
-        var equity = new EquitySnapshot(
-            update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
-            _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,
-            riskState.DailyDrawdownUsed, riskState.MaxDrawdownUsed, _engineMode);
-        Volatile.Write(ref _currentEquity, equity);
-        if (_equitySink is not null)
-        {
-            _equitySink.Observe(new AccountSnapshot(
-                update.TimestampUtc, update.Balance, update.Equity, update.FloatingPnL,
-                _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,
-                riskState.DailyDrawdownUsed, riskState.MaxDrawdownUsed,
-                _positionTracker.OpenPositions.Count));
-        }
-        _ = _eventBus.PublishAsync(new EquityUpdated(equity, riskState, _clock.UtcNow), CancellationToken.None);
-        _logger.LogInformation("ACCOUNT|balance={Balance:F2}|equity={Equity:F2}|dd={DD:P1}",
-            update.Balance, update.Equity, riskState.DailyDrawdownUsed);
     }
 
     private void UpdateCrossRates(Bar bar)
