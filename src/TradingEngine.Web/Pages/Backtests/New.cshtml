@@ -1,0 +1,96 @@
+@page "/backtests/new"
+@model NewBacktestModel
+@{
+    ViewData["Title"] = "New Backtest";
+}
+<h1>New Backtest</h1>
+
+<form id="backtestForm" onsubmit="submitBacktest(event)" style="max-width:600px">
+    <div class="card">
+        <h2>Symbol</h2>
+        <select id="symbol" style="width:100%;padding:var(--sp-2);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm)">
+            <option value="EURUSD">EUR/USD</option>
+            <option value="GBPUSD">GBP/USD</option>
+            <option value="USDJPY">USD/JPY</option>
+        </select>
+    </div>
+    <div class="card">
+        <h2>Timeframe</h2>
+        <select id="timeframe" style="width:100%;padding:var(--sp-2);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm)">
+            <option value="H1">H1 (Hourly)</option>
+            <option value="H4">H4 (4 Hour)</option>
+            <option value="D1">D1 (Daily)</option>
+        </select>
+    </div>
+    <div class="card">
+        <h2>Date Range Presets</h2>
+        <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap">
+            <button type="button" class="tab" onclick="setDateRange(30)">Last Month</button>
+            <button type="button" class="tab" onclick="setDateRange(90)">Last Quarter</button>
+            <button type="button" class="tab" onclick="setDateRange(365)">Last Year</button>
+        </div>
+        <div style="display:flex;gap:var(--sp-2);margin-top:var(--sp-3)">
+            <div style="flex:1"><label style="color:var(--text-muted);font-size:var(--fs-xs)">Start</label><input type="date" id="startDate" style="width:100%;padding:var(--sp-2);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm)" /></div>
+            <div style="flex:1"><label style="color:var(--text-muted);font-size:var(--fs-xs)">End</label><input type="date" id="endDate" style="width:100%;padding:var(--sp-2);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm)" /></div>
+        </div>
+    </div>
+    <div class="card">
+        <h2>Initial Balance</h2>
+        <input type="number" id="balance" value="10000" min="100" step="100" style="width:100%;padding:var(--sp-2);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm)" />
+    </div>
+    <div style="text-align:right;padding:var(--sp-4)">
+        <button type="submit" style="background:var(--accent);color:var(--text-strong);border:none;padding:var(--sp-2) var(--sp-5);border-radius:var(--radius);font-size:var(--fs-lg);cursor:pointer;font-weight:600">Start Backtest</button>
+    </div>
+</form>
+
+<div id="result" style="display:none;text-align:center;padding:var(--sp-5)">
+    <div class="empty"><span class="empty-icon">--</span><span id="resultMsg"></span></div>
+</div>
+
+@section Scripts {
+    <script type="module">
+        function setDateRange(days) {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(start.getDate() - days);
+            document.getElementById('startDate').value = start.toISOString().split('T')[0];
+            document.getElementById('endDate').value = end.toISOString().split('T')[0];
+        }
+
+        setDateRange(90);
+        window.setDateRange = setDateRange;
+
+        window.submitBacktest = async function(e) {
+            e.preventDefault();
+            const payload = {
+                symbol: document.getElementById('symbol').value,
+                period: document.getElementById('timeframe').value,
+                start: document.getElementById('startDate').value + 'T00:00:00',
+                end: document.getElementById('endDate').value + 'T00:00:00',
+                balance: parseInt(document.getElementById('balance').value)
+            };
+
+            const result = document.getElementById('result');
+            const msg = document.getElementById('resultMsg');
+            result.style.display = 'block';
+            msg.textContent = 'Starting backtest...';
+
+            try {
+                const r = await fetch('/api/backtest/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await r.json();
+                if (data.runId) {
+                    msg.textContent = 'Backtest started. Redirecting to monitor...';
+                    setTimeout(() => { window.location.href = '/runs/' + data.runId + '/monitor'; }, 1000);
+                } else {
+                    msg.textContent = 'Failed: ' + (data.error || 'unknown error');
+                }
+            } catch (e) {
+                msg.textContent = 'Error: ' + e.message;
+            }
+        };
+    </script>
+}
