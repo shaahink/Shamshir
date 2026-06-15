@@ -1,0 +1,56 @@
+@page "/runs/{runId}/analyzer"
+@model AnalyzerModel
+@{
+    ViewData["Title"] = "Trade Analyzer";
+    ViewData["RunId"] = Model.RunId;
+}
+<h1>Trade Analyzer</h1>
+<p style="color:var(--text-muted);margin-bottom:var(--sp-4)">Run @Model.RunId</p>
+
+<div class="grid">
+    <div class="card"><h2>R-Multiple Distribution</h2><div id="rMultipleChart" style="height:250px"></div></div>
+    <div class="card"><h2>Holding Time</h2><div id="holdingChart" style="height:250px"></div></div>
+</div>
+<div class="grid">
+    <div class="card"><h2>PnL by Hour of Day</h2><div id="hourlyChart" style="height:250px"></div></div>
+    <div class="card"><h2>PnL by Day of Week</h2><div id="dailyChart" style="height:250px"></div></div>
+</div>
+<div class="card">
+    <h2>MAE/MFE Scatter</h2>
+    <div id="scatterChart" style="height:300px"></div>
+</div>
+
+@section Scripts {
+    <script type="module">
+        import { histogramChart, scatterChart } from '/js/charts/index.js';
+
+        async function load() {
+            try {
+                const r = await fetch('/api/backtest/@Model.RunId/analytics');
+                if (!r.ok) throw new Error(r.statusText);
+                const data = await r.json();
+
+                if (data.rMultiples && data.rMultiples.length > 0) {
+                    histogramChart(document.getElementById('rMultipleChart'), data.rMultiples.map((v, i) => ({ time: i, value: v })), '#58a6ff');
+                }
+                if (data.holdingTimes && data.holdingTimes.length > 0) {
+                    histogramChart(document.getElementById('holdingChart'), data.holdingTimes.map((v, i) => ({ time: i, value: v })), '#3fb950');
+                }
+                if (data.pnlByHour && data.pnlByHour.length > 0) {
+                    histogramChart(document.getElementById('hourlyChart'), data.pnlByHour.map(n => ({ time: n.key, value: n.value })), '#d29922');
+                }
+                if (data.pnlByDay && data.pnlByDay.length > 0) {
+                    histogramChart(document.getElementById('dailyChart'), data.pnlByDay.map(n => ({ time: n.key, value: n.value })), '#39c5cf');
+                }
+                if (data.maeMfe && data.maeMfe.length > 0) {
+                    scatterChart(document.getElementById('scatterChart'), data.maeMfe.map(p => ({ time: p.x * 100, value: p.y })));
+                }
+
+            } catch (e) {
+                console.error('Analyzer load failed', e);
+            }
+        }
+
+        load();
+    </script>
+}

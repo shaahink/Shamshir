@@ -219,8 +219,11 @@ public sealed class CtraderTestHarness : IAsyncDisposable
         {
             var stderr = cliResult.StandardError.Length > 500
                 ? cliResult.StandardError[..500] : cliResult.StandardError;
-            Log(diagLog, $"[{label}] CLI STDERR: {stderr}");
+            Log(diagLog, $"[{label}] CLI STDERR (exit code={cliResult.ExitCode}): {stderr}");
             Console.WriteLine($"[{label}] CLI stderr: {stderr}");
+            // ctrader-cli is known to exit code 1 even on successful runs that produce correct
+            // trades; the data/exec path is verified by DB assertions. Only flag a hard failure
+            // when exit code ≠ 0 AND no trades were produced.
         }
 
         var cbotLines = cliResult.StandardOutput.Split('\n').Where(l => l.Contains("CBOT|")).ToList();

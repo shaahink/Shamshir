@@ -15,6 +15,25 @@ public class BacktestAnalyticsController : ControllerBase
         _estimator = estimator;
     }
 
+    [HttpGet("runs")]
+    public async Task<IActionResult> GetRuns()
+    {
+        var runs = await _db.BacktestRuns.OrderByDescending(r => r.StartedAtUtc).Take(50).ToListAsync();
+        var result = runs.Select(r => new
+        {
+            r.RunId,
+            status = r.CompletedAtUtc == default ? "running" : r.ErrorMessage == null ? "completed" : "failed",
+            r.NetProfit,
+            r.MaxDrawdownPct,
+            r.TotalTrades,
+            r.WinningTrades,
+            r.WinRatePct,
+            r.StartedAtUtc,
+            CompletedAtUtc = r.CompletedAtUtc,
+        }).ToList();
+        return Ok(result);
+    }
+
     [HttpGet("{runId}/pass-probability")]
     public async Task<IActionResult> GetPassProbability(string runId)
     {
@@ -64,6 +83,23 @@ public class BacktestAnalyticsController : ControllerBase
             .Select(g => new { date = g.Key.ToString("yyyy-MM-dd"), pnl = g.Sum(t => t.NetPnLAmount) })
             .ToList();
         return Ok(daily);
+    }
+
+    [HttpGet("{runId}/analytics")]
+    public async Task<IActionResult> GetAnalytics(string runId)
+    {
+        var trades = await _db.Trades.Where(t => t.RunId == runId).OrderBy(t => t.ClosedAtUtc).ToListAsync();
+        if (trades.Count == 0) return Ok(new { rMultiples = Array.Empty<double>(), holdingTimes = Array.Empty<double>(), pnlByHour = Array.Empty<object>(), pnlByDay = Array.Empty<object>(), maeMfe = Array.Empty<object>() });
+
+        var rMultiples = trades.Select(t => t.RMultiple).ToList();
+        var holdingTimes = trades.Select(t => Math.Min(t.DurationSeconds, 3600)).ToList();
+        var pnlByHour = trades.GroupBy(t => t.ClosedAtUtc.Hour)
+            .Select(g => new { key = g.Key, value = g.Sum(t => (double)t.NetPnLAmount) }).ToList();
+        var pnlByDay = trades.GroupBy(t => t.ClosedAtUtc.DayOfWeek)
+            .Select(g => new { key = g.Key.ToString(), value = g.Sum(t => (double)t.NetPnLAmount) }).ToList();
+        var maeMfe = trades.Select(t => new { x = -t.MaxAdverseExcursion, y = t.MaxFavorableExcursion }).ToList();
+
+        return Ok(new { rMultiples, holdingTimes, pnlByHour, pnlByDay, maeMfe });
     }
 
     [HttpGet("analytics/correlation")]

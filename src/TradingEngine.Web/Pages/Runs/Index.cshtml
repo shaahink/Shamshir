@@ -1,0 +1,98 @@
+@page "/runs"
+@model RunsIndexModel
+@{
+    ViewData["Title"] = "Runs History";
+}
+<h1>Runs History</h1>
+
+<div style="margin-bottom:var(--sp-4);display:flex;gap:var(--sp-2);align-items:center">
+    <button id="compareBtn" class="tab" onclick="compareSelected()" style="display:none">Compare Selected</button>
+    <span id="compareInfo" style="color:var(--text-muted);font-size:var(--fs-sm)"></span>
+</div>
+
+<div class="card">
+    <table>
+        <thead><tr><th style="width:30px"></th><th>Run ID</th><th>Status</th><th>Net PnL</th><th>Max DD</th><th>Trades</th><th>Win Rate</th><th>Actions</th></tr></thead>
+        <tbody id="runsTable">
+            <tr><td colspan="8"><div class="skeleton" style="height:20px"></div></td></tr>
+        </tbody>
+    </table>
+</div>
+
+<div id="compareModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#000a;z-index:100;align-items:center;justify-content:center">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-5);max-width:900px;width:90%;max-height:80vh;overflow-y:auto">
+        <h2>Compare Runs</h2>
+        <div id="compareChart" style="height:300px"></div>
+        <div style="text-align:right;padding-top:var(--sp-3)">
+            <button class="tab" onclick="document.getElementById('compareModal').style.display='none'">Close</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script type="module">
+        import { equityChart } from '/js/charts/index.js';
+
+        let allRuns = [];
+        const selected = new Set();
+
+        async function load() {
+            try {
+                const r = await fetch('/api/backtest/runs');
+                allRuns = await r.json();
+                renderTable();
+            } catch (e) {
+                console.error('Failed to load runs', e);
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('runsTable');
+            tbody.innerHTML = allRuns.map(r => '<tr>' +
+                '<td><input type="checkbox" onchange="toggleRun(\'' + r.runId + '\', this.checked)" /></td>' +
+                '<td style="font-family:var(--font-mono)">' + (r.runId || '').substring(0, 8) + '</td>' +
+                '<td><span class="pill ' + (r.status === 'completed' ? 'pill--normal' : 'pill--softstop') + '">' + (r.status || '--') + '</span></td>' +
+                '<td class="num ' + ((r.netProfit || 0) >= 0 ? 'positive' : 'negative') + '">' + (r.netProfit || 0).toFixed(2) + '</td>' +
+                '<td class="num">' + ((r.maxDrawdownPct || 0) * 100).toFixed(2) + '%</td>' +
+                '<td class="num">' + (r.totalTrades || 0) + '</td>' +
+                '<td class="num">' + ((r.winRatePct || 0)).toFixed(1) + '%</td>' +
+                '<td><a href="/runs/' + r.runId + '/report">Report</a> | <a href="/runs/' + r.runId + '/analyzer">Analyze</a></td>' +
+                '</tr>').join('');
+        }
+
+        window.toggleRun = function(runId, checked) {
+            if (checked) selected.add(runId); else selected.delete(runId);
+            const btn = document.getElementById('compareBtn');
+            btn.style.display = selected.size >= 2 ? 'inline-block' : 'none';
+            document.getElementById('compareInfo').textContent = selected.size + ' selected';
+        };
+
+        window.compareSelected = async function() {
+            const ids = Array.from(selected).join(',');
+            const r = await fetch('/api/backtest/compare?runIds=' + ids);
+            const data = await r.json();
+
+            const modal = document.getElementById('compareModal');
+            modal.style.display = 'flex';
+
+            const container = document.getElementById('compareChart');
+            container.innerHTML = '';
+
+            if (data && data.length >= 2 && window.LightweightCharts) {
+                const chart = window.LightweightCharts.createChart(container, {
+                    layout: { background: { type: 'solid', color: '#0d1117' }, textColor: '#8b949e' },
+                    grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
+                    width: container.clientWidth, height: 300
+                });
+                const colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149'];
+                data.forEach((run, i) => {
+                    const series = chart.addLineSeries({ color: colors[i % colors.length], lineWidth: 2 });
+                    series.setData([{ time: 0, value: 0 }, { time: data.length, value: run.netProfit || 0 }]);
+                });
+                chart.timeScale().fitContent();
+            }
+        };
+
+        load();
+    </script>
+}
