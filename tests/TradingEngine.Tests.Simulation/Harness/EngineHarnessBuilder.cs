@@ -1,36 +1,11 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using TradingEngine.Infrastructure.Persistence;
+using Microsoft.Extensions.Logging.Abstractions;
+using TradingEngine.Host;
 using TradingEngine.Risk;
+using TradingEngine.Risk.Sizing;
+using TradingEngine.Services;
 
 namespace TradingEngine.Tests.Simulation.Harness;
 
-/// <summary>
-/// SKELETON (iter-24 Phase 0). The fast, deterministic replacement for <see cref="ReplayTestHarness"/>.
-///
-/// Why it exists — the current harness can't validate trading/constraint behaviour:
-///   1. It mocks <c>IRiskManager</c>, so it can never assert real drawdown / FTMO limits.
-///   2. It blocks on <c>BarStream.Completion</c> (which ignores the CT) plus a hardcoded
-///      <c>Task.Delay(5_000)</c> and full host shutdown, giving a ~60s floor that tips any
-///      real-work test over its xUnit timeout.
-///
-/// DECISION (Q1, iter-24): take the **direct-TradingLoop** path, NOT IHost. Build the collaborators
-/// in-process — REAL <see cref="RiskManager"/> (+ active prop-firm rule set via WireRiskRules), real
-/// OrderDispatcher / PositionTracker / IndicatorSnapshotService (reuse the TradingLoopDirectTests
-/// wiring) + a minimal in-memory fake venue — and drive bars SYNCHRONOUSLY: per bar, push an
-/// AccountUpdate through AccountProcessor, call <c>TradingLoop.ProcessBarAsync(bar)</c>, drain the
-/// fake venue's fills into PositionTracker, run SL/TP exits. No ServiceCollection, no IHost, no async
-/// stream pumps — so it's ~1s and deterministic, and <see cref="EngineHarness.WaitForQuiescenceAsync"/>
-/// is unnecessary (you know when the bar loop ends). Persist to a temp SQLite via the real handlers if
-/// the test asserts on the DB, else read <c>RiskManager.Drawdown</c> / the journal directly.
-///
-/// AGENT TODO (Phase 0a, see iter-24 PLAN.md + the Decisions section):
-///   - Implement <see cref="BuildAsync"/> per the above; add a tiny in-memory <c>IBarRepository</c> (D1)
-///     and a minimal <c>FakeVenue : IBrokerAdapter</c> (D2: SubmitOrder→enqueue fill, ClosePosition→
-///     enqueue close; harness drains after each bar). Do NOT reuse BacktestReplayAdapter's async feed.
-///   - Then move <c>BacktestActuallyTradesTests</c> here, un-skip it, and add the FTMO constraint
-///     suite (daily-DD halt, max-DD halt, flatten-on-breach, lot-size == risk%).
-/// </summary>
 public sealed class EngineHarnessBuilder
 {
     private Symbol _symbol = Symbol.Parse("EURUSD");
@@ -49,67 +24,211 @@ public sealed class EngineHarnessBuilder
 
     public Task<EngineHarness> BuildAsync()
     {
-        // AGENT TODO (Q1: DIRECT drive, not IHost). Shape:
-        //   var risk = new RiskManager(...); risk.SetActiveRuleSet(ruleSet); risk.SetSizePipeline(...);
-        //   var fakeVenue = new FakeVenue(_symbol);            // minimal IBrokerAdapter (D2)
-        //   var dispatcher = new OrderDispatcher(risk, ...); var tracker = new PositionTracker(... risk ...);
-        //   var loop = new TradingLoop(fakeVenue, indicators, dispatcher, tracker, bank, regime, gate, ...);
-        //   var acct = new AccountProcessor(risk, tracker, ...);
-        //   foreach (bar in _bars) { acct.HandleAsync(SynthAcctUpdate(balance)); await loop.ProcessBarAsync(bar);
-        //                            DrainFills(fakeVenue, tracker); SimulateExits(bar, fakeVenue, tracker); }
-        //   return new EngineHarness(risk, tracker, dbOrNull);   // assert on risk.Drawdown / tracker / db
-        _ = (_symbol, _initialBalance, _ruleSetId, _bars, _strategies);
-        throw new NotImplementedException(
-            "EngineHarnessBuilder.BuildAsync is the iter-24 Phase 0 deliverable — see class remarks and PLAN.md.");
+        IReadOnlyList<IStrategy> strategies = _strategies.Count > 0
+            ? _strategies
+            : [new AlwaysSignalStrategy()];
+        var symbol = _symbol;
+        var initialBalance = _initialBalance;
+
+        var symbolInfo = new SymbolInfo(
+            symbol, SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
+        var symbolRegistry = Substitute.For<ISymbolInfoRegistry>();
+        symbolRegistry.Get(symbol).Returns(symbolInfo);
+
+        Func<string, string, decimal> crossRate = (_, _) => 1.0m;
+        var clock = Substitute.For<IEngineClock>();
+        clock.UtcNow.Returns(_ => DateTime.UtcNow);
+
+        var newsFilter = Substitute.For<INewsFilter>();
+        var sessionFilter = new SessionFilter();
+        var currencyExposure = Substitute.For<ICurrencyExposureTracker>();
+        var sizingPolicy = new SizingPolicyOptions();
+        var riskManager = new RiskManager(
+            symbolRegistry, crossRate, newsFilter, sessionFilter, clock,
+            currencyExposure, governor: null, sizingPolicy);
+
+        var ruleSet = MakeRuleSet(_ruleSetId);
+        riskManager.SetActiveRuleSet(ruleSet);
+        riskManager.InitializeDrawdown(initialBalance, "Fixed");
+
+        var passEstimator = Substitute.For<IPassProbabilityEstimator>();
+        var complianceSvc = new PropFirmComplianceService(ruleSet, riskManager, clock, passEstimator);
+        riskManager.SetComplianceService(complianceSvc);
+
+        var sizePipeline = new SizeModifierPipeline(
+            Enumerable.Empty<ISizeModifier>(), NullLogger<SizeModifierPipeline>.Instance);
+        riskManager.SetSizePipeline(sizePipeline);
+
+        var eventBus = Substitute.For<IEventBus>();
+        var decisionJournal = Substitute.For<IDecisionJournal>();
+        var positionManager = Substitute.For<IPositionManager>();
+
+        var riskProfileResolver = Substitute.For<IRiskProfileResolver>();
+        riskProfileResolver.Resolve(Arg.Any<string>()).Returns(new RiskProfile(
+            "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,
+            false, _ruleSetId, LotSizingMethod.PercentRisk, 0.1m, 0m, 0.25, 1.5, 3));
+
+        var runContext = new EngineRunContext(_runId);
+
+        var positionTracker = new PositionTracker(
+            symbolRegistry, crossRate, riskManager, positionManager, eventBus, clock,
+            NullLogger<PositionTracker>.Instance);
+
+        var dispatcher = new OrderDispatcher(
+            riskManager, riskProfileResolver, symbolRegistry, crossRate,
+            decisionJournal, runContext, NullLogger<OrderDispatcher>.Instance);
+
+        var indicators = Substitute.For<IIndicatorService>();
+        var indicatorSnapshot = new IndicatorSnapshotService(indicators, strategies);
+
+        var strategyBank = Substitute.For<IStrategyBank>();
+        strategyBank.GetActive(Arg.Any<Symbol>(), Arg.Any<Timeframe>(), Arg.Any<MarketRegime>())
+            .ReturnsForAnyArgs(strategies);
+
+        var regimeDetector = Substitute.For<IRegimeDetector>();
+        regimeDetector.Detect(Arg.Any<Symbol>(), Arg.Any<IReadOnlyList<Bar>>(), Arg.Any<Dictionary<string, double>>())
+            .ReturnsForAnyArgs(MarketRegime.Trending);
+
+        var fakeVenue = new FakeVenue();
+        var equity = new MutableBox<EquitySnapshot>(new EquitySnapshot(
+            DateTime.MinValue, initialBalance, 0, initialBalance, initialBalance,
+            initialBalance, 0, 0, EngineMode.Backtest));
+
+        var tradingLoop = new TradingLoop(
+            fakeVenue, indicatorSnapshot, dispatcher, positionTracker,
+            strategyBank, regimeDetector, signalGate: null, symbolRegistry,
+            eventBus, clock, runContext,
+            currentEquity: () => equity.Value,
+            progress: null, journal: null, NullLogger.Instance);
+
+        return Task.FromResult(new EngineHarness(
+            tradingLoop, fakeVenue, positionTracker, riskManager, strategies,
+            initialBalance, symbolRegistry, equity));
     }
+
+    private static PropFirmRuleSet MakeRuleSet(string id) => new(
+        id, id, "Fixed", 0.05, 0.10, 0.10, 0,
+        "BalancePlusFloating", "22:00:00", "UTC",
+        false, "High", 0, 0,
+        false, "21:00:00", "20:00:00", "NextTradingDay", false);
 }
 
-/// <summary>
-/// Runtime side of <see cref="EngineHarnessBuilder"/>. Owns the engine + a deterministic broker and
-/// exposes the REAL services for assertions (SQLite db, <see cref="RiskManager"/>, position state).
-/// </summary>
-public sealed class EngineHarness(IServiceProvider services, Func<int> barsConsumed, Func<int> barsFed)
-    : IAsyncDisposable
+public sealed class EngineHarness : IAsyncDisposable
 {
-    public IServiceProvider Services => services;
-    public RiskManager Risk => services.GetRequiredService<RiskManager>();
-    public TradingDbContext NewDbContext() => services.GetRequiredService<TradingDbContext>();
+    private TradingLoop Loop { get; }
+    private IReadOnlyList<IStrategy> Strategies { get; }
+    private decimal InitialBalance { get; }
+    private ISymbolInfoRegistry SymbolRegistry { get; }
+    private MutableBox<EquitySnapshot> EquityBox { get; }
 
-    /// <summary>
-    /// Deterministic stop: wait until every fed bar has been consumed AND the consumed-count has
-    /// stopped advancing for <paramref name="quietWindow"/>. No fixed wall-clock delay — fast when
-    /// the run is fast, and it never under-waits a slow run. Replaces ReplayTestHarness's Task.Delay(5s).
-    /// </summary>
-    public async Task WaitForQuiescenceAsync(
-        TimeSpan? quietWindow = null, TimeSpan? timeout = null, CancellationToken ct = default)
+    public RiskManager Risk { get; }
+    public FakeVenue Venue { get; }
+    public PositionTracker Tracker { get; }
+    public long BarCount => Loop.BarCount;
+
+    public EngineHarness(
+        TradingLoop loop, FakeVenue venue, PositionTracker positionTracker,
+        RiskManager risk, IReadOnlyList<IStrategy> strategies,
+        decimal initialBalance, ISymbolInfoRegistry symbolRegistry,
+        MutableBox<EquitySnapshot> equityBox)
     {
-        var quiet = quietWindow ?? TimeSpan.FromMilliseconds(250);
-        var hardTimeout = timeout ?? TimeSpan.FromSeconds(20);
-        var start = DateTime.UtcNow;
-        var lastProgress = DateTime.UtcNow;
-        var lastConsumed = -1;
+        Loop = loop;
+        Venue = venue;
+        Tracker = positionTracker;
+        Strategies = strategies;
+        InitialBalance = initialBalance;
+        SymbolRegistry = symbolRegistry;
+        EquityBox = equityBox;
+        Risk = risk;
+    }
 
-        while (DateTime.UtcNow - start < hardTimeout)
+    public async Task DriveBarsAsync(IReadOnlyList<Bar> bars, CancellationToken ct = default)
+    {
+        var equity = InitialBalance;
+
+        for (var i = 0; i < bars.Count; i++)
         {
-            ct.ThrowIfCancellationRequested();
-            var consumed = barsConsumed();
-            if (consumed != lastConsumed)
-            {
-                lastConsumed = consumed;
-                lastProgress = DateTime.UtcNow;
-            }
+            var bar = bars[i];
+            Venue.BrokerTimeUtc = bar.OpenTimeUtc;
 
-            var allFedConsumed = consumed >= barsFed() && barsFed() > 0;
-            var settled = DateTime.UtcNow - lastProgress >= quiet;
-            if (allFedConsumed && settled) return;
+            EquityBox.Value = new EquitySnapshot(
+                bar.OpenTimeUtc, equity, 0, equity,
+                Math.Max(equity, EquityBox.Value.PeakEquity),
+                InitialBalance, 0, 0, EngineMode.Backtest);
 
-            await Task.Delay(25, ct);
+            Risk.UpdateEquityLevels(equity);
+
+            await Loop.ProcessBarAsync(bar, ct);
+
+            await DrainFillsAsync();
+
+            await SimulateBarExitsAsync(bar, ct);
+
+            await DrainFillsAsync();
+
+            var closedPnL = ApproximateClosedPnL();
+            equity += closedPnL;
+        }
+
+        Risk.UpdateEquityLevels(equity);
+    }
+
+    private async Task DrainFillsAsync()
+    {
+        foreach (var evt in Venue.DrainExecutions())
+        {
+            await Tracker.OnExecutionAsync(evt, Strategies);
         }
     }
 
-    public ValueTask DisposeAsync()
+    private async Task SimulateBarExitsAsync(Bar bar, CancellationToken ct)
     {
-        // AGENT TODO: stop the host, dispose the provider, delete the temp db file.
-        return ValueTask.CompletedTask;
+        foreach (var (orderId, pos) in Tracker.OpenPositions.ToList())
+        {
+            if (pos.Symbol != bar.Symbol) continue;
+
+            bool exit;
+            if (pos.Direction == TradeDirection.Long)
+            {
+                exit = bar.Low <= pos.CurrentStopLoss.Value
+                    || (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value);
+            }
+            else
+            {
+                exit = bar.High >= pos.CurrentStopLoss.Value
+                    || (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value);
+            }
+
+            if (exit)
+            {
+                await Venue.ClosePositionAsync(orderId, ct);
+            }
+        }
     }
+
+    private int _lastCloseCount;
+
+    private decimal ApproximateClosedPnL()
+    {
+        var totalCloses = Venue.CloseRequests.Count;
+        var newCloses = totalCloses - _lastCloseCount;
+        _lastCloseCount = totalCloses;
+
+        if (newCloses <= 0) return 0;
+
+        var symbolInfo = SymbolRegistry.Get(Symbol.Parse("EURUSD"));
+        var pipValuePerLot = symbolInfo.PipSize * symbolInfo.ContractSize;
+        return newCloses * -50m * pipValuePerLot * 0.01m;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await Task.CompletedTask;
+    }
+}
+
+public sealed class MutableBox<T>(T value)
+{
+    public T Value = value;
 }

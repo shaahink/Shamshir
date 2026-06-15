@@ -6,7 +6,7 @@ public record BarClosed(Symbol Symbol, Timeframe Timeframe, decimal Open, decima
 
 public record TickReceived(Symbol Symbol, decimal Bid, decimal Ask, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 
-public record OrderSubmitted(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price? LimitPrice, string StrategyId, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+public record OrderSubmitted(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price? LimitPrice, string StrategyId, DateTime OccurredAtUtc, Price StopLoss = default, Price? TakeProfit = null) : EngineEvent(OccurredAtUtc);
 
 public record OrderFilled(Guid OrderId, Symbol Symbol, decimal FilledLots, Price FillPrice, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 

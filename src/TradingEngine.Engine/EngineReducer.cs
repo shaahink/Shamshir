@@ -52,7 +52,7 @@ public static class EngineReducer
     {
         var posState = PositionLifecycle.CreateIntended(
             evt.OrderId, evt.Symbol, evt.Direction,
-            evt.Lots, evt.LimitPrice, new Price(0), null, evt.StrategyId);
+            evt.Lots, evt.LimitPrice, evt.StopLoss, evt.TakeProfit, evt.StrategyId);
 
         var (nextPos, posEffects) = PositionLifecycle.Apply(posState, evt);
 

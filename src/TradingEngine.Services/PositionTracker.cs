@@ -51,13 +51,9 @@ public sealed class PositionTracker(
         {
             _pendingIntent[orderId] = (request, riskAmount, riskProfileId ?? "standard");
 
-            var posState = PositionLifecycle.CreateIntended(
-                orderId, request.Intent.Symbol, request.Intent.Direction,
-                request.Lots, request.Intent.LimitPrice, request.Intent.StopLoss,
-                request.Intent.TakeProfit, request.Intent.StrategyId);
-
             var submitted = new OrderSubmitted(orderId, request.Intent.Symbol, request.Intent.Direction,
-                request.Lots, request.Intent.LimitPrice, request.Intent.StrategyId, clock.UtcNow);
+                request.Lots, request.Intent.LimitPrice, request.Intent.StrategyId, clock.UtcNow,
+                request.Intent.StopLoss, request.Intent.TakeProfit);
 
             var decision = EngineReducer.Apply(_state, submitted);
             _state = decision.State;
