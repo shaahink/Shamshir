@@ -54,7 +54,13 @@ public sealed class CtraderTestHarness : IAsyncDisposable
 
     public record Result(
         int Trades, int BarEvals, int Signals, int Orders, int Execs,
-        int CliExitCode, string CliStderr, string RunId);
+        int CliExitCode, string CliStderr, string RunId,
+        IReadOnlyList<TradeRow>? TradeRows = null);
+
+    public record TradeRow(
+        string Symbol, string Direction, decimal Lots,
+        decimal EntryPrice, decimal ExitPrice, decimal NetPnL,
+        decimal Commission, decimal Swap, string ExitReason);
 
     // ─── credentials ────────────────────────────────────────────────
     public static string ResolveCredential(string key, string envKey)
@@ -225,6 +231,7 @@ public sealed class CtraderTestHarness : IAsyncDisposable
         // Query DB before stopping host
         await Task.Delay(2000, ct);
         int tradeCount = 0, barEvalCount = 0;
+        var tradeRows = new List<TradeRow>();
         using (var scope = _host.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
@@ -237,7 +244,11 @@ public sealed class CtraderTestHarness : IAsyncDisposable
                 var trades = await db.Trades.Where(t => t.RunId == runId)
                     .OrderBy(t => t.ClosedAtUtc).ToListAsync(ct);
                 foreach (var t in trades)
-                    Log(diagLog, $"  Trade: {t.Symbol} {t.Direction} pnl={t.NetPnLAmount:F2} lots={t.Lots}");
+                {
+                    tradeRows.Add(new TradeRow(t.Symbol, t.Direction, t.Lots,
+                        t.EntryPrice, t.ExitPrice, t.NetPnLAmount, t.CommissionAmount, t.SwapAmount, t.ExitReason));
+                    Log(diagLog, $"  Trade: {t.Symbol} {t.Direction} pnl={t.NetPnLAmount:F2} lots={t.Lots} entry={t.EntryPrice:F5} exit={t.ExitPrice:F5} reason={t.ExitReason}");
+                }
             }
         }
 
@@ -248,7 +259,7 @@ public sealed class CtraderTestHarness : IAsyncDisposable
         await _host.StopAsync(CancellationToken.None);
 
         return new Result(tradeCount, barEvalCount, signalCount, orderCount, execCount,
-            cliResult.ExitCode, cliResult.StandardError, runId);
+            cliResult.ExitCode, cliResult.StandardError, runId, tradeRows);
     }
 
     // ─── timeframe-adapted config ───────────────────────────────────

@@ -1,18 +1,19 @@
-fix(iter24-p9): register IReadOnlyList<IStrategy> so EngineHostFactory.Create starts
+test(iter24): real cTrader e2e scenario tests + richer harness trade rows
 
-EffectExecutor takes IReadOnlyList<IStrategy>, but both DI composition paths
-(AddStrategiesFromOptions used by EngineHostFactory.Create, and AddStrategies
-used by the standalone Host) registered strategies only as IEnumerable<IStrategy>.
-GetRequiredService<EffectExecutor>() therefore threw at startup (cannot resolve
-IReadOnlyList<IStrategy>), failing the engine before it ever connected. This broke
-the dashboard backtest path AND every cTrader pipeline test (the "pre-existing"
-sim failures).
+With EngineHostFactory.Create unblocked (iter24-p9), the cTrader pipeline runs
+end-to-end again. Adds CtraderScenarioTests (real engine <-> NetMQ <-> cBot in
+cTrader's backtester, live data; skips without creds):
+- HappyPath_EurUsd_TradeLedgerHasIntegrity — entry prices valid, lots positive,
+  SL/TP closes have real exit prices.
+- EdgeCase_WeekendRange — sparse Sat/Sun range: completes cleanly, 0 bars -> 0
+  trades (no invented trades). Verified: 9 bars, 0 trades.
+- AfterRun_NoOrphanCtraderProcesses — CLI fully reaped, no orphans.
 
-Now materialize the active strategies once as IReadOnlyList<IStrategy> and resolve
-IEnumerable<IStrategy> from the same singleton (one strategy set, both shapes).
+Extends CtraderTestHarness.Result with TradeRow[] (symbol/dir/lots/entry/exit/
+net/commission/swap/exitReason) so scenarios can assert on the trade ledger, not
+just bar counts.
 
-Verified by a real run: InProcessCtraderTest (engine <-> NetMQ <-> real cBot in
-cTrader's backtester, live EURUSD data) now starts and produces 7 trades over 432
-bar evaluations. Was failing at engine startup before this fix.
+All 3 pass against real cTrader (~28s each). Surfaced a real finding (handled
+separately): engine-requested closes report PnL=0 and all exits read FORCE.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
