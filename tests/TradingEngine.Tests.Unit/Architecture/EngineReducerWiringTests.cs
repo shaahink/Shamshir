@@ -48,6 +48,7 @@ public sealed class EngineReducerWiringTests
             nameof(EquityObserved),
             nameof(DayRolled),
             nameof(WeekRolled),
+            nameof(MonthRolled),
             // EventBus-only events — published via IEventBus, never fed to the reducer
             "BarEvaluated",
             "TradeClosed",

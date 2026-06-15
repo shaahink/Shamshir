@@ -21,3 +21,5 @@ public record EquityObserved(decimal Equity, DateTime OccurredAtUtc) : EngineEve
 public record DayRolled(DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 
 public record WeekRolled(DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+
+public record MonthRolled(DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);

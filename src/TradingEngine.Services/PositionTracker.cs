@@ -399,17 +399,4 @@ public sealed class PositionTracker(
         position = default!;
         return false;
     }
-
-    private static string DetermineExitReason(Position pos, decimal fillPrice)
-    {
-        if (pos.Direction == TradeDirection.Long)
-        {
-            if (fillPrice <= pos.CurrentStopLoss.Value) return "SL";
-            if (pos.TakeProfit is not null && fillPrice >= pos.TakeProfit.Value.Value) return "TP";
-            return "FORCE";
-        }
-        if (fillPrice >= pos.CurrentStopLoss.Value) return "SL";
-        if (pos.TakeProfit is not null && fillPrice <= pos.TakeProfit.Value.Value) return "TP";
-        return "FORCE";
-    }
 }

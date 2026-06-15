@@ -40,6 +40,9 @@ public static class EngineReducer
             case WeekRolled week:
                 return HandleWeekRolled(state, week);
 
+            case MonthRolled month:
+                return HandleMonthRolled(state, month);
+
             case ForceCloseAllRequested forceClose:
                 return HandleForceCloseAll(state, forceClose);
 
@@ -249,6 +252,16 @@ public static class EngineReducer
     private static EngineDecision HandleWeekRolled(EngineState state, WeekRolled evt)
     {
         var newDrawdown = DrawdownReducer.ApplyWeeklyReset(state.Drawdown, state.Drawdown.WeeklyStartEquity);
+        return new EngineDecision(state with { Drawdown = newDrawdown }, []);
+    }
+
+    // MonthRolled — mirrors the pattern of DayRolled/WeekRolled: monthly reset runs
+    // imperatively via AccountProcessor / RiskManager.OnMonthlyReset. The reducer path
+    // is a pure mirror for the kernel state and is marked UNWIRED per Q2 convention.
+    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
+    private static EngineDecision HandleMonthRolled(EngineState state, MonthRolled evt)
+    {
+        var newDrawdown = DrawdownReducer.ApplyMonthlyReset(state.Drawdown, state.Drawdown.DailyStartEquity);
         return new EngineDecision(state with { Drawdown = newDrawdown }, []);
     }
 

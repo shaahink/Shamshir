@@ -115,6 +115,7 @@ public sealed class AccountProcessor
         {
             _lastResetMonth = month;
             _riskManager.OnMonthlyReset(update.Equity);
+            _ = _eventBus.PublishAsync(new MonthRolled(now), CancellationToken.None);
             _ = _eventBus.PublishAsync(new MonthlyEquitySnapshotTaken(
                 new EquitySnapshot(update.TimestampUtc, update.Balance, update.FloatingPnL, update.Equity,
                     _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,
