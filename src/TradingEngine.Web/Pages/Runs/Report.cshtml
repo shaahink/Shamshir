@@ -1,0 +1,99 @@
+@page "/runs/{runId}/report"
+@model ReportModel
+@{
+    ViewData["Title"] = "Backtest Report";
+    ViewData["RunId"] = Model.RunId;
+}
+<h1>Backtest Report</h1>
+<p style="color:var(--text-muted);margin-bottom:var(--sp-4)">Run @Model.RunId</p>
+
+<div class="grid">
+    <div class="card"><h2>Net P&L</h2><div class="value @(Model.NetPnL >= 0 ? "positive" : "negative")">@Model.NetPnL.ToString("N2")</div></div>
+    <div class="card"><h2>Return</h2><div class="value @(Model.ReturnPct >= 0 ? "positive" : "negative")">@Model.ReturnPct.ToString("P2")</div></div>
+    <div class="card"><h2>Max DD</h2><div class="value negative">@Model.MaxDdPct.ToString("P2")</div></div>
+    <div class="card"><h2>Win Rate</h2><div class="value">@Model.WinRatePct.ToString("F1")%</div></div>
+    <div class="card"><h2>Total Trades</h2><div class="value">@Model.TotalTrades</div></div>
+    <div class="card"><h2>Profit Factor</h2><div class="value">@(Model.ProfitFactor > 0 ? Model.ProfitFactor.ToString("F2") : "--")</div></div>
+</div>
+
+<div class="card">
+    <h2>Run Facts</h2>
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr))">
+        <div class="kpi"><span class="kpi-label">Duration</span><span class="kpi-value num" style="font-size:var(--fs-lg)">@Model.DurationDisplay</span></div>
+        <div class="kpi"><span class="kpi-label">Bars/sec</span><span class="kpi-value num" style="font-size:var(--fs-lg)">@Model.BarsPerSec.ToString("F1")</span></div>
+        <div class="kpi"><span class="kpi-label">Date Range</span><span class="kpi-value num" style="font-size:var(--fs-base)">@Model.DateRange</span></div>
+        <div class="kpi"><span class="kpi-label">Initial Balance</span><span class="kpi-value num" style="font-size:var(--fs-lg)">@Model.InitialBalance.ToString("N0")</span></div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Equity + Drawdown</h2>
+    <div id="equityDdChart" style="height:400px"></div>
+</div>
+
+@if (Model.HasBreaches)
+{
+    <div class="card" style="border-color:var(--crit)">
+        <h2 style="color:var(--crit)">Compliance</h2>
+        <p style="color:var(--neg)">Breach detected. @Model.BreachSummary</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <h2>Compliance</h2>
+        <p class="status-ok">No breaches</p>
+    </div>
+}
+
+<div class="card">
+    <h2>Strategy Funnel</h2>
+    <table>
+        <thead><tr><th>Strategy</th><th>Signals</th><th>Orders</th><th>Fills</th><th>Trades</th><th>Win Rate</th></tr></thead>
+        <tbody>
+        @foreach (var s in Model.FunnelRows)
+        {
+            <tr>
+                <td>@s.StrategyId</td>
+                <td class="num">@s.Signals</td>
+                <td class="num">@s.Orders</td>
+                <td class="num">@s.Fills</td>
+                <td class="num">@s.Closes</td>
+                <td class="num">@(s.WinRate > 0 ? s.WinRate.ToString("F1") + "%" : "--")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Trades</h2>
+    <table>
+        <thead><tr><th>Symbol</th><th>Direction</th><th>Lots</th><th>Entry</th><th>Exit</th><th>Net PnL</th><th>Exit Reason</th></tr></thead>
+        <tbody>
+        @foreach (var t in Model.TradeRows)
+        {
+            <tr>
+                <td>@t.Symbol</td>
+                <td>@t.Direction</td>
+                <td class="num">@t.Lots.ToString("F4")</td>
+                <td class="num">@t.EntryPrice.ToString("F5")</td>
+                <td class="num">@t.ExitPrice.ToString("F5")</td>
+                <td class="num @(t.NetPnL >= 0 ? "positive" : "negative")">@t.NetPnL.ToString("F2")</td>
+                <td>@t.ExitReason</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+    <script type="module">
+        import { equityChart } from '/js/charts/index.js';
+        const container = document.getElementById('equityDdChart');
+        const points = @Html.Raw(Model.EquityCurveJson);
+        if (points && points.length > 0) {
+            equityChart(container, points);
+        }
+    </script>
+}
