@@ -17,6 +17,7 @@ public sealed class EngineHarnessBuilder
     private readonly List<IStrategy> _strategies = [];
     private decimal _flattenAtFraction = 0.9m;
     private bool _enableBreachWatchdog = true;
+    private readonly List<(Symbol Symbol, TradeDirection Direction, decimal EntryPrice, decimal Lots, decimal SlPrice, decimal? TpPrice)> _seedPositions = [];
 
     public EngineHarnessBuilder WithFlattenAtFraction(decimal fraction) { _flattenAtFraction = fraction; return this; }
     public EngineHarnessBuilder WithoutBreachWatchdog() { _enableBreachWatchdog = false; return this; }
@@ -27,6 +28,12 @@ public sealed class EngineHarnessBuilder
     public EngineHarnessBuilder WithRunId(string runId) { _runId = runId; return this; }
     public EngineHarnessBuilder WithBars(IReadOnlyList<Bar> bars) { _bars = bars; return this; }
     public EngineHarnessBuilder WithStrategy(IStrategy strategy) { _strategies.Add(strategy); return this; }
+
+    public EngineHarnessBuilder WithSeedPosition(Symbol symbol, TradeDirection direction, decimal entryPrice, decimal lots, decimal slPrice, decimal? tpPrice)
+    {
+        _seedPositions.Add((symbol, direction, entryPrice, lots, slPrice, tpPrice));
+        return this;
+    }
 
     public Task<EngineHarness> BuildAsync()
     {
@@ -116,6 +123,17 @@ public sealed class EngineHarnessBuilder
             setEquity: snapshot => equity.Value = snapshot,
             NullLogger.Instance,
             decisionJournal);
+
+        foreach (var (seedSymbol, seedDir, seedEntry, seedLots, seedSl, seedTp) in _seedPositions)
+        {
+            positionTracker.SeedOpenPositions(
+                new[]
+                {
+                    new OpenPositionInfo(Guid.NewGuid(), seedSymbol, seedDir, seedLots,
+                        new Price(seedEntry), new Price(seedSl),
+                        seedTp is { } tp ? new Price(tp) : null)
+                }, strategies);
+        }
 
         var dispatcher = new OrderDispatcher(
             riskManager, riskProfileResolver, symbolRegistry, crossRate,
