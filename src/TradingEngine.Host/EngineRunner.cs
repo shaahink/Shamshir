@@ -248,23 +248,26 @@ public sealed class EngineRunner
         foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())
         {
             if (pos.Symbol != bar.Symbol) continue;
-            bool exit;
+            string? reason = null;
             if (pos.Direction == TradeDirection.Long)
             {
-                exit = bar.Low <= pos.CurrentStopLoss.Value
-                    || (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value);
+                if (bar.Low <= pos.CurrentStopLoss.Value) { reason = "SL"; }
+                else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) { reason = "TP"; }
             }
             else
             {
-                exit = bar.High >= pos.CurrentStopLoss.Value
-                    || (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value);
+                if (bar.High >= pos.CurrentStopLoss.Value) { reason = "SL"; }
+                else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) { reason = "TP"; }
             }
 
-            if (exit)
+            if (reason is not null)
             {
-                _logger.LogInformation("BAR_EXIT|{Id}|{Symbol}|sl={SL:F5}|tp={TP}|low={Low:F5}|high={High:F5}",
-                    orderId, pos.Symbol, pos.CurrentStopLoss.Value,
+                _logger.LogInformation("BAR_EXIT|{Id}|{Symbol}|reason={Reason}|sl={SL:F5}|tp={TP}|low={Low:F5}|high={High:F5}",
+                    orderId, pos.Symbol, reason, pos.CurrentStopLoss.Value,
                     pos.TakeProfit?.Value ?? 0, bar.Low, bar.High);
+                // Stamp WHY before asking the venue to close, so the close fill records the real
+                // exit reason (SL/TP) in the journal/ledger instead of the generic "FORCE".
+                _positionTracker.SetCloseReason(orderId, reason);
                 await _broker.ClosePositionAsync(orderId, ct);
             }
         }

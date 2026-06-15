@@ -220,11 +220,26 @@ public sealed class EngineHarness : IAsyncDisposable
         }
     }
 
+    private readonly List<ClosedTrade> _closedTrades = [];
+
+    /// <summary>Trades closed during the run, with the venue-confirmed exit reason — lets tests
+    /// assert the journal/ledger labels exits accurately (TP / SL / DailyDD / MaxDD), not "FORCE".</summary>
+    public IReadOnlyList<ClosedTrade> ClosedTrades => _closedTrades;
+
     private async Task DrainFillsAsync()
     {
         foreach (var evt in Venue.DrainExecutions())
         {
-            await Tracker.OnExecutionAsync(evt, Strategies);
+            var effects = await Tracker.OnExecutionAsync(evt, Strategies);
+            if (effects is null) continue;
+            foreach (var e in effects)
+            {
+                if (e is PublishTradeClosed tc)
+                {
+                    _closedTrades.Add(new ClosedTrade(
+                        tc.Symbol, tc.Direction, tc.Lots, tc.EntryPrice.Value, tc.ExitPrice.Value, tc.ExitReason));
+                }
+            }
         }
     }
 
@@ -234,20 +249,23 @@ public sealed class EngineHarness : IAsyncDisposable
         {
             if (pos.Symbol != bar.Symbol) continue;
 
-            bool exit;
+            string? reason = null;
             if (pos.Direction == TradeDirection.Long)
             {
-                exit = bar.Low <= pos.CurrentStopLoss.Value
-                    || (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value);
+                if (bar.Low <= pos.CurrentStopLoss.Value) { reason = "SL"; }
+                else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) { reason = "TP"; }
             }
             else
             {
-                exit = bar.High >= pos.CurrentStopLoss.Value
-                    || (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value);
+                if (bar.High >= pos.CurrentStopLoss.Value) { reason = "SL"; }
+                else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) { reason = "TP"; }
             }
 
-            if (exit)
+            if (reason is not null)
             {
+                // Stamp the detected reason before the venue close, mirroring EngineRunner, so the
+                // close fill records "SL"/"TP" rather than the generic "FORCE".
+                Tracker.SetCloseReason(orderId, reason);
                 await Venue.ClosePositionAsync(orderId, ct);
             }
         }
@@ -273,6 +291,10 @@ public sealed class EngineHarness : IAsyncDisposable
         await Task.CompletedTask;
     }
 }
+
+public sealed record ClosedTrade(
+    Symbol Symbol, TradeDirection Direction, decimal Lots,
+    decimal EntryPrice, decimal ExitPrice, string ExitReason);
 
 public sealed class MutableBox<T>(T value)
 {

@@ -149,11 +149,41 @@ public sealed class PositionTracker(
         finally { _mutex.Release(); }
     }
 
+    /// <summary>
+    /// Stamp the reason a position is about to close with (SL / TP / DailyDD / MaxDD / ...), WITHOUT
+    /// changing its phase or emitting effects. The engine detects the exit (e.g. SimulateBarExits
+    /// sees price cross the SL/TP) and records WHY here; when the venue fill lands, the lifecycle
+    /// closes the position carrying this reason instead of the generic "FORCE". This is what makes
+    /// the journal/trade-ledger exit reasons accurate (a TP-hit reads "TP", not "FORCE").
+    /// </summary>
+    public void SetCloseReason(Guid orderId, string reason)
+    {
+        _mutex.Wait();
+        try
+        {
+            var ps = _state.Positions.Values.FirstOrDefault(p => p.OrderId == orderId);
+            if (ps is null) return;
+            var newPositions = new Dictionary<Guid, PositionState>(_state.Positions)
+            {
+                [ps.PositionId] = ps with { CloseReason = reason },
+            };
+            _state = _state with { Positions = newPositions };
+        }
+        finally { _mutex.Release(); }
+    }
+
     public async Task RequestForceCloseAllAsync(string reason)
     {
         await _mutex.WaitAsync();
         try
         {
+            // Stamp the reason on every open position first so the resulting close fills carry it
+            // (e.g. "DailyDD"/"MaxDD") through to the ledger rather than the generic "FORCE".
+            var stamped = new Dictionary<Guid, PositionState>(_state.Positions);
+            foreach (var (id, ps) in _state.Positions)
+                stamped[id] = ps with { CloseReason = reason };
+            _state = _state with { Positions = stamped };
+
             var evt = new ForceCloseAllRequested(reason, clock.UtcNow);
             var decision = EngineReducer.Apply(_state, evt);
             _state = decision.State;
