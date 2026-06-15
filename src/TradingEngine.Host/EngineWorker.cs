@@ -144,7 +144,8 @@ public sealed class EngineWorker : BackgroundService
                 ProcessTicksAsync(ct),
                 ProcessBarsAsync(ct),
                 ProcessAccountUpdatesAsync(ct),
-                ProcessExecutionEventsAsync(ct));
+                ProcessExecutionEventsAsync(ct),
+                ProcessAccountQueueAsync(ct));
         }
 
         _logger.LogInformation("Engine stopped. Ticks={Ticks} Bars={Bars}",
@@ -175,15 +176,16 @@ public sealed class EngineWorker : BackgroundService
                         _clock.UtcNow));
                 }
 
-                    var accountUpdate = Interlocked.Exchange(ref _latestAccountUpdate, null);
-                if (accountUpdate is not null)
-                    await HandleAccountUpdateAsync(accountUpdate);
-
                 if (_dataFeed is not null && _broker is SimulatedBrokerAdapter sim)
+                {
                     sim.OnTickReceived(tick);
+                }
 
-                _logger.LogDebug("TICK|{Symbol}|{Bid:F5}|{Ask:F5}|{Total}",
-                    tick.Symbol.Value, tick.Bid, tick.Ask, Interlocked.Read(ref _tickCount));
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    _logger.LogTrace("TICK|{Symbol}|{Bid:F5}|{Ask:F5}|{Total}",
+                        tick.Symbol.Value, tick.Bid, tick.Ask, Interlocked.Read(ref _tickCount));
+                }
             }
         }
         catch (OperationCanceledException) { }
@@ -383,6 +385,17 @@ public sealed class EngineWorker : BackgroundService
 
         await _backtestDriver.RunAsync(ct);
         _logger.LogDebug("Backtest loop stopped");
+    }
+
+    private async Task ProcessAccountQueueAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            var accountUpdate = Interlocked.Exchange(ref _latestAccountUpdate, null);
+            if (accountUpdate is not null)
+                await HandleAccountUpdateAsync(accountUpdate);
+            await Task.Delay(100, ct);
+        }
     }
 
     private async Task DrainExecutionStreamAsync()
