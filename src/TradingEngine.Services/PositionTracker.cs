@@ -216,6 +216,23 @@ public sealed class PositionTracker(
         }
         _processedExecutionIds.Add(evt.OrderId);
 
+        // Venue-initiated close (server-side SL/TP/stop-out): stamp the venue's reason before the
+        // lifecycle runs so the close fill is journaled as SL/TP, not "FORCE". The engine never
+        // requested this close, so it has no reason of its own. Don't override a reason the engine
+        // already set (e.g. an engine-detected exit it's also closing).
+        if (evt.CloseReason is { } venueReason)
+        {
+            var open = _state.Positions.Values.FirstOrDefault(p => p.OrderId == evt.OrderId);
+            if (open is not null && open.CloseReason is null)
+            {
+                var stamped = new Dictionary<Guid, PositionState>(_state.Positions)
+                {
+                    [open.PositionId] = open with { CloseReason = venueReason },
+                };
+                _state = _state with { Positions = stamped };
+            }
+        }
+
         var symbol = GetSymbolForOrder(evt.OrderId);
         var engineEvent = evt.NewState switch
         {

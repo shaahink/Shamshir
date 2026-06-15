@@ -372,6 +372,8 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             NetProfit = ParseDecimalOrNull(ex, "netProfit"),
             Commission = ParseDecimalOrNull(ex, "commission"),
             Swap = ParseDecimalOrNull(ex, "swap"),
+            CloseReason = ex.TryGetProperty("closeReason", out var cr) && cr.ValueKind == JsonValueKind.String
+                ? cr.GetString() : null,
         };
     }
 

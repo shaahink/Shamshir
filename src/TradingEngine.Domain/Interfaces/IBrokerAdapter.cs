@@ -77,6 +77,11 @@ public record ExecutionEvent(
     public decimal? NetProfit { get; init; }
     public decimal? Commission { get; init; }
     public decimal? Swap { get; init; }
+
+    /// <summary>Venue-authoritative reason a position was closed (SL / TP / STOPOUT / CLOSED),
+    /// for venue-initiated (server-side SL/TP) closes the engine didn't request. Null for fills,
+    /// rejections, and engine-requested closes (the engine already knows those reasons).</summary>
+    public string? CloseReason { get; init; }
 }
 
 public record OrderRequest(

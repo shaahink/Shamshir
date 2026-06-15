@@ -542,6 +542,10 @@ public class TradingEngineCBot : Robot
                 return;
             }
 
+            // Venue-initiated close (server-side SL/TP/stop-out, or manual). Propagate cTrader's
+            // own close reason so the engine journals "SL"/"TP" instead of the generic "FORCE" —
+            // these close intrabar before the engine's bar-level exit detection runs.
+            var closeReason = MapCloseReason(args.Reason);
             var execJson = Serialize("exec", new
             {
                 v = 1,
@@ -552,17 +556,26 @@ public class TradingEngineCBot : Robot
                 fillPrice = closePrice,
                 filledLots = lots,
                 reason = (string?)null,
+                closeReason,
                 simTime = Server.TimeInUtc.ToString("o"),
                 grossProfit = pos.GrossProfit,
                 netProfit = pos.NetProfit
             });
             try { _dealer?.SendFrame(execJson); } catch { }
             _execsSent++;
-            Diag($"EXEC_SENT|{clientOrderId}|Filled|kind=close|fill={closePrice:F5}|lots={lots:F4}|pnl={pos.NetProfit:F2}");
+            Diag($"EXEC_SENT|{clientOrderId}|Filled|kind=close|reason={closeReason}|fill={closePrice:F5}|lots={lots:F4}|pnl={pos.NetProfit:F2}");
             _positionMap.Remove(pos.Id);
             PublishAccount();
         }
     }
+
+    private static string MapCloseReason(PositionCloseReason reason) => reason switch
+    {
+        PositionCloseReason.StopLoss => "SL",
+        PositionCloseReason.TakeProfit => "TP",
+        PositionCloseReason.StopOut => "STOPOUT",
+        _ => "CLOSED",
+    };
 
     protected override void OnStop()
     {
