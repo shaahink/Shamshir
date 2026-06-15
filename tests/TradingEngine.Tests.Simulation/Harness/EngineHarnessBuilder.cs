@@ -114,7 +114,8 @@ public sealed class EngineHarnessBuilder
             eventBus, clock, EngineMode.Backtest,
             crossRateStore, equitySink: null,
             setEquity: snapshot => equity.Value = snapshot,
-            NullLogger.Instance);
+            NullLogger.Instance,
+            decisionJournal);
 
         var dispatcher = new OrderDispatcher(
             riskManager, riskProfileResolver, symbolRegistry, crossRate,

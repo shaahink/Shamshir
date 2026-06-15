@@ -13,6 +13,7 @@ public sealed class AccountProcessor
     private readonly CrossRateStore _crossRateStore;
     private readonly IEquitySink? _equitySink;
     private readonly Action<EquitySnapshot> _setEquity;
+    private readonly IDecisionJournal? _decisionJournal;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
 
     private int _lastResetIsoWeek = -1;
@@ -29,7 +30,8 @@ public sealed class AccountProcessor
         CrossRateStore crossRateStore,
         IEquitySink? equitySink,
         Action<EquitySnapshot> setEquity,
-        Microsoft.Extensions.Logging.ILogger logger)
+        Microsoft.Extensions.Logging.ILogger logger,
+        IDecisionJournal? decisionJournal = null)
     {
         _riskManager = riskManager;
         _positionTracker = positionTracker;
@@ -40,6 +42,7 @@ public sealed class AccountProcessor
         _crossRateStore = crossRateStore;
         _equitySink = equitySink;
         _setEquity = setEquity;
+        _decisionJournal = decisionJournal;
         _logger = logger;
     }
 
@@ -61,6 +64,12 @@ public sealed class AccountProcessor
                     $"Daily DD at {_riskManager.CurrentState.DailyDrawdownUsed:P1} >= {constraints.MaxDailyLoss * flattenFraction:P1} hard limit",
                     ProtectionCause.DailyDrawdown);
                 _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — daily DD");
+                _decisionJournal?.Record(new DecisionRecord(
+                    string.Empty, update.TimestampUtc, 0, null, null, null,
+                    "BreachDetected", "DailyDD",
+                    null,
+                    $"Daily DD at {_riskManager.CurrentState.DailyDrawdownUsed:P1} >= {constraints.MaxDailyLoss * flattenFraction:P1}",
+                    "{}"));
                 await _positionTracker.RequestForceCloseAllAsync("DailyDD");
             }
             else if (_riskManager.CurrentState.MaxDrawdownUsed >= constraints.MaxTotalLoss * flattenFraction)
@@ -69,6 +78,12 @@ public sealed class AccountProcessor
                     $"Max DD at {_riskManager.CurrentState.MaxDrawdownUsed:P1} >= {constraints.MaxTotalLoss * flattenFraction:P1} hard limit",
                     ProtectionCause.MaxDrawdown);
                 _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — max DD");
+                _decisionJournal?.Record(new DecisionRecord(
+                    string.Empty, update.TimestampUtc, 0, null, null, null,
+                    "BreachDetected", "MaxDD",
+                    null,
+                    $"Max DD at {_riskManager.CurrentState.MaxDrawdownUsed:P1} >= {constraints.MaxTotalLoss * flattenFraction:P1}",
+                    "{}"));
                 await _positionTracker.RequestForceCloseAllAsync("MaxDD");
             }
         }
