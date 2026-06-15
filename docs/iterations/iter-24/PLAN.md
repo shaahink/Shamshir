@@ -49,15 +49,22 @@ sweep helper for CI.
 
 **Gate:** running the full cTrader test suite twice leaves zero `ctrader-cli` processes.
 
-### 0c. Testability seam — extract `TradingLoop` (design change)
-The per-bar body now lives in `EngineWorker.ProcessSingleBarAsync` (private, inside a
-`BackgroundService`) — so it can only be exercised through a full host. Extract it into a
-standalone `TradingLoop` class taking explicit collaborators, and have `EngineWorker`
-delegate (both live and backtest). Then the harness — and focused unit tests — can drive
-`TradingLoop.ProcessBarAsync(bar)` directly with a fake broker and the real risk pipeline,
-asserting on `RiskManager.Drawdown` / the journal, with no IHost.
+### 0c. Testability seam — extract `TradingLoop` (DONE)
+`src/TradingEngine.Host/TradingLoop.cs` is the per-bar body as a standalone unit taking
+explicit collaborators; `EngineWorker` constructs one and delegates from both the live and
+backtest loops (`_tradingLoop.ProcessBarAsync(bar, ct)`). `BarCount`/`Reset` moved onto it.
+Behaviour-preserving (Unit 163, Goldens 7 green). It can now be driven directly with a fake
+broker + the real risk pipeline, no IHost.
 
-**Gate:** a unit test constructs `TradingLoop` (no IHost) and drives one bar to an order.
+**AGENT TODO:**
+- Add a fast unit test that constructs `TradingLoop` directly (fake `IBrokerAdapter`, real
+  `OrderDispatcher`/`PositionTracker`/`IndicatorSnapshotService`, NSubstitute for the rest)
+  and drives one bar to a `TrackOrder` — the template the FTMO suite reuses.
+- Point `EngineHarnessBuilder` at `TradingLoop` directly for the deterministic FTMO tests
+  (drive bars synchronously, assert on `RiskManager.Drawdown`/journal) — this sidesteps the
+  IHost entirely and is the preferred path over booting `EngineWorker`.
+
+**Gate:** the direct `TradingLoop` unit test is green and runs in <1s.
 
 ---
 
