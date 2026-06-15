@@ -24,6 +24,7 @@ public sealed class EngineRunner
     private readonly CrossRateStore _crossRateStore;
     private readonly IProgress<BacktestProgressEvent>? _progress;
     private readonly PositionTracker _positionTracker;
+    private readonly IEnginePacer _pacer;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
 
     private readonly IndicatorSnapshotService _indicatorSnapshot;
@@ -58,6 +59,9 @@ public sealed class EngineRunner
         _crossRateStore = deps.Market.CrossRateStore;
         _progress = deps.Persistence.Progress;
         _positionTracker = deps.Strategies.PositionTracker;
+        _pacer = deps.Market.EngineMode == EngineMode.Backtest
+            ? new BarSteppedPacer()
+            : new AsyncStreamPacer();
         _logger = logger;
 
         _indicatorSnapshot = new IndicatorSnapshotService(deps.Market.Indicators, _strategies);
@@ -131,26 +135,13 @@ public sealed class EngineRunner
 
         await _indicatorSnapshot.WarmUpIndicatorsAsync(ct);
 
-        if (_engineMode == EngineMode.Backtest)
-        {
-            await RunBacktestLoopAsync(ct);
-        }
-        else
-        {
-            await Task.WhenAll(
-                ProcessTicksAsync(ct),
-                ProcessBarsAsync(ct),
-                _marketEvents.ProcessAccountUpdatesAsync(ct),
-                _marketEvents.ProcessExecutionEventsAsync(ct),
-                _marketEvents.ConsumeExecutionsAsync(ct, _positionTracker, _strategies, _progress, _runContext.RunId, _clock),
-                _marketEvents.ProcessAccountQueueAsync(ct, _accountProcessor.HandleAsync));
-        }
+        await _pacer.PaceAsync(this, ct);
 
         _logger.LogInformation("Engine stopped. Ticks={Ticks} Bars={Bars}",
             Interlocked.Read(ref _tickCount), _tradingLoop.BarCount);
     }
 
-    private async Task ProcessTicksAsync(CancellationToken ct)
+    internal async Task ProcessTicksAsync(CancellationToken ct)
     {
         try
         {
@@ -177,7 +168,7 @@ public sealed class EngineRunner
         _logger.LogDebug("Tick processor stopped");
     }
 
-    private async Task ProcessBarsAsync(CancellationToken ct)
+    internal async Task ProcessBarsAsync(CancellationToken ct)
     {
         _logger.LogDebug("Bar processor started");
         try
@@ -199,7 +190,7 @@ public sealed class EngineRunner
         _logger.LogDebug("Bar processor stopped");
     }
 
-    private async Task RunBacktestLoopAsync(CancellationToken ct)
+    internal async Task RunBacktestLoopAsync(CancellationToken ct)
     {
         var initAcct = await _broker.AccountStream.ReadAsync(ct);
         await _accountProcessor.HandleAsync(initAcct);
@@ -243,7 +234,7 @@ public sealed class EngineRunner
         _logger.LogDebug("Backtest loop stopped");
     }
 
-    private async Task SimulateBarExitsAsync(Bar bar, CancellationToken ct)
+    internal async Task SimulateBarExitsAsync(Bar bar, CancellationToken ct)
     {
         foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())
         {
@@ -274,6 +265,18 @@ public sealed class EngineRunner
 
         await _marketEvents.DrainExecutionStreamAsync(_positionTracker, _strategies, _progress, _runContext.RunId, _clock);
     }
+
+    internal Task ProcessAccountUpdatesAsync(CancellationToken ct)
+        => _marketEvents.ProcessAccountUpdatesAsync(ct);
+
+    internal Task ProcessExecutionEventsAsync(CancellationToken ct)
+        => _marketEvents.ProcessExecutionEventsAsync(ct);
+
+    internal Task ConsumeExecutionsAsync(CancellationToken ct)
+        => _marketEvents.ConsumeExecutionsAsync(ct, _positionTracker, _strategies, _progress, _runContext.RunId, _clock);
+
+    internal Task ProcessAccountQueueAsync(CancellationToken ct)
+        => _marketEvents.ProcessAccountQueueAsync(ct, _accountProcessor.HandleAsync);
 
     private void UpdateCrossRates(Bar bar)
     {
