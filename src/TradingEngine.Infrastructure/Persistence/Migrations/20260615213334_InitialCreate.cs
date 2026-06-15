@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace TradingEngine.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialFullSchema : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -80,6 +80,28 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "DailyProtectionLedgers",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    RunId = table.Column<string>(type: "TEXT", nullable: true),
+                    Date = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    StartEquity = table.Column<decimal>(type: "TEXT", nullable: false),
+                    MinEquity = table.Column<decimal>(type: "TEXT", nullable: false),
+                    EndEquity = table.Column<decimal>(type: "TEXT", nullable: false),
+                    MaxDailyDdUsedFraction = table.Column<double>(type: "REAL", nullable: false),
+                    FinalGovernorState = table.Column<string>(type: "TEXT", nullable: false),
+                    BreachOccurred = table.Column<bool>(type: "INTEGER", nullable: false),
+                    TradesOpened = table.Column<int>(type: "INTEGER", nullable: false),
+                    TradesClosed = table.Column<int>(type: "INTEGER", nullable: false),
+                    SignalsBlocked = table.Column<int>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DailyProtectionLedgers", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "EngineEvents",
                 columns: table => new
                 {
@@ -106,11 +128,29 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                     DailyStartEquity = table.Column<decimal>(type: "TEXT", nullable: false),
                     CurrentDailyDrawdown = table.Column<decimal>(type: "TEXT", nullable: false),
                     CurrentMaxDrawdown = table.Column<decimal>(type: "TEXT", nullable: false),
-                    Mode = table.Column<string>(type: "TEXT", nullable: false)
+                    Mode = table.Column<string>(type: "TEXT", nullable: false),
+                    Type = table.Column<string>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_EquitySnapshots", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Experiments",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", nullable: false),
+                    Hypothesis = table.Column<string>(type: "TEXT", nullable: false),
+                    SpecJson = table.Column<string>(type: "TEXT", nullable: false),
+                    Status = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    CompletedUtc = table.Column<DateTime>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Experiments", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -151,7 +191,12 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                     CorrelationId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
                     SimTimeUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     WallTimeUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    DetailJson = table.Column<string>(type: "TEXT", maxLength: 4096, nullable: false)
+                    DetailJson = table.Column<string>(type: "TEXT", maxLength: 4096, nullable: false),
+                    PhaseBefore = table.Column<string>(type: "TEXT", maxLength: 32, nullable: true),
+                    PhaseAfter = table.Column<string>(type: "TEXT", maxLength: 32, nullable: true),
+                    GuardResult = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
+                    Reason = table.Column<string>(type: "TEXT", maxLength: 512, nullable: true),
+                    StrategyId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -219,6 +264,52 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                     table.PrimaryKey("PK_TradeResults", x => x.Id);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "ProtectionLedgerEntries",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    LedgerId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    AtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    Category = table.Column<string>(type: "TEXT", nullable: false),
+                    Reason = table.Column<string>(type: "TEXT", nullable: false),
+                    EquityAtTime = table.Column<decimal>(type: "TEXT", nullable: false),
+                    DailyDdUsedFraction = table.Column<double>(type: "REAL", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProtectionLedgerEntries", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ProtectionLedgerEntries_DailyProtectionLedgers_LedgerId",
+                        column: x => x.LedgerId,
+                        principalTable: "DailyProtectionLedgers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ExperimentRuns",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    ExperimentId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    BacktestRunId = table.Column<string>(type: "TEXT", nullable: false),
+                    VariantLabel = table.Column<string>(type: "TEXT", nullable: false),
+                    FoldIndex = table.Column<int>(type: "INTEGER", nullable: false),
+                    FoldRole = table.Column<string>(type: "TEXT", nullable: false),
+                    ScoreJson = table.Column<string>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ExperimentRuns", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ExperimentRuns_Experiments_ExperimentId",
+                        column: x => x.ExperimentId,
+                        principalTable: "Experiments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_BarEvaluations_RunId",
                 table: "BarEvaluations",
@@ -233,6 +324,16 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 name: "IX_Bars_Symbol_Timeframe_OpenTimeUtc",
                 table: "Bars",
                 columns: new[] { "Symbol", "Timeframe", "OpenTimeUtc" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DailyProtectionLedgers_Date",
+                table: "DailyProtectionLedgers",
+                column: "Date");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DailyProtectionLedgers_RunId",
+                table: "DailyProtectionLedgers",
+                column: "RunId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_EngineEvents_EventType",
@@ -250,6 +351,16 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 column: "TimestampUtc");
 
             migrationBuilder.CreateIndex(
+                name: "IX_ExperimentRuns_BacktestRunId",
+                table: "ExperimentRuns",
+                column: "BacktestRunId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ExperimentRuns_ExperimentId",
+                table: "ExperimentRuns",
+                column: "ExperimentId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Orders_State",
                 table: "Orders",
                 column: "State");
@@ -258,6 +369,16 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 name: "IX_PipelineEvents_RunId_Seq",
                 table: "PipelineEvents",
                 columns: new[] { "RunId", "Seq" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProtectionLedgerEntries_AtUtc",
+                table: "ProtectionLedgerEntries",
+                column: "AtUtc");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProtectionLedgerEntries_LedgerId",
+                table: "ProtectionLedgerEntries",
+                column: "LedgerId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_TradeResults_ClosedAtUtc",
@@ -289,6 +410,9 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 name: "EquitySnapshots");
 
             migrationBuilder.DropTable(
+                name: "ExperimentRuns");
+
+            migrationBuilder.DropTable(
                 name: "Orders");
 
             migrationBuilder.DropTable(
@@ -298,7 +422,16 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 name: "Positions");
 
             migrationBuilder.DropTable(
+                name: "ProtectionLedgerEntries");
+
+            migrationBuilder.DropTable(
                 name: "TradeResults");
+
+            migrationBuilder.DropTable(
+                name: "Experiments");
+
+            migrationBuilder.DropTable(
+                name: "DailyProtectionLedgers");
         }
     }
 }
