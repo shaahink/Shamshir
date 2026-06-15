@@ -70,6 +70,20 @@ submitted — green in ~1s, no IHost. **This is the template the FTMO suite reus
 
 **Gate:** ✅ the direct `TradingLoop` unit test is green and runs in <1s.
 
+### 0d. De-god the worker (DONE)
+`EngineWorker` was a 300-line `BackgroundService` holding ~28 injected fields (five dead:
+`_riskProfileResolver`, `_crossRateProvider`, `_persistence`, `_governor`, `_loggerFactory`).
+Split into `EngineRunner` (plain class, all run logic, `RunAsync(ct)`, 17 fields, no hosting
+dependency) and a ~16-line `EngineWorker : BackgroundService` that just delegates. Dead fields
+and the unused `ILoggerFactory` ctor dependency removed (3 construction sites updated).
+Behaviour-preserving (Unit 163, Golden+Loop 8 green).
+
+**AGENT TODO (correctness — HIGH priority):** fix the live-path execution-drain race documented
+in `SYSTEM-MODEL.md §3.4` — two concurrent tasks mutate `PositionTracker`. Route live execution
+handling through a single serialized consumer (keep `TradingLoop`'s drain for backtest only),
+and add a live-path concurrency test. This is real corruption risk, only masked because backtest
+is single-threaded.
+
 ---
 
 ## Phase 1 — One trading loop (the core fix)

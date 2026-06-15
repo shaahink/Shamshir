@@ -125,7 +125,25 @@ instrument is non-functional.
 - **SL/TP exit** detection exists imperatively in `BacktestDriver:198-219`, as the dead
   `EngineReducer.DetectSlTpExit`, and as `PositionTracker.DetermineExitReason`.
 
-### 3.4 Known smaller defects found while modeling
+### 3.4 Live-path concurrency hazard (correctness — found iter-24)
+In live/paper mode the engine runs five tasks under `Task.WhenAll`. **Two of them mutate
+`PositionTracker` concurrently:**
+- `ProcessTicksAsync` drains `_executionEventChannel` → `PositionTracker.OnExecutionAsync`.
+- `ProcessBarsAsync` → `TradingLoop.ProcessBarAsync` → `MarketEventSource.DrainExecutionStreamAsync`,
+  which **also** drains `_executionEventChannel` (and `broker.ExecutionStream`) →
+  `PositionTracker.OnExecutionAsync`.
+
+`PositionTracker` holds non-thread-safe state (`EngineState.Positions` dictionary,
+`_processedExecutionIds` HashSet, `_pendingIntent`). Concurrent execution handling can corrupt
+it. The channel is even declared `SingleReader = true` while having two readers — a contract
+violation. (Backtest is single-threaded, so it's unaffected — which is why tests stay green.)
+
+**Recommended fix (agent):** one serialized execution consumer. Keep `TradingLoop`'s drain for
+the *backtest* path only; in live mode, drain executions in a single dedicated task (the existing
+`ProcessExecutionEventsAsync` consumer) and remove the inline drain from `ProcessTicksAsync`, so
+`PositionTracker` is only ever touched from one thread. Add a live-path concurrency test.
+
+### 3.5 Known smaller defects found while modeling
 - `OrderDispatcher.DispatchAsync` is called with `openPositions: []` from **both**
   loops (`EngineWorker.cs:313`, `BacktestDriver.cs:178`) → the worst-case portfolio DD
   projection is blind to actually-open positions.

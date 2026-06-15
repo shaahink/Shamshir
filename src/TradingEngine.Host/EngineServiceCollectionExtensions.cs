@@ -245,8 +245,7 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton<EngineWorker>(sp => new EngineWorker(
             sp.GetRequiredService<EngineWorkerDependencies>(),
             sp.GetRequiredService<EngineRunContext>(),
-            sp.GetRequiredService<ILogger<EngineWorker>>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILogger<EngineWorker>>()));
         services.AddHostedService<EngineWorker>(sp => sp.GetRequiredService<EngineWorker>());
 
         return services;
@@ -387,8 +386,7 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton<EngineWorker>(sp => new EngineWorker(
             sp.GetRequiredService<EngineWorkerDependencies>(),
             sp.GetRequiredService<EngineRunContext>(),
-            sp.GetRequiredService<ILogger<EngineWorker>>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILogger<EngineWorker>>()));
         services.AddHostedService<EngineWorker>(sp => sp.GetRequiredService<EngineWorker>());
         return services;
     }
