@@ -4,48 +4,55 @@ public sealed class BarBuilder
 {
     private readonly List<Bar> _bars = [];
     private readonly Symbol _symbol;
-    private readonly TimeSpan _interval;
+    private readonly Timeframe _timeframe;
+    private readonly decimal _pipSize;
     private DateTime _nextTime;
     private decimal _lastClose;
     private readonly Random _random = new(42);
 
-    public BarBuilder(Symbol symbol, TimeSpan interval, DateTime start, decimal initialClose)
+    public BarBuilder(Symbol symbol, Timeframe timeframe, DateTime start, decimal initialClose, decimal pipSize = 0.0001m)
     {
         _symbol = symbol;
-        _interval = interval;
+        _timeframe = timeframe;
         _nextTime = start;
         _lastClose = initialClose;
+        _pipSize = pipSize;
     }
+
+    private decimal PipsToPrice(int pips) => pips * _pipSize;
 
     public BarBuilder Trend(string direction, int pipCount, int barCount)
     {
-        var pipsPerBar = (decimal)pipCount / barCount;
+        var deltaPerBar = PipsToPrice(pipCount) / barCount;
+        var wiggle = PipsToPrice(3);
         for (var i = 0; i < barCount; i++)
         {
-            var delta = direction == "up" ? pipsPerBar : -pipsPerBar;
+            var delta = direction == "up" ? deltaPerBar : -deltaPerBar;
             var open = _lastClose;
             _lastClose += delta;
-            var high = Math.Max(open, _lastClose) + pipsPerBar * 0.3m;
-            var low = Math.Min(open, _lastClose) - pipsPerBar * 0.3m;
-            _bars.Add(new Bar(_symbol, Timeframe.H1, _nextTime, high, high, low, _lastClose, 1000));
-            _nextTime += _interval;
+            var high = Math.Max(open, _lastClose) + wiggle;
+            var low = Math.Min(open, _lastClose) - wiggle;
+            _bars.Add(new Bar(_symbol, _timeframe, _nextTime, open, high, low, _lastClose, 1000));
+            _nextTime += TimeSpan.FromHours(1);
         }
         return this;
     }
 
-    public BarBuilder Range(decimal center, int widthPips, int barCount)
+    public BarBuilder Range(decimal centerPrice, int widthPips, int barCount)
     {
-        var halfRange = (decimal)widthPips / 2;
-        var low = center - halfRange;
-        var high = center + halfRange;
+        var halfRange = PipsToPrice(widthPips) / 2m;
+        var low = centerPrice - halfRange;
+        var high = centerPrice + halfRange;
+        var wiggle = PipsToPrice(1);
 
         for (var i = 0; i < barCount; i++)
         {
             var close = low + (decimal)_random.NextDouble() * (high - low);
-            var barHigh = close + 0.0003m * (decimal)_random.NextDouble();
-            var barLow = close - 0.0003m * (decimal)_random.NextDouble();
-            _bars.Add(new Bar(_symbol, Timeframe.H1, _nextTime, barHigh, barHigh, barLow, close, 1000));
-            _nextTime += _interval;
+            var open = close + (decimal)(_random.NextDouble() - 0.5) * wiggle * 2m;
+            var barHigh = Math.Max(open, close) + wiggle;
+            var barLow = Math.Min(open, close) - wiggle;
+            _bars.Add(new Bar(_symbol, _timeframe, _nextTime, open, barHigh, barLow, close, 1000));
+            _nextTime += TimeSpan.FromHours(1);
         }
         _lastClose = _bars[^1].Close;
         return this;
@@ -53,31 +60,32 @@ public sealed class BarBuilder
 
     public BarBuilder Spike(int magnitudePips, int barCount)
     {
-        var deltaPerBar = (decimal)magnitudePips / barCount;
+        var deltaPerBar = PipsToPrice(magnitudePips) / barCount;
         for (var i = 0; i < barCount; i++)
         {
             var open = _lastClose;
             _lastClose += deltaPerBar;
-            var wickExtent = Math.Abs(deltaPerBar) * 2;
-            var high = Math.Max(open, _lastClose) + wickExtent;
-            var low = Math.Min(open, _lastClose) - wickExtent;
-            _bars.Add(new Bar(_symbol, Timeframe.H1, _nextTime, high, high, low, _lastClose, 1000));
-            _nextTime += _interval;
+            var wick = Math.Abs(deltaPerBar) * 3m;
+            var high = Math.Max(open, _lastClose) + wick;
+            var low = Math.Min(open, _lastClose) - wick;
+            _bars.Add(new Bar(_symbol, _timeframe, _nextTime, open, high, low, _lastClose, 1000));
+            _nextTime += TimeSpan.FromHours(1);
         }
         return this;
     }
 
     public BarBuilder Gap(int pips, int barCount)
     {
-        _lastClose += (decimal)pips;
+        _lastClose += PipsToPrice(pips);
+        var wiggle = PipsToPrice(2);
         for (var i = 0; i < barCount; i++)
         {
             var open = _lastClose;
-            _lastClose += 0.0001m * (decimal)(_random.NextDouble() - 0.5);
-            var high = open + 0.0005m;
-            var low = open - 0.0003m;
-            _bars.Add(new Bar(_symbol, Timeframe.H1, _nextTime, high, high, low, _lastClose, 1000));
-            _nextTime += _interval;
+            _lastClose += PipsToPrice(1) * (decimal)(_random.NextDouble() - 0.5);
+            var high = Math.Max(open, _lastClose) + wiggle;
+            var low = Math.Min(open, _lastClose) - wiggle;
+            _bars.Add(new Bar(_symbol, _timeframe, _nextTime, open, high, low, _lastClose, 1000));
+            _nextTime += TimeSpan.FromHours(1);
         }
         return this;
     }
@@ -87,14 +95,15 @@ public sealed class BarBuilder
 
 public static class Bars
 {
-    public static BarBuilder Trend(Symbol symbol, TimeSpan interval, DateTime start, decimal startPrice, int pips, int barCount)
-    {
-        var direction = pips >= 0 ? "up" : "down";
-        return new BarBuilder(symbol, interval, start, startPrice).Trend(direction, Math.Abs(pips), barCount);
-    }
+    public static BarBuilder Trend(Symbol symbol, Timeframe timeframe, DateTime start, decimal startPrice, int pips, int barCount)
+        => new BarBuilder(symbol, timeframe, start, startPrice).Trend(pips >= 0 ? "up" : "down", Math.Abs(pips), barCount);
 
-    public static BarBuilder Range(Symbol symbol, TimeSpan interval, DateTime start, decimal startPrice, decimal center, int widthPips, int barCount)
+    public static IReadOnlyList<Bar> TrendUpThenDown(Symbol symbol, Timeframe timeframe, DateTime start, decimal startPrice,
+        int upPips, int upBars, int downPips, int downBars)
     {
-        return new BarBuilder(symbol, interval, start, startPrice).Range(center, widthPips, barCount);
+        return new BarBuilder(symbol, timeframe, start, startPrice)
+            .Trend("up", upPips, upBars)
+            .Trend("down", downPips, downBars)
+            .Build();
     }
 }
