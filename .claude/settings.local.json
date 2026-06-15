@@ -45,7 +45,11 @@
       "PowerShell($c = Get-Process ctrader-cli -ErrorAction SilentlyContinue; if \\($c\\) { \"ctrader-cli STILL running: $\\($c.Id\\)\" } else { \"no ctrader-cli running — clean\" })",
       "Bash(xargs cat)",
       "PowerShell(dotnet test *)",
-      "PowerShell(dotnet build *)"
+      "PowerShell(dotnet build *)",
+      "Bash(sed 's/[0-9]/#/g')",
+      "Bash(env)",
+      "Bash(ls -la \"C:/Users/shahi/Documents/ctrader.pwd\")",
+      "Bash(sed -n '1,80p' src/TradingEngine.CTraderRunner/CTraderCliLocator.cs)"
     ]
   }
 }

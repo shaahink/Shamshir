@@ -1,0 +1,18 @@
+fix(iter24-p9): register IReadOnlyList<IStrategy> so EngineHostFactory.Create starts
+
+EffectExecutor takes IReadOnlyList<IStrategy>, but both DI composition paths
+(AddStrategiesFromOptions used by EngineHostFactory.Create, and AddStrategies
+used by the standalone Host) registered strategies only as IEnumerable<IStrategy>.
+GetRequiredService<EffectExecutor>() therefore threw at startup (cannot resolve
+IReadOnlyList<IStrategy>), failing the engine before it ever connected. This broke
+the dashboard backtest path AND every cTrader pipeline test (the "pre-existing"
+sim failures).
+
+Now materialize the active strategies once as IReadOnlyList<IStrategy> and resolve
+IEnumerable<IStrategy> from the same singleton (one strategy set, both shapes).
+
+Verified by a real run: InProcessCtraderTest (engine <-> NetMQ <-> real cBot in
+cTrader's backtester, live EURUSD data) now starts and produces 7 trades over 432
+bar evaluations. Was failing at engine startup before this fix.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

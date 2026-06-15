@@ -151,7 +151,9 @@ public static class EngineServiceCollectionExtensions
 
         var registry = new StrategyRegistry();
         services.AddSingleton(registry);
-        services.AddSingleton<IEnumerable<IStrategy>>(sp =>
+        // Expose under both IReadOnlyList<IStrategy> (EffectExecutor) and IEnumerable<IStrategy>
+        // (EngineWorkerDependencies) — see AddStrategiesFromOptions for the same fix.
+        services.AddSingleton<IReadOnlyList<IStrategy>>(sp =>
         {
             var reg = sp.GetRequiredService<StrategyRegistry>();
             var loaded = sp.GetRequiredService<LoadedConfig>();
@@ -159,8 +161,9 @@ public static class EngineServiceCollectionExtensions
             var activeIds = config.GetValue<string>("Engine:ActiveStrategyIds")
                 ?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
                 ?? loaded.StrategyConfigs.Select(c => c.Id).ToArray();
-            return reg.CreateStrategies(activeIds, loaded, sp);
+            return reg.CreateStrategies(activeIds, loaded, sp).ToList();
         });
+        services.AddSingleton<IEnumerable<IStrategy>>(sp => sp.GetRequiredService<IReadOnlyList<IStrategy>>());
 
         return services;
     }
@@ -311,13 +314,18 @@ public static class EngineServiceCollectionExtensions
 
         var registry = new StrategyRegistry();
         services.AddSingleton(registry);
-        services.AddSingleton<IEnumerable<IStrategy>>(sp =>
+        // Materialize the active strategies once and expose them under BOTH IReadOnlyList<IStrategy>
+        // (EffectExecutor) and IEnumerable<IStrategy> (EngineWorkerDependencies). Registering only
+        // IEnumerable left EffectExecutor unresolvable, which failed EngineHostFactory.Create at
+        // startup (dashboard backtests + cTrader pipeline tests).
+        services.AddSingleton<IReadOnlyList<IStrategy>>(sp =>
         {
             var reg = sp.GetRequiredService<StrategyRegistry>();
             var loaded = sp.GetRequiredService<LoadedConfig>();
             var activeIds = loaded.StrategyConfigs.Select(c => c.Id).ToArray();
-            return reg.CreateStrategies(activeIds, loaded, sp);
+            return reg.CreateStrategies(activeIds, loaded, sp).ToList();
         });
+        services.AddSingleton<IEnumerable<IStrategy>>(sp => sp.GetRequiredService<IReadOnlyList<IStrategy>>());
         return services;
     }
 
