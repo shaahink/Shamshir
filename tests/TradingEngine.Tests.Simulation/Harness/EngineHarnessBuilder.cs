@@ -14,17 +14,20 @@ namespace TradingEngine.Tests.Simulation.Harness;
 ///      <c>Task.Delay(5_000)</c> and full host shutdown, giving a ~60s floor that tips any
 ///      real-work test over its xUnit timeout.
 ///
-/// This builder fixes both: it wires the REAL <see cref="RiskManager"/> (+ active prop-firm
-/// rule set) and a deterministic in-memory broker, and it stops on QUIESCENCE — when the engine
-/// has consumed every fed bar and processing has settled — never on a wall-clock delay.
+/// DECISION (Q1, iter-24): take the **direct-TradingLoop** path, NOT IHost. Build the collaborators
+/// in-process — REAL <see cref="RiskManager"/> (+ active prop-firm rule set via WireRiskRules), real
+/// OrderDispatcher / PositionTracker / IndicatorSnapshotService (reuse the TradingLoopDirectTests
+/// wiring) + a minimal in-memory fake venue — and drive bars SYNCHRONOUSLY: per bar, push an
+/// AccountUpdate through AccountProcessor, call <c>TradingLoop.ProcessBarAsync(bar)</c>, drain the
+/// fake venue's fills into PositionTracker, run SL/TP exits. No ServiceCollection, no IHost, no async
+/// stream pumps — so it's ~1s and deterministic, and <see cref="EngineHarness.WaitForQuiescenceAsync"/>
+/// is unnecessary (you know when the bar loop ends). Persist to a temp SQLite via the real handlers if
+/// the test asserts on the DB, else read <c>RiskManager.Drawdown</c> / the journal directly.
 ///
-/// AGENT TODO (Phase 0, see iter-24 PLAN.md):
-///   - Implement <see cref="BuildAsync"/>: compose via the AddRisk / AddPersistence / AddStrategies
-///     / AddEventInfrastructure / AddEngineWorker extensions, swap in a deterministic fake broker
-///     (a real in-memory <c>IBarRepository</c> feeding <c>BacktestReplayAdapter</c> is fine), call
-///     WireRiskRules so the rule set is active, and subscribe the persistence handlers.
-///   - Have the fake broker expose a count of bars fed so <see cref="EngineHarness"/> can wait on
-///     quiescence via <see cref="EngineHarness.WaitForQuiescenceAsync"/> instead of a fixed delay.
+/// AGENT TODO (Phase 0a, see iter-24 PLAN.md + the Decisions section):
+///   - Implement <see cref="BuildAsync"/> per the above; add a tiny in-memory <c>IBarRepository</c> (D1)
+///     and a minimal <c>FakeVenue : IBrokerAdapter</c> (D2: SubmitOrder→enqueue fill, ClosePosition→
+///     enqueue close; harness drains after each bar). Do NOT reuse BacktestReplayAdapter's async feed.
 ///   - Then move <c>BacktestActuallyTradesTests</c> here, un-skip it, and add the FTMO constraint
 ///     suite (daily-DD halt, max-DD halt, flatten-on-breach, lot-size == risk%).
 /// </summary>
@@ -46,18 +49,15 @@ public sealed class EngineHarnessBuilder
 
     public Task<EngineHarness> BuildAsync()
     {
-        // AGENT TODO: real composition. The shape:
-        //   var services = new ServiceCollection();
-        //   services.AddSingleton(new EngineRunContext(_runId));
-        //   services.AddRisk(solutionRoot);              // real RiskManager + governor + sizing
-        //   services.AddPersistence(tmpDbPath);
-        //   services.AddEventInfrastructure(EngineMode.Backtest);
-        //   // override broker with a deterministic in-memory replay adapter fed from _bars
-        //   // register _strategies (or a StrategyBank that returns them for any regime)
-        //   services.AddEngineWorker(EngineMode.Backtest);
-        //   var provider = services.BuildServiceProvider();
-        //   provider.GetRequiredService<RiskManager>() ... WireRiskRules(_ruleSetId, _initialBalance);
-        //   return new EngineHarness(provider, fakeBroker);
+        // AGENT TODO (Q1: DIRECT drive, not IHost). Shape:
+        //   var risk = new RiskManager(...); risk.SetActiveRuleSet(ruleSet); risk.SetSizePipeline(...);
+        //   var fakeVenue = new FakeVenue(_symbol);            // minimal IBrokerAdapter (D2)
+        //   var dispatcher = new OrderDispatcher(risk, ...); var tracker = new PositionTracker(... risk ...);
+        //   var loop = new TradingLoop(fakeVenue, indicators, dispatcher, tracker, bank, regime, gate, ...);
+        //   var acct = new AccountProcessor(risk, tracker, ...);
+        //   foreach (bar in _bars) { acct.HandleAsync(SynthAcctUpdate(balance)); await loop.ProcessBarAsync(bar);
+        //                            DrainFills(fakeVenue, tracker); SimulateExits(bar, fakeVenue, tracker); }
+        //   return new EngineHarness(risk, tracker, dbOrNull);   // assert on risk.Drawdown / tracker / db
         _ = (_symbol, _initialBalance, _ruleSetId, _bars, _strategies);
         throw new NotImplementedException(
             "EngineHarnessBuilder.BuildAsync is the iter-24 Phase 0 deliverable — see class remarks and PLAN.md.");

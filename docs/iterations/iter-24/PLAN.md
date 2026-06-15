@@ -15,6 +15,55 @@ vuln-as-error (`NU1903 MessagePack`). Build/test the test projects directly, e.g
 
 ---
 
+## Decisions (resolving agent blockers — authoritative)
+
+**Q1 — Harness path: DIRECT TradingLoop, not IHost.** The skeleton's old IHost/ServiceCollection
+TODO was stale (now fixed in `EngineHarnessBuilder`). Build collaborators in-process (real
+`RiskManager` + `WireRiskRules`, real `OrderDispatcher`/`PositionTracker`/`IndicatorSnapshotService`,
+minimal fake venue) and drive `TradingLoop.ProcessBarAsync` synchronously per bar (account-pump →
+process → drain fills → SL/TP exits). ~1s, deterministic, reuses `TradingLoopDirectTests` wiring.
+`WaitForQuiescenceAsync` is then unneeded for the direct path (keep it only if a future async-feed
+harness wants it). Rationale: this is the whole point of the Phase 0c seam — don't re-import the
+IHost 60s floor we just escaped.
+
+**Q2 — Kernel: do NOT delete; quarantine + single owner.** Deleting the unwired reducer branches is
+irreversible and closes the door on the intentional iter-20 decision-kernel. Instead: (a) keep
+`RiskManager` as the documented single runtime owner of drawdown/governor (already the case); (b) keep
+the pure reducers/types (`DrawdownReducer`, `GovernorMachine`, `PositionLifecycle`, `EngineState`) —
+they're reusable and partly used; (c) add an **architecture test** asserting which `EngineEvent` types
+are actually reduced today, and mark the unwired branches (`HandleEquityObserved`/`HandleTickReceived`/
+`HandleDayRolled`/`HandleWeekRolled` + the governor/SL-TP parts of `HandleBarClosed`,
+`EngineState.Drawdown`/`Governor`) with an `// UNWIRED — RiskManager is authoritative; see §3.2` banner.
+This kills the double-systeming *risk* (only one path is live, and the test prevents accidental
+double-wiring) without the irreversible delete. Full "kernelization" stays a separate, explicit future
+decision. *(If the user later wants to commit to deleting, that's a one-line follow-up.)*
+
+**Q3 — ConstraintSet: resolved record (option C via A).** Keep `RiskProfile` and `PropFirmRuleSet` as
+deserialization types (they map to different config files and a profile is reused across firms — reject
+option B's embedding). Introduce a resolved `ConstraintSet` record, projected from both **at startup in
+`WireRiskRules`**, with DD limits normalized to `decimal`. `RiskManager` consumes only `ConstraintSet`
+for the gate, the worst-case projection, and the watchdog — one number per limit, no `(decimal)double`
+casts. Config types never reach the engine logic.
+
+**Q4 — Orphan test: collection fixture + helper, not a standalone test.** Add a `CtraderProcessGuard`
+static (`KillStrays()` via `Get-Process ctrader-cli`), and an xUnit collection fixture
+(`[CollectionDefinition("ctrader")]` + `ICollectionFixture<CtraderTestFixture>`) that ALL cTrader-
+launching classes join: ctor kills pre-existing strays (setup), `DisposeAsync` asserts zero remain
+(teardown). `ChildProcessReaper` is the primary defense; the fixture is the assertion. A standalone
+"no orphans" `[Fact]` is too ordering-fragile.
+
+**Design notes:** D1 in-memory `IBarRepository` — yes, tiny, in the harness. D2 fake venue — minimal
+`FakeVenue : IBrokerAdapter` (SubmitOrder→enqueue fill, ClosePosition→enqueue close); do not reuse
+`BacktestReplayAdapter`'s async feed. D3 `Position→ProjectedPosition` — add a mapper (`SlPips =
+|entry−sl|/pipSize`, `PipValuePerLot` from registry); approved for Phase 4. D4 `IEnginePacer` — two
+impls (async-stream for Live/Paper, bar-stepped for Backtest); mode picks the pacer at composition,
+the run logic becomes one path — must keep the live `Task.WhenAll` path byte-for-byte. D5
+DataFeedService sniff — defer (low priority). D6 golden bars — assert on `RiskManager.Drawdown`
+**crossing** the threshold (read state after each bar), not a hard-coded bar index; provide a
+close-delta bar generator.
+
+---
+
 ## Phase 0 — Test infrastructure (do this FIRST; it unblocks proving everything else)
 
 The current tests can't actually validate money/risk behaviour, and they leak processes.
@@ -148,19 +197,20 @@ green; backtest run produces `Trades.Count > 0`.
 
 ## Phase 2 — One source of truth for drawdown & governor
 
-**Decision to make first (record it in the commit):** owner = `RiskManager`
-(pragmatic, already wired) **or** finish-wire the kernel. Recommended: **RiskManager owns
-runtime risk state; delete the dead kernel branches.**
+**DECIDED (Q2): quarantine, do NOT delete.** `RiskManager` is the single documented runtime owner
+of drawdown/governor (already true). Do **not** delete the unwired kernel branches — that's
+irreversible and forecloses the iter-20 decision-kernel direction.
 
-- Delete dead reducer code that nothing feeds: `HandleEquityObserved`,
-  `HandleTickReceived`, `HandleBarClosed`'s `GovernorMachine.ApplyBar` + `DetectSlTpExit`,
-  `HandleDayRolled`/`HandleWeekRolled`, and the unused `EngineState.Drawdown`/`Governor`
-  fields **OR** wire them and delete the imperative copies — not both.
-- Collapse the 4 drawdown representations: `EquitySnapshot` carries the numbers;
-  `ExtendedRiskState` is the only mirror; remove duplication.
+- Mark the unwired reducer code with an `// UNWIRED — RiskManager is authoritative (§3.2)` banner:
+  `HandleEquityObserved`, `HandleTickReceived`, `HandleBarClosed`'s `GovernorMachine.ApplyBar` +
+  `DetectSlTpExit`, `HandleDayRolled`/`HandleWeekRolled`, `EngineState.Drawdown`/`Governor`.
+- Add an **architecture test** that pins the set of `EngineEvent` types actually reduced today, so a
+  branch can't silently become double-wired (the real double-systeming hazard).
+- Collapse the runtime drawdown representations to one mirror: `EquitySnapshot` carries the numbers,
+  `ExtendedRiskState` mirrors; remove other duplication.
 
-**Gates:** no `EngineEvent` type is constructed-but-never-reduced (add an architecture
-test); single class owns `DrawdownState`.
+**Gates:** architecture test green (pins reduced-event set; asserts no double-wiring); a single class
+owns the live `DrawdownState`. Full kernelization remains a separate, explicit future decision.
 
 ---
 
