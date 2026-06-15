@@ -70,8 +70,6 @@ public sealed class TradingLoopDirectTests
         strategyBank.GetActive(Arg.Any<Symbol>(), Arg.Any<Timeframe>(), Arg.Any<MarketRegime>())
             .ReturnsForAnyArgs(strategies);
 
-        var execChannel = Channel.CreateUnbounded<ExecutionEvent>();
-        var marketEvents = new MarketEventSource(broker, execChannel, NullLogger.Instance);
         var indicatorSnapshot = new IndicatorSnapshotService(indicators, strategies);
         var positionTracker = new PositionTracker(
             symbolRegistry, crossRate, risk, positionManager, eventBus, clock,
@@ -83,8 +81,8 @@ public sealed class TradingLoopDirectTests
         var equity = new EquitySnapshot(T0, 10_000m, 0m, 10_000m, 10_000m, 10_000m, 0m, 0m, EngineMode.Backtest);
 
         var loop = new TradingLoop(
-            broker, indicatorSnapshot, marketEvents, dispatcher, positionTracker,
-            strategyBank, strategies, regimeDetector, signalGate: null, symbolRegistry,
+            broker, indicatorSnapshot, dispatcher, positionTracker,
+            strategyBank, regimeDetector, signalGate: null, symbolRegistry,
             eventBus, clock, runContext, () => equity, progress: null, journal: null,
             NullLogger.Instance);
 

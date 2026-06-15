@@ -9,16 +9,15 @@ namespace TradingEngine.Host;
 /// and assert on the resulting orders / drawdown / journal — see EngineHarnessBuilder.
 ///
 /// Flow: indicator recompute → bar snapshot → regime → active strategies → evaluate → signal gate →
-/// risk-validated dispatch → track order → drain executions.
+/// risk-validated dispatch → track order. Execution fills are handled outside the loop (live: a
+/// single serialized consumer; backtest: the caller drains synchronously after each bar).
 /// </summary>
 public sealed class TradingLoop(
     IBrokerAdapter broker,
     IndicatorSnapshotService indicatorSnapshot,
-    MarketEventSource marketEvents,
     OrderDispatcher orderDispatcher,
     PositionTracker positionTracker,
     IStrategyBank strategyBank,
-    IReadOnlyList<IStrategy> strategies,
     IRegimeDetector regimeDetector,
     ISignalGate? signalGate,
     ISymbolInfoRegistry symbolRegistry,
@@ -166,8 +165,8 @@ public sealed class TradingLoop(
         }
 
         journal?.Write("BAR_EVAL", bar.Symbol.Value, bar.OpenTimeUtc);
-
-        await marketEvents.DrainExecutionStreamAsync(positionTracker, strategies, progress, runContext.RunId, clock);
+        // No execution draining here: the live path uses a single serialized consumer
+        // (MarketEventSource.ConsumeExecutionsAsync); the backtest caller drains explicitly.
     }
 
     private decimal ResolveHalfSpread(Symbol symbol)

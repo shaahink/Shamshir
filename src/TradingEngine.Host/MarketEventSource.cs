@@ -57,37 +57,54 @@ public sealed class MarketEventSource
         }
     }
 
+    /// <summary>
+    /// One-shot drain used by the <b>backtest</b> path: synchronously applies every pending
+    /// execution (from the internal channel and the broker stream) to the position tracker.
+    /// </summary>
     public async Task DrainExecutionStreamAsync(
         PositionTracker positionTracker, IReadOnlyList<IStrategy> strategies,
         IProgress<BacktestProgressEvent>? progress, string runId, IEngineClock clock)
     {
         while (_executionChannel.Reader.TryRead(out var execEvent))
-        {
-            await positionTracker.OnExecutionAsync(execEvent, strategies);
-            var state = execEvent.NewState;
-            _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
-                execEvent.OrderId, state,
-                execEvent.FillPrice?.Value.ToString("F5") ?? "none",
-                execEvent.FilledLots);
-
-            progress?.Report(new BacktestProgressEvent(
-                runId, state == OrderState.Rejected ? "REJECTED" : "EXEC",
-                $"EXEC {execEvent.OrderId} [{state}] fill={execEvent.FillPrice?.Value.ToString("F5") ?? "none"} lots={execEvent.FilledLots}{(state == OrderState.Rejected ? " reason=" + (execEvent.RejectionReason ?? "?") : "")}",
-                clock.UtcNow));
-        }
+            await ApplyExecAsync(execEvent, positionTracker, strategies, progress, runId, clock);
         while (_broker.ExecutionStream.TryRead(out var execEvent))
-        {
-            await positionTracker.OnExecutionAsync(execEvent, strategies);
-            var state = execEvent.NewState;
-            _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
-                execEvent.OrderId, state,
-                execEvent.FillPrice?.Value.ToString("F5") ?? "none",
-                execEvent.FilledLots);
+            await ApplyExecAsync(execEvent, positionTracker, strategies, progress, runId, clock);
+    }
 
-            progress?.Report(new BacktestProgressEvent(
-                runId, state == OrderState.Rejected ? "REJECTED" : "EXEC",
-                $"EXEC {execEvent.OrderId} [{state}] fill={execEvent.FillPrice?.Value.ToString("F5") ?? "none"} lots={execEvent.FilledLots}{(state == OrderState.Rejected ? " reason=" + (execEvent.RejectionReason ?? "?") : "")}",
-                clock.UtcNow));
+    /// <summary>
+    /// The single serialized execution consumer for the <b>live</b> path: the ONLY place
+    /// <see cref="PositionTracker"/> is mutated by executions while running, so its non-thread-safe
+    /// state is never touched concurrently. Pairs with <see cref="ProcessExecutionEventsAsync"/>
+    /// (the single writer of <c>_executionChannel</c>). Keeps the tick loop off the position state.
+    /// </summary>
+    public async Task ConsumeExecutionsAsync(
+        CancellationToken ct, PositionTracker positionTracker, IReadOnlyList<IStrategy> strategies,
+        IProgress<BacktestProgressEvent>? progress, string runId, IEngineClock clock)
+    {
+        try
+        {
+            _logger.LogDebug("Execution consumer started");
+            await foreach (var execEvent in _executionChannel.Reader.ReadAllAsync(ct))
+                await ApplyExecAsync(execEvent, positionTracker, strategies, progress, runId, clock);
         }
+        catch (OperationCanceledException) { }
+        _logger.LogDebug("Execution consumer stopped");
+    }
+
+    private async Task ApplyExecAsync(
+        ExecutionEvent execEvent, PositionTracker positionTracker, IReadOnlyList<IStrategy> strategies,
+        IProgress<BacktestProgressEvent>? progress, string runId, IEngineClock clock)
+    {
+        await positionTracker.OnExecutionAsync(execEvent, strategies);
+        var state = execEvent.NewState;
+        _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
+            execEvent.OrderId, state,
+            execEvent.FillPrice?.Value.ToString("F5") ?? "none",
+            execEvent.FilledLots);
+
+        progress?.Report(new BacktestProgressEvent(
+            runId, state == OrderState.Rejected ? "REJECTED" : "EXEC",
+            $"EXEC {execEvent.OrderId} [{state}] fill={execEvent.FillPrice?.Value.ToString("F5") ?? "none"} lots={execEvent.FilledLots}{(state == OrderState.Rejected ? " reason=" + (execEvent.RejectionReason ?? "?") : "")}",
+            clock.UtcNow));
     }
 }

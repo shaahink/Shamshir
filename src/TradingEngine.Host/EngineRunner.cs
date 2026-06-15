@@ -67,8 +67,8 @@ public sealed class EngineRunner
             _clock, _engineMode, _crossRateStore, deps.Persistence.EquitySink,
             e => Volatile.Write(ref _currentEquity, e), logger);
         _tradingLoop = new TradingLoop(
-            _broker, _indicatorSnapshot, _marketEvents, deps.Strategies.OrderDispatcher, _positionTracker,
-            deps.Strategies.StrategyBank, _strategies, deps.Strategies.RegimeDetector, _signalGate,
+            _broker, _indicatorSnapshot, deps.Strategies.OrderDispatcher, _positionTracker,
+            deps.Strategies.StrategyBank, deps.Strategies.RegimeDetector, _signalGate,
             deps.Market.SymbolRegistry, deps.Persistence.EventBus, _clock, runContext,
             () => Volatile.Read(ref _currentEquity), _progress, deps.Persistence.Journal, logger);
     }
@@ -126,6 +126,7 @@ public sealed class EngineRunner
                 ProcessBarsAsync(ct),
                 _marketEvents.ProcessAccountUpdatesAsync(ct),
                 _marketEvents.ProcessExecutionEventsAsync(ct),
+                _marketEvents.ConsumeExecutionsAsync(ct, _positionTracker, _strategies, _progress, _runContext.RunId, _clock),
                 _marketEvents.ProcessAccountQueueAsync(ct, _accountProcessor.HandleAsync));
         }
 
@@ -138,24 +139,11 @@ public sealed class EngineRunner
         try
         {
             _logger.LogDebug("Tick processor started");
+            // Lean hot path: translate ticks only. Execution fills are handled by the dedicated
+            // ConsumeExecutionsAsync consumer — the tick loop never touches PositionTracker.
             await foreach (var tick in _broker.TickStream.ReadAllAsync(ct))
             {
                 Interlocked.Increment(ref _tickCount);
-
-                while (_executionEventChannel.Reader.TryRead(out var execEvent))
-                {
-                    await _positionTracker.OnExecutionAsync(execEvent, _strategies);
-                    var state = execEvent.NewState;
-                    _logger.LogInformation("EXEC|{OrderId}|{State}|fill={Fill}|lots={Lots}",
-                        execEvent.OrderId, state,
-                        execEvent.FillPrice?.Value.ToString("F5") ?? "none",
-                        execEvent.FilledLots);
-
-                    _progress?.Report(new BacktestProgressEvent(
-                        _runContext.RunId, state == OrderState.Rejected ? "REJECTED" : "EXEC",
-                        $"EXEC {execEvent.OrderId} [{state}] fill={execEvent.FillPrice?.Value.ToString("F5") ?? "none"} lots={execEvent.FilledLots}{(state == OrderState.Rejected ? " reason=" + (execEvent.RejectionReason ?? "?") : "")}",
-                        _clock.UtcNow));
-                }
 
                 if (_dataFeed is not null && _broker is SimulatedBrokerAdapter sim)
                 {
@@ -170,11 +158,6 @@ public sealed class EngineRunner
             }
         }
         catch (OperationCanceledException) { }
-        finally
-        {
-            while (_executionEventChannel.Reader.TryRead(out var execEvent))
-                await _positionTracker.OnExecutionAsync(execEvent, _strategies);
-        }
         _logger.LogDebug("Tick processor stopped");
     }
 
@@ -223,6 +206,10 @@ public sealed class EngineRunner
                         await _accountProcessor.HandleAsync(acctUpdate);
 
                     await _tradingLoop.ProcessBarAsync(bar, ct);
+
+                    // Entry fills: the loop no longer drains internally, so drain this bar's
+                    // dispatched executions before evaluating SL/TP exits.
+                    await _marketEvents.DrainExecutionStreamAsync(_positionTracker, _strategies, _progress, _runContext.RunId, _clock);
 
                     // Venue concern: a live broker fills SL/TP server-side; in backtest we
                     // simulate it against the bar range, then drain the resulting fills.

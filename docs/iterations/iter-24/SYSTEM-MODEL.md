@@ -125,9 +125,8 @@ instrument is non-functional.
 - **SL/TP exit** detection exists imperatively in `BacktestDriver:198-219`, as the dead
   `EngineReducer.DetectSlTpExit`, and as `PositionTracker.DetermineExitReason`.
 
-### 3.4 Live-path concurrency hazard (correctness — found iter-24)
-In live/paper mode the engine runs five tasks under `Task.WhenAll`. **Two of them mutate
-`PositionTracker` concurrently:**
+### 3.4 Live-path concurrency hazard (FIXED — iter-24)
+**Was** — in live/paper mode several `Task.WhenAll` tasks mutated `PositionTracker` concurrently:
 - `ProcessTicksAsync` drains `_executionEventChannel` → `PositionTracker.OnExecutionAsync`.
 - `ProcessBarsAsync` → `TradingLoop.ProcessBarAsync` → `MarketEventSource.DrainExecutionStreamAsync`,
   which **also** drains `_executionEventChannel` (and `broker.ExecutionStream`) →
@@ -138,10 +137,16 @@ In live/paper mode the engine runs five tasks under `Task.WhenAll`. **Two of the
 it. The channel is even declared `SingleReader = true` while having two readers — a contract
 violation. (Backtest is single-threaded, so it's unaffected — which is why tests stay green.)
 
-**Recommended fix (agent):** one serialized execution consumer. Keep `TradingLoop`'s drain for
-the *backtest* path only; in live mode, drain executions in a single dedicated task (the existing
-`ProcessExecutionEventsAsync` consumer) and remove the inline drain from `ProcessTicksAsync`, so
-`PositionTracker` is only ever touched from one thread. Add a live-path concurrency test.
+**Fixed by:** (1) **lean tick hot path** — `ProcessTicksAsync` now only translates ticks and never
+touches `PositionTracker`; (2) **single execution consumer** — `MarketEventSource.ConsumeExecutionsAsync`
+is the one reader of `_executionChannel` in live (pairs with the single-writer `ProcessExecutionEventsAsync`),
+and `TradingLoop` no longer drains executions at all (backtest caller drains synchronously;
+`marketEvents`/`strategies` dropped from its ctor); (3) **serialized tracker** — `PositionTracker`
+guards its three mutators (`TrackOrder`, `OnExecutionAsync`, `RequestForceCloseAllAsync`) with a
+`SemaphoreSlim(1,1)`, uncontended in single-threaded backtest; `EffectExecutor` does not re-enter it.
+
+**Residual (agent):** add a live-path concurrency stress test (many fills + force-close racing
+`TrackOrder`) to lock the invariant in.
 
 ### 3.5 Known smaller defects found while modeling
 - `OrderDispatcher.DispatchAsync` is called with `openPositions: []` from **both**

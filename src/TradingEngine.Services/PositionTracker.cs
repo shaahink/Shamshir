@@ -18,6 +18,13 @@ public sealed class PositionTracker(
     private readonly HashSet<Guid> _processedExecutionIds = [];
     private readonly Dictionary<Guid, (OrderRequest Request, decimal RiskAmount, string RiskProfileId)> _pendingIntent = new();
 
+    // Serializes the three mutating entry points (TrackOrder, OnExecutionAsync,
+    // RequestForceCloseAllAsync) so this tracker's non-thread-safe state is only ever touched from
+    // one thread at a time. In live mode those run on different tasks (bar loop, execution consumer,
+    // account/breach task); in single-threaded backtest the lock is uncontended. EffectExecutor does
+    // not call back into this type, so there is no re-entrancy/deadlock.
+    private readonly SemaphoreSlim _mutex = new(1, 1);
+
     public IReadOnlyDictionary<Guid, Position> OpenPositions
     {
         get
@@ -39,34 +46,54 @@ public sealed class PositionTracker(
 
     public void TrackOrder(Guid orderId, OrderRequest request, decimal riskAmount, string? riskProfileId = null)
     {
-        _pendingIntent[orderId] = (request, riskAmount, riskProfileId ?? "standard");
+        _mutex.Wait();
+        try
+        {
+            _pendingIntent[orderId] = (request, riskAmount, riskProfileId ?? "standard");
 
-        var posState = PositionLifecycle.CreateIntended(
-            orderId, request.Intent.Symbol, request.Intent.Direction,
-            request.Lots, request.Intent.LimitPrice, request.Intent.StopLoss,
-            request.Intent.TakeProfit, request.Intent.StrategyId);
+            var posState = PositionLifecycle.CreateIntended(
+                orderId, request.Intent.Symbol, request.Intent.Direction,
+                request.Lots, request.Intent.LimitPrice, request.Intent.StopLoss,
+                request.Intent.TakeProfit, request.Intent.StrategyId);
 
-        var submitted = new OrderSubmitted(orderId, request.Intent.Symbol, request.Intent.Direction,
-            request.Lots, request.Intent.LimitPrice, request.Intent.StrategyId, clock.UtcNow);
+            var submitted = new OrderSubmitted(orderId, request.Intent.Symbol, request.Intent.Direction,
+                request.Lots, request.Intent.LimitPrice, request.Intent.StrategyId, clock.UtcNow);
 
-        var decision = EngineReducer.Apply(_state, submitted);
-        _state = decision.State;
+            var decision = EngineReducer.Apply(_state, submitted);
+            _state = decision.State;
+        }
+        finally { _mutex.Release(); }
     }
 
     public async Task RequestForceCloseAllAsync(string reason)
     {
-        var evt = new ForceCloseAllRequested(reason, clock.UtcNow);
-        var decision = EngineReducer.Apply(_state, evt);
-        _state = decision.State;
-
-        if (effectExecutor is not null)
+        await _mutex.WaitAsync();
+        try
         {
-            foreach (var effect in decision.Effects)
-                await effectExecutor.ExecuteAsync(effect, CancellationToken.None);
+            var evt = new ForceCloseAllRequested(reason, clock.UtcNow);
+            var decision = EngineReducer.Apply(_state, evt);
+            _state = decision.State;
+
+            if (effectExecutor is not null)
+            {
+                foreach (var effect in decision.Effects)
+                    await effectExecutor.ExecuteAsync(effect, CancellationToken.None);
+            }
         }
+        finally { _mutex.Release(); }
     }
 
     public async Task<IReadOnlyList<EngineEffect>?> OnExecutionAsync(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
+    {
+        await _mutex.WaitAsync();
+        try
+        {
+            return await OnExecutionCoreAsync(evt, strategies);
+        }
+        finally { _mutex.Release(); }
+    }
+
+    private async Task<IReadOnlyList<EngineEffect>?> OnExecutionCoreAsync(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
     {
         if (_processedExecutionIds.Contains(evt.OrderId) && !_state.Positions.Any(kv => kv.Value.OrderId == evt.OrderId))
         {

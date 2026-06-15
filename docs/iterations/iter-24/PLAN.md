@@ -78,11 +78,17 @@ dependency) and a ~16-line `EngineWorker : BackgroundService` that just delegate
 and the unused `ILoggerFactory` ctor dependency removed (3 construction sites updated).
 Behaviour-preserving (Unit 163, Golden+Loop 8 green).
 
-**AGENT TODO (correctness — HIGH priority):** fix the live-path execution-drain race documented
-in `SYSTEM-MODEL.md §3.4` — two concurrent tasks mutate `PositionTracker`. Route live execution
-handling through a single serialized consumer (keep `TradingLoop`'s drain for backtest only),
-and add a live-path concurrency test. This is real corruption risk, only masked because backtest
-is single-threaded.
+### 0e. Live-path concurrency + lean tick hot path (DONE)
+Fixed the `PositionTracker` race documented in `SYSTEM-MODEL.md §3.4`:
+- `ProcessTicksAsync` is now a lean hot path — translate ticks only, never touch `PositionTracker`.
+- One serialized live execution consumer (`MarketEventSource.ConsumeExecutionsAsync`, single reader)
+  pairs with the single-writer `ProcessExecutionEventsAsync`; `TradingLoop` no longer drains
+  executions (backtest caller drains explicitly; `marketEvents`/`strategies` dropped from its ctor).
+- `PositionTracker` serializes its three mutators with a `SemaphoreSlim(1,1)`.
+Behaviour-preserving (Unit 163, Golden+Loop 8 green).
+
+**AGENT TODO:** add a live-path concurrency stress test (many fills + force-close racing TrackOrder)
+to lock the invariant in; consider draining remaining executions on shutdown.
 
 ---
 
