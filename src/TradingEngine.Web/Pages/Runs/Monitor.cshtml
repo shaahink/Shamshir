@@ -121,6 +121,7 @@
 
         const client = createRunClient(runId, {
             onProgress: (progress) => {
+                errorState.style.display = 'none';
                 loading.style.display = 'none';
 
                 document.getElementById('simClock').textContent = progress.simTimeUtc
@@ -198,6 +199,15 @@
                 } else {
                     completedCta.querySelector('a').textContent = 'Run ' + status;
                     completedCta.querySelector('a').style.color = 'var(--neg)';
+                }
+            },
+            onStatus: (status) => {
+                if (status === 'reconnecting' || status === 'disconnected') {
+                    errorState.style.display = 'flex';
+                    document.getElementById('errorMsg').textContent = status === 'reconnecting' ? 'Connection lost. Reconnecting...' : 'Disconnected';
+                }
+                if (status === 'connected') {
+                    errorState.style.display = 'none';
                 }
             }
         });
