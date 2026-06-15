@@ -148,7 +148,8 @@ public sealed class TradingLoop(
                     strategy.Id, bar.Symbol.Value);
                 continue;
             }
-            var orderCtx = await orderDispatcher.DispatchAsync(intent, equity, bar.Close, broker, [], ct);
+            var openPositions = MapOpenPositionsToProjected();
+            var orderCtx = await orderDispatcher.DispatchAsync(intent, equity, bar.Close, broker, openPositions, ct);
             if (orderCtx is null) continue;
 
             var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,
@@ -167,6 +168,20 @@ public sealed class TradingLoop(
         journal?.Write("BAR_EVAL", bar.Symbol.Value, bar.OpenTimeUtc);
         // No execution draining here: the live path uses a single serialized consumer
         // (MarketEventSource.ConsumeExecutionsAsync); the backtest caller drains explicitly.
+    }
+
+    private IReadOnlyList<ProjectedPosition> MapOpenPositionsToProjected()
+    {
+        var result = new List<ProjectedPosition>();
+        foreach (var (_, pos) in positionTracker.OpenPositions)
+        {
+            var symbolInfo = symbolRegistry.Get(pos.Symbol);
+            var slDistance = Math.Abs(pos.EntryPrice.Value - pos.CurrentStopLoss.Value);
+            var slPips = slDistance / symbolInfo.PipSize;
+            var pipValue = symbolInfo.PipSize * symbolInfo.ContractSize;
+            result.Add(new ProjectedPosition(slPips, pos.Lots, pipValue));
+        }
+        return result;
     }
 
     private decimal ResolveHalfSpread(Symbol symbol)
