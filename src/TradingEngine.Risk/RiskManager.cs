@@ -38,6 +38,7 @@ public sealed class RiskManager(
     };
 
     public PropFirmRuleSet? ActiveRuleSet { get; private set; }
+    public ConstraintSet? Constraints { get; private set; }
     private IPropFirmComplianceService? _complianceService;
     private SizeModifierPipeline? _sizePipeline;
     private ProtectionCause _protectionCause = ProtectionCause.None;
@@ -57,6 +58,11 @@ public sealed class RiskManager(
     public void SetSizePipeline(SizeModifierPipeline pipeline)
     {
         _sizePipeline = pipeline;
+    }
+
+    public void SetConstraints(ConstraintSet constraints)
+    {
+        Constraints = constraints;
     }
 
     public void EnterProtectionMode(string reason, ProtectionCause cause)
@@ -94,11 +100,11 @@ public sealed class RiskManager(
         if (CurrentState.InProtectionMode)
             violations.Add(new("PROTECTION_MODE_ACTIVE", "Trading suspended: protection mode"));
 
-        if (ActiveRuleSet != null)
+        if (Constraints != null)
         {
-            if (equity.CurrentDailyDrawdown >= (decimal)ActiveRuleSet.MaxDailyLossPercent)
+            if (equity.CurrentDailyDrawdown >= Constraints.MaxDailyLoss)
                 violations.Add(new("DAILY_DD_LIMIT", "Daily drawdown limit reached"));
-            if (equity.CurrentMaxDrawdown >= (decimal)ActiveRuleSet.MaxTotalLossPercent)
+            if (equity.CurrentMaxDrawdown >= Constraints.MaxTotalLoss)
                 violations.Add(new("MAX_DD_LIMIT", "Maximum drawdown limit reached"));
         }
 
@@ -118,9 +124,9 @@ public sealed class RiskManager(
         }
         else
         {
-            var newPositionRisk = equity.Equity * (decimal)profile.RiskPerTradePercent;
+            var newPositionRisk = equity.Equity * (Constraints?.RiskPerTrade ?? (decimal)profile.RiskPerTradePercent / 100m);
 
-            if ((totalOpenRisk + newPositionRisk) / equity.Equity > (decimal)profile.MaxExposurePercent)
+            if ((totalOpenRisk + newPositionRisk) / equity.Equity > (Constraints?.MaxExposure ?? (decimal)profile.MaxExposurePercent / 100m))
                 violations.Add(new("MAX_EXPOSURE", "Max total exposure exceeded"));
         }
 
@@ -161,7 +167,7 @@ public sealed class RiskManager(
         var totalWorstCaseLoss = candidateLoss + openLosses;
         var projectedEquity = equity.Equity - totalWorstCaseLoss;
 
-        var dailyFloor = equity.DailyStartEquity * (1m - (decimal)profile.MaxDailyDrawdownPercent);
+        var dailyFloor = equity.DailyStartEquity * (1m - (Constraints?.MaxDailyLoss ?? (decimal)profile.MaxDailyDrawdownPercent / 100m));
         if (projectedEquity < dailyFloor)
         {
             violations.Add(new("WorstCaseDDWouldBreachDaily", "Worst-case projected equity breaches daily drawdown floor"));
@@ -169,7 +175,7 @@ public sealed class RiskManager(
         }
 
         var drawdownBase = Drawdown.DrawdownType == "Trailing" ? equity.Equity : equity.Balance;
-        var maxFloor = drawdownBase * (1m - (decimal)profile.MaxTotalDrawdownPercent);
+        var maxFloor = drawdownBase * (1m - (Constraints?.MaxTotalLoss ?? (decimal)profile.MaxTotalDrawdownPercent / 100m));
         if (projectedEquity < maxFloor)
         {
             violations.Add(new("WorstCaseDDWouldBreachOverall", "Worst-case projected equity breaches max drawdown floor"));
@@ -178,7 +184,7 @@ public sealed class RiskManager(
 
         // --- Budget validation with downsizing ---
         var riskAmount = slPips * pipValuePerLot * lots;
-        var perTradeRiskAmount = equity.Equity * (decimal)profile.RiskPerTradePercent;
+        var perTradeRiskAmount = equity.Equity * (Constraints?.RiskPerTrade ?? (decimal)profile.RiskPerTradePercent / 100m);
 
         if (!ValidateBudgetEntry(riskAmount, equity, perTradeRiskAmount))
         {
@@ -222,33 +228,33 @@ public sealed class RiskManager(
                 Intent = intent,
             })
             : (decimal)DrawdownScaler.ComputeScaleFactor(
-                equity.CurrentMaxDrawdown, (decimal)profile.MaxTotalDrawdownPercent,
+                equity.CurrentMaxDrawdown, Constraints?.MaxTotalLoss ?? (decimal)profile.MaxTotalDrawdownPercent / 100m,
                 profile.DrawdownScaleThreshold, profile.DrawdownScaleFloor);
 
         return PositionSizer.Calculate(
-            equity.Equity, RiskPercent.Parse(profile.RiskPerTradePercent),
+            equity.Equity, RiskPercent.Parse(profile.RiskPerTradePercent / 100.0),
             slDistance, pipValue, drawdownScale,
             (decimal)symbolInfo.MaxLots, symbolInfo.MinLots, symbolInfo.LotStep);
     }
 
     public bool ValidateBudgetEntry(decimal newRiskAmount, EquitySnapshot equity, decimal perTradeRiskAmount)
     {
-        var ruleSet = ActiveRuleSet;
-        if (ruleSet is null) return true;
+        var constraints = Constraints;
+        if (constraints is null) return true;
 
         var totalOpenRisk = _openPositionRisk.Values.Sum(v => v.Risk);
 
-        var dailyDdBase = ruleSet.DailyDdBase == DailyDdBase.DailyStart
+        var dailyDdBase = constraints.DailyDdBase == DailyDdBase.DailyStart
             ? Drawdown.DailyStartEquity
             : Drawdown.InitialAccountBalance;
 
         if (dailyDdBase <= 0) return false;
 
-        var dailyDdUsedFraction = (decimal)ruleSet.MaxDailyLossPercent > 0
-            ? CurrentState.DailyDrawdownUsed / (decimal)ruleSet.MaxDailyLossPercent
+        var dailyDdUsedFraction = constraints.MaxDailyLoss > 0
+            ? CurrentState.DailyDrawdownUsed / constraints.MaxDailyLoss
             : 1m;
 
-        var remainingDailyBudget = (1m - Math.Min(dailyDdUsedFraction, 1m)) * (decimal)ruleSet.MaxDailyLossPercent * dailyDdBase;
+        var remainingDailyBudget = (1m - Math.Min(dailyDdUsedFraction, 1m)) * constraints.MaxDailyLoss * dailyDdBase;
         var budgetCap = remainingDailyBudget * (decimal)sizingPolicy.BudgetUseFraction;
 
         if (totalOpenRisk + newRiskAmount > budgetCap)

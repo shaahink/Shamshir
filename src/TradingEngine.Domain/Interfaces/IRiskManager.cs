@@ -11,6 +11,7 @@ public interface IRiskManager
         IReadOnlyList<ProjectedPosition> openPositions, out decimal downsizedLots);
     ExtendedRiskState CurrentState { get; }
     PropFirmRuleSet? ActiveRuleSet { get; }
+    ConstraintSet? Constraints { get; }
     void InitializeDrawdownIfNeeded(decimal initialBalance, string drawdownType = "Fixed");
     void UpdateEquityLevels(decimal rawEquity);
     void OnDailyReset(decimal currentEquity);

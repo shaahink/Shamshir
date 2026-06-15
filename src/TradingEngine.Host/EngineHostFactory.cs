@@ -45,6 +45,11 @@ public static class EngineHostFactory
         {
             rm.SetActiveRuleSet(ruleSet);
 
+            var resolvedProfile = activeProfile ?? new RiskProfile(
+                "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,
+                false, activeRuleSetId, LotSizingMethod.PercentRisk, 0.1m, 0m, 0.25, 1.5, 3);
+            rm.SetConstraints(ConstraintSet.Resolve(resolvedProfile, ruleSet));
+
             var passEstimator = host.Services.GetRequiredService<IPassProbabilityEstimator>();
             var complianceSvc = new PropFirmComplianceService(
                 ruleSet,

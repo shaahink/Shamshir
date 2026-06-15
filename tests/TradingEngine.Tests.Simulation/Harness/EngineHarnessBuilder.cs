@@ -57,6 +57,12 @@ public sealed class EngineHarnessBuilder
         riskManager.SetActiveRuleSet(ruleSet);
         riskManager.InitializeDrawdown(initialBalance, "Fixed");
 
+        var riskProfile = new RiskProfile(
+            "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,
+            false, _ruleSetId, LotSizingMethod.PercentRisk, 0.1m, 0m, 0.25, 1.5, 3);
+        var constraints = ConstraintSet.Resolve(riskProfile, ruleSet);
+        riskManager.SetConstraints(constraints);
+
         var passEstimator = Substitute.For<IPassProbabilityEstimator>();
         var complianceSvc = new PropFirmComplianceService(ruleSet, riskManager, clock, passEstimator);
         riskManager.SetComplianceService(complianceSvc);
@@ -190,12 +196,12 @@ public sealed class EngineHarness : IAsyncDisposable
 
     private async Task CheckBreachAsync()
     {
-        var ruleSet = Risk.ActiveRuleSet;
-        if (ruleSet is null || Risk.CurrentState.InProtectionMode)
+        var constraints = Risk.Constraints;
+        if (constraints is null || Risk.CurrentState.InProtectionMode)
             return;
 
-        var dailyLimit = (decimal)ruleSet.MaxDailyLossPercent * FlattenAtFraction;
-        var maxLimit = (decimal)ruleSet.MaxTotalLossPercent * FlattenAtFraction;
+        var dailyLimit = constraints.MaxDailyLoss * FlattenAtFraction;
+        var maxLimit = constraints.MaxTotalLoss * FlattenAtFraction;
 
         if (Risk.CurrentState.DailyDrawdownUsed >= dailyLimit)
         {

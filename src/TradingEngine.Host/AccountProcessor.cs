@@ -48,23 +48,23 @@ public sealed class AccountProcessor
         _riskManager.InitializeDrawdownIfNeeded(update.Balance);
         _riskManager.UpdateEquityLevels(update.Equity);
 
-        var ruleSet = _riskManager.ActiveRuleSet;
-        if (ruleSet is not null && !_riskManager.CurrentState.InProtectionMode)
+        var constraints = _riskManager.Constraints;
+        if (constraints is not null && !_riskManager.CurrentState.InProtectionMode)
         {
             var flattenFraction = (decimal)_sizingPolicy.FlattenAtFraction;
 
-            if (_riskManager.CurrentState.DailyDrawdownUsed >= (decimal)ruleSet.MaxDailyLossPercent * flattenFraction)
+            if (_riskManager.CurrentState.DailyDrawdownUsed >= constraints.MaxDailyLoss * flattenFraction)
             {
                 _riskManager.EnterProtectionMode(
-                    $"Daily DD at {_riskManager.CurrentState.DailyDrawdownUsed:P1} >= {ruleSet.MaxDailyLossPercent * (double)_sizingPolicy.FlattenAtFraction:P1} hard limit",
+                    $"Daily DD at {_riskManager.CurrentState.DailyDrawdownUsed:P1} >= {constraints.MaxDailyLoss * flattenFraction:P1} hard limit",
                     ProtectionCause.DailyDrawdown);
                 _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — daily DD");
                 await _positionTracker.RequestForceCloseAllAsync("DailyDD");
             }
-            else if (_riskManager.CurrentState.MaxDrawdownUsed >= (decimal)ruleSet.MaxTotalLossPercent * flattenFraction)
+            else if (_riskManager.CurrentState.MaxDrawdownUsed >= constraints.MaxTotalLoss * flattenFraction)
             {
                 _riskManager.EnterProtectionMode(
-                    $"Max DD at {_riskManager.CurrentState.MaxDrawdownUsed:P1} >= {ruleSet.MaxTotalLossPercent * (double)_sizingPolicy.FlattenAtFraction:P1} hard limit",
+                    $"Max DD at {_riskManager.CurrentState.MaxDrawdownUsed:P1} >= {constraints.MaxTotalLoss * flattenFraction:P1} hard limit",
                     ProtectionCause.MaxDrawdown);
                 _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — max DD");
                 await _positionTracker.RequestForceCloseAllAsync("MaxDD");
