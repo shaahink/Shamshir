@@ -167,7 +167,16 @@ public sealed class RiskManager(
         var totalWorstCaseLoss = candidateLoss + openLosses;
         var projectedEquity = equity.Equity - totalWorstCaseLoss;
 
-        var dailyFloor = equity.DailyStartEquity * (1m - (Constraints?.MaxDailyLoss ?? (decimal)profile.MaxDailyDrawdownPercent));
+        // Daily floor must use the SAME base as the breach detector (DrawdownReducer.Apply /
+        // breach watchdog), which keys off DailyDdBase. Using DailyStartEquity unconditionally
+        // diverged from the watchdog whenever the day did not start at the initial balance:
+        // for an InitialBalance-mode rule set with a below-initial day-start, the gate would wave
+        // through an order whose worst case already breaches the (initial-balance) daily limit.
+        var maxDailyLoss = Constraints?.MaxDailyLoss ?? (decimal)profile.MaxDailyDrawdownPercent;
+        var dailyBaseEquity = (Constraints?.DailyDdBase ?? DailyDdBase.InitialBalance) == DailyDdBase.DailyStart
+            ? equity.DailyStartEquity
+            : Drawdown.InitialAccountBalance;
+        var dailyFloor = dailyBaseEquity * (1m - maxDailyLoss);
         if (projectedEquity < dailyFloor)
         {
             violations.Add(new("WorstCaseDDWouldBreachDaily", "Worst-case projected equity breaches daily drawdown floor"));

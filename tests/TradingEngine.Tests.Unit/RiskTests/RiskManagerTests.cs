@@ -169,6 +169,41 @@ public sealed class RiskManagerTests
     }
 
     [Fact]
+    public void ValidateOrder_InitialBalanceMode_WorstCaseBreachingInitialFloor_IsBlocked_EvenWhenDayStartedBelowInitial()
+    {
+        // InitialBalance-mode daily limit (FTMO default): the daily floor is keyed off the
+        // INITIAL balance, not the day-start equity. Prior days lost money, so the day started
+        // at 97k while the initial balance is 100k. A worst-case order projecting equity to 94k
+        // breaches the initial-balance daily floor (95k) and MUST be blocked. The old gate used
+        // DailyStartEquity*(1-5%) = 92,150 and would have waved it through.
+        var registry = new SymbolInfoRegistry();
+        registry.Register(EurUsd());
+        var gov = Substitute.For<ITradingGovernor>();
+        gov.Evaluate(Arg.Any<GovernorContext>())
+            .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
+        // weekend/news disabled so Validate() never short-circuits before the worst-case projection
+        var rules = FtmoRules with { AllowWeekendHolding = true, AllowTradesDuringNews = true };
+        var rm = new RiskManager(registry, (_, _) => 1m,
+            new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
+            Substitute.For<ICurrencyExposureTracker>(), gov, new SizingPolicyOptions());
+        rm.InitializeDrawdownIfNeeded(100_000m);
+        rm.SetActiveRuleSet(rules);
+        rm.SetConstraints(ConstraintSet.Resolve(Profile, rules));
+
+        // Day started at 97k (3% below initial — still under the 5% daily limit, so Validate passes).
+        var snap = new EquitySnapshot(DateTime.UtcNow, 97_000, 0, 97_000, 100_000, 97_000, 0.03m, 0.03m, EngineMode.Backtest);
+        var symbolInfo = EurUsd();
+
+        // worst-case loss = 300 pips * $10/pip * 1 lot = $3,000 → projected equity 94k.
+        var v = rm.ValidateOrder(
+            LongEurUsd(), snap, Profile, 1.1000m, symbolInfo,
+            slPips: 300m, pipValuePerLot: 10m, lots: 1m,
+            openPositions: [], out _);
+
+        v.Should().Contain(x => x.Code == "WorstCaseDDWouldBreachDaily");
+    }
+
+    [Fact]
     public void Validate_TypicalMarketOrder_DoesNotTriggerMaxExposure()
     {
         // EURUSD market order, 20-pip SL, $100k equity, standard profile (maxExposurePercent 0.05),
