@@ -24,6 +24,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private readonly BacktestProgressStore _progressStore;
     private readonly BacktestJournal _journal;
     private readonly IConfiguration _configuration;
+    private readonly RunProgressBroadcaster _broadcaster;
     private readonly ConcurrentDictionary<string, BacktestRunState> _runs = new();
 
     private sealed record TradeStats(decimal NetProfit, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
@@ -44,6 +45,17 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public int BarCount { get; set; }
         public string SimTime { get; set; } = "";
         public IReadOnlyList<string> GetLogs() => LogLines.ToArray();
+
+        // iter-21 U1 — live funnel counters + a small ring of recent journal lines for the
+        // RunProgress envelope. Mutated only from the single Progress callback thread.
+        public int Signals;
+        public int Orders;
+        public int Fills;
+        public int Closes;
+        public int Rejections;
+        public int Breaches;
+        public readonly Queue<DecisionRecordView> RecentJournal = new();
+        public long Seq;
     }
 
     public BacktestOrchestrator(
@@ -51,13 +63,63 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         BacktestProgressStore progressStore,
         BacktestJournal journal,
         IConfiguration configuration,
+        RunProgressBroadcaster broadcaster,
         ILogger<BacktestOrchestrator> logger)
     {
         _scopeFactory = scopeFactory;
         _progressStore = progressStore;
         _journal = journal;
         _configuration = configuration;
+        _broadcaster = broadcaster;
         _logger = logger;
+    }
+
+    // iter-21 U1 — project the live run state into the throttled SignalR envelope. Fields the
+    // orchestrator can't yet source (equity curve, governor, daily-DD) stay at honest zero/null
+    // until iter-20 wires the kernel; the page renders an empty-state rather than fabricating.
+    private RunProgress BuildProgress(BacktestRunState state, string status)
+    {
+        DateTime? simTime = DateTime.TryParse(state.SimTime, out var t) ? t : null;
+        var elapsedMs = (long)(DateTime.UtcNow - state.StartedAt).TotalMilliseconds;
+        var barsPerSec = elapsedMs > 0 ? state.BarCount / (elapsedMs / 1000.0) : 0;
+        DecisionRecordView[] journal;
+        lock (state.RecentJournal) { journal = state.RecentJournal.ToArray(); }
+
+        return new RunProgress(
+            state.RunId, status, simTime,
+            BarsProcessed: state.BarCount, BarsTotal: 0, Percent: 0, EtaSeconds: null,
+            WallElapsedMs: elapsedMs, BarsPerSec: barsPerSec,
+            Equity: 0, Balance: 0, OpenPositions: 0,
+            DailyDdPct: 0, MaxDdPct: 0, DistanceToDailyLimit: 0,
+            GovernorState: null, GovernorReason: null,
+            Counters: new RunCounters(state.Signals, state.Orders, state.Fills,
+                state.Closes, state.Rejections, state.Breaches),
+            RecentJournal: journal);
+    }
+
+    private static void TallyEvent(BacktestRunState state, BacktestProgressEvent evt)
+    {
+        switch (evt.EventType)
+        {
+            case "SIGNAL": state.Signals++; break;
+            case "ORDER": state.Orders++; break;
+            case "FILL": state.Fills++; break;
+            case "CLOSE": state.Closes++; break;
+            case "REJECT": case "OrderRejected": state.Rejections++; break;
+            case "BREACH": state.Breaches++; break;
+        }
+
+        if (evt.EventType is "SIGNAL" or "ORDER" or "FILL" or "CLOSE" or "REJECT" or "BREACH")
+        {
+            lock (state.RecentJournal)
+            {
+                state.RecentJournal.Enqueue(new DecisionRecordView(
+                    ++state.Seq, DateTime.UtcNow, null, null, evt.EventType,
+                    null, null, null, evt.Message, "{}"));
+                while (state.RecentJournal.Count > 30)
+                    state.RecentJournal.Dequeue();
+            }
+        }
     }
 
     private void EnqueueLog(string runId, ConcurrentQueue<string> queue, string msg)
@@ -190,6 +252,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 new { done = true, status = state.Status, error = state.Error });
             _progressStore.GetWriter(runId).TryWrite(doneJson);
             _progressStore.Complete(runId);
+
+            // iter-21 U1 — terminal frame, always delivered (bypasses the throttle).
+            _broadcaster.PublishDone(BuildProgress(state,
+                state.Status == "failed" ? "failed" : "completed"));
         }
     }
 
@@ -266,6 +332,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     state.SimTime = spaceIdx > 0 ? evt.Message[4..spaceIdx] : evt.Message[4..];
                 }
             }
+            TallyEvent(state, evt);
+
+            // iter-21 U1 — push a throttled progress frame to the run's SignalR group. Breaches
+            // force a frame through so the breach alert is never swallowed by the throttle window.
+            _broadcaster.Publish(BuildProgress(state, "running"), force: evt.EventType == "BREACH");
         });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));

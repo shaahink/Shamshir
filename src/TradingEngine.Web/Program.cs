@@ -12,6 +12,13 @@ builder.Services.AddRazorPages();
 builder.Services.AddControllers();
 builder.Services.AddServerSideBlazor();
 
+// iter-21 U1 — live run channel. camelCase payloads so the RunProgress envelope arrives as
+// runId/simTimeUtc/... matching the documented contract (and the contract test).
+builder.Services.AddSignalR()
+    .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy =
+        System.Text.Json.JsonNamingPolicy.CamelCase);
+builder.Services.AddSingleton<TradingEngine.Web.Services.RunProgressBroadcaster>();
+
 var dbPath = builder.Configuration.GetValue<string>("Persistence:DbPath")
     ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));
 
@@ -72,6 +79,7 @@ app.UseStaticFiles();
 app.UseRouting();
 app.MapRazorPages();
 app.MapControllers();
+app.MapHub<TradingEngine.Web.Hubs.RunHub>("/hubs/run");
 app.MapBlazorHub();
 app.MapFallbackToPage("/blazor/_Host");
 
