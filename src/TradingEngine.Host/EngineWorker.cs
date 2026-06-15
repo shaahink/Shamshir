@@ -30,7 +30,6 @@ public sealed class EngineWorker : BackgroundService
     private readonly ILoggerFactory _loggerFactory;
     private readonly IProgress<BacktestProgressEvent>? _progress;
     private readonly IPipelineJournal? _journal;
-    private BacktestDriver? _backtestDriver;
 
 
     public EngineWorker(
@@ -205,6 +204,28 @@ public sealed class EngineWorker : BackgroundService
             {
                 try
                 {
+                    await ProcessSingleBarAsync(bar, ct);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "BAR_PROC_ERR|{Symbol}|{OpenTime}", bar.Symbol, bar.OpenTimeUtc);
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        _logger.LogDebug("Bar processor stopped");
+    }
+
+    /// <summary>
+    /// The single canonical per-bar trading body shared by both the live path
+    /// (<see cref="ProcessBarsAsync"/>) and the backtest path
+    /// (<see cref="RunBacktestLoopAsync"/>): indicator recompute → bar snapshot → regime →
+    /// active strategies → evaluate → signal gate → dispatch → track → drain executions.
+    /// </summary>
+    private async Task ProcessSingleBarAsync(Bar bar, CancellationToken ct)
+    {
+                {
                     Interlocked.Increment(ref _barCount);
                     var byTf = _indicatorSnapshot.Bars.GetOrAdd(bar.Symbol, _ => new());
                     var list = byTf.GetOrAdd(bar.Timeframe, _ => new());
@@ -231,7 +252,7 @@ public sealed class EngineWorker : BackgroundService
                     var closeTick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread,
                         bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
                     var barSnapshot = _indicatorSnapshot.BuildBarSnapshot(bar.Symbol);
-                    if (barSnapshot is null) continue;
+                    if (barSnapshot is null) return;
 
                     _indicatorSnapshot.BuildSharedIndicatorSnapshot(bar.Symbol);
 
@@ -329,19 +350,7 @@ public sealed class EngineWorker : BackgroundService
                     _journal?.Write("BAR_EVAL", bar.Symbol.Value, bar.OpenTimeUtc);
 
                     await _marketEvents.DrainExecutionStreamAsync(_positionTracker, _strategies, _progress, _runContext.RunId, _clock);
-
-                    // Per-bar SL/TP evaluation removed from live path — belongs in RunBacktestLoopAsync.
-                    // Live broker manages orders server-side; engine must not second-guess SL/TP.
                 }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "BAR_PROC_ERR|{Symbol}|{OpenTime}", bar.Symbol, bar.OpenTimeUtc);
-                }
-            }
-        }
-        catch (OperationCanceledException) { }
-        _logger.LogDebug("Bar processor stopped");
     }
 
 
@@ -353,15 +362,70 @@ public sealed class EngineWorker : BackgroundService
         var initAcct = await _broker.AccountStream.ReadAsync(ct);
         await _accountProcessor.HandleAsync(initAcct);
 
-        _backtestDriver = new BacktestDriver(
-            _broker, _positionTracker, _orderDispatcher, _riskManager,
-            _governor, _signalGate, _strategies, _strategyBank, _regimeDetector,
-            _indicators, _eventBus, _progress, _journal, _clock,
-            _crossRateStore, _runContext, _executionEventChannel,
-            _loggerFactory.CreateLogger<BacktestDriver>());
+        _logger.LogDebug("Backtest loop started");
+        try
+        {
+            await foreach (var bar in _broker.BarStream.ReadAllAsync(ct))
+            {
+                try
+                {
+                    if (_broker is BacktestReplayAdapter replay)
+                        replay.SyncToBar(bar.Close, bar.OpenTimeUtc);
 
-        await _backtestDriver.RunAsync(ct);
+                    UpdateCrossRates(bar);
+
+                    // Pump every account update through the same processor the live path uses,
+                    // so equity, the breach watchdog and daily/weekly/monthly resets all run.
+                    while (_broker.AccountStream.TryRead(out var acctUpdate))
+                        await _accountProcessor.HandleAsync(acctUpdate);
+
+                    await ProcessSingleBarAsync(bar, ct);
+
+                    // Venue concern: a live broker fills SL/TP server-side; in backtest we
+                    // simulate it against the bar range, then drain the resulting fills.
+                    await SimulateBarExitsAsync(bar, ct);
+
+                    if (_broker is CTraderBrokerAdapter netMq)
+                        await _broker.CompleteBarAsync(netMq.CurrentBarSeq, ct);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "BAR_PROC_ERR|{Symbol}|{OpenTime}", bar.Symbol, bar.OpenTimeUtc);
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
         _logger.LogDebug("Backtest loop stopped");
+    }
+
+    private async Task SimulateBarExitsAsync(Bar bar, CancellationToken ct)
+    {
+        foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())
+        {
+            if (pos.Symbol != bar.Symbol) continue;
+            bool exit;
+            if (pos.Direction == TradeDirection.Long)
+            {
+                exit = bar.Low <= pos.CurrentStopLoss.Value
+                    || (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value);
+            }
+            else
+            {
+                exit = bar.High >= pos.CurrentStopLoss.Value
+                    || (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value);
+            }
+
+            if (exit)
+            {
+                _logger.LogInformation("BAR_EXIT|{Id}|{Symbol}|sl={SL:F5}|tp={TP}|low={Low:F5}|high={High:F5}",
+                    orderId, pos.Symbol, pos.CurrentStopLoss.Value,
+                    pos.TakeProfit?.Value ?? 0, bar.Low, bar.High);
+                await _broker.ClosePositionAsync(orderId, ct);
+            }
+        }
+
+        await _marketEvents.DrainExecutionStreamAsync(_positionTracker, _strategies, _progress, _runContext.RunId, _clock);
     }
 
     private void UpdateCrossRates(Bar bar)
