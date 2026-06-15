@@ -6,6 +6,9 @@ public interface IRiskManager
     DrawdownState Drawdown { get; }
     decimal CalculateLotSize(TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid);
     IReadOnlyList<RiskViolation> Validate(TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid);
+    IReadOnlyList<RiskViolation> ValidateOrder(TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid,
+        SymbolInfo symbolInfo, decimal slPips, decimal pipValuePerLot, decimal lots,
+        IReadOnlyList<ProjectedPosition> openPositions, out decimal downsizedLots);
     ExtendedRiskState CurrentState { get; }
     PropFirmRuleSet? ActiveRuleSet { get; }
     void InitializeDrawdownIfNeeded(decimal initialBalance, string drawdownType = "Fixed");

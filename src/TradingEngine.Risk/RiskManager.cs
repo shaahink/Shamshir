@@ -143,6 +143,70 @@ public sealed class RiskManager(
         return violations;
     }
 
+    public IReadOnlyList<RiskViolation> ValidateOrder(
+        TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid,
+        SymbolInfo symbolInfo, decimal slPips, decimal pipValuePerLot, decimal lots,
+        IReadOnlyList<ProjectedPosition> openPositions, out decimal downsizedLots)
+    {
+        downsizedLots = lots;
+        var violations = new List<RiskViolation>(Validate(intent, equity, profile, currentMid));
+        if (violations.Count > 0) return violations;
+
+        // --- Worst-case projection ---
+        var candidateLoss = slPips * pipValuePerLot * lots;
+        var openLosses = 0m;
+        foreach (var p in openPositions)
+            openLosses += p.SlPips * p.PipValuePerLot * p.Lots;
+
+        var totalWorstCaseLoss = candidateLoss + openLosses;
+        var projectedEquity = equity.Equity - totalWorstCaseLoss;
+
+        var dailyFloor = equity.DailyStartEquity * (1m - (decimal)profile.MaxDailyDrawdownPercent);
+        if (projectedEquity < dailyFloor)
+        {
+            violations.Add(new("WorstCaseDDWouldBreachDaily", "Worst-case projected equity breaches daily drawdown floor"));
+            return violations;
+        }
+
+        var drawdownBase = Drawdown.DrawdownType == "Trailing" ? equity.Equity : equity.Balance;
+        var maxFloor = drawdownBase * (1m - (decimal)profile.MaxTotalDrawdownPercent);
+        if (projectedEquity < maxFloor)
+        {
+            violations.Add(new("WorstCaseDDWouldBreachOverall", "Worst-case projected equity breaches max drawdown floor"));
+            return violations;
+        }
+
+        // --- Budget validation with downsizing ---
+        var riskAmount = slPips * pipValuePerLot * lots;
+        var perTradeRiskAmount = equity.Equity * (decimal)profile.RiskPerTradePercent;
+
+        if (!ValidateBudgetEntry(riskAmount, equity, perTradeRiskAmount))
+        {
+            while (lots > symbolInfo.MinLots)
+            {
+                lots = Math.Max(lots * 0.5m, symbolInfo.MinLots);
+                lots = Math.Floor(lots / symbolInfo.LotStep) * symbolInfo.LotStep;
+                if (lots < symbolInfo.MinLots) break;
+                riskAmount = slPips * pipValuePerLot * lots;
+                if (ValidateBudgetEntry(riskAmount, equity, perTradeRiskAmount))
+                {
+                    downsizedLots = lots;
+                    break;
+                }
+            }
+            if (lots < symbolInfo.MinLots || !ValidateBudgetEntry(riskAmount, equity, perTradeRiskAmount))
+            {
+                violations.Add(new("BudgetBlocked", $"Budget exceeded after downsizing: lots={lots:F4} risk={riskAmount:F2}"));
+            }
+            else
+            {
+                downsizedLots = lots;
+            }
+        }
+
+        return violations;
+    }
+
     public decimal CalculateLotSize(TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid)
     {
         var symbolInfo = symbolRegistry.Get(intent.Symbol);

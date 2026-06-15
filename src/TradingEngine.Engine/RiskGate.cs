@@ -1,10 +1,5 @@
 namespace TradingEngine.Engine;
 
-public sealed record ProjectedPosition(
-    decimal SlPips,
-    decimal Lots,
-    decimal PipValuePerLot);
-
 public static class RiskGate
 {
     public const string WorstCaseDDWouldBreachDaily = "WorstCaseDDWouldBreachDaily";
