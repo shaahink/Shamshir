@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Shamshir Trading Engine</title>
     <link rel="stylesheet" href="/css/site.css" />
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- Pinned to v4: the chart code uses the v4 series API (chart.addLineSeries/addAreaSeries/
+         addCandlestickSeries/addHistogramSeries). Unpinned "latest" now resolves to v5, which replaced
+         those with chart.addSeries(LineSeries, …) and throws "addLineSeries is not a function". -->
+    <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8/dist/browser/signalr.min.js"></script>
 </head>
 <body>
