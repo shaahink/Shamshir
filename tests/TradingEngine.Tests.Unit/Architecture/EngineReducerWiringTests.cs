@@ -50,6 +50,7 @@ public sealed class EngineReducerWiringTests
             nameof(WeekRolled),
             nameof(MonthRolled),
             // EventBus-only events — published via IEventBus, never fed to the reducer
+            "BarIngested",        // iter-26: TradingLoop → IEventBus → BarPersistenceHandler (bar persistence only)
             "BarEvaluated",
             "TradeClosed",
             "TradeOpened",

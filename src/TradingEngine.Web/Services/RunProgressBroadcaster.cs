@@ -15,9 +15,14 @@ public sealed class RunProgressBroadcaster
     public static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(250);
 
     private readonly IHubContext<RunHub> _hub;
+    private readonly ILogger<RunProgressBroadcaster> _logger;
     private readonly ConcurrentDictionary<string, long> _lastSentTicks = new();
 
-    public RunProgressBroadcaster(IHubContext<RunHub> hub) => _hub = hub;
+    public RunProgressBroadcaster(IHubContext<RunHub> hub, ILogger<RunProgressBroadcaster> logger)
+    {
+        _hub = hub;
+        _logger = logger;
+    }
 
     /// <summary>Send a progress frame to the run's group, subject to the per-run throttle unless
     /// <paramref name="force"/> is set. Returns true if it was actually sent.</summary>
@@ -27,7 +32,7 @@ public sealed class RunProgressBroadcaster
             return false;
 
         _lastSentTicks[progress.RunId] = DateTime.UtcNow.Ticks;
-        _ = _hub.Clients.Group(RunHub.Group(progress.RunId)).SendAsync("onProgress", progress);
+        Send("onProgress", progress);
         return true;
     }
 
@@ -35,7 +40,16 @@ public sealed class RunProgressBroadcaster
     public void PublishDone(RunProgress progress)
     {
         _lastSentTicks.TryRemove(progress.RunId, out _);
-        _ = _hub.Clients.Group(RunHub.Group(progress.RunId)).SendAsync("onDone", progress);
+        Send("onDone", progress);
+    }
+
+    // Fire-and-forget, but observe the task so a send/serialization failure is logged rather than
+    // becoming a silent unobserved exception.
+    private void Send(string method, RunProgress progress)
+    {
+        _ = _hub.Clients.Group(RunHub.Group(progress.RunId)).SendAsync(method, progress)
+            .ContinueWith(t => _logger.LogWarning(t.Exception, "SignalR {Method} failed for run {RunId}", method, progress.RunId),
+                TaskContinuationOptions.OnlyOnFaulted);
     }
 
     private bool ShouldSend(string runId)

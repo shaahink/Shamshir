@@ -131,7 +131,27 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
     {
         lock (_openPositions)
         {
+            if (!_openPositions.TryGetValue(positionId, out var pos))
+                return Task.CompletedTask;
+
             _openPositions.Remove(positionId);
+
+            // F10 (iter-26): emit an execution event (+ realized PnL + account update) so an
+            // engine-requested/force close propagates back to the engine. Previously this just
+            // dropped the position and the engine never saw the close (stayed Open forever).
+            var exitPrice = pos.Direction == TradeDirection.Long ? _lastBid : _lastAsk;
+            var rawPnl = pos.Direction == TradeDirection.Long
+                ? (exitPrice - pos.EntryPrice.Value) * pos.Lots * pos.SymbolInfo.ContractSize
+                : (pos.EntryPrice.Value - exitPrice) * pos.Lots * pos.SymbolInfo.ContractSize;
+            var pnlUsd = pos.SymbolInfo.QuoteCurrency == "USD"
+                ? rawPnl
+                : rawPnl * _crossRateProvider(pos.SymbolInfo.QuoteCurrency, "USD");
+            _currentBalance += pnlUsd;
+
+            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                positionId, OrderState.Filled, new Price(exitPrice), 0, null, BrokerTimeUtc));
+            _accountChannel.Writer.TryWrite(new AccountUpdate(
+                _currentBalance, 0m, _currentBalance, BrokerTimeUtc));
         }
         return Task.CompletedTask;
     }

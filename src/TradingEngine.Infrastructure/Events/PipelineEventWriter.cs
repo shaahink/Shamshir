@@ -30,9 +30,13 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
 
     public void Record(DecisionRecord r)
     {
+        // iter-26 UI fix: lifecycle decision records (PositionLifecycle.Record) hardcode RunId="",
+        // which made them invisible to RunProjection.GetByRunIdAsync — the Report funnel saw zero
+        // Fills/Closes. Stamp this writer's run id whenever the record didn't carry one.
+        var runId = string.IsNullOrEmpty(r.RunId) ? _runId : r.RunId;
         var evt = new PipelineEvent(
             Guid.NewGuid(),
-            r.RunId,
+            runId,
             Interlocked.Increment(ref _seq),
             r.Event,
             r.Symbol ?? r.StrategyId,

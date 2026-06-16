@@ -73,20 +73,8 @@ public sealed class ReportModel : PageModel
         if (view is not null)
         {
             var timeline = view.Timeline;
-            var equityCurve = view.EquityCurve;
 
-            FunnelRows = timeline
-                .GroupBy(d => d.StrategyId ?? "unknown")
-                .Select(g => new FunnelRow(
-                    g.Key,
-                    g.Count(d => d.Event == "SIGNAL" || d.Event == "BAR_EVAL"),
-                    g.Count(d => d.Event == "OrderSubmitted"),
-                    g.Count(d => d.Event == "OrderFilled" && (d.Reason == "Filled" || d.Reason == "PartialFill")),
-                    g.Count(d => d.Event == "OrderFilled" && d.Reason is "SL" or "TP" or "FORCE"),
-                    g.Count(d => d.Event == "OrderFilled" && d.Reason is "SL" or "TP" or "FORCE") > 0
-                        ? (double)g.Count(d => d.Event == "OrderFilled" && d.Reason == "TP") / g.Count(d => d.Event == "OrderFilled" && d.Reason is "SL" or "TP" or "FORCE") * 100
-                        : 0
-                )).ToList();
+            FunnelRows = BuildFunnel(timeline);
 
             TotalTrades = trades.Count;
 
@@ -95,16 +83,6 @@ public sealed class ReportModel : PageModel
             {
                 var breach = timeline.First(d => d.Event == "BreachDetected");
                 BreachSummary = breach.Reason ?? "Breach detected";
-            }
-
-            if (equityCurve.Count > 0)
-            {
-                var points = equityCurve.Select(s => new
-                {
-                    time = ((DateTimeOffset)s.SimTimeUtc).ToUnixTimeSeconds(),
-                    equity = s.Equity
-                }).ToList();
-                EquityCurveJson = JsonSerializer.Serialize(points);
             }
         }
 
@@ -128,6 +106,19 @@ public sealed class ReportModel : PageModel
             var equity = run?.InitialBalance ?? 100_000m;
             var peak = equity;
             var maxDd = 0m;
+
+            // Realized-equity curve, built from the same trade walk that yields MaxDd so the chart and
+            // the KPI are consistent by construction. The engine's intra-bar AccountSnapshots live only
+            // in the inner host's in-memory store (disposed at end of run) and are not visible to this
+            // request, so we step equity at each trade close — a non-empty, monotone-ish curve ending
+            // at initialBalance + netPnL. Keyed by unix-second (last write wins) because LightweightCharts
+            // requires strictly-ascending, unique timestamps.
+            var startTime = run?.BacktestFrom ?? trades[0].OpenedAtUtc;
+            var curve = new SortedDictionary<long, decimal>
+            {
+                [((DateTimeOffset)startTime).ToUnixTimeSeconds()] = equity,
+            };
+
             foreach (var t in trades)
             {
                 equity += t.NetPnLAmount;
@@ -137,9 +128,42 @@ public sealed class ReportModel : PageModel
                     var dd = (peak - equity) / peak;
                     if (dd > maxDd) maxDd = dd;
                 }
+                curve[((DateTimeOffset)t.ClosedAtUtc).ToUnixTimeSeconds()] = equity;
             }
             MaxDdPct = maxDd;
+
+            EquityCurveJson = JsonSerializer.Serialize(
+                curve.Select(kv => new { time = kv.Key, equity = kv.Value }));
         }
+    }
+
+    /// <summary>
+    /// Per-strategy funnel from the lifecycle decision records (visible after the iter-26 RunId-stamp
+    /// fix). "OrderSubmitted" is written by BOTH the OrderDispatcher and the lifecycle FSM, so we count
+    /// only the lifecycle one (Reason=="Accepted") to avoid double-counting. BAR_EVAL is per-bar noise,
+    /// not a signal, so Signals = orders+rejects (intents that reached the risk gate) — NOT the bar
+    /// count. Close reasons cover SL/TP/forced exits.
+    /// </summary>
+    internal static List<FunnelRow> BuildFunnel(IEnumerable<DecisionRecordView> timeline)
+    {
+        static bool IsClose(string? r) => r is "SL" or "TP" or "FORCE" or "DailyDD" or "MaxDD";
+        return timeline
+            .GroupBy(d => d.StrategyId ?? "unknown")
+            .Select(g =>
+            {
+                var orders = g.Count(d => d.Event == "OrderSubmitted" && d.Reason == "Accepted");
+                var rejects = g.Count(d => d.Event == "OrderRejected");
+                var fills = g.Count(d => d.Event == "OrderFilled" && (d.Reason == "Filled" || d.Reason == "PartialFill"));
+                var closes = g.Count(d => d.Event == "OrderFilled" && IsClose(d.Reason));
+                var tpCloses = g.Count(d => d.Event == "OrderFilled" && d.Reason == "TP");
+                return new FunnelRow(
+                    g.Key,
+                    Signals: orders + rejects,           // intents that reached the risk gate
+                    Orders: orders,
+                    Fills: fills,
+                    Closes: closes,
+                    WinRate: closes > 0 ? (double)tpCloses / closes * 100 : 0);
+            }).ToList();
     }
 
     private static double EstimateBarCount(DateTime start, DateTime end, string period)

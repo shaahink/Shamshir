@@ -69,7 +69,8 @@ public sealed class EngineRunner
         _accountProcessor = new AccountProcessor(
             _riskManager, _positionTracker, deps.Risk.SizingPolicy, deps.Persistence.EventBus,
             _clock, _engineMode, _crossRateStore, deps.Persistence.EquitySink,
-            e => Volatile.Write(ref _currentEquity, e), logger);
+            e => Volatile.Write(ref _currentEquity, e), logger,
+            progress: _progress, runId: runContext.RunId);
         _tradingLoop = new TradingLoop(
             _broker, _indicatorSnapshot, deps.Strategies.OrderDispatcher, _positionTracker,
             deps.Strategies.StrategyBank, deps.Strategies.RegimeDetector, _signalGate,
@@ -229,6 +230,12 @@ public sealed class EngineRunner
                     _logger.LogError(ex, "BAR_PROC_ERR|{Symbol}|{OpenTime}", bar.Symbol, bar.OpenTimeUtc);
                 }
             }
+
+            // F1 (iter-26): the last bar's exits emit account updates that the top-of-loop drain
+            // never reaches (the foreach has ended). Drain them so the final trade's realized
+            // PnL/drawdown reaches the processor and the equity curve closes on the true balance.
+            while (_broker.AccountStream.TryRead(out var tail))
+                await _accountProcessor.HandleAsync(tail);
         }
         catch (OperationCanceledException) { }
         _logger.LogDebug("Backtest loop stopped");
@@ -240,15 +247,16 @@ public sealed class EngineRunner
         {
             if (pos.Symbol != bar.Symbol) continue;
             string? reason = null;
+            Price exitPrice = pos.CurrentStopLoss;
             if (pos.Direction == TradeDirection.Long)
             {
-                if (bar.Low <= pos.CurrentStopLoss.Value) { reason = "SL"; }
-                else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) { reason = "TP"; }
+                if (bar.Low <= pos.CurrentStopLoss.Value) { reason = "SL"; exitPrice = pos.CurrentStopLoss; }
+                else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) { reason = "TP"; exitPrice = pos.TakeProfit.Value; }
             }
             else
             {
-                if (bar.High >= pos.CurrentStopLoss.Value) { reason = "SL"; }
-                else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) { reason = "TP"; }
+                if (bar.High >= pos.CurrentStopLoss.Value) { reason = "SL"; exitPrice = pos.CurrentStopLoss; }
+                else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) { reason = "TP"; exitPrice = pos.TakeProfit.Value; }
             }
 
             if (reason is not null)
@@ -259,7 +267,8 @@ public sealed class EngineRunner
                 // Stamp WHY before asking the venue to close, so the close fill records the real
                 // exit reason (SL/TP) in the journal/ledger instead of the generic "FORCE".
                 _positionTracker.SetCloseReason(orderId, reason);
-                await _broker.ClosePositionAsync(orderId, ct);
+                // F2/D3: fill at the stop/target price, not the bar close.
+                await _broker.ClosePositionAtAsync(orderId, exitPrice, ct);
             }
         }
 

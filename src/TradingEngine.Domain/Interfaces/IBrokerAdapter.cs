@@ -15,6 +15,16 @@ public interface IBrokerAdapter
     Task ModifyOrderAsync(Guid orderId, Price newStopLoss, Price? newTakeProfit, CancellationToken ct);
     Task CancelOrderAsync(Guid orderId, CancellationToken ct);
     Task ClosePositionAsync(Guid positionId, CancellationToken ct);
+
+    /// <summary>
+    /// Close a full position at a caller-supplied exit price. Used by the backtest path so an
+    /// engine-detected SL/TP exit fills at the stop/target price (F2/D3 iter-26) instead of the bar
+    /// close. Live venues fill server-side at the real market price, so the default ignores the hint
+    /// and routes to the normal market close.
+    /// </summary>
+    Task ClosePositionAtAsync(Guid positionId, Price exitPrice, CancellationToken ct)
+        => ClosePositionAsync(positionId, ct);
+
     Task ClosePartialPositionAsync(Guid positionId, decimal lots, CancellationToken ct)
         => ClosePositionAsync(positionId, ct); // default: full close
 

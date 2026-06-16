@@ -247,4 +247,20 @@ public sealed class StrategyRegistry
 
     public IReadOnlyList<string> GetAllIds()
         => _strategyTypes.Keys.OrderBy(k => k).ToList();
+
+    /// <summary>
+    /// Resolve which strategy IDs a run should instantiate. Empty <paramref name="selectedIds"/>
+    /// means "all configured" (the default); otherwise the configured set is filtered to the
+    /// selection, so the New-Backtest strategy picker is honoured. Selections that aren't configured
+    /// are dropped (rather than throwing in <see cref="CreateStrategies"/>). Configured order is kept.
+    /// </summary>
+    public static IReadOnlyList<string> SelectActiveIds(
+        IEnumerable<string> configuredIds, IReadOnlyList<string> selectedIds)
+    {
+        var configured = configuredIds.ToArray();
+        if (selectedIds is not { Count: > 0 })
+            return configured;
+        var selected = new HashSet<string>(selectedIds, StringComparer.Ordinal);
+        return configured.Where(selected.Contains).ToArray();
+    }
 }

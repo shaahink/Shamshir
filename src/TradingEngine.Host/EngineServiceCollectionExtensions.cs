@@ -326,7 +326,9 @@ public static class EngineServiceCollectionExtensions
         {
             var reg = sp.GetRequiredService<StrategyRegistry>();
             var loaded = sp.GetRequiredService<LoadedConfig>();
-            var activeIds = loaded.StrategyConfigs.Select(c => c.Id).ToArray();
+            // Honour the run's strategy selection (the New-Backtest picker). Empty = all configured.
+            var activeIds = StrategyRegistry.SelectActiveIds(
+                loaded.StrategyConfigs.Select(c => c.Id), options.ActiveStrategyIds);
             return reg.CreateStrategies(activeIds, loaded, sp).ToList();
         });
         services.AddSingleton<IEnumerable<IStrategy>>(sp => sp.GetRequiredService<IReadOnlyList<IStrategy>>());

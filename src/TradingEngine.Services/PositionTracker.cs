@@ -16,6 +16,11 @@ public sealed class PositionTracker(
 {
     private EngineState _state = EngineState.Empty;
     private readonly HashSet<Guid> _processedExecutionIds = [];
+    // F8 (iter-26): last applied execution signature per order, to drop EXACT duplicate fills
+    // (same state/price/lots/timestamp) the venue may resend. A genuine close differs from the
+    // entry in price/timestamp, so this never swallows a real close — unlike a lots-only check,
+    // which can't tell a duplicate full-lots entry fill from a full-lots close.
+    private readonly Dictionary<Guid, (OrderState State, decimal? Price, decimal Lots, DateTime Ts)> _lastExecSig = new();
     private readonly Dictionary<Guid, (OrderRequest Request, decimal RiskAmount, string RiskProfileId)> _pendingIntent = new();
 
     // Serializes the three mutating entry points (TrackOrder, OnExecutionAsync,
@@ -209,6 +214,16 @@ public sealed class PositionTracker(
 
     private async Task<IReadOnlyList<EngineEffect>?> OnExecutionCoreAsync(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
     {
+        // F8: exact-duplicate guard. A resent identical fill on an Open position would otherwise be
+        // fed to the reducer as (Open, OrderFilled) → an unintended close/reduce.
+        var sig = (evt.NewState, evt.FillPrice?.Value, evt.FilledLots, evt.TimestampUtc);
+        if (_lastExecSig.TryGetValue(evt.OrderId, out var prevSig) && prevSig == sig)
+        {
+            logger.LogWarning("Duplicate execution event skipped (identical signature). OrderId={OrderId}", evt.OrderId);
+            return null;
+        }
+        _lastExecSig[evt.OrderId] = sig;
+
         if (_processedExecutionIds.Contains(evt.OrderId) && !_state.Positions.Any(kv => kv.Value.OrderId == evt.OrderId))
         {
             logger.LogWarning("Duplicate execution event skipped. OrderId={OrderId}", evt.OrderId);
@@ -316,8 +331,11 @@ public sealed class PositionTracker(
         var (request, riskAmount, riskProfileId) = _pendingIntent.GetValueOrDefault(evt.OrderId,
             (default!, 0m, "standard"));
 
+        // F6 (iter-26): register under the SAME id used to deregister (the reducer's
+        // DeregisterRisk/DeregisterPosition carry ps.PositionId). Using a fresh Guid here meant
+        // PositionManager.DeregisterPosition never matched → its dictionaries leaked every trade.
         var position = new Position(
-            Guid.NewGuid(), evt.OrderId, ps.Symbol, ps.Direction,
+            ps.PositionId, evt.OrderId, ps.Symbol, ps.Direction,
             ps.Lots, ps.EntryPrice, ps.CurrentStopLoss, ps.TakeProfit,
             clock.UtcNow, ps.StrategyId);
 
@@ -340,6 +358,7 @@ public sealed class PositionTracker(
         if (ps is null) return;
 
         _processedExecutionIds.Remove(evt.OrderId);
+        _lastExecSig.Remove(evt.OrderId);
 
         logger.LogInformation("Closed. Id={Id} Exit={Exit:F5} Reason={Reason}", ps.PositionId, fillPrice, ps.CloseReason ?? "FORCE");
     }
@@ -351,13 +370,17 @@ public sealed class PositionTracker(
 
         var position = ToPosition(ps);
         var closedLots = evt.FilledLots;
-        var remainingLots = ps.Lots;
+        var remainingLots = ps.Lots; // reducer already shrank ps.Lots to the remainder
 
         var symbolInfo = symbolRegistry.Get(position.Symbol);
         var pnl = PipCalculator.GrossPnL(position.Direction, position.EntryPrice, new Price(fillPrice), closedLots, symbolInfo, crossRateProvider);
 
-        var (_, riskAmount, riskProfileId) = _pendingIntent.GetValueOrDefault(evt.OrderId, (default!, 0m, "standard"));
-        var proportionalRisk = position.Lots > 0 ? riskAmount * remainingLots / position.Lots : 0m;
+        var (request, riskAmount, riskProfileId) = _pendingIntent.GetValueOrDefault(evt.OrderId, (default!, 0m, "standard"));
+        // F4 (iter-26): scale the registered risk by remaining/ORIGINAL lots. Previously this divided
+        // by position.Lots (== remainingLots after the reduce), so the ratio was always 1 and open
+        // risk never dropped after a partial close — over-blocking later entries.
+        var originalLots = request is not null ? request.Lots : remainingLots + closedLots;
+        var proportionalRisk = originalLots > 0 ? riskAmount * remainingLots / originalLots : 0m;
         riskManager.RegisterPosition(position.Id, position.StrategyId, proportionalRisk);
 
         await eventBus.PublishAsync(new PositionPartiallyClosed(
@@ -392,11 +415,5 @@ public sealed class PositionTracker(
             ps.PositionId, ps.OrderId, ps.Symbol, ps.Direction,
             ps.Lots, ps.EntryPrice, ps.CurrentStopLoss, ps.TakeProfit,
             ps.OpenedAtUtc == DateTime.MinValue ? DateTime.UtcNow : ps.OpenedAtUtc, ps.StrategyId);
-    }
-
-    private bool TryBuildPosition(Guid orderId, decimal fillPrice, out Position position)
-    {
-        position = default!;
-        return false;
     }
 }

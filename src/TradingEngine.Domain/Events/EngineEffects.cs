@@ -8,7 +8,11 @@ public record ModifyStopLoss(Guid PositionId, Price NewStopLoss) : EngineEffect;
 
 public record ModifyTakeProfit(Guid PositionId, Price NewTakeProfit) : EngineEffect;
 
-public record CloseOpenPosition(Guid PositionId, string Reason) : EngineEffect;
+// D1 (iter-26): the Guid here is the VENUE order id, not the engine-internal PositionId.
+// Venues (simulated/replay/cTrader) own open positions by the order/client id returned from
+// SubmitOrderAsync, so every venue-bound close must carry OrderId. Passing the internal
+// PositionId here made RequestForceCloseAll/CloseRequested a silent no-op against the venue.
+public record CloseOpenPosition(Guid OrderId, string Reason) : EngineEffect;
 
 public record RecordDecisionEvent(DecisionRecord Decision) : EngineEffect;
 

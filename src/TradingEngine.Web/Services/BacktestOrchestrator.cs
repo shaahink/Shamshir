@@ -130,19 +130,26 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             RecentJournal: journal);
     }
 
-    private static void TallyEvent(BacktestRunState state, BacktestProgressEvent evt)
+    internal static void TallyEvent(BacktestRunState state, BacktestProgressEvent evt)
     {
+        // Counter keys must match the event-type strings the ENGINE actually emits:
+        //   TradingLoop → "SIGNAL"/"ORDER"; MarketEventSource → "EXEC" (fill) / "REJECTED";
+        //   EffectExecutor → "CLOSE" (on trade close); AccountProcessor → "BREACH".
+        // The old keys ("FILL"/"REJECT"/no breach producer) never matched, so Fills/Rejections/
+        // Breaches were always 0 and Closes undercounted.
+        // Interlocked: a Progress<T> created on a thread with no captured SyncContext (the background
+        // RunAsync task) posts its callbacks to the thread pool, so these can fire concurrently.
         switch (evt.EventType)
         {
-            case "SIGNAL": state.Signals++; break;
-            case "ORDER": state.Orders++; break;
-            case "FILL": state.Fills++; break;
-            case "CLOSE": state.Closes++; break;
-            case "REJECT": case "OrderRejected": state.Rejections++; break;
-            case "BREACH": state.Breaches++; break;
+            case "SIGNAL": Interlocked.Increment(ref state.Signals); break;
+            case "ORDER": Interlocked.Increment(ref state.Orders); break;
+            case "EXEC": Interlocked.Increment(ref state.Fills); break;
+            case "CLOSE": Interlocked.Increment(ref state.Closes); break;
+            case "REJECTED": case "OrderRejected": Interlocked.Increment(ref state.Rejections); break;
+            case "BREACH": Interlocked.Increment(ref state.Breaches); break;
         }
 
-        if (evt.EventType is "SIGNAL" or "ORDER" or "FILL" or "CLOSE" or "REJECT" or "BREACH")
+        if (evt.EventType is "SIGNAL" or "ORDER" or "EXEC" or "CLOSE" or "REJECTED" or "BREACH")
         {
             lock (state.RecentJournal)
             {
@@ -170,6 +177,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     {
         _journal.Write(runId, "LOG", msg, queue);
     }
+
+    // The New-Backtest strategy picker arrives as a comma-separated "StrategyIds" custom param
+    // (empty/absent = run all configured strategies).
+    private static string[] ParseStrategyIds(BacktestConfig cfg) =>
+        cfg.CustomParams.TryGetValue("StrategyIds", out var ids) && !string.IsNullOrWhiteSpace(ids)
+            ? ids.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            : Array.Empty<string>();
 
     private static Timeframe ParseTimeframe(string period) => period.ToUpperInvariant() switch
     {
@@ -278,8 +292,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             }
 
             var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
-
-            await PopulateEquityStateAsync(state, runId);
 
             result = result with
             {
@@ -392,8 +404,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 state.BarCount++;
                 if (evt.Message.Length > 4 && evt.Message.StartsWith("Bar "))
                 {
-                    var spaceIdx = evt.Message.IndexOf(' ', 4);
-                    state.SimTime = spaceIdx > 0 ? evt.Message[4..spaceIdx] : evt.Message[4..];
+                    // Message looks like "Bar 2024-01-01 00:00 | close=…" — keep the whole timestamp
+                    // (date AND time) up to the " | " separator so the sim clock advances intra-day.
+                    var pipeIdx = evt.Message.IndexOf(" | ", StringComparison.Ordinal);
+                    state.SimTime = pipeIdx > 4 ? evt.Message[4..pipeIdx] : evt.Message[4..];
                 }
             }
             TallyEvent(state, evt);
@@ -416,6 +430,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             DbPath = dbPath,
             SolutionRoot = solutionRoot,
             SymbolNames = cfg.Symbols,
+            ActiveStrategyIds = ParseStrategyIds(cfg),
             Progress = progressCallback,
             MinLogLevel = LogLevel.Warning,
         });
@@ -428,7 +443,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         $"[{DateTime.UtcNow:HH:mm:ss}] Engine started. Replaying bars...");
 
     var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
-    _ = StartEquityPollingAsync(adapter, state, cts.Token);
+    _ = StartEquityPollingAsync(innerHost, state, runId, cts.Token);
     await adapter.BarStream.Completion;
 
         var barCount = (adapter as BacktestReplayAdapter)?.BarCount ?? 0;
@@ -446,6 +461,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     EnqueueLog(runId, logLines,
         $"[{DateTime.UtcNow:HH:mm:ss}] Engine replay complete.");
+    CaptureFinalEquity(state, innerHost, runId);
     await innerHost.StopAsync(CancellationToken.None);
     innerHost.Dispose();
 
@@ -498,8 +514,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 runState.BarCount++;
                 if (evt.Message.Length > 4 && evt.Message.StartsWith("Bar "))
                 {
-                    var spaceIdx = evt.Message.IndexOf(' ', 4);
-                    runState.SimTime = spaceIdx > 0 ? evt.Message[4..spaceIdx] : evt.Message[4..];
+                    var pipeIdx = evt.Message.IndexOf(" | ", StringComparison.Ordinal);
+                    runState.SimTime = pipeIdx > 4 ? evt.Message[4..pipeIdx] : evt.Message[4..];
                 }
             }
             TallyEvent(runState, evt);
@@ -533,6 +549,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             DbPath = dbPath,
             SolutionRoot = solutionRoot,
             SymbolNames = cfg.Symbols,
+            ActiveStrategyIds = ParseStrategyIds(cfg),
             Progress = progressCallback,
             MinLogLevel = LogLevel.Warning,
         });
@@ -555,8 +572,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] Engine started (in-process NetMQ). Ports={dataPort}/{commandPort}");
 
-        var netMqAdapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
-        _ = StartEquityPollingAsync(netMqAdapter, _runs[runId], cts.Token);
+        _ = StartEquityPollingAsync(innerHost, _runs[runId], runId, cts.Token);
 
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
@@ -584,6 +600,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
     finally
     {
+        CaptureFinalEquity(_runs[runId], innerHost, runId);
         await innerHost.StopAsync(CancellationToken.None);
         innerHost.Dispose();
     }
@@ -724,46 +741,44 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
     }
 
-    private async Task PopulateEquityStateAsync(BacktestRunState state, string runId)
-    {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var snapshotStore = scope.ServiceProvider.GetService<IAccountSnapshotStore>();
-            if (snapshotStore is null) return;
-
-            var snapshots = await snapshotStore.GetByRunIdAsync(runId, CancellationToken.None);
-            var latest = snapshots.LastOrDefault();
-
-            if (latest is not null)
-            {
-                state.Equity = latest.Equity;
-                state.Balance = latest.Balance;
-                state.DailyDdPct = latest.DailyDrawdown;
-                state.MaxDdPct = latest.MaxDrawdown;
-                state.OpenPositions = latest.OpenPositions;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to populate equity state for {RunId}", runId);
-        }
-    }
-
+    // Live equity/DD for the Monitor. Reads the engine's in-memory AccountSnapshotStore (which moves
+    // as the run progresses), NOT IBrokerAdapter.GetAccountStateAsync — the replay adapter's
+    // GetAccountStateAsync returns the INITIAL balance forever, which left the Monitor's equity/DD
+    // frozen and the page feeling "stuck".
     private static async Task StartEquityPollingAsync(
-        IBrokerAdapter adapter, BacktestRunState state, CancellationToken ct)
+        IHost innerHost, BacktestRunState state, string runId, CancellationToken ct)
     {
+        var store = innerHost.Services.GetService<IAccountSnapshotStore>();
+        if (store is null) return;
         try
         {
             while (!ct.IsCancellationRequested)
             {
                 await Task.Delay(500, ct);
-                var acct = await adapter.GetAccountStateAsync(ct);
-                state.Equity = acct.Equity;
-                state.Balance = acct.Balance;
-                state.OpenPositions = acct.OpenPositions.Count;
+                ApplySnapshot(state, await store.GetByRunIdAsync(runId, ct));
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    // Capture the final snapshot onto the run state BEFORE the inner host (and its in-memory store)
+    // is disposed, so the terminal RunProgress frame and the saved run summary show real equity/DD.
+    private static void CaptureFinalEquity(BacktestRunState state, IHost innerHost, string runId)
+    {
+        var store = innerHost.Services.GetService<IAccountSnapshotStore>();
+        if (store is null) return;
+        try { ApplySnapshot(state, store.GetByRunIdAsync(runId, CancellationToken.None).GetAwaiter().GetResult()); }
+        catch { /* best effort */ }
+    }
+
+    private static void ApplySnapshot(BacktestRunState state, IReadOnlyList<AccountSnapshot> snaps)
+    {
+        if (snaps.Count == 0) return;
+        var latest = snaps[^1];
+        state.Equity = latest.Equity;
+        state.Balance = latest.Balance;
+        state.DailyDdPct = latest.DailyDrawdown;
+        state.MaxDdPct = latest.MaxDrawdown;
+        state.OpenPositions = latest.OpenPositions;
     }
 }

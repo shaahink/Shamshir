@@ -93,17 +93,15 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             foreach (var bar in bars)
             {
                 ct.ThrowIfCancellationRequested();
-                BrokerTimeUtc = bar.OpenTimeUtc;
-                _lastClose = bar.Close;
 
+                // F1 (iter-26): the feed only produces bars+ticks. It must NOT compute equity here —
+                // it races ahead of execution on a different thread, so floating PnL would be measured
+                // against an empty/stale open book and `_openTrades` would be read while the engine
+                // thread mutates it. Equity/account updates are emitted on the ENGINE thread instead,
+                // in SyncToBar (per-bar mark-to-market) and on each realized close.
                 await _barChannel.Writer.WriteAsync(bar, ct);
                 await _tickChannel.Writer.WriteAsync(
                     new Tick(bar.Symbol, bar.Close, bar.Close + 0.0001m, bar.OpenTimeUtc), ct);
-
-                var floatingPnL = ComputeFloatingPnL(bar.Close);
-                var equity = _balance + floatingPnL;
-                await _accountChannel.Writer.WriteAsync(
-                    new AccountUpdate(_balance, equity, floatingPnL, bar.OpenTimeUtc), ct);
             }
 
             _logger.LogInformation("BacktestReplay: feed complete, {Count} bars sent", bars.Count);
@@ -114,9 +112,11 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         }
         finally
         {
+            // Only the bar/tick streams end with the feed. The account stream stays open so the
+            // engine-thread emitters (SyncToBar / close) can keep publishing realized equity; it is
+            // completed in DisconnectAsync/DisposeAsync.
             _barChannel.Writer.TryComplete();
             _tickChannel.Writer.TryComplete();
-            _accountChannel.Writer.TryComplete();
         }
     }
 
@@ -152,17 +152,37 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
     public Task CancelOrderAsync(Guid orderId, CancellationToken ct)
         => Task.CompletedTask;
 
+    // Called on the ENGINE thread (RunBacktestLoopAsync) before each bar is processed. This is where
+    // we advance the venue clock/price AND publish the per-bar mark-to-market equity so the breach
+    // watchdog and the equity curve see the real open book (F1 iter-26).
     public void OnBarObserved(Bar bar) => SyncToBar(bar.Close, bar.OpenTimeUtc);
 
     public void SyncToBar(decimal close, DateTime openTimeUtc)
     {
         _lastClose = close;
         BrokerTimeUtc = openTimeUtc;
+        EmitAccountUpdate(openTimeUtc);
+    }
+
+    // Publishes balance + floating PnL of the current open book. Best-effort write (bounded
+    // DropOldest channel) so it never blocks the engine loop.
+    private void EmitAccountUpdate(DateTime ts)
+    {
+        var floatingPnL = ComputeFloatingPnL(_lastClose);
+        var equity = _balance + floatingPnL;
+        _accountChannel.Writer.TryWrite(new AccountUpdate(_balance, equity, floatingPnL, ts));
     }
 
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
+        => CloseAtAsync(positionId, new Price(_lastClose > 0 ? _lastClose : 1m), ct);
+
+    // F2/D3 (iter-26): an engine-detected SL/TP exit closes at the stop/target price, not the bar
+    // close, so backtest PnL reflects what the stop actually cost.
+    public Task ClosePositionAtAsync(Guid positionId, Price exitPrice, CancellationToken ct)
+        => CloseAtAsync(positionId, exitPrice, ct);
+
+    private Task CloseAtAsync(Guid positionId, Price fillPrice, CancellationToken ct)
     {
-        var fillPrice = new Price(_lastClose > 0 ? _lastClose : 1m);
         _executionChannel.Writer.TryWrite(
             new ExecutionEvent(positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc));
 
@@ -184,6 +204,8 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             }
             _balance += pnl;
             _openTrades.Remove(positionId);
+            // F1: surface the realized balance change as an account update so equity/drawdown move.
+            EmitAccountUpdate(BrokerTimeUtc);
             _logger.LogDebug("BacktestReplay: close {PositionId} at {Price:F5} PnL={PnL:F2} balance={Balance:F2}",
                 positionId, fillPrice.Value, pnl, _balance);
         }
@@ -219,6 +241,8 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
                 _openTrades.Remove(positionId);
             else
                 _openTrades[positionId] = (trade.Direction, trade.EntryPrice, remaining);
+            // F1: realized partial PnL must reach the account stream too.
+            EmitAccountUpdate(BrokerTimeUtc);
             _logger.LogDebug("BacktestReplay: partial close {PositionId} lots={Lots} remaining={Remaining} PnL={PnL:F2}",
                 positionId, lots, remaining, pnl);
         }

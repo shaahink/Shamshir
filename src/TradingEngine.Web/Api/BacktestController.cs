@@ -155,6 +155,9 @@ public sealed class BacktestController : ControllerBase
         }).ToList() });
     }
 
+    // LEGACY / intentionally unconsumed: the live Monitor moved to SignalR (RunHub +
+    // RunProgressBroadcaster) in iter-21. This SSE stream is retained only for ad-hoc curl debugging
+    // of the raw journal channel; no page subscribes to it. Do not build new features on it.
     [HttpGet("{runId}/stream")]
     public async Task Stream(string runId, CancellationToken ct)
     {

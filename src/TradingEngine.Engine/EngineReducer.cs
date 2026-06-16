@@ -185,7 +185,7 @@ public static class EngineReducer
                 var exit = DetectSlTpExit(nextPos, evt);
                 if (exit is not null)
                 {
-                    effects.Add(new CloseOpenPosition(nextPos.PositionId, exit));
+                    effects.Add(new CloseOpenPosition(nextPos.OrderId, exit));
                 }
             }
         }
@@ -261,7 +261,10 @@ public static class EngineReducer
     // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
     private static EngineDecision HandleMonthRolled(EngineState state, MonthRolled evt)
     {
-        var newDrawdown = DrawdownReducer.ApplyMonthlyReset(state.Drawdown, state.Drawdown.DailyStartEquity);
+        // F10 (iter-26): mirror WeekRolled — zero the monthly DD against the existing monthly baseline.
+        // Passing DailyStartEquity here re-based the month to the day's start (wrong). The reducer has
+        // no current-equity input; the authoritative reset is RiskManager.OnMonthlyReset(currentEquity).
+        var newDrawdown = DrawdownReducer.ApplyMonthlyReset(state.Drawdown, state.Drawdown.MonthlyStartEquity);
         return new EngineDecision(state with { Drawdown = newDrawdown }, []);
     }
 
@@ -273,9 +276,10 @@ public static class EngineReducer
     private static EngineDecision HandleForceCloseAll(EngineState state, ForceCloseAllRequested evt)
     {
         var effects = new List<EngineEffect>();
-        foreach (var (posId, _) in state.Positions)
+        foreach (var (_, ps) in state.Positions)
         {
-            effects.Add(new CloseOpenPosition(posId, evt.Reason));
+            // Close by the venue order id (D1) so the flatten actually reaches the venue.
+            effects.Add(new CloseOpenPosition(ps.OrderId, evt.Reason));
         }
         return new EngineDecision(state, effects);
     }

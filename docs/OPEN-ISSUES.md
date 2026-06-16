@@ -621,3 +621,44 @@ Items 13–14 are infrastructure hygiene.
 | MIN-08 | `DESIGN-03` — Cancel() doesn't kill subprocess | `BacktestOrchestrator.cs:102` |
 | MIN-09 | `STD-01` — `await Task.CompletedTask` cargo-cult in 4 methods | multiple |
 | MIN-10 | `STD-02` — `double` for price comparison in strategy | `MeanReversionStrategy.cs:55` |
+
+---
+
+## Iteration 27 Resolved Items (Web UI)
+
+**Updated**: 2026-06-16. See `docs/iterations/iter-27/PLAN.md` (Parts A–E). All test suites green
+(Unit 181/4-skip, Integration 35, Architecture 3, Simulation FTMO suite).
+
+- **UI-01 — Live Monitor "stuck on connecting"** ✅ **Fixed (Iteration 27)**. `wwwroot/js/run-client.js`
+  was an IIFE with **no ES export**, but `Monitor.cshtml` does `import { createRunClient }`. The named
+  import threw at module load and aborted the whole `<script type="module">`, so SignalR never connected
+  and the page froze on "Connecting to run…". Converted the file to a proper ES module (named export +
+  a `window.createRunClient` back-compat alias).
+- **UI-02 — Strategy picker ignored** ✅ **Fixed (Iteration 27)**. The New-Backtest strategy selection
+  was carried to `BacktestController` (into `cfg.CustomParams["StrategyIds"]`) but never forwarded to the
+  engine host, and `AddStrategiesFromOptions` hardcoded *all* configured strategies — so every run ran
+  the whole bank regardless of the pick. Added `EngineHostOptions.ActiveStrategyIds`, threaded the
+  selection from `BacktestOrchestrator`, and filter via `StrategyRegistry.SelectActiveIds`
+  (empty = all configured). Covered by `Iter27FixTests.SelectActiveIds_*`.
+- **UI-03 — Monitor funnel counters always 0** ✅ **Fixed (Iteration 27)**. `TallyEvent` matched event
+  names the engine never emits (`FILL`/`REJECT`); remapped to `EXEC`/`CLOSE`/`REJECTED`/`BREACH`.
+  Covered by `Iter27FixTests.TallyEvent_*`.
+- **UI-04 — Report funnel inflated by per-bar noise** ✅ **Fixed (Iteration 27)**. Per-strategy Signals
+  counted `BAR_EVAL`; now Signals = accepted orders + rejects (lifecycle `OrderSubmitted(Accepted)`,
+  de-duped from the dispatcher). Logic extracted to `ReportModel.BuildFunnel` + covered by tests.
+- **UI-05 — Report equity curve always empty** (was `OBS-04`) ✅ **Fixed (Iteration 27)**. The engine's
+  intra-bar `AccountSnapshot`s live only in the inner host's in-memory store (disposed at end of run) and
+  aren't visible to the separate Report request. The Report now derives a realized-equity curve from the
+  run's trades (the same walk that computes MaxDd), so the chart and the MaxDd KPI are consistent by
+  construction and end at `initialBalance + netPnL`. *Conscious deviation* from PLAN Decision D-Equity
+  (DB persistence) per the "pick the smaller diff" rule — no schema migration needed.
+- **UI-06 — Lifecycle decision records persisted with `RunId=""`** ✅ **Fixed (Iteration 27)**.
+  `PipelineEventWriter.Record` stamps its own run id when the record carries none, so the Report funnel
+  sees fills/closes. Covered by `Iter27FixTests.Record_stamps_writer_runId_when_record_runId_is_empty`.
+- **UI-07 — Hardcoded `/api/performance` stub; Trade Detail balance from 0; sim clock date-only** ✅
+  **Fixed (Iteration 27)** (carried from the prior session's Part A; verified building + behaving).
+
+**Deferred / consciously left:** the SSE `/api/backtest/{runId}/stream` endpoint is now annotated as
+legacy/unconsumed (the Monitor uses SignalR) rather than deleted, because `BacktestProgressStore` is
+still woven into `BacktestJournal`. `BarsTotal` still ignores weekend/market gaps (display-only,
+low priority).

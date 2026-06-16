@@ -23,11 +23,16 @@ public sealed class TradeDetailModel(ReportingDbContext db, TradingDbContext tra
             var symbol = Domain.Symbol.Parse(Trade.Symbol);
 
             var tf = Timeframe.H1;
+            decimal initialBalance = 0;
             if (!string.IsNullOrEmpty(Trade.RunId))
             {
                 var run = await tradingDb.BacktestRuns.FirstOrDefaultAsync(r => r.RunId == Trade.RunId);
-                if (run is not null && !string.IsNullOrEmpty(run.Period))
-                    tf = Enum.Parse<Timeframe>(run.Period, true);
+                if (run is not null)
+                {
+                    if (!string.IsNullOrEmpty(run.Period))
+                        tf = Enum.Parse<Timeframe>(run.Period, true);
+                    initialBalance = run.InitialBalance;
+                }
             }
 
             var padding = TimeSpan.FromHours(20);
@@ -58,11 +63,11 @@ public sealed class TradeDetailModel(ReportingDbContext db, TradingDbContext tra
                 }));
             }
 
-            await ComputeAccountContext();
+            await ComputeAccountContext(initialBalance);
         }
     }
 
-    private async Task ComputeAccountContext()
+    private async Task ComputeAccountContext(decimal initialBalance)
     {
         if (Trade is null) return;
 
@@ -70,7 +75,9 @@ public sealed class TradeDetailModel(ReportingDbContext db, TradingDbContext tra
             ? await db.Trades.Where(t => t.RunId == Trade.RunId).OrderBy(t => t.ClosedAtUtc).ToListAsync()
             : new List<TradeResultEntity> { Trade };
 
-        decimal runningBalance = 0;
+        // Start from the run's opening balance so before/after are real account balances,
+        // not cumulative PnL deltas from zero.
+        decimal runningBalance = initialBalance;
         var idx = tradesInRun.FindIndex(t => t.Id == Trade.Id);
         if (idx < 0) return;
 

@@ -48,9 +48,9 @@
         <button class="tab active filter-all" data-filter="all">All</button>
         <button class="tab filter-SIGNAL" data-filter="SIGNAL">Signals</button>
         <button class="tab filter-ORDER" data-filter="ORDER">Orders</button>
-        <button class="tab filter-FILL" data-filter="FILL">Fills</button>
+        <button class="tab filter-EXEC" data-filter="EXEC">Fills</button>
         <button class="tab filter-CLOSE" data-filter="CLOSE">Trades</button>
-        <button class="tab filter-REJECT" data-filter="REJECT">Rejections</button>
+        <button class="tab filter-REJECTED" data-filter="REJECTED">Rejections</button>
         <button class="tab filter-BREACH" data-filter="BREACH">Breaches</button>
     </div>
     <div id="journalFeed" class="journal-feed" style="max-height:400px;overflow-y:auto" aria-live="polite"></div>
@@ -203,6 +203,25 @@
             onDone: (progress) => {
                 loading.style.display = 'none';
                 errorState.style.display = 'none';
+
+                // Paint the final numbers from the terminal frame (it carries the post-run equity
+                // and the full funnel), so the page shows the real totals — not the last throttled frame.
+                if (progress) {
+                    document.getElementById('progressFill').style.width = '100%';
+                    document.getElementById('kpiPercent').textContent = '100%';
+                    document.getElementById('kpiEquity').textContent = (progress.equity || 0).toFixed(2);
+                    document.getElementById('kpiDailyDd').textContent = ((progress.dailyDdPct || 0) * 100).toFixed(2) + '%';
+                    document.getElementById('kpiMaxDd').textContent = ((progress.maxDdPct || 0) * 100).toFixed(2) + '%';
+                    document.getElementById('kpiOpen').textContent = progress.openPositions || 0;
+                    var c = progress.counters || {};
+                    document.getElementById('countSignals').textContent = c.signals || 0;
+                    document.getElementById('countOrders').textContent = c.orders || 0;
+                    document.getElementById('countFills').textContent = c.fills || 0;
+                    document.getElementById('countCloses').textContent = c.closes || 0;
+                    document.getElementById('countRejections').textContent = c.rejections || 0;
+                    document.getElementById('countBreaches').textContent = c.breaches || 0;
+                }
+
                 completedCta.style.display = 'block';
                 if (progress.status === 'completed') {
                     completedCta.querySelector('a').textContent = 'View Report';

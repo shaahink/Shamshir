@@ -78,9 +78,10 @@ public sealed class EffectExecutor : IEffectExecutor
                 break;
 
             case CloseOpenPosition closePos:
-                await _broker.ClosePositionAsync(closePos.PositionId, ct);
-                _progress?.Report(new BacktestProgressEvent(_runId, "CLOSE",
-                    $"Close position {closePos.PositionId} reason={closePos.Reason}", _clock.UtcNow));
+                // A close REQUEST — not a completed close. The funnel "Closes" counter is incremented
+                // on PublishTradeClosed (the actual fill), so we don't emit a "CLOSE" progress here
+                // (doing so double-counted force-closes, which emit both this and PublishTradeClosed).
+                await _broker.ClosePositionAsync(closePos.OrderId, ct);
                 break;
 
             case RecordDecisionEvent record:
@@ -132,6 +133,11 @@ public sealed class EffectExecutor : IEffectExecutor
         _governor?.OnTradeClosed(tradeResult);
         _signalGate?.OnPositionClosed(effect.StrategyId, effect.Symbol.Value, effect.Direction,
             effect.ExitReason, effect.ClosedAtUtc);
+
+        // Live funnel "Closes" + journal: emitted once per actually-closed trade.
+        _progress?.Report(new BacktestProgressEvent(_runId, "CLOSE",
+            $"{effect.Symbol.Value} {effect.Direction} exit={effect.ExitPrice.Value:F5} net={net.Amount:F2} reason={effect.ExitReason}",
+            effect.ClosedAtUtc));
 
         _logger.LogInformation("CLOSED|{Symbol}|{Dir}|Exit={Exit:F5}|Gross={Gross:F2}|Net={Net:F2}|Reason={Reason}",
             effect.Symbol.Value, effect.Direction, effect.ExitPrice.Value, gross.Amount, net.Amount, effect.ExitReason);

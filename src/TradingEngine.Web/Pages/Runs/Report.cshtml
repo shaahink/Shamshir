@@ -13,7 +13,7 @@
     <div class="card"><h2>Max DD</h2><div class="value negative">@Model.MaxDdPct.ToString("P2")</div></div>
     <div class="card"><h2>Win Rate</h2><div class="value">@Model.WinRatePct.ToString("F1")%</div></div>
     <div class="card"><h2>Total Trades</h2><div class="value">@Model.TotalTrades</div></div>
-    <div class="card"><h2>Profit Factor</h2><div class="value">@(Model.ProfitFactor > 0 ? Model.ProfitFactor.ToString("F2") : "--")</div></div>
+    <div class="card"><h2>Profit Factor</h2><div class="value">@(Model.ProfitFactor == decimal.MaxValue ? "∞" : Model.ProfitFactor > 0 ? Model.ProfitFactor.ToString("F2") : "--")</div></div>
 </div>
 
 <div class="card">

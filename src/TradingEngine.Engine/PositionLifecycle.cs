@@ -130,7 +130,7 @@ public static class PositionLifecycle
         var effects = new List<EngineEffect>
         {
             Record(state, evt, closing, evt.Reason),
-            new CloseOpenPosition(state.PositionId, evt.Reason)
+            new CloseOpenPosition(state.OrderId, evt.Reason)
         };
         return (closing, effects);
     }
