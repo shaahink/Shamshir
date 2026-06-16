@@ -527,6 +527,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 {
                     _journal.Write(runId, type, msg);
                     _journal.Write(runId, type, msg, logLines);
+                    ((IProgress<BacktestProgressEvent>)progressCallback).Report(
+                        new BacktestProgressEvent(runId, type, msg, DateTime.UtcNow));
                 };
                 return adapter;
             },

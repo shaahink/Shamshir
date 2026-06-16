@@ -106,12 +106,19 @@ public sealed class BacktestQueryService : IBacktestQueryService
         if (from.HasValue) query = query.Where(e => e.TimestampUtc >= from.Value);
         if (to.HasValue) query = query.Where(e => e.TimestampUtc <= to.Value);
 
-        return await query
-            .OrderBy(e => e.TimestampUtc)
-            .Select(e => new EquityPoint(
-                e.TimestampUtc,
-                e.Equity,
-                e.Balance))
-            .ToListAsync(ct);
+        try
+        {
+            return await query
+                .OrderBy(e => e.TimestampUtc)
+                .Select(e => new EquityPoint(
+                    e.TimestampUtc,
+                    e.Equity,
+                    e.Balance))
+                .ToListAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return [];
+        }
     }
 }

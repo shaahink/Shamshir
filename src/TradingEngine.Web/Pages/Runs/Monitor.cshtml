@@ -218,6 +218,7 @@
                 }
                 if (status === 'connected') {
                     errorState.style.display = 'none';
+                    loading.innerHTML = '<span class="empty-icon">~</span><span>Waiting for first data frame...</span>';
                     fetch('/api/backtest/' + runId + '/status')
                         .then(r => r.json())
                         .then(s => {
@@ -230,6 +231,8 @@
                                     completedCta.querySelector('a').textContent = 'Run ' + s.status;
                                     completedCta.querySelector('a').style.color = 'var(--neg)';
                                 }
+                            } else {
+                                loading.innerHTML = '<span class="empty-icon">~</span><span>Run active &mdash; waiting for bar data...</span>';
                             }
                         }).catch(() => {});
                 }
