@@ -114,7 +114,7 @@ public sealed class BarEvaluationHandler : IEventHandler<BarEvaluated>, IAsyncDi
 
     public async ValueTask DisposeAsync()
     {
-        _channel.Writer.Complete();
+        try { _channel.Writer.Complete(); } catch (ChannelClosedException) { }
         _cts.Cancel();
         try { await _flushTask; } catch { }
         _cts.Dispose();

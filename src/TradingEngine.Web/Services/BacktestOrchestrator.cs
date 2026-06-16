@@ -444,8 +444,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         await Task.Delay(5_000, cts.Token);
 
-    await ShutdownHandlersAsync(innerHost);
-
     EnqueueLog(runId, logLines,
         $"[{DateTime.UtcNow:HH:mm:ss}] Engine replay complete.");
     await innerHost.StopAsync(CancellationToken.None);
@@ -586,7 +584,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
     finally
     {
-        await ShutdownHandlersAsync(innerHost);
         await innerHost.StopAsync(CancellationToken.None);
         innerHost.Dispose();
     }
@@ -768,23 +765,5 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             }
         }
         catch (OperationCanceledException) { }
-    }
-
-    private static async Task ShutdownHandlersAsync(IHost innerHost)
-    {
-        var barHandler = innerHost.Services.GetRequiredService<BarEvaluationHandler>();
-        await barHandler.DisposeAsync();
-
-        var equityHandler = innerHost.Services.GetRequiredService<EquityPersistenceHandler>();
-        await equityHandler.DisposeAsync();
-
-        var tradeHandler = innerHost.Services.GetRequiredService<TradePersistenceHandler>();
-        await tradeHandler.DisposeAsync();
-
-        var pipelineWriter = innerHost.Services.GetRequiredService<PipelineEventWriter>();
-        await pipelineWriter.DisposeAsync();
-
-        var barWriter = innerHost.Services.GetRequiredService<BufferedBarWriter>();
-        await barWriter.DisposeAsync();
     }
 }
