@@ -113,6 +113,7 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
 
     public async ValueTask DisposeAsync()
     {
+        await FlushRemainingAsync();
         try { _channel.Writer.Complete(); } catch { }
         try { _cts.Cancel(); } catch { }
         try { await _flushTask; } catch { }

@@ -81,10 +81,10 @@ public sealed class ReportModel : PageModel
                     g.Key,
                     g.Count(d => d.Event == "SIGNAL" || d.Event == "BAR_EVAL"),
                     g.Count(d => d.Event == "OrderSubmitted"),
-                    g.Count(d => d.Event == "FILL" || d.Event == "Filled"),
-                    g.Count(d => d.Event == "CLOSE"),
-                    g.Count(d => d.Event == "CLOSE") > 0
-                        ? (double)g.Count(d => d.Event == "CLOSE" && d.Reason?.Contains("TP") == true) / g.Count(d => d.Event == "CLOSE") * 100
+                    g.Count(d => d.Event == "OrderFilled" && (d.Reason == "Filled" || d.Reason == "PartialFill")),
+                    g.Count(d => d.Event == "OrderFilled" && d.Reason is "SL" or "TP" or "FORCE"),
+                    g.Count(d => d.Event == "OrderFilled" && d.Reason is "SL" or "TP" or "FORCE") > 0
+                        ? (double)g.Count(d => d.Event == "OrderFilled" && d.Reason == "TP") / g.Count(d => d.Event == "OrderFilled" && d.Reason is "SL" or "TP" or "FORCE") * 100
                         : 0
                 )).ToList();
 
@@ -105,10 +105,6 @@ public sealed class ReportModel : PageModel
                     equity = s.Equity
                 }).ToList();
                 EquityCurveJson = JsonSerializer.Serialize(points);
-                NetPnL = equityCurve[^1].Equity - equityCurve[0].Balance;
-                if (equityCurve[0].Balance > 0)
-                    ReturnPct = NetPnL / equityCurve[0].Balance;
-                MaxDdPct = equityCurve.Max(s => s.MaxDrawdown);
             }
         }
 
@@ -124,6 +120,25 @@ public sealed class ReportModel : PageModel
             var grossProfit = trades.Where(t => t.NetPnLAmount > 0).Sum(t => t.NetPnLAmount);
             var grossLoss = Math.Abs(trades.Where(t => t.NetPnLAmount < 0).Sum(t => t.NetPnLAmount));
             ProfitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? decimal.MaxValue : 0;
+
+            NetPnL = trades.Sum(t => t.NetPnLAmount);
+            if (run is not null && run.InitialBalance > 0)
+                ReturnPct = NetPnL / run.InitialBalance;
+
+            var equity = run?.InitialBalance ?? 100_000m;
+            var peak = equity;
+            var maxDd = 0m;
+            foreach (var t in trades)
+            {
+                equity += t.NetPnLAmount;
+                if (equity > peak) peak = equity;
+                if (peak > 0)
+                {
+                    var dd = (peak - equity) / peak;
+                    if (dd > maxDd) maxDd = dd;
+                }
+            }
+            MaxDdPct = maxDd;
         }
     }
 
