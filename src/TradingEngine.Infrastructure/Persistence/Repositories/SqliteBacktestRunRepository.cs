@@ -47,28 +47,78 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
 
     public async Task<IReadOnlyList<BacktestRunSummary>> GetAllAsync(CancellationToken ct)
     {
-        return await db.BacktestRuns
+        var entities = await db.BacktestRuns
             .OrderByDescending(r => r.StartedAtUtc)
-            .Select(e => new BacktestRunSummary(
-                e.RunId, e.StartedAtUtc, e.CompletedAtUtc,
-                e.Symbol, e.Period, e.BacktestFrom, e.BacktestTo,
-                e.InitialBalance, e.AlgoHash, e.StrategyParamsJson,
-                e.NetProfit, e.MaxDrawdownPct,
-                e.TotalTrades, e.WinningTrades, e.WinRatePct,
-                e.ExitCode, e.ErrorMessage))
             .ToListAsync(ct);
+
+        var result = new List<BacktestRunSummary>(entities.Count);
+        foreach (var e in entities)
+            result.Add(await ReconcileAsync(e, ct));
+        return result;
     }
 
     public async Task<BacktestRunSummary?> GetByIdAsync(string runId, CancellationToken ct)
     {
         var e = await db.BacktestRuns.FindAsync([runId], ct);
         if (e is null) return null;
+        return await ReconcileAsync(e, ct);
+    }
+
+    // A run interrupted after its trades were persisted but before WriteEndRecordAsync leaves the
+    // summary at its start-record zeros (0 trades, ExitCode -1, CompletedAtUtc unset). Readers then
+    // show "0 trades / 0 profit / running" for a run that clearly has trades. When the stored summary
+    // shows no trades, recompute the headline stats from the persisted trades (the same equity walk as
+    // the orchestrator's GetTradeStatsAsync) and treat the run as completed at its last trade close.
+    // Healthy runs (TotalTrades already set) return unchanged, with no extra query.
+    private async Task<BacktestRunSummary> ReconcileAsync(BacktestRunEntity e, CancellationToken ct)
+    {
+        var net = e.NetProfit;
+        var maxDd = e.MaxDrawdownPct;
+        var total = e.TotalTrades;
+        var wins = e.WinningTrades;
+        var winRate = e.WinRatePct;
+        var completedAt = e.CompletedAtUtc;
+        var exitCode = e.ExitCode;
+
+        if (total == 0)
+        {
+            var trades = await db.Trades
+                .Where(t => t.RunId == e.RunId)
+                .OrderBy(t => t.ClosedAtUtc)
+                .Select(t => new { t.NetPnLAmount, t.ClosedAtUtc })
+                .ToListAsync(ct);
+
+            if (trades.Count > 0)
+            {
+                total = trades.Count;
+                wins = trades.Count(t => t.NetPnLAmount > 0);
+                winRate = (double)wins / total;
+                net = trades.Sum(t => t.NetPnLAmount);
+
+                var equity = e.InitialBalance;
+                var peak = equity;
+                maxDd = 0m;
+                foreach (var t in trades)
+                {
+                    equity += t.NetPnLAmount;
+                    if (equity > peak) peak = equity;
+                    if (peak > 0)
+                    {
+                        var dd = (peak - equity) / peak;
+                        if (dd > maxDd) maxDd = dd;
+                    }
+                }
+
+                if (completedAt == default) completedAt = trades[^1].ClosedAtUtc;
+                exitCode = 0;
+            }
+        }
+
         return new BacktestRunSummary(
-            e.RunId, e.StartedAtUtc, e.CompletedAtUtc,
+            e.RunId, e.StartedAtUtc, completedAt,
             e.Symbol, e.Period, e.BacktestFrom, e.BacktestTo,
             e.InitialBalance, e.AlgoHash, e.StrategyParamsJson,
-            e.NetProfit, e.MaxDrawdownPct,
-            e.TotalTrades, e.WinningTrades, e.WinRatePct,
-            e.ExitCode, e.ErrorMessage);
+            net, maxDd, total, wins, winRate,
+            exitCode, e.ErrorMessage);
     }
 }

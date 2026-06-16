@@ -117,10 +117,35 @@ public sealed class EffectExecutor : IEffectExecutor
         var swap = new Money(effect.Swap ?? 0m, currency);
         var net = effect.NetProfit is { } n ? new Money(n, currency) : gross;
 
+        // Trade analytics, previously hardcoded to zero. Derived from the close geometry so they are
+        // always consistent with the prices shown next to them. R uses a pip-distance ratio (reward
+        // over initial stop distance), so the pip size cancels and no pip-value/cross-rate is needed.
+        var pipSize = symbolInfo.PipSize;
+        var entry = effect.EntryPrice.Value;
+        var exit = effect.ExitPrice.Value;
+        var isLong = effect.Direction == TradeDirection.Long;
+        var signedMove = isLong ? exit - entry : entry - exit;
+
+        var pnlPips = new Pips((double)(signedMove / pipSize));
+
+        var riskDistance = Math.Abs(entry - effect.StopLoss.Value);
+        var rMultiple = riskDistance > 0 ? (double)(signedMove / riskDistance) : 0d;
+
+        // Most-favorable / most-adverse prices over the position's life. HighWater/LowWater are the
+        // per-bar extremes carried on the effect; fold in entry & exit so a same-bar close still yields
+        // a sane (>= 0) magnitude, and ignore unset (zero) water marks.
+        var hi = Math.Max(entry, exit);
+        if (effect.HighWater > 0) hi = Math.Max(hi, effect.HighWater);
+        var lo = Math.Min(entry, exit);
+        if (effect.LowWater > 0) lo = Math.Min(lo, effect.LowWater);
+
+        var mfePips = new Pips((double)((isLong ? hi - entry : entry - lo) / pipSize));
+        var maePips = new Pips((double)((isLong ? entry - lo : hi - entry) / pipSize));
+
         var tradeResult = new TradeResult(Guid.NewGuid(), effect.PositionId, effect.Symbol, effect.Direction,
             effect.Lots, effect.EntryPrice, effect.ExitPrice, effect.StopLoss, effect.TakeProfit,
             effect.OpenedAtUtc, effect.ClosedAtUtc, gross, commission, swap,
-            net, new Pips(0), 0, new Pips(0), new Pips(0),
+            net, pnlPips, rMultiple, maePips, mfePips,
             effect.ExitReason, effect.StrategyId, effect.RiskProfileId ?? "standard");
 
         foreach (var s in _strategies.Where(s => s.Id == effect.StrategyId))

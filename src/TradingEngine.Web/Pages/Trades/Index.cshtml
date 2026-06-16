@@ -87,6 +87,7 @@
             <th>Entry</th>
             <th>Exit</th>
             <th><a href="?@SortLink("pnl")">PnL</a></th>
+            <th>Pips</th>
             <th>R</th>
             <th>Reason</th>
             <th><a href="?@SortLink("opened")">Opened</a></th>
@@ -106,6 +107,7 @@
                 <td class="@(trade.NetPnLAmount >= 0 ? "positive" : "negative")">
                     @trade.NetPnLAmount.ToString("F2")
                 </td>
+                <td class="@(trade.PnLPips >= 0 ? "positive" : "negative")">@trade.PnLPips.ToString("F1")</td>
                 <td>@trade.RMultiple.ToString("F2")</td>
                 <td style="font-size:var(--fs-xs)">@trade.ExitReason</td>
                 <td style="font-size:var(--fs-xs)">@trade.OpenedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>

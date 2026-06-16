@@ -8,18 +8,22 @@ public class BacktestAnalyticsController : ControllerBase
 {
     private readonly TradingDbContext _db;
     private readonly IPassProbabilityEstimator _estimator;
+    private readonly IBacktestRunRepository _runRepo;
 
-    public BacktestAnalyticsController(TradingDbContext db, IPassProbabilityEstimator estimator)
+    public BacktestAnalyticsController(TradingDbContext db, IPassProbabilityEstimator estimator, IBacktestRunRepository runRepo)
     {
         _db = db;
         _estimator = estimator;
+        _runRepo = runRepo;
     }
 
     [HttpGet("runs")]
     public async Task<IActionResult> GetRuns()
     {
-        var runs = await _db.BacktestRuns.OrderByDescending(r => r.StartedAtUtc).Take(50).ToListAsync();
-        var result = runs.Select(r => new
+        // Via the repository so interrupted-run summaries are self-healed from their trades
+        // (otherwise this list shows "0 trades / running" for runs that clearly have trades).
+        var runs = await _runRepo.GetAllAsync(HttpContext.RequestAborted);
+        var result = runs.Take(50).Select(r => new
         {
             r.RunId,
             status = r.CompletedAtUtc == default ? "running" : r.ErrorMessage == null ? "completed" : "failed",
@@ -68,7 +72,7 @@ public class BacktestAnalyticsController : ControllerBase
         var results = new List<object>();
         foreach (var id in ids)
         {
-            var run = await _db.BacktestRuns.FirstOrDefaultAsync(r => r.RunId == id);
+            var run = await _runRepo.GetByIdAsync(id, HttpContext.RequestAborted);
             if (run is null) continue;
             results.Add(new { run.RunId, run.NetProfit, run.MaxDrawdownPct, run.TotalTrades, run.WinningTrades, run.WinRatePct });
         }

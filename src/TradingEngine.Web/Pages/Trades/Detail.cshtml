@@ -33,6 +33,12 @@ else
         <div class="kpi"><span class="kpi-label">Exit Reason</span><span class="kpi-value">@t.ExitReason</span></div>
         <div class="kpi"><span class="kpi-label">Duration</span><span class="kpi-value">@TimeSpan.FromSeconds(t.DurationSeconds).ToString(@"hh\:mm\:ss")</span></div>
     </div>
+    <div class="grid" style="margin-bottom:var(--sp-3)">
+        <div class="kpi"><span class="kpi-label">PnL (pips)</span><span class="kpi-value @(t.PnLPips >= 0 ? "positive" : "negative")">@t.PnLPips.ToString("F1")</span></div>
+        <div class="kpi"><span class="kpi-label">Max Adverse (pips)</span><span class="kpi-value">@t.MaxAdverseExcursion.ToString("F1")</span></div>
+        <div class="kpi"><span class="kpi-label">Max Favorable (pips)</span><span class="kpi-value">@t.MaxFavorableExcursion.ToString("F1")</span></div>
+        <div class="kpi"><span class="kpi-label">Swap</span><span class="kpi-value">@t.SwapAmount.ToString("F2")</span></div>
+    </div>
 
     @if (Model.HasAccountContext)
     {

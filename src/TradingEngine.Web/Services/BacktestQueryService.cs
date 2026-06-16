@@ -18,8 +18,11 @@ public sealed class BacktestQueryService : IBacktestQueryService
         var repo = scope.ServiceProvider.GetRequiredService<IBacktestRunRepository>();
         var summaries = await repo.GetAllAsync(ct);
 
+        // Summaries are self-healed in the repository, so trade counts/PnL are already correct for
+        // interrupted runs. Derive status from the (healed) ExitCode/ErrorMessage instead of forcing
+        // every persisted run to "completed".
         return summaries.Select(s => new BacktestRunView(
-            s.RunId, s.StartedAtUtc, "completed",
+            s.RunId, s.StartedAtUtc, StatusOf(s),
             s.Symbol, s.Period, s.BacktestFrom, s.BacktestTo,
             s.InitialBalance, s.NetProfit, s.MaxDrawdownPct,
             s.TotalTrades, s.WinningTrades, s.WinRatePct,
@@ -34,12 +37,17 @@ public sealed class BacktestQueryService : IBacktestQueryService
         if (s is null) return null;
 
         return new BacktestRunView(
-            s.RunId, s.StartedAtUtc, "completed",
+            s.RunId, s.StartedAtUtc, StatusOf(s),
             s.Symbol, s.Period, s.BacktestFrom, s.BacktestTo,
             s.InitialBalance, s.NetProfit, s.MaxDrawdownPct,
             s.TotalTrades, s.WinningTrades, s.WinRatePct,
             s.AlgoHash, s.ErrorMessage);
     }
+
+    private static string StatusOf(BacktestRunSummary s) =>
+        s.CompletedAtUtc == default ? "running"
+        : s.ErrorMessage is not null ? "failed"
+        : "completed";
 
     public async Task<IReadOnlyList<StrategyPerformance>> GetStrategyBreakdownAsync(
         string runId, CancellationToken ct)
