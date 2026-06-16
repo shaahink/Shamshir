@@ -7,7 +7,7 @@ namespace TradingEngine.Web.Pages.Runs;
 public sealed class ReportModel : PageModel
 {
     private readonly RunProjection _projection;
-    private readonly ReportingDbContext _db;
+    private readonly TradingDbContext _db;
 
     public string RunId { get; set; } = "";
     public decimal NetPnL { get; set; }
@@ -31,7 +31,7 @@ public sealed class ReportModel : PageModel
     public sealed record TradeRow(string Symbol, string Direction, decimal Lots,
         decimal EntryPrice, decimal ExitPrice, decimal NetPnL, string ExitReason);
 
-    public ReportModel(RunProjection projection, ReportingDbContext db)
+    public ReportModel(RunProjection projection, TradingDbContext db)
     {
         _projection = projection;
         _db = db;
@@ -41,13 +41,34 @@ public sealed class ReportModel : PageModel
     {
         RunId = runId;
 
+        var runTask = _db.BacktestRuns.FirstOrDefaultAsync(r => r.RunId == runId);
         var viewTask = _projection.GetRunAsync(runId, CancellationToken.None);
         var tradesTask = _db.Trades.Where(t => t.RunId == runId).OrderBy(t => t.ClosedAtUtc).ToListAsync();
 
-        await Task.WhenAll(viewTask, tradesTask);
+        await Task.WhenAll(runTask, viewTask, tradesTask);
 
+        var run = runTask.Result;
         var view = viewTask.Result;
         var trades = tradesTask.Result;
+
+        if (run is not null)
+        {
+            InitialBalance = run.InitialBalance;
+            DateRange = $"{run.BacktestFrom:yyyy-MM-dd} → {run.BacktestTo:yyyy-MM-dd}";
+            if (run.CompletedAtUtc != default && run.StartedAtUtc != default)
+            {
+                var wallTime = run.CompletedAtUtc - run.StartedAtUtc;
+                DurationDisplay = wallTime.TotalHours >= 1
+                    ? $"{wallTime.TotalHours:F1}h"
+                    : wallTime.TotalMinutes >= 1
+                        ? $"{wallTime.TotalMinutes:F1}m"
+                        : $"{wallTime.TotalSeconds:F0}s";
+                var barsTotal = EstimateBarCount(run.BacktestFrom, run.BacktestTo, run.Period);
+                BarsPerSec = wallTime.TotalSeconds > 0 && barsTotal > 0
+                    ? barsTotal / wallTime.TotalSeconds
+                    : 0;
+            }
+        }
 
         if (view is not null)
         {
@@ -104,5 +125,16 @@ public sealed class ReportModel : PageModel
             var grossLoss = Math.Abs(trades.Where(t => t.NetPnLAmount < 0).Sum(t => t.NetPnLAmount));
             ProfitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? decimal.MaxValue : 0;
         }
+    }
+
+    private static double EstimateBarCount(DateTime start, DateTime end, string period)
+    {
+        var minutes = period.ToUpperInvariant() switch
+        {
+            "M1" => 1.0, "M5" => 5.0, "M15" => 15.0, "M30" => 30.0,
+            "H1" => 60.0, "H4" => 240.0, "D1" => 1440.0,
+            _ => 60.0,
+        };
+        return (end - start).TotalMinutes / minutes;
     }
 }

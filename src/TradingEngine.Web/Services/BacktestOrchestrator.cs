@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using TradingEngine.CTraderRunner;
 using TradingEngine.Host;
 using TradingEngine.Infrastructure.Adapters;
+using TradingEngine.Infrastructure.Caching;
 using TradingEngine.Infrastructure.Events;
 using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.Persistence;
@@ -42,8 +43,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public CancellationTokenSource? CancellationSource { get; set; }
         public Task? RunTask { get; set; }
         public IHost? EngineHost { get; set; }
-        public int BarCount { get; set; }
-        public string SimTime { get; set; } = "";
+    public int BarCount { get; set; }
+    public int BarsTotal { get; set; }
+    public string SimTime { get; set; } = "";
         public IReadOnlyList<string> GetLogs() => LogLines.ToArray();
 
         // iter-21 U1 — live funnel counters + a small ring of recent journal lines for the
@@ -96,9 +98,28 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         DecisionRecordView[] journal;
         lock (state.RecentJournal) { journal = state.RecentJournal.ToArray(); }
 
+        var barsTotal = state.BarsTotal > 0 ? state.BarsTotal : 0;
+        double percent;
+        double? etaSeconds;
+        if (status == "completed")
+        {
+            percent = 100.0;
+            etaSeconds = 0;
+        }
+        else if (barsTotal > 0 && state.BarCount > 0)
+        {
+            percent = Math.Min(99.0, (double)state.BarCount / barsTotal * 100.0);
+            etaSeconds = barsPerSec > 0 ? (barsTotal - state.BarCount) / barsPerSec : null;
+        }
+        else
+        {
+            percent = 0;
+            etaSeconds = null;
+        }
+
         return new RunProgress(
             state.RunId, status, simTime,
-            BarsProcessed: state.BarCount, BarsTotal: 0, Percent: 0, EtaSeconds: null,
+            BarsProcessed: state.BarCount, BarsTotal: barsTotal, Percent: percent, EtaSeconds: etaSeconds,
             WallElapsedMs: elapsedMs, BarsPerSec: barsPerSec,
             Equity: state.Equity, Balance: state.Balance, OpenPositions: state.OpenPositions,
             DailyDdPct: state.DailyDdPct, MaxDdPct: state.MaxDdPct,
@@ -125,9 +146,20 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         {
             lock (state.RecentJournal)
             {
+                var indicatorDict = evt.Indicators is { Count: > 0 }
+                    ? evt.Indicators.ToDictionary(kv => kv.Key, kv => (object)kv.Value)
+                    : null;
+                var detail = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    equity = state.Equity,
+                    balance = state.Balance,
+                    dailyDdPct = state.DailyDdPct,
+                    barCount = state.BarCount,
+                    indicators = indicatorDict,
+                });
                 state.RecentJournal.Enqueue(new DecisionRecordView(
                     ++state.Seq, DateTime.UtcNow, null, null, evt.EventType,
-                    null, null, null, evt.Message, "{}"));
+                    null, null, null, evt.Message, detail));
                 while (state.RecentJournal.Count > 30)
                     state.RecentJournal.Dequeue();
             }
@@ -155,7 +187,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     {
         var runId = Guid.NewGuid().ToString("N")[..8];
         cfg = cfg with { RunId = runId };
-        var state = new BacktestRunState { RunId = runId, Symbol = cfg.Symbol, Period = cfg.Period };
+        var state = new BacktestRunState
+        {
+            RunId = runId,
+            Symbol = cfg.Symbol,
+            Period = cfg.Period,
+            BarsTotal = EstimateBarCount(cfg.Start, cfg.End, cfg.Period),
+        };
         _runs[runId] = state;
         state.CancellationSource = new CancellationTokenSource();
 
@@ -164,6 +202,18 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         state.RunTask = RunAsync(runId, cfg, state.CancellationSource.Token);
 
         return state;
+    }
+
+    private static int EstimateBarCount(DateTime start, DateTime end, string period)
+    {
+        var duration = end - start;
+        var minutes = period.ToUpperInvariant() switch
+        {
+            "M1" => 1.0, "M5" => 5.0, "M15" => 15.0, "M30" => 30.0,
+            "H1" => 60.0, "H4" => 240.0, "D1" => 1440.0,
+            _ => 60.0,
+        };
+        return (int)(duration.TotalMinutes / minutes);
     }
 
     public BacktestRunState? GetState(string runId) =>
@@ -373,12 +423,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         EngineHostFactory.WireEventHandlers(innerHost);
         EngineHostFactory.WireRiskRules(innerHost);
 
-        await innerHost.StartAsync(cts.Token);
-        EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] Engine started. Replaying bars...");
+    await innerHost.StartAsync(cts.Token);
+    EnqueueLog(runId, logLines,
+        $"[{DateTime.UtcNow:HH:mm:ss}] Engine started. Replaying bars...");
 
-        var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
-        await adapter.BarStream.Completion;
+    var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
+    _ = StartEquityPollingAsync(adapter, state, cts.Token);
+    await adapter.BarStream.Completion;
 
         var barCount = (adapter as BacktestReplayAdapter)?.BarCount ?? 0;
         if (barCount == 0)
@@ -393,13 +444,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         await Task.Delay(5_000, cts.Token);
 
-        var barHandler = innerHost.Services.GetRequiredService<BarEvaluationHandler>();
-        await barHandler.FlushRemainingAsync();
+    await ShutdownHandlersAsync(innerHost);
 
-        EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] Engine replay complete.");
-        await innerHost.StopAsync(CancellationToken.None);
-        innerHost.Dispose();
+    EnqueueLog(runId, logLines,
+        $"[{DateTime.UtcNow:HH:mm:ss}] Engine replay complete.");
+    await innerHost.StopAsync(CancellationToken.None);
+    innerHost.Dispose();
 
         return new BacktestResult { RunId = runId, ExitCode = 0, AlgoHash = "" };
     }
@@ -438,8 +488,24 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var progressCallback = new Progress<BacktestProgressEvent>(evt =>
         {
             _journal.Write(runId, evt.EventType, evt.Message);
-            if (evt.EventType is "EXEC" or "REJECTED" or "NETMQ_CONNECTED" or "NETMQ_SENT" or "NETMQ_DROPPED" or "CBOT")
+            if (evt.EventType is "EXEC" or "REJECTED" or "NETMQ_CONNECTED" or "NETMQ_SENT"
+                or "NETMQ_DROPPED" or "CBOT")
+            {
                 _journal.Write(runId, evt.EventType, evt.Message, logLines);
+            }
+
+            if (!_runs.TryGetValue(runId, out var runState)) return;
+            if (evt.EventType == "BAR")
+            {
+                runState.BarCount++;
+                if (evt.Message.Length > 4 && evt.Message.StartsWith("Bar "))
+                {
+                    var spaceIdx = evt.Message.IndexOf(' ', 4);
+                    runState.SimTime = spaceIdx > 0 ? evt.Message[4..spaceIdx] : evt.Message[4..];
+                }
+            }
+            TallyEvent(runState, evt);
+            _broadcaster.Publish(BuildProgress(runState, "running"), force: evt.EventType == "BREACH");
         });
 
         var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
@@ -489,6 +555,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] Engine started (in-process NetMQ). Ports={dataPort}/{commandPort}");
 
+        var netMqAdapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
+        _ = StartEquityPollingAsync(netMqAdapter, _runs[runId], cts.Token);
+
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
 
@@ -513,11 +582,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         {
             cliResult = await cli.BacktestAsync(algoPath, args, cts.Token);
         }
-        finally
-        {
-            await innerHost.StopAsync(CancellationToken.None);
-            innerHost.Dispose();
-        }
+    finally
+    {
+        await ShutdownHandlersAsync(innerHost);
+        await innerHost.StopAsync(CancellationToken.None);
+        innerHost.Dispose();
+    }
 
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] CLI exit code: {cliResult.ExitCode}");
@@ -679,5 +749,40 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         {
             _logger.LogWarning(ex, "Failed to populate equity state for {RunId}", runId);
         }
+    }
+
+    private static async Task StartEquityPollingAsync(
+        IBrokerAdapter adapter, BacktestRunState state, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(500, ct);
+                var acct = await adapter.GetAccountStateAsync(ct);
+                state.Equity = acct.Equity;
+                state.Balance = acct.Balance;
+                state.OpenPositions = acct.OpenPositions.Count;
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private static async Task ShutdownHandlersAsync(IHost innerHost)
+    {
+        var barHandler = innerHost.Services.GetRequiredService<BarEvaluationHandler>();
+        await barHandler.DisposeAsync();
+
+        var equityHandler = innerHost.Services.GetRequiredService<EquityPersistenceHandler>();
+        await equityHandler.DisposeAsync();
+
+        var tradeHandler = innerHost.Services.GetRequiredService<TradePersistenceHandler>();
+        await tradeHandler.DisposeAsync();
+
+        var pipelineWriter = innerHost.Services.GetRequiredService<PipelineEventWriter>();
+        await pipelineWriter.DisposeAsync();
+
+        var barWriter = innerHost.Services.GetRequiredService<BufferedBarWriter>();
+        await barWriter.DisposeAsync();
     }
 }

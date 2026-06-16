@@ -5,25 +5,56 @@
 }
 <h1>New Backtest</h1>
 
-<form id="backtestForm" onsubmit="submitBacktest(event)" style="max-width:600px">
+@if (!string.IsNullOrEmpty(Model.PreflightMessage))
+{
+    <div style="background:#fff3cd;border:1px solid #ffc107;color:#856404;padding:1rem;margin-bottom:1rem;border-radius:4px;">
+        <strong>Preflight failed:</strong> @Model.PreflightMessage
+    </div>
+}
+
+<div style="margin-bottom:1rem;color:#8b949e;font-size:0.85rem;">
+    Data source: <strong>@(Model.UseCTrader ? "cTrader NetMQ" : "DB Replay")</strong>
+</div>
+
+<form id="backtestForm" onsubmit="submitBacktest(event)" style="max-width:700px">
     <div class="card">
-        <h2>Symbol</h2>
-        <select id="symbol" style="width:100%;padding:var(--sp-2);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm)">
-            <option value="EURUSD">EUR/USD</option>
-            <option value="GBPUSD">GBP/USD</option>
-            <option value="USDJPY">USD/JPY</option>
-        </select>
+        <h2>Symbols</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:var(--sp-1)">
+            @foreach (var sym in new[] { "EURUSD", "GBPUSD", "USDJPY", "GBPJPY", "XAUUSD", "AUDUSD", "USDCHF", "USDCAD", "NZDUSD", "EURGBP", "EURJPY", "XAGUSD" })
+            {
+                <label style="display:flex;align-items:center;gap:4px;padding:2px 6px;cursor:pointer;font-size:var(--fs-sm);border:1px solid var(--border);border-radius:var(--radius-sm)">
+                    <input type="checkbox" name="symbols" value="@sym" @(sym == "EURUSD" ? "checked" : "") /> @sym
+                </label>
+            }
+        </div>
     </div>
     <div class="card">
-        <h2>Timeframe</h2>
-        <select id="timeframe" style="width:100%;padding:var(--sp-2);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm)">
-            <option value="H1">H1 (Hourly)</option>
-            <option value="H4">H4 (4 Hour)</option>
-            <option value="D1">D1 (Daily)</option>
-        </select>
+        <h2>Timeframes</h2>
+        <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap">
+            @foreach (var tf in new[] { "H1", "H4", "D1", "M15", "M5", "M1" })
+            {
+                <label style="display:flex;align-items:center;gap:4px;padding:2px 8px;cursor:pointer;font-size:var(--fs-sm);border:1px solid var(--border);border-radius:var(--radius-sm)">
+                    <input type="checkbox" name="periods" value="@tf" @(tf == "H1" ? "checked" : "") /> @tf
+                </label>
+            }
+        </div>
     </div>
+    @if (Model.StrategyIds.Length > 0)
+    {
+        <div class="card">
+            <h2>Strategies (empty = all active)</h2>
+            <div style="display:flex;flex-wrap:wrap;gap:var(--sp-1)">
+                @foreach (var sid in Model.StrategyIds)
+                {
+                    <label style="display:flex;align-items:center;gap:4px;padding:2px 6px;cursor:pointer;font-size:var(--fs-xs);border:1px solid var(--border);border-radius:var(--radius-sm)">
+                        <input type="checkbox" name="strategyIds" value="@sid" /> @sid
+                    </label>
+                }
+            </div>
+        </div>
+    }
     <div class="card">
-        <h2>Date Range Presets</h2>
+        <h2>Date Range</h2>
         <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap">
             <button type="button" class="tab" onclick="setDateRange(30)">Last Month</button>
             <button type="button" class="tab" onclick="setDateRange(90)">Last Quarter</button>
@@ -36,7 +67,7 @@
     </div>
     <div class="card">
         <h2>Initial Balance</h2>
-        <input type="number" id="balance" value="10000" min="100" step="100" style="width:100%;padding:var(--sp-2);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm)" />
+        <input type="number" id="balance" value="100000" min="100" step="100" style="width:100%;padding:var(--sp-2);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm)" />
     </div>
     <div style="text-align:right;padding:var(--sp-4)">
         <button type="submit" style="background:var(--accent);color:var(--text-strong);border:none;padding:var(--sp-2) var(--sp-5);border-radius:var(--radius);font-size:var(--fs-lg);cursor:pointer;font-weight:600">Start Backtest</button>
@@ -62,12 +93,25 @@
 
         window.submitBacktest = async function(e) {
             e.preventDefault();
+
+            const getChecked = (name) => {
+                const boxes = document.querySelectorAll('input[name="' + name + '"]:checked');
+                return Array.from(boxes).map(cb => cb.value).join(',');
+            };
+
+            const symbols = getChecked('symbols') || 'EURUSD';
+            const periods = getChecked('periods') || 'H1';
+            const strategyIds = getChecked('strategyIds');
+
             const payload = {
-                symbol: document.getElementById('symbol').value,
-                period: document.getElementById('timeframe').value,
+                symbol: symbols.split(',')[0],
+                symbols: symbols,
+                period: (periods.split(',')[0] || 'H1').toLowerCase(),
+                periods: periods,
                 start: document.getElementById('startDate').value + 'T00:00:00',
                 end: document.getElementById('endDate').value + 'T00:00:00',
-                balance: parseInt(document.getElementById('balance').value)
+                balance: parseInt(document.getElementById('balance').value),
+                strategyIds: strategyIds || null
             };
 
             const result = document.getElementById('result');

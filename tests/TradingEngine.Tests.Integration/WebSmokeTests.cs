@@ -74,7 +74,23 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     [Fact]
     public async Task NewBacktestForm_Returns200()
     {
-        var response = await _client.GetAsync("/backtests/run");
+        var response = await _client.GetAsync("/backtests/new");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task NewBacktestPage_ShowsPreflightAndDataSource()
+    {
+        var response = await _client.GetAsync("/backtests/new");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("Data source");
+    }
+
+    [Fact]
+    public async Task RunsPage_Returns200()
+    {
+        var response = await _client.GetAsync("/runs");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -112,15 +128,54 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     [Fact]
     public async Task AllNavLinks_Return200()
     {
-        var response = await _client.GetAsync("/");
-        var body = await response.Content.ReadAsStringAsync();
-
-        // Extract all hrefs from nav links
-        var navLinks = new[] { "/", "/trades", "/performance", "/backtests", "/events", "/strategies", "/compliance" };
+        var navLinks = new[] { "/", "/trades", "/performance", "/runs", "/events", "/strategies", "/compliance", "/backtests/new" };
         foreach (var link in navLinks)
         {
             var linkResponse = await _client.GetAsync(link);
             linkResponse.StatusCode.Should().Be(HttpStatusCode.OK, $"nav link {link} should work");
         }
+    }
+
+    [Fact]
+    public async Task ApiRuns_Returns200AndJson()
+    {
+        var response = await _client.GetAsync("/api/backtest/runs");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().StartWith("[");
+    }
+
+    [Fact]
+    public async Task ApiBars_Returns200AndJson()
+    {
+        var response = await _client.GetAsync("/api/bars?symbol=EURUSD&timeframe=H1");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().StartWith("[");
+    }
+
+    [Fact]
+    public async Task ApiEquity_Returns200AndJson()
+    {
+        var response = await _client.GetAsync("/api/equity");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().StartWith("[");
+    }
+
+    [Fact]
+    public async Task ApiCompare_Returns200AndJson()
+    {
+        var response = await _client.GetAsync("/api/backtest/compare?runIds=test1,test2");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().StartWith("[");
+    }
+
+    [Fact]
+    public async Task ApiEvents_Returns200()
+    {
+        var response = await _client.GetAsync("/api/events?runId=nonexistent");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }

@@ -12,65 +12,85 @@
 }
 else
 {
-    <h1>Trade @Model.Trade.Id.ToString()[..8]</h1>
+    var t = Model.Trade;
+    <h1>Trade @t.Id.ToString()[..8]</h1>
 
-    <div class="tabs">
-        <button class="tab active">Detail</button>
+    <div class="grid" style="margin-bottom:var(--sp-3)">
+        <div class="kpi"><span class="kpi-label">Symbol</span><span class="kpi-value">@t.Symbol</span></div>
+        <div class="kpi"><span class="kpi-label">Direction</span><span class="kpi-value @(t.Direction == "Long" ? "positive" : "negative")">@t.Direction</span></div>
+        <div class="kpi"><span class="kpi-label">Strategy</span><span class="kpi-value" style="font-size:var(--fs-sm)">@(string.IsNullOrEmpty(t.StrategyId) ? "--" : t.StrategyId)</span></div>
+        <div class="kpi"><span class="kpi-label">Lots</span><span class="kpi-value">@t.Lots.ToString("F2")</span></div>
     </div>
-
-    <div class="grid">
-        <div class="card"><h2>Symbol</h2><div class="value">@Model.Trade.Symbol</div></div>
-        <div class="card"><h2>Direction</h2><div class="value">@Model.Trade.Direction</div></div>
-        <div class="card"><h2>Lots</h2><div class="value num">@Model.Trade.Lots.ToString("F2")</div></div>
-        <div class="card"><h2>Net PnL</h2><div class="value num @(Model.Trade.NetPnLAmount >= 0 ? "positive" : "negative")">@Model.Trade.NetPnLAmount.ToString("F2")</div></div>
+    <div class="grid" style="margin-bottom:var(--sp-3)">
+        <div class="kpi"><span class="kpi-label">Entry</span><span class="kpi-value">@t.EntryPrice.ToString("F5")</span></div>
+        <div class="kpi"><span class="kpi-label">Exit</span><span class="kpi-value">@t.ExitPrice.ToString("F5")</span></div>
+        <div class="kpi"><span class="kpi-label">SL</span><span class="kpi-value">@t.StopLoss.ToString("F5")</span></div>
+        <div class="kpi"><span class="kpi-label">TP</span><span class="kpi-value">@(t.TakeProfit?.ToString("F5") ?? "--")</span></div>
     </div>
-    <div class="grid">
-        <div class="card"><h2>Entry</h2><div class="value num">@Model.Trade.EntryPrice.ToString("F5")</div></div>
-        <div class="card"><h2>Exit</h2><div class="value num">@Model.Trade.ExitPrice.ToString("F5")</div></div>
-        <div class="card"><h2>SL</h2><div class="value num">@Model.Trade.StopLoss.ToString("F5")</div></div>
-        <div class="card"><h2>TP</h2><div class="value num">@(Model.Trade.TakeProfit?.ToString("F5") ?? "N/A")</div></div>
-    </div>
-    <div class="grid">
-        <div class="card"><h2>R Multiple</h2><div class="value num @(Model.Trade.RMultiple >= 0 ? "positive" : "negative")">@Model.Trade.RMultiple.ToString("F2")</div></div>
-        <div class="card"><h2>Exit Reason</h2><div class="value">@Model.Trade.ExitReason</div></div>
-        <div class="card"><h2>Holding Time</h2><div class="value num">@Model.Trade.DurationSeconds.ToString("F0")s</div></div>
-        <div class="card"><h2>Opening</h2><div class="value num" style="font-size:var(--fs-base)">@Model.Trade.OpenedAtUtc.ToString("yyyy-MM-dd HH:mm")</div></div>
+    <div class="grid" style="margin-bottom:var(--sp-3)">
+        <div class="kpi"><span class="kpi-label">Net PnL</span><span class="kpi-value @(t.NetPnLAmount >= 0 ? "positive" : "negative")">@t.NetPnLAmount.ToString("F2")</span></div>
+        <div class="kpi"><span class="kpi-label">R Multiple</span><span class="kpi-value">@t.RMultiple.ToString("F2")</span></div>
+        <div class="kpi"><span class="kpi-label">Exit Reason</span><span class="kpi-value">@t.ExitReason</span></div>
+        <div class="kpi"><span class="kpi-label">Duration</span><span class="kpi-value">@TimeSpan.FromSeconds(t.DurationSeconds).ToString(@"hh\:mm\:ss")</span></div>
     </div>
 
-    <div class="card">
+    @if (Model.HasAccountContext)
+    {
+        <div class="grid" style="margin-bottom:var(--sp-3)">
+            <div class="kpi"><span class="kpi-label">Balance Before</span><span class="kpi-value">@Model.BalanceBefore.ToString("F2")</span></div>
+            <div class="kpi"><span class="kpi-label">Balance After</span><span class="kpi-value @(Model.BalanceAfter >= Model.BalanceBefore ? "positive" : "negative")">@Model.BalanceAfter.ToString("F2")</span></div>
+            <div class="kpi"><span class="kpi-label">Gross PnL</span><span class="kpi-value @(t.GrossPnLAmount >= 0 ? "positive" : "negative")">@t.GrossPnLAmount.ToString("F2")</span></div>
+            <div class="kpi"><span class="kpi-label">Commission</span><span class="kpi-value">@t.CommissionAmount.ToString("F2")</span></div>
+        </div>
+    }
+
+    <div class="card" style="margin-bottom:var(--sp-3)">
         <h2>Price Chart</h2>
-        <div id="tradeChart" style="height:400px"></div>
-    </div>
-
-    <div class="grid">
-        <div class="card"><h2>MAE</h2><div class="value num negative">@Model.Trade.MaxAdverseExcursion.ToString("F1") pips</div></div>
-        <div class="card"><h2>MFE</h2><div class="value num positive">@Model.Trade.MaxFavorableExcursion.ToString("F1") pips</div></div>
-        <div class="card"><h2>Gross PnL</h2><div class="value num @(Model.Trade.GrossPnLAmount >= 0 ? "positive" : "negative")">@Model.Trade.GrossPnLAmount.ToString("F2")</div></div>
-        <div class="card"><h2>Commission</h2><div class="value num">@Model.Trade.CommissionAmount.ToString("F2")</div></div>
+        @if (Model.HasRealBars && Model.ChartBarsJson is not null)
+        {
+            <div id="tradeChart" style="height:400px"></div>
+        }
+        else
+        {
+            <div class="empty">
+                <span class="empty-icon">--</span>
+                <span>No price data for this window</span>
+            </div>
+        }
     </div>
 
     @section Scripts {
-        <script type="module">
-            import { candleChart } from '/js/charts/index.js';
-            const container = document.getElementById('tradeChart');
-            const bars = @Html.Raw(Model.ChartBarsJson ?? "[]");
-            const entryPrice = @Model.Trade.EntryPrice;
-            const exitPrice = @Model.Trade.ExitPrice;
-            const slPrice = @Model.Trade.StopLoss;
-            const tpPrice = @(Model.Trade.TakeProfit?.ToString() ?? "null");
+        @if (Model.HasRealBars && Model.ChartBarsJson is not null)
+        {
+            <script type="module">
+                import { candleChart } from '/js/charts/index.js';
 
-            if (container && bars.length > 0) {
-                const c = candleChart(container, bars);
-                c.addPriceLine('Entry', entryPrice, '#58a6ff');
-                c.addPriceLine('Exit', exitPrice, Model.Trade.NetPnLAmount >= 0 ? '#3fb950' : '#f85149');
-                c.addPriceLine('SL', slPrice, '#f85149');
-                if (tpPrice !== null) c.addPriceLine('TP', tpPrice, '#3fb950');
+                const bars = @Html.Raw(Model.ChartBarsJson);
+                const container = document.getElementById('tradeChart');
+                if (container && bars.length > 0) {
+                    const chart = window.LightweightCharts.createChart(container, {
+                        layout: { background: { type: 'solid', color: '#0d1117' }, textColor: '#8b949e' },
+                        grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
+                        width: container.clientWidth,
+                        height: 400
+                    });
+                    const series = chart.addCandlestickSeries({
+                        upColor: '#3fb950', downColor: '#f85149', borderVisible: false,
+                        wickUpColor: '#3fb950', wickDownColor: '#f85149'
+                    });
+                    series.setData(bars);
 
-                c.addMarkers([
-                    { time: bars[0]?.time, position: 'inBar', color: '#58a6ff', shape: 'circle', text: 'E' },
-                    { time: bars[bars.length-1]?.time, position: 'inBar', color: Model.Trade.NetPnLAmount >= 0 ? '#3fb950' : '#f85149', shape: 'circle', text: 'X' }
-                ]);
-            }
-        </script>
+                    series.createPriceLine({ price: @t.EntryPrice, color: '#58a6ff', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'Entry' });
+                    series.createPriceLine({ price: @t.ExitPrice, color: '#d29922', lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'Exit' });
+                    series.createPriceLine({ price: @t.StopLoss, color: '#f85149', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'SL' });
+                    @if (t.TakeProfit is not null)
+                    {
+                        @:series.createPriceLine({ price: @t.TakeProfit, color: '#3fb950', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'TP' });
+                    }
+
+                    chart.timeScale().fitContent();
+                }
+            </script>
+        }
     }
 }

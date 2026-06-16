@@ -55,7 +55,7 @@
                 '<td class="num ' + ((r.netProfit || 0) >= 0 ? 'positive' : 'negative') + '">' + (r.netProfit || 0).toFixed(2) + '</td>' +
                 '<td class="num">' + ((r.maxDrawdownPct || 0) * 100).toFixed(2) + '%</td>' +
                 '<td class="num">' + (r.totalTrades || 0) + '</td>' +
-                '<td class="num">' + ((r.winRatePct || 0)).toFixed(1) + '%</td>' +
+                '<td class="num">' + ((r.winRatePct || 0) * 100).toFixed(1) + '%</td>' +
                 '<td><a href="/runs/' + r.runId + '/report">Report</a> | <a href="/runs/' + r.runId + '/analyzer">Analyze</a></td>' +
                 '</tr>').join('');
         }
@@ -84,11 +84,14 @@
                     grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
                     width: container.clientWidth, height: 300
                 });
-                const colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149'];
-                data.forEach((run, i) => {
-                    const series = chart.addLineSeries({ color: colors[i % colors.length], lineWidth: 2 });
-                    series.setData([{ time: 0, value: 0 }, { time: data.length, value: run.netProfit || 0 }]);
-                });
+                const pnlSeries = chart.addHistogramSeries({ color: '#3fb950' });
+                const allPnL = data.map(r => r.netProfit || 0);
+                const minPnL = Math.min(0, ...allPnL);
+                pnlSeries.setData(data.map((r, i) => ({
+                    time: i,
+                    value: r.netProfit || 0,
+                    color: (r.netProfit || 0) >= 0 ? '#3fb950' : '#f85149'
+                })));
                 chart.timeScale().fitContent();
             }
         };

@@ -64,7 +64,8 @@ public static class PositionLifecycle
             {
                 Phase = PositionPhase.Open,
                 FilledLots = state.Lots,
-                EntryPrice = evt.FillPrice
+                EntryPrice = evt.FillPrice,
+                OpenedAtUtc = evt.OccurredAtUtc
             };
             var effects = new List<EngineEffect>
             {

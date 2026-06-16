@@ -10,7 +10,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorPages();
 builder.Services.AddControllers();
-builder.Services.AddServerSideBlazor();
 
 // iter-21 U1 — live run channel. camelCase payloads so the RunProgress envelope arrives as
 // runId/simTimeUtc/... matching the documented contract (and the contract test).
@@ -45,7 +44,7 @@ builder.Services.AddSingleton<BacktestOrchestrator>();
 builder.Services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
 builder.Services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
 
-// Register strategy bank infrastructure for Blazor pages + APIs
+// Register strategy bank infrastructure for APIs + Razor Pages
 builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
 builder.Services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
 builder.Services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
@@ -80,8 +79,6 @@ app.UseRouting();
 app.MapRazorPages();
 app.MapControllers();
 app.MapHub<TradingEngine.Web.Hubs.RunHub>("/hubs/run");
-app.MapBlazorHub();
-app.MapFallbackToPage("/blazor/_Host");
 
 app.Run();
 

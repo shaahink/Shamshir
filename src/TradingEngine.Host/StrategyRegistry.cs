@@ -244,4 +244,7 @@ public sealed class StrategyRegistry
 
     public IReadOnlyList<IStrategy> GetAll()
         => _cachedAll ?? [];
+
+    public IReadOnlyList<string> GetAllIds()
+        => _strategyTypes.Keys.OrderBy(k => k).ToList();
 }

@@ -46,10 +46,12 @@
     <h2>Journal Feed</h2>
     <div class="journal-filters" style="margin-bottom:var(--sp-2);display:flex;gap:var(--sp-2)">
         <button class="tab active filter-all" data-filter="all">All</button>
-        <button class="tab filter-OrderSubmitted" data-filter="OrderSubmitted">Orders</button>
+        <button class="tab filter-SIGNAL" data-filter="SIGNAL">Signals</button>
+        <button class="tab filter-ORDER" data-filter="ORDER">Orders</button>
+        <button class="tab filter-FILL" data-filter="FILL">Fills</button>
         <button class="tab filter-CLOSE" data-filter="CLOSE">Trades</button>
-        <button class="tab filter-OrderRejected" data-filter="OrderRejected">Rejections</button>
-        <button class="tab filter-BreachDetected" data-filter="BreachDetected">Breaches</button>
+        <button class="tab filter-REJECT" data-filter="REJECT">Rejections</button>
+        <button class="tab filter-BREACH" data-filter="BREACH">Breaches</button>
     </div>
     <div id="journalFeed" class="journal-feed" style="max-height:400px;overflow-y:auto" aria-live="polite"></div>
 </div>
@@ -178,7 +180,15 @@
                         div.dataset.event = j.event;
                         var time = j.simTimeUtc ? new Date(j.simTimeUtc).toISOString().substring(11, 19) : '';
                         var symbol = j.symbol || '';
-                        div.textContent = '[' + time + '] ' + (j.event || '') + ' ' + symbol + ' ' + (j.reason || '');
+                        var extra = '';
+                        try {
+                            if (j.detailJson && j.detailJson !== '{}') {
+                                var d = JSON.parse(j.detailJson);
+                                if (d.equity) extra += ' eq=' + Number(d.equity).toFixed(2);
+                                if (d.balance) extra += ' bal=' + Number(d.balance).toFixed(2);
+                            }
+                        } catch (e) { }
+                        div.textContent = '[' + time + '] ' + (j.event || '') + ' ' + symbol + ' ' + (j.reason || '') + extra;
                         journalFeed.appendChild(div);
                     });
                     applyJournalFilter();
@@ -190,14 +200,14 @@
                     }
                 }
             },
-            onDone: (status) => {
+            onDone: (progress) => {
                 loading.style.display = 'none';
                 errorState.style.display = 'none';
                 completedCta.style.display = 'block';
-                if (status === 'completed') {
+                if (progress.status === 'completed') {
                     completedCta.querySelector('a').textContent = 'View Report';
                 } else {
-                    completedCta.querySelector('a').textContent = 'Run ' + status;
+                    completedCta.querySelector('a').textContent = 'Run ' + (progress.status || 'finished');
                     completedCta.querySelector('a').style.color = 'var(--neg)';
                 }
             },
@@ -208,6 +218,20 @@
                 }
                 if (status === 'connected') {
                     errorState.style.display = 'none';
+                    fetch('/api/backtest/' + runId + '/status')
+                        .then(r => r.json())
+                        .then(s => {
+                            if (s.status === 'completed' || s.status === 'failed') {
+                                loading.style.display = 'none';
+                                completedCta.style.display = 'block';
+                                if (s.status === 'completed') {
+                                    completedCta.querySelector('a').textContent = 'View Report';
+                                } else {
+                                    completedCta.querySelector('a').textContent = 'Run ' + s.status;
+                                    completedCta.querySelector('a').style.color = 'var(--neg)';
+                                }
+                            }
+                        }).catch(() => {});
                 }
             }
         });

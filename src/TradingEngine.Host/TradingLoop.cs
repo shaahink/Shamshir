@@ -45,6 +45,9 @@ public sealed class TradingLoop(
     public async Task ProcessBarAsync(Bar bar, CancellationToken ct)
     {
         Interlocked.Increment(ref _barCount);
+
+        _ = eventBus.PublishAsync(new BarIngested(runContext.RunId, bar), CancellationToken.None);
+
         var byTf = indicatorSnapshot.Bars.GetOrAdd(bar.Symbol, _ => new());
         var list = byTf.GetOrAdd(bar.Timeframe, _ => new());
         int barCount;
@@ -140,7 +143,8 @@ public sealed class TradingLoop(
             progress?.Report(new BacktestProgressEvent(
                 runContext.RunId, "SIGNAL",
                 $"SIGNAL {strategy.Id} {intent.Direction} sl={intent.StopLoss.Value:F5} tp={intent.TakeProfit?.Value.ToString("F5") ?? "none"} reason={intent.Reason}",
-                clock.UtcNow));
+                clock.UtcNow,
+                strategyIndicators));
 
             var equity = currentEquity();
             if (equity.Balance == 0)
@@ -163,7 +167,8 @@ public sealed class TradingLoop(
             progress?.Report(new BacktestProgressEvent(
                 runContext.RunId, "ORDER",
                 $"ORDER {strategy.Id} {intent.Direction} lots={orderCtx.Lots:F2} entry~{bar.Close:F5}",
-                clock.UtcNow));
+                clock.UtcNow,
+                strategyIndicators));
         }
 
         journal?.Write("BAR_EVAL", bar.Symbol.Value, bar.OpenTimeUtc);

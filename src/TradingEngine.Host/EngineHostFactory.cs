@@ -30,6 +30,8 @@ public static class EngineHostFactory
             host.Services.GetRequiredService<BarEvaluationHandler>());
         eventBus.Subscribe<GovernorStateChanged>(
             host.Services.GetRequiredService<ProtectionLedgerPersistenceHandler>());
+        eventBus.Subscribe<BarIngested>(
+            host.Services.GetRequiredService<BarPersistenceHandler>());
     }
 
     public static void WireRiskRules(IHost host)

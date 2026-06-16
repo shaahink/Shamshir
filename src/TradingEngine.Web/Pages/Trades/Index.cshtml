@@ -1,48 +1,179 @@
-@page
+@page "/trades"
 @model TradesIndexModel
 @{
     ViewData["Title"] = "Trades";
 }
+
 <h1>Trades</h1>
+
+<form method="get" class="trades-filters" style="display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-bottom:var(--sp-3);align-items:flex-end">
+    <div style="display:flex;flex-direction:column;gap:2px">
+        <label style="font-size:var(--fs-xs);color:var(--text-muted)">Run</label>
+        <select name="runId" style="padding:var(--sp-1);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:120px">
+            <option value="">All</option>
+            @foreach (var rid in Model.AllRunIds)
+            {
+                <option value="@rid" selected="@(Model.RunId == rid ? "selected" : null)">@rid[..Math.Min(8, rid.Length)]</option>
+            }
+        </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+        <label style="font-size:var(--fs-xs);color:var(--text-muted)">Symbol</label>
+        <select name="symbol" style="padding:var(--sp-1);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:100px">
+            <option value="">All</option>
+            @foreach (var s in Model.AllSymbols)
+            {
+                <option value="@s" selected="@(Model.Symbol == s ? "selected" : null)">@s</option>
+            }
+        </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+        <label style="font-size:var(--fs-xs);color:var(--text-muted)">Strategy</label>
+        <select name="strategyId" style="padding:var(--sp-1);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:130px">
+            <option value="">All</option>
+            @foreach (var sid in Model.AllStrategyIds)
+            {
+                <option value="@sid" selected="@(Model.StrategyId == sid ? "selected" : null)">@sid</option>
+            }
+        </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+        <label style="font-size:var(--fs-xs);color:var(--text-muted)">Direction</label>
+        <select name="direction" style="padding:var(--sp-1);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:80px">
+            <option value="">All</option>
+            <option value="Long" selected="@(Model.Direction == "Long" ? "selected" : null)">Long</option>
+            <option value="Short" selected="@(Model.Direction == "Short" ? "selected" : null)">Short</option>
+        </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+        <label style="font-size:var(--fs-xs);color:var(--text-muted)">From</label>
+        <input type="date" name="fromDate" value="@(Model.FromDate?.ToString("yyyy-MM-dd"))" style="padding:var(--sp-1);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:130px" />
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+        <label style="font-size:var(--fs-xs);color:var(--text-muted)">To</label>
+        <input type="date" name="toDate" value="@(Model.ToDate?.ToString("yyyy-MM-dd"))" style="padding:var(--sp-1);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:130px" />
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+        <label style="font-size:var(--fs-xs);color:var(--text-muted)">Outcome</label>
+        <select name="winLoss" style="padding:var(--sp-1);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:80px">
+            <option value="">All</option>
+            <option value="win" selected="@(Model.WinLoss == "win" ? "selected" : null)">Win</option>
+            <option value="loss" selected="@(Model.WinLoss == "loss" ? "selected" : null)">Loss</option>
+        </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+        <label style="font-size:var(--fs-xs);color:var(--text-muted)">Page Size</label>
+        <select name="pageSize" style="padding:var(--sp-1);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:70px">
+            <option value="25" selected="@(Model.PageSize == 25 ? "selected" : null)">25</option>
+            <option value="50" selected="@(Model.PageSize == 50 ? "selected" : null)">50</option>
+            <option value="100" selected="@(Model.PageSize == 100 ? "selected" : null)">100</option>
+        </select>
+    </div>
+    <button type="submit" class="tab" style="padding:var(--sp-1) var(--sp-3)">Filter</button>
+    <a href="/trades" class="tab" style="padding:var(--sp-1) var(--sp-2);text-decoration:none">Clear</a>
+</form>
+
+<div style="margin-bottom:var(--sp-2);color:var(--text-muted);font-size:var(--fs-sm)">
+    @Model.TotalCount.ToString("N0") trades @(Model.TotalPages > 1 ? $"(page {Model.CurrentPage} of {Model.TotalPages})" : "")
+</div>
+
 <table>
     <thead>
         <tr>
-            <th>Symbol</th>
-            <th>Direction</th>
+            <th><a href="?@SortLink("symbol")">Symbol</a></th>
+            <th><a href="?@SortLink("strategy")">Strategy</a></th>
+            <th><a href="?@SortLink("direction")">Dir</a></th>
             <th>Lots</th>
             <th>Entry</th>
             <th>Exit</th>
-            <th>PnL</th>
-            <th>R Multiple</th>
-            <th>Exit Reason</th>
-            <th>Date</th>
+            <th><a href="?@SortLink("pnl")">PnL</a></th>
+            <th>R</th>
+            <th>Reason</th>
+            <th><a href="?@SortLink("opened")">Opened</a></th>
+            <th><a href="?@SortLink("date")">Closed</a></th>
         </tr>
     </thead>
     <tbody>
         @foreach (var trade in Model.Trades)
         {
-            <tr onclick="window.location='/trades/@trade.Id'">
+            <tr onclick="window.location='/trades/@trade.Id'" style="cursor:pointer">
                 <td>@trade.Symbol</td>
-                <td>@trade.Direction</td>
-                <td>@trade.Lots</td>
+                <td style="font-size:var(--fs-xs)">@(string.IsNullOrEmpty(trade.StrategyId) ? "--" : trade.StrategyId.Length > 16 ? trade.StrategyId[..16] : trade.StrategyId)</td>
+                <td class="@(trade.Direction == "Long" ? "positive" : "negative")">@(trade.Direction == "Long" ? "L" : "S")</td>
+                <td>@trade.Lots.ToString("F2")</td>
                 <td>@trade.EntryPrice.ToString("F5")</td>
                 <td>@trade.ExitPrice.ToString("F5")</td>
                 <td class="@(trade.NetPnLAmount >= 0 ? "positive" : "negative")">
                     @trade.NetPnLAmount.ToString("F2")
                 </td>
                 <td>@trade.RMultiple.ToString("F2")</td>
-                <td>@trade.ExitReason</td>
-                <td>@trade.ClosedAtUtc.ToString("yyyy-MM-dd")</td>
+                <td style="font-size:var(--fs-xs)">@trade.ExitReason</td>
+                <td style="font-size:var(--fs-xs)">@trade.OpenedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                <td style="font-size:var(--fs-xs)">@trade.ClosedAtUtc.ToString("yyyy-MM-dd HH:mm")</td>
             </tr>
         }
     </tbody>
 </table>
+
 @if (Model.TotalPages > 1)
 {
-    <div class="pagination">
-        @for (int i = 1; i <= Model.TotalPages; i++)
+    <div class="pagination" style="display:flex;gap:var(--sp-1);margin-top:var(--sp-3);justify-content:center;flex-wrap:wrap">
+        @if (Model.CurrentPage > 1)
         {
-            <a href="/trades?page=@i">@i</a>
+            <a href="?@PageLink(Model.CurrentPage - 1)">&laquo; Prev</a>
+        }
+        @{
+            var startPage = Math.Max(1, Model.CurrentPage - 2);
+            var endPage = Math.Min(Model.TotalPages, Model.CurrentPage + 2);
+        }
+        @if (startPage > 1)
+        {
+            <a href="?@PageLink(1)">1</a>
+            if (startPage > 2) { <span style="padding:var(--sp-1)">...</span> }
+        }
+        @for (int i = startPage; i <= endPage; i++)
+        {
+            <a href="?@PageLink(i)" class="@(i == Model.CurrentPage ? "active" : "")" style="@(i == Model.CurrentPage ? "background:var(--accent);color:var(--text-strong);font-weight:600" : "")">@i</a>
+        }
+        @if (endPage < Model.TotalPages)
+        {
+            if (endPage < Model.TotalPages - 1) { <span style="padding:var(--sp-1)">...</span> }
+            <a href="?@PageLink(Model.TotalPages)">@Model.TotalPages</a>
+        }
+        @if (Model.CurrentPage < Model.TotalPages)
+        {
+            <a href="?@PageLink(Model.CurrentPage + 1)">Next &raquo;</a>
         }
     </div>
+}
+
+<style>
+    .trades-filters { }
+    .pagination a { padding:var(--sp-1) var(--sp-2);background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;font-size:var(--fs-sm) }
+    .pagination a:hover { border-color:var(--accent) }
+    .pagination span { color:var(--text-muted) }
+    table th a { color:var(--text);text-decoration:none }
+    table th a:hover { color:var(--accent) }
+</style>
+
+@functions {
+    string PageLink(int page)
+    {
+        var q = HttpContext.Request.Query
+            .Where(kv => kv.Key != "page")
+            .SelectMany(kv => kv.Value.Select(v => $"{kv.Key}={Uri.EscapeDataString(v!)}"))
+            .ToList();
+        q.Add($"page={page}");
+        return string.Join("&", q);
+    }
+
+    string SortLink(string col)
+    {
+        var q = HttpContext.Request.Query
+            .Where(kv => kv.Key != "sort")
+            .SelectMany(kv => kv.Value.Select(v => $"{kv.Key}={Uri.EscapeDataString(v!)}"))
+            .ToList();
+        q.Add($"sort={col}");
+        return string.Join("&", q);
+    }
 }

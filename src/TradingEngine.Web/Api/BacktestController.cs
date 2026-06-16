@@ -38,6 +38,7 @@ public sealed class BacktestController : ControllerBase
         public double SpreadPips { get; init; } = 1;
         public string? Symbols { get; init; }
         public string? Periods { get; init; }
+        public string? StrategyIds { get; init; }
     }
 
     [HttpPost("start")]
@@ -53,6 +54,11 @@ public sealed class BacktestController : ControllerBase
                 .Select(p => p.ToUpperInvariant()).ToArray()
             : new[] { req.Period.ToUpperInvariant() };
 
+        var stratList = !string.IsNullOrWhiteSpace(req.StrategyIds)
+            ? req.StrategyIds.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim()).ToArray()
+            : Array.Empty<string>();
+
         var cfg = new BacktestConfig
         {
             Symbol = req.Symbol.ToUpperInvariant(),
@@ -65,6 +71,9 @@ public sealed class BacktestController : ControllerBase
             Symbols = symList,
             Periods = perList,
         };
+
+        if (stratList.Length > 0)
+            cfg.CustomParams["StrategyIds"] = string.Join(",", stratList);
 
         var runId = await _command.StartAsync(cfg, HttpContext.RequestAborted);
         var state = _orchestrator.GetState(runId);

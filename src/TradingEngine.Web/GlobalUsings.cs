@@ -19,5 +19,6 @@ global using TradingEngine.Domain.Experiments;
 global using TradingEngine.Risk;
 global using TradingEngine.Risk.Governor;
 global using TradingEngine.Risk.Compliance;
+global using TradingEngine.Host;
 global using TradingEngine.Web.Api;
 global using TradingEngine.Web.Services;

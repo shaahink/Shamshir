@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TradingEngine.Infrastructure.Adapters;
+using TradingEngine.Infrastructure.Caching;
 using TradingEngine.Infrastructure.Events;
 using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.Persistence;
@@ -120,6 +121,7 @@ public static class EngineServiceCollectionExtensions
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
         services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
+        services.AddScoped<IBarRepository, SqliteBarRepository>();
         services.AddSingleton<PersistenceService>();
         services.AddSingleton<PipelineEventWriter>(sp => new PipelineEventWriter(
             sp.GetRequiredService<EngineRunContext>().RunId,
@@ -133,6 +135,8 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton<TradePersistenceHandler>();
         services.AddSingleton<BarEvaluationHandler>();
         services.AddSingleton<ProtectionLedgerPersistenceHandler>();
+        services.AddSingleton<BarPersistenceHandler>();
+        services.AddSingleton<BufferedBarWriter>();
 
         return services;
     }
@@ -450,6 +454,7 @@ public static class EngineHostWireExtensions
         eventBus.Subscribe<EquityUpdated>(app.Services.GetRequiredService<EquityPersistenceHandler>());
         eventBus.Subscribe<TradeClosed>(app.Services.GetRequiredService<TradePersistenceHandler>());
         eventBus.Subscribe<BarEvaluated>(app.Services.GetRequiredService<BarEvaluationHandler>());
+        eventBus.Subscribe<BarIngested>(app.Services.GetRequiredService<BarPersistenceHandler>());
     }
 
     public static void WireRiskRules(this IHost app, LoadedConfig loadedConfig)
