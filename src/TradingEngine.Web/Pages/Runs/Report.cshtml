@@ -106,6 +106,7 @@ else
             <button class="tab journal-kind-filter" data-kind="FILL">Fills</button>
             <button class="tab journal-kind-filter" data-kind="CLOSE">Closes</button>
             <button class="tab journal-kind-filter" data-kind="REJECTED">Rejections</button>
+            <button class="tab journal-kind-filter" data-kind="ENTRY_EXPIRED">Expired</button>
             <button class="tab journal-kind-filter" data-kind="BREACH">Breaches</button>
         </div>
     </div>
@@ -166,6 +167,8 @@ else
                     case 'FILL':     cls += ' pill--normal'; break;
                     case 'CLOSE':    cls += ' pill--reduced'; break;
                     case 'REJECTED': cls += ' pill--hardstop'; break;
+                    case 'ENTRY_EXPIRED': cls += ' pill--softstop'; break;
+                    case 'CANCELLED': cls += ' pill--softstop'; break;
                     case 'BREACH':   cls += ' pill--hardstop'; break;
                     case 'GOVERNOR': cls += ' pill--softstop'; break;
                     default:         cls += ''; break;

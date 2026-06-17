@@ -17,6 +17,38 @@ Full plan: `docs/iterations/iter-31-32-combined/MASTER_PLAN.md`
 
 ---
 
+## Continuation pass (2026-06-17) — venue/engine/journal correctness
+
+A follow-up pass reviewed the data wiring venue→engine→DB and the journal, and found the original
+iter-31 work had landed in a venue that the default backtest never uses. Fixes (details in
+`docs/OPEN-ISSUES.md` → "Iteration 31/32 Continuation"):
+
+- **Costs + limit orders were in the wrong venue.** 31-A1/31-C1 went into `SimulatedBrokerAdapter`, but
+  the default UI backtest runs `BacktestReplayAdapter` (`RunEngineReplayAsync`, when
+  `CTrader:UseForBacktest=false`). That venue applied **no costs** and **instant-filled every order**
+  ignoring `OrderType`/`LimitPrice`. Both are now ported to the replay venue.
+- **Shared `TradeCostCalculator`** (`Services/Helpers`) is the single source of truth for
+  gross/commission/swap/net; both venues call it. It also fixed a latent **USD-base gross-PnL bug**
+  (USDJPY/USDCHF/USDCAD) in the simulated venue's old inline formula.
+- **Limit-order cancellation** is now a first-class `OrderCancelled` engine event +
+  `PositionPhase.Cancelled` (was mis-reduced as a zero-lot fill → stuck `Submitted` + leaked intent +
+  bogus "PartialFill" in the journal). Journals as `ENTRY_EXPIRED`.
+- **Journal now reads as a per-bar narrative**: closes normalize to `CLOSE` (were hidden under `FILL`),
+  close records carry `exit/gross/commission/swap/net`, and a `SIGNAL` record (reason + direction +
+  indicators) is persisted. New `ENTRY_EXPIRED` filter on the Report journal tab.
+
+New/updated tests: `Phase31Tests/TradeCostCalculatorTests`, `Phase31Tests/BacktestReplayCostsAndLimitsTests`,
+`Phase31Tests/JournalNormalizerTests`, plus cancellation cases in `Phase3BTests/PositionLifecycleTests`
+and `EngineReducerTests`. Unit: **207 passed / 4 skipped**.
+
+**To actually run the now-honest path credential-free:** set `CTrader:UseForBacktest=false` (the
+`Development` profile currently has it `true`, which routes to the cTrader cBot and needs credentials).
+
+Still carried forward: 31-A2/A3 (cTrader cost itemization), 31-C2 (live limit verify), 32-P4/P5 (config
+UI), 31-B2 (Monitor lossless journal). See OPEN-ISSUES "Still open after this pass".
+
+---
+
 ## Architecture decisions (all confirmed by owner)
 
 | Decision | Choice |

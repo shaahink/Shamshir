@@ -143,6 +143,21 @@ public sealed class TradingLoop(
                 intent.StopLoss.Value, intent.TakeProfit?.Value.ToString("F5") ?? "none");
             logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
 
+            // Persist the signal (with the WHY) to the queryable journal — the dispatcher only records
+            // the downstream order/reject, so without this the journal can't explain why a position was
+            // entered. Low volume: written only when a strategy actually fires.
+            journal?.Write("SIGNAL", bar.Symbol.Value, bar.OpenTimeUtc, JsonSerializer.Serialize(new
+            {
+                strategy = strategy.Id,
+                direction = intent.Direction.ToString(),
+                reason = intent.Reason,
+                entryType = intent.OrderType.ToString(),
+                limit = intent.LimitPrice?.Value,
+                sl = intent.StopLoss.Value,
+                tp = intent.TakeProfit?.Value,
+                indicators = strategyIndicators,
+            }));
+
             progress?.Report(new BacktestProgressEvent(
                 runContext.RunId, "SIGNAL",
                 $"SIGNAL {strategy.Id} {intent.Direction} sl={intent.StopLoss.Value:F5} tp={intent.TakeProfit?.Value.ToString("F5") ?? "none"} reason={intent.Reason}",

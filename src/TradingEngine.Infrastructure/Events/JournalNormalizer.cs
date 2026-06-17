@@ -2,6 +2,15 @@ namespace TradingEngine.Infrastructure.Events;
 
 public static class JournalNormalizer
 {
+    // The reasons the lifecycle stamps on a close fill. When an "OrderFilled" record carries one of
+    // these, it is a position CLOSE (SL/TP/forced), not an entry FILL — they share the same event name
+    // but must read differently in the journal, or the CLOSE filter shows nothing and every close
+    // hides under FILL.
+    private static readonly HashSet<string> CloseReasons = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SL", "TP", "FORCE", "DailyDD", "MaxDD", "STOPOUT", "CLOSED", "MANUAL"
+    };
+
     public static string? NormalizeKind(string eventName, string? reason)
     {
         return eventName switch
@@ -13,13 +22,21 @@ public static class JournalNormalizer
             "CLOSE" => nameof(JournalEventKind.CLOSE),
             "REJECTED" => nameof(JournalEventKind.REJECTED),
             "BREACH" => nameof(JournalEventKind.BREACH),
+            "ENTRY_EXPIRED" => nameof(JournalEventKind.ENTRY_EXPIRED),
+            "CANCELLED" => nameof(JournalEventKind.CANCELLED),
 
             // Persisted vocabulary (DecisionRecord/PipelineEvent)
             "OrderSubmitted" => nameof(JournalEventKind.ORDER),
-            "OrderFilled" => nameof(JournalEventKind.FILL),
+            // An OrderFilled stamped with a close reason is a CLOSE; otherwise it is an entry FILL.
+            "OrderFilled" => reason is not null && CloseReasons.Contains(reason)
+                ? nameof(JournalEventKind.CLOSE)
+                : nameof(JournalEventKind.FILL),
+            "OrderPartiallyFilled" => nameof(JournalEventKind.FILL),
             "OrderRejected" => nameof(JournalEventKind.REJECTED),
+            "OrderCancelled" => nameof(JournalEventKind.ENTRY_EXPIRED),
             "BreachDetected" => nameof(JournalEventKind.BREACH),
             "GovernorStateChanged" => nameof(JournalEventKind.GOVERNOR),
+            "TradeClosed" => nameof(JournalEventKind.CLOSE),
 
             _ => InferFromReason(reason)
         };

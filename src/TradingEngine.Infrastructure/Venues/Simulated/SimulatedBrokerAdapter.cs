@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Infrastructure.Venues.Simulated;
 
@@ -285,46 +286,10 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
     private (decimal commission, decimal swap, decimal grossPnl, decimal netPnl) ComputeCosts(
         SimPosition pos, decimal exitPrice, DateTime closedAtUtc)
     {
-        var symbolInfo = pos.SymbolInfo;
-
-        var rawPnl = pos.Direction == TradeDirection.Long
-            ? (exitPrice - pos.EntryPrice.Value) * pos.Lots * symbolInfo.ContractSize
-            : (pos.EntryPrice.Value - exitPrice) * pos.Lots * symbolInfo.ContractSize;
-
-        var grossPnl = symbolInfo.QuoteCurrency == "USD"
-            ? rawPnl
-            : rawPnl * _crossRateProvider(symbolInfo.QuoteCurrency, "USD");
-
-        var commission = pos.Lots * symbolInfo.CommissionPerLotPerSide * 2;
-
-        var nightsHeld = CountNightsHeld(pos.OpenedAtUtc, closedAtUtc, symbolInfo.TripleSwapWeekday);
-        var swapRate = pos.Direction == TradeDirection.Long
-            ? symbolInfo.SwapLongPerLotPerNight
-            : symbolInfo.SwapShortPerLotPerNight;
-        var swap = nightsHeld * swapRate * pos.Lots;
-
-        var netPnl = grossPnl - commission - swap;
-        return (commission, swap, grossPnl, netPnl);
-    }
-
-    private int CountNightsHeld(DateTime openedUtc, DateTime closedUtc, string tripleSwapWeekday)
-    {
-        if (openedUtc >= closedUtc) return 0;
-
-        var d = openedUtc.Date;
-        var resetTime = d + _dailyResetTimeUtc;
-        if (openedUtc > resetTime) d = d.AddDays(1);
-
-        var end = closedUtc.Date;
-        if (closedUtc < end + _dailyResetTimeUtc) end = end.AddDays(-1);
-
-        var triple = Enum.Parse<DayOfWeek>(tripleSwapWeekday, ignoreCase: true);
-        var count = 0;
-        for (var day = d; day <= end; day = day.AddDays(1))
-        {
-            count += day.DayOfWeek == triple ? 3 : 1;
-        }
-        return count;
+        var costs = TradeCostCalculator.Compute(
+            pos.Direction, pos.EntryPrice, new Price(exitPrice), pos.Lots,
+            pos.SymbolInfo, _crossRateProvider, pos.OpenedAtUtc, closedAtUtc, _dailyResetTimeUtc);
+        return (costs.Commission, costs.Swap, costs.GrossProfit, costs.NetProfit);
     }
 
     private SymbolInfo? ResolveSymbolInfo(Symbol symbol)

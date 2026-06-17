@@ -62,7 +62,8 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
             correlationId,
             simTime,
             DateTime.UtcNow,
-            detailJson);
+            detailJson,
+            NormalizedKind: JournalNormalizer.NormalizeKind(stage, null));
         _channel.Writer.TryWrite(evt);
     }
 

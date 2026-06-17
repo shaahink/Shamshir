@@ -746,3 +746,67 @@ analytical payoff and its one-time blocker (the cache leak) is already cleared. 
 incrementally (start read-only, then editable). RW-04 should come last — it needs RW-03 to validate
 selection rules. None of RW-03/04/05 pay off without real multi-symbol / multi-TF data, so a data import
 is the highest-leverage *non-listed* prerequisite.
+
+---
+
+## Iteration 31/32 Continuation — Venue/Engine/Journal correctness (2026-06-17)
+
+Picking up the `iter/31-costs-journal` branch (handover: `docs/iterations/iter-31-32-combined/HANDOVER.md`).
+The original iter-31 work (honest costs + limit orders) was implemented but **landed in the wrong venue**,
+so it never reached the default backtest path. These items fix the wiring and the journal taxonomy.
+
+- **VENUE-01 — iter-31 costs + limit orders applied to the wrong venue** ✅ **Fixed (Iter-31 cont.)**.
+  31-A1 (commission/swap) and 31-C1 (resting limit orders) were written into
+  `SimulatedBrokerAdapter`, but the **default credential-free UI backtest path runs through
+  `BacktestReplayAdapter`** (`BacktestOrchestrator.RunEngineReplayAsync`, taken whenever
+  `CTrader:UseForBacktest` is false). The replay venue applied **zero costs** (its close fills carried
+  null `Commission/Swap/Net`, so downstream `net == gross`) and **instant-filled every order at the
+  last close, ignoring `OrderType`/`LimitPrice`**. Net effect: the entire iter-31 Stream A and the
+  limit-order demo were inert in the path people actually run. Ported both to `BacktestReplayAdapter`
+  via a shared, unit-tested `TradeCostCalculator` so the two venues can't diverge.
+
+- **COST-01 — divergent / wrong gross-PnL formulas across venues** ✅ **Fixed (Iter-31 cont.)**. Three
+  different gross-PnL formulas existed (`SimulatedBrokerAdapter.ComputeCosts`,
+  `BacktestReplayAdapter.CloseAtAsync`, `PipCalculator.GrossPnL`). The simulated venue's inline formula
+  (`QuoteCurrency=="USD" ? raw : raw×crossRate`) **mis-priced USD-base pairs** (USDJPY/USDCHF/USDCAD —
+  base==account needs divide-by-price, not a quote→USD cross). All venues now route through
+  `TradeCostCalculator.Compute`, which uses the canonical `PipCalculator.GrossPnL` + round-turn
+  commission + per-rollover swap (triple on the configured weekday).
+
+- **ENGINE-01 — limit-order cancellation mis-handled as a phantom fill** ✅ **Fixed (Iter-31 cont.)**.
+  When a resting limit expired, the venue emitted `OrderState.Cancelled`, but `PositionTracker`
+  had no case for it — it fell through the `_ => OrderFilled` default and was reduced as a **zero-lot
+  fill**. The position stuck in `Submitted` forever, `_pendingIntent` leaked, and the journal showed a
+  bogus "PartialFill" instead of the expiry. Added a first-class `OrderCancelled` engine event +
+  `PositionPhase.Cancelled`, a reducer/lifecycle terminal transition, `_pendingIntent`/dedup cleanup,
+  and a `MarketEventSource` progress type so a cancellation never inflates the fills funnel.
+
+- **JOURNAL-01 — closes hidden under FILL; close detail empty; signal reason absent** ✅
+  **Fixed (Iter-31 cont.)**. (a) `JournalNormalizer` mapped every `OrderFilled` to `FILL`, so a CLOSE
+  (same event name, close reason) never showed under the journal's CLOSE filter — now an `OrderFilled`
+  carrying a close reason (SL/TP/FORCE/DailyDD/MaxDD) normalizes to `CLOSE`. (b) The close decision
+  record had empty `{}` detail; it now carries `exit/gross/commission/swap/net` so the journal reads as
+  a ledger. (c) The strategy's *signal reason* never reached the persisted journal (only `BarEvaluations`
+  + the live feed) — `TradingLoop` now writes a `SIGNAL` record with reason + direction + indicators,
+  and `OrderCancelled` normalizes to `ENTRY_EXPIRED` (new journal filter badge added to the Report).
+  Net result: a finished run's journal reads top-to-bottom as *signal (why) → order (size/risk) → fill
+  (price) → close (reason + net + costs)*; the exhaustive per-bar "why no signal" indicator log stays in
+  `BarEvaluations`.
+
+- **WEB-BUILD-01 — Web project did not compile on this branch** ✅ **Fixed (Iter-31 cont.)**. A commit
+  in `iter/31-costs-journal` **replaced** `global using TradingEngine.Infrastructure.Persistence.Reporting;`
+  with `...Configuration;` in `src/TradingEngine.Web/GlobalUsings.cs` (instead of adding it), so
+  `Performance.cshtml.cs` could no longer resolve `TradeReportQueries` — the Web app failed to build.
+  The Unit/Simulation suites don't compile the Web project, so the green-suite handover masked it.
+  Restored both usings.
+
+### Still open after this pass (carry-forward)
+- **31-A2/A3 (cTrader path)** — the `Development` profile sets `CTrader:UseForBacktest=true`, which uses
+  `CTraderBrokerAdapter` (cBot itemizes costs server-side). Mapping the cBot's `commission`/`swap` EXEC
+  fields onto `ExecutionEvent` and surfacing cost columns on the Report is **not done**. *To run the
+  now-honest credential-free path, set `CTrader:UseForBacktest=false`.*
+- **31-C2 (live limit path)** — verify `CTraderBrokerAdapter` emits a non-zero limit price now that
+  `EntryPlanner` populates `LimitPrice` (not done).
+- **32-P4/P5 (UI)** — Strategy browse/edit UI and New-Backtest per-run override UI remain scaffolding.
+- **31-B2 (Monitor)** — replace the 30-item in-memory `RecentJournal` with journal-API polling; drop the
+  `equityPoints.length <= 500` sparkline cap.

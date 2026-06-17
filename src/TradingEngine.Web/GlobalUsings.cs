@@ -14,6 +14,7 @@ global using TradingEngine.Infrastructure.Transport.NetMq;
 global using TradingEngine.Infrastructure.Venues.CTrader;
 global using TradingEngine.Infrastructure.Persistence.Entities;
 global using TradingEngine.Infrastructure.Persistence.Repositories;
+global using TradingEngine.Infrastructure.Persistence.Reporting;
 global using TradingEngine.Infrastructure.Configuration;
 global using TradingEngine.Domain.Experiments;
 global using TradingEngine.Risk;

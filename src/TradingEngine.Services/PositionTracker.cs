@@ -251,6 +251,11 @@ public sealed class PositionTracker(
         var engineEvent = evt.NewState switch
         {
             OrderState.Rejected => (EngineEvent)new OrderRejected(evt.OrderId, symbol, evt.RejectionReason ?? "unknown", evt.TimestampUtc),
+            // A venue cancellation (e.g. an expired resting limit) carries no fill. Route it to the
+            // dedicated OrderCancelled event so the lifecycle terminates the entry instead of the old
+            // `_ => OrderFilled` default, which mis-read it as a zero-lot fill (stuck Submitted, leaked
+            // pending intent, journaled as "PartialFill").
+            OrderState.Cancelled => new OrderCancelled(evt.OrderId, symbol, evt.RejectionReason ?? "CANCELLED", evt.TimestampUtc),
             OrderState.Filled when evt.FillPrice is not null => new OrderFilled(evt.OrderId, symbol, evt.FilledLots, evt.FillPrice ?? new Price(0), evt.TimestampUtc),
             OrderState.PartiallyFilled when evt.FillPrice is not null => new OrderPartiallyFilled(evt.OrderId, symbol, evt.FilledLots, evt.FillPrice ?? new Price(0), evt.TimestampUtc),
             _ => (EngineEvent)new OrderFilled(evt.OrderId, symbol, evt.FilledLots, evt.FillPrice ?? new Price(0), evt.TimestampUtc)
@@ -280,6 +285,21 @@ public sealed class PositionTracker(
                     Swap = evt.Swap,
                 };
             }
+            // Enrich the close journal record (otherwise an empty "{}") with the itemised economics, so
+            // a reader of the journal sees gross/commission/swap/net + the exit price next to the exit
+            // reason. Only close fills carry NetProfit, so this never touches entry-fill records.
+            else if (execEffect is RecordDecisionEvent rec && evt.NetProfit is not null)
+            {
+                var detail = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    exit = evt.FillPrice?.Value,
+                    gross = evt.GrossProfit,
+                    commission = evt.Commission,
+                    swap = evt.Swap,
+                    net = evt.NetProfit,
+                });
+                execEffect = rec with { Decision = rec.Decision with { DetailJson = detail } };
+            }
 
             if (effectExecutor is not null)
                 await effectExecutor.ExecuteAsync(execEffect, CancellationToken.None);
@@ -289,6 +309,15 @@ public sealed class PositionTracker(
         {
             _pendingIntent.Remove(evt.OrderId);
             logger.LogWarning("Order rejected. Id={Id} Reason={Reason}", evt.OrderId, evt.RejectionReason ?? "unknown");
+            return decision.Effects;
+        }
+
+        if (afterPhase == PositionPhase.Cancelled)
+        {
+            _pendingIntent.Remove(evt.OrderId);
+            _processedExecutionIds.Remove(evt.OrderId);
+            _lastExecSig.Remove(evt.OrderId);
+            logger.LogInformation("Order cancelled. Id={Id} Reason={Reason}", evt.OrderId, evt.RejectionReason ?? "CANCELLED");
             return decision.Effects;
         }
 

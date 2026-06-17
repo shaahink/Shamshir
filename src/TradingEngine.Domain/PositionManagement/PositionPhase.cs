@@ -8,5 +8,6 @@ public enum PositionPhase
     Reducing,
     Closing,
     Closed,
-    Rejected
+    Rejected,
+    Cancelled
 }

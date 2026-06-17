@@ -9,9 +9,11 @@ public static class PositionLifecycle
         {
             (PositionPhase.Intended, OrderSubmitted submitted) => HandleIntendedSubmitted(state, submitted),
             (PositionPhase.Intended, OrderRejected rejected) => HandleRejected(state, rejected),
+            (PositionPhase.Intended, OrderCancelled cancelled) => HandleCancelled(state, cancelled),
             (PositionPhase.Submitted, OrderFilled filled) => HandleSubmittedFilled(state, filled),
             (PositionPhase.Submitted, OrderPartiallyFilled partial) => HandleSubmittedPartialFill(state, partial),
             (PositionPhase.Submitted, OrderRejected rejected) => HandleRejected(state, rejected),
+            (PositionPhase.Submitted, OrderCancelled cancelled) => HandleCancelled(state, cancelled),
             (PositionPhase.Open, OrderFilled filled) => HandleOpenFilled(state, filled),
             (PositionPhase.Open, CloseRequested close) => HandleCloseRequested(state, close),
             (PositionPhase.Open, BarClosed bar) => HandleOpenBar(state, bar),
@@ -20,6 +22,7 @@ public static class PositionLifecycle
             (PositionPhase.Closing, OrderFilled filled) => HandleClosingFilled(state, filled),
             (PositionPhase.Closed, _) => (state, []),
             (PositionPhase.Rejected, _) => (state, []),
+            (PositionPhase.Cancelled, _) => (state, []),
             _ => (state, [new RecordDecisionEvent(new DecisionRecord(
                 "", evt.OccurredAtUtc, 0, null, null,
                 state.Phase.ToString(), "IllegalTransition", null, state.Phase.ToString(),
@@ -44,6 +47,24 @@ public static class PositionLifecycle
         var newState = state with
         {
             Phase = PositionPhase.Rejected,
+            RejectionReason = evt.Reason
+        };
+        var effects = new List<EngineEffect>
+        {
+            Record(state, evt, newState, evt.Reason)
+        };
+        return (newState, effects);
+    }
+
+    private static (PositionState, IReadOnlyList<EngineEffect>) HandleCancelled(
+        PositionState state, OrderCancelled evt)
+    {
+        // A resting entry (limit) expired/was cancelled before filling. Terminate the position in a
+        // dedicated Cancelled phase and journal WHY — the reason (e.g. ENTRY_EXPIRED) flows through the
+        // normalizer so the journal shows the expiry rather than a phantom zero-lot fill.
+        var newState = state with
+        {
+            Phase = PositionPhase.Cancelled,
             RejectionReason = evt.Reason
         };
         var effects = new List<EngineEffect>
