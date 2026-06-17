@@ -29,7 +29,9 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
     private readonly ISymbolInfoRegistry _symbolRegistry;
     private readonly Func<string, string, decimal> _crossRateProvider;
     private readonly double _slippagePips;
+    private readonly TimeSpan _dailyResetTimeUtc;
     private decimal _currentBalance;
+    private readonly decimal _initialBalance;
     private readonly Dictionary<Guid, PendingOrder> _pendingOrders = new();
     private readonly Dictionary<Guid, SimPosition> _openPositions = new();
     private decimal _lastBid;
@@ -41,6 +43,8 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         _crossRateProvider = (_, _) => 1;
         _slippagePips = 0.5;
         _currentBalance = 100_000;
+        _initialBalance = 100_000;
+        _dailyResetTimeUtc = TimeSpan.FromHours(22);
         InitDefaults();
     }
 
@@ -48,12 +52,15 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         ISymbolInfoRegistry symbolRegistry,
         Func<string, string, decimal> crossRateProvider,
         double slippagePips = 0.5,
-        decimal initialBalance = 100_000)
+        decimal initialBalance = 100_000,
+        string dailyResetTimeUtc = "22:00:00")
     {
         _symbolRegistry = symbolRegistry;
         _crossRateProvider = crossRateProvider;
         _slippagePips = slippagePips;
         _currentBalance = initialBalance;
+        _initialBalance = initialBalance;
+        _dailyResetTimeUtc = TimeSpan.Parse(dailyResetTimeUtc);
     }
 
     private void InitDefaults()
@@ -136,22 +143,23 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
 
             _openPositions.Remove(positionId);
 
-            // F10 (iter-26): emit an execution event (+ realized PnL + account update) so an
-            // engine-requested/force close propagates back to the engine. Previously this just
-            // dropped the position and the engine never saw the close (stayed Open forever).
             var exitPrice = pos.Direction == TradeDirection.Long ? _lastBid : _lastAsk;
-            var rawPnl = pos.Direction == TradeDirection.Long
-                ? (exitPrice - pos.EntryPrice.Value) * pos.Lots * pos.SymbolInfo.ContractSize
-                : (pos.EntryPrice.Value - exitPrice) * pos.Lots * pos.SymbolInfo.ContractSize;
-            var pnlUsd = pos.SymbolInfo.QuoteCurrency == "USD"
-                ? rawPnl
-                : rawPnl * _crossRateProvider(pos.SymbolInfo.QuoteCurrency, "USD");
-            _currentBalance += pnlUsd;
+            var now = BrokerTimeUtc;
+            var (commission, swap, grossPnl, netPnl) = ComputeCosts(pos, exitPrice, now);
+
+            _currentBalance += netPnl;
 
             _executionChannel.Writer.TryWrite(new ExecutionEvent(
-                positionId, OrderState.Filled, new Price(exitPrice), 0, null, BrokerTimeUtc));
+                positionId, OrderState.Filled, new Price(exitPrice), pos.Lots, null, now)
+            {
+                GrossProfit = grossPnl,
+                NetProfit = netPnl,
+                Commission = commission,
+                Swap = swap,
+                CloseReason = "FORCE",
+            });
             _accountChannel.Writer.TryWrite(new AccountUpdate(
-                _currentBalance, 0m, _currentBalance, BrokerTimeUtc));
+                _currentBalance, 0m, _currentBalance, now));
         }
         return Task.CompletedTask;
     }
@@ -208,6 +216,7 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                     TakeProfit = order.TakeProfit,
                     StrategyId = order.StrategyId,
                     SymbolInfo = symbolInfo,
+                    OpenedAtUtc = tick.TimestampUtc,
                 };
 
                 _openPositions[id] = pos;
@@ -240,26 +249,73 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                     _openPositions.Remove(id);
 
                     var exitPrice = slHit ? pos.StopLoss.Value : pos.TakeProfit!.Value.Value;
-                    var rawPnl = pos.Direction == TradeDirection.Long
-                        ? (exitPrice - pos.EntryPrice.Value) * pos.Lots * pos.SymbolInfo.ContractSize
-                        : (pos.EntryPrice.Value - exitPrice) * pos.Lots * pos.SymbolInfo.ContractSize;
+                    var closeReason = slHit ? "SL" : "TP";
+                    var (commission, swap, grossPnl, netPnl) = ComputeCosts(pos, exitPrice, tick.TimestampUtc);
 
-                    var pnlUsd = pos.SymbolInfo.QuoteCurrency == "USD"
-                        ? rawPnl
-                        : rawPnl * _crossRateProvider(pos.SymbolInfo.QuoteCurrency, "USD");
-
-                    _currentBalance += pnlUsd;
+                    _currentBalance += netPnl;
 
                     _executionChannel.Writer.TryWrite(new ExecutionEvent(
                         id, OrderState.Filled,
                         slHit ? pos.StopLoss : pos.TakeProfit!,
-                        pos.Lots, null, tick.TimestampUtc));
+                        pos.Lots, null, tick.TimestampUtc)
+                    {
+                        GrossProfit = grossPnl,
+                        NetProfit = netPnl,
+                        Commission = commission,
+                        Swap = swap,
+                        CloseReason = closeReason,
+                    });
 
                     _accountChannel.Writer.TryWrite(new AccountUpdate(
                         _currentBalance, 0m, _currentBalance, tick.TimestampUtc));
                 }
             }
         }
+    }
+
+    private (decimal commission, decimal swap, decimal grossPnl, decimal netPnl) ComputeCosts(
+        SimPosition pos, decimal exitPrice, DateTime closedAtUtc)
+    {
+        var symbolInfo = pos.SymbolInfo;
+
+        var rawPnl = pos.Direction == TradeDirection.Long
+            ? (exitPrice - pos.EntryPrice.Value) * pos.Lots * symbolInfo.ContractSize
+            : (pos.EntryPrice.Value - exitPrice) * pos.Lots * symbolInfo.ContractSize;
+
+        var grossPnl = symbolInfo.QuoteCurrency == "USD"
+            ? rawPnl
+            : rawPnl * _crossRateProvider(symbolInfo.QuoteCurrency, "USD");
+
+        var commission = pos.Lots * symbolInfo.CommissionPerLotPerSide * 2;
+
+        var nightsHeld = CountNightsHeld(pos.OpenedAtUtc, closedAtUtc, symbolInfo.TripleSwapWeekday);
+        var swapRate = pos.Direction == TradeDirection.Long
+            ? symbolInfo.SwapLongPerLotPerNight
+            : symbolInfo.SwapShortPerLotPerNight;
+        var swap = nightsHeld * swapRate * pos.Lots;
+
+        var netPnl = grossPnl - commission - swap;
+        return (commission, swap, grossPnl, netPnl);
+    }
+
+    private int CountNightsHeld(DateTime openedUtc, DateTime closedUtc, string tripleSwapWeekday)
+    {
+        if (openedUtc >= closedUtc) return 0;
+
+        var d = openedUtc.Date;
+        var resetTime = d + _dailyResetTimeUtc;
+        if (openedUtc > resetTime) d = d.AddDays(1);
+
+        var end = closedUtc.Date;
+        if (closedUtc < end + _dailyResetTimeUtc) end = end.AddDays(-1);
+
+        var triple = Enum.Parse<DayOfWeek>(tripleSwapWeekday, ignoreCase: true);
+        var count = 0;
+        for (var day = d; day <= end; day = day.AddDays(1))
+        {
+            count += day.DayOfWeek == triple ? 3 : 1;
+        }
+        return count;
     }
 
     private SymbolInfo? ResolveSymbolInfo(Symbol symbol)
@@ -295,5 +351,6 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         public Price? TakeProfit { get; set; }
         public string StrategyId { get; set; } = "";
         public SymbolInfo SymbolInfo { get; set; } = null!;
+        public DateTime OpenedAtUtc { get; set; }
     }
 }
