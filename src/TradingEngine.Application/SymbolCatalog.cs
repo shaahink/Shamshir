@@ -26,7 +26,12 @@ public sealed class SymbolCatalog
                 e.BaseCurrency, e.QuoteCurrency,
                 (decimal)e.PipSize, (decimal)e.TickSize, (decimal)e.ContractSize,
                 (decimal)e.MinLots, (decimal)e.MaxLots, (decimal)e.LotStep,
-                (decimal)e.MarginRate, (decimal)e.TypicalSpread);
+                (decimal)e.MarginRate, (decimal)e.TypicalSpread,
+                AccountCurrency: "USD",
+                CommissionPerLotPerSide: (decimal)(e.CommissionPerLotPerSide ?? 0),
+                SwapLongPerLotPerNight: (decimal)(e.SwapLongPerLotPerNight ?? 0),
+                SwapShortPerLotPerNight: (decimal)(e.SwapShortPerLotPerNight ?? 0),
+                TripleSwapWeekday: e.TripleSwapWeekday ?? "Wednesday");
         }
     }
 
@@ -61,5 +66,9 @@ public sealed class SymbolCatalog
         double MaxLots,
         double LotStep,
         double MarginRate,
-        double TypicalSpread);
+        double TypicalSpread,
+        double? CommissionPerLotPerSide = null,
+        double? SwapLongPerLotPerNight = null,
+        double? SwapShortPerLotPerNight = null,
+        string? TripleSwapWeekday = null);
 }

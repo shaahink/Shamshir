@@ -15,11 +15,18 @@ public sealed class ConfigLoader
 
     public LoadedConfig Load()
     {
+        var config = LoadBase();
+        config.StrategyConfigs = LoadStrategyConfigs();
+
+        ValidateCrossReferences(config.RiskProfiles, config.StrategyConfigs, config.PropFirms);
+
+        return config;
+    }
+
+    public LoadedConfig LoadBase()
+    {
         var propFirms = LoadDirectory<PropFirmRuleSet>("prop-firms");
         var riskProfiles = LoadDirectory<RiskProfile>("risk-profiles");
-        var strategyConfigs = LoadStrategyConfigs();
-
-        ValidateCrossReferences(riskProfiles, strategyConfigs, propFirms);
 
         var newsWindows = LoadNewsWindows();
         var rotation = LoadOptionalFile<StrategyRotationOptions>("rotation.json");
@@ -27,7 +34,7 @@ public sealed class ConfigLoader
         var sizingPolicy = LoadOptionalFile<SizingPolicyOptions>("sizing-policy.json") ?? new SizingPolicyOptions();
         var regime = LoadOptionalFile<RegimeOptions>("regime.json") ?? new RegimeOptions();
 
-        return new LoadedConfig(propFirms, riskProfiles, strategyConfigs)
+        return new LoadedConfig(propFirms, riskProfiles)
         {
             NewsWindows = newsWindows,
             StrategyRotation = rotation,

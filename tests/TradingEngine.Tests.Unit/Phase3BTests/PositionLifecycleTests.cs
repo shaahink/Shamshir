@@ -37,6 +37,22 @@ public sealed class PositionLifecycleTests
     }
 
     [Fact]
+    public void Submitted_OrderCancelled_TransitionsToCancelled_NotPhantomFill()
+    {
+        var state = CreateIntended();
+        state = PositionLifecycle.Apply(state, new OrderSubmitted(state.OrderId, state.Symbol, state.Direction, 0.1m, new Price(1.0850m), "test", DateTime.UtcNow)).State;
+
+        var evt = new OrderCancelled(state.OrderId, state.Symbol, "ENTRY_EXPIRED", DateTime.UtcNow);
+        var (next, effects) = PositionLifecycle.Apply(state, evt);
+
+        // The old `_ => OrderFilled` default mis-read a cancellation as a zero-lot PartialFill and left
+        // the order stuck in Submitted. It must now terminate in Cancelled with the reason recorded.
+        next.Phase.Should().Be(PositionPhase.Cancelled);
+        next.RejectionReason.Should().Be("ENTRY_EXPIRED");
+        effects.Should().ContainSingle(e => e is RecordDecisionEvent);
+    }
+
+    [Fact]
     public void Intended_UnrelatedEvent_EmitsIllegalTransition()
     {
         var state = CreateIntended();

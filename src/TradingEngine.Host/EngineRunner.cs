@@ -76,7 +76,8 @@ public sealed class EngineRunner
             deps.Strategies.StrategyBank, deps.Strategies.RegimeDetector, _signalGate,
             deps.Market.SymbolRegistry, deps.Persistence.EventBus, _clock, runContext,
             _crossRateStore.Convert,
-            () => Volatile.Read(ref _currentEquity), _progress, deps.Persistence.Journal, logger);
+            () => Volatile.Read(ref _currentEquity), _progress, deps.Persistence.Journal,
+            deps.Strategies.EntryPlanner, logger);
     }
 
     private void ResetState()

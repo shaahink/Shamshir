@@ -4,6 +4,7 @@ using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Infrastructure.Persistence.Reporting;
 using TradingEngine.Risk.Compliance;
+using TradingEngine.Services;
 using TradingEngine.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -35,11 +36,13 @@ builder.Services.AddScoped<IPipelineEventRepository, SqlitePipelineEventReposito
 builder.Services.AddScoped<IExperimentRepository, SqliteExperimentRepository>();
 builder.Services.AddScoped<ITradeRepository, SqliteTradeRepository>();
 builder.Services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+builder.Services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
 builder.Services.AddSingleton<IExperimentHostFactory, ExperimentHostFactoryAdapter>();
 builder.Services.AddTransient<ExperimentRunner>();
 builder.Services.AddSingleton<BacktestProgressStore>();
 builder.Services.AddSingleton<BacktestJournal>();
 builder.Services.AddSingleton<RunProjection>();
+builder.Services.AddSingleton<EffectiveConfigResolver>();
 builder.Services.AddSingleton<BacktestOrchestrator>();
 builder.Services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
 builder.Services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
@@ -60,6 +63,7 @@ builder.Services.AddSingleton<StrategyRegistry>();
 builder.Services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
     sp.GetRequiredService<StrategyRegistry>(),
     null,
+    null,
     sp.GetRequiredService<ILogger<StrategyBankService>>()));
 builder.Services.AddSingleton<ITradingGovernor, TradingGovernorService>();
 builder.Services.AddSingleton(new GovernorOptions());
@@ -72,6 +76,13 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
     await db.Database.MigrateAsync();
+
+    var solRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<StrategyConfigSeeder>>();
+    var seeder = new StrategyConfigSeeder(
+        scope.ServiceProvider.GetRequiredService<IServiceScopeFactory>(),
+        solRoot, logger);
+    await seeder.SeedAsync();
 }
 
 

@@ -26,6 +26,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private readonly BacktestJournal _journal;
     private readonly IConfiguration _configuration;
     private readonly RunProgressBroadcaster _broadcaster;
+    private readonly EffectiveConfigResolver _configResolver;
     private readonly ConcurrentDictionary<string, BacktestRunState> _runs = new();
 
     private sealed record TradeStats(decimal NetProfit, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
@@ -77,6 +78,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         BacktestJournal journal,
         IConfiguration configuration,
         RunProgressBroadcaster broadcaster,
+        EffectiveConfigResolver configResolver,
         ILogger<BacktestOrchestrator> logger)
     {
         _scopeFactory = scopeFactory;
@@ -84,6 +86,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         _journal = journal;
         _configuration = configuration;
         _broadcaster = broadcaster;
+        _configResolver = configResolver;
         _logger = logger;
     }
 
@@ -270,7 +273,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var state = _runs[runId];
         var startedAt = state.StartedAt;
 
-        await WriteStartRecordAsync(runId, cfg, startedAt);
+        var effectiveConfigJson = await ResolveEffectiveConfigJsonAsync(cfg);
+
+        await WriteStartRecordAsync(runId, cfg, startedAt, effectiveConfigJson);
 
         try
         {
@@ -309,7 +314,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             EnqueueLog(runId, state.LogLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] Done. Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1}");
 
-            await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats);
+            await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson);
         }
         catch (Exception ex)
         {
@@ -320,7 +325,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             await WriteEndRecordAsync(runId, cfg, startedAt,
                 new BacktestResult { RunId = runId, ExitCode = 1, ErrorMessage = ex.Message },
-                new(0, 0, 0, 0, 0));
+                new(0, 0, 0, 0, 0), effectiveConfigJson);
         }
         finally
         {
@@ -335,7 +340,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
     }
 
-    private async Task WriteStartRecordAsync(string runId, BacktestConfig cfg, DateTime startedAt)
+    private async Task WriteStartRecordAsync(string runId, BacktestConfig cfg, DateTime startedAt, string? effectiveConfigJson)
     {
         try
         {
@@ -344,7 +349,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var summary = new BacktestRunSummary(
                 runId, startedAt, DateTime.MinValue,
                 cfg.Symbol, cfg.Period, cfg.Start, cfg.End,
-                cfg.Balance, "", "{}",
+                cfg.Balance, "", "{}", effectiveConfigJson,
                 0, 0, 0, 0, 0, -1, null);
             await repo.SaveAsync(summary, CancellationToken.None);
         }
@@ -356,7 +361,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     private async Task WriteEndRecordAsync(
         string runId, BacktestConfig cfg, DateTime startedAt,
-        BacktestResult result, TradeStats stats)
+        BacktestResult result, TradeStats stats, string? effectiveConfigJson)
     {
         try
         {
@@ -365,7 +370,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var summary = new BacktestRunSummary(
                 runId, startedAt, DateTime.UtcNow,
                 cfg.Symbol, cfg.Period, cfg.Start, cfg.End,
-                cfg.Balance, result.AlgoHash, "{}",
+                cfg.Balance, result.AlgoHash, "{}", effectiveConfigJson,
                 stats.NetProfit, stats.MaxDrawdownPct,
                 stats.TotalTrades, stats.WinningTrades, stats.WinRatePct,
                 result.ExitCode, result.ErrorMessage);
@@ -780,5 +785,63 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         state.DailyDdPct = latest.DailyDrawdown;
         state.MaxDdPct = latest.MaxDrawdown;
         state.OpenPositions = latest.OpenPositions;
+    }
+
+    private async Task<string?> ResolveEffectiveConfigJsonAsync(BacktestConfig cfg)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var store = scope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
+            var storedConfigs = await store.GetAllAsync(CancellationToken.None);
+
+            var overrides = ParseOverrides(cfg);
+            var resolvedEntries = new List<EffectiveConfigEntry>();
+
+            var strategyIds = ParseStrategyIds(cfg);
+            if (strategyIds.Length == 0)
+                strategyIds = storedConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
+
+            foreach (var sid in strategyIds)
+            {
+                var stored = storedConfigs.FirstOrDefault(s => s.Id == sid);
+                if (stored is null) continue;
+                var ovr = overrides.GetValueOrDefault(sid);
+                var plan = new SymbolTimeframePair(cfg.Symbol, cfg.Period);
+                resolvedEntries.Add(_configResolver.Resolve(stored, ovr, plan));
+            }
+
+            if (resolvedEntries.Count == 0) return null;
+
+            return JsonSerializer.Serialize(resolvedEntries, new JsonSerializerOptions
+            {
+                WriteIndented = false,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to resolve effective config for run {RunId}", cfg.RunId);
+            return null;
+        }
+    }
+
+    private static Dictionary<string, StrategyOverride> ParseOverrides(BacktestConfig cfg)
+    {
+        if (!cfg.CustomParams.TryGetValue("StrategyOverrides", out var json) ||
+            string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, StrategyOverride>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
     }
 }

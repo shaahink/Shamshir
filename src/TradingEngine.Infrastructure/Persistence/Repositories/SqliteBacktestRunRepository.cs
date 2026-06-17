@@ -18,6 +18,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             InitialBalance = run.InitialBalance,
             AlgoHash = run.AlgoHash,
             StrategyParamsJson = run.StrategyParamsJson,
+            EffectiveConfigJson = run.EffectiveConfigJson,
             NetProfit = run.NetProfit,
             MaxDrawdownPct = run.MaxDrawdownPct,
             TotalTrades = run.TotalTrades,
@@ -42,6 +43,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         entity.WinRatePct = run.WinRatePct;
         entity.ExitCode = run.ExitCode;
         entity.ErrorMessage = run.ErrorMessage;
+        entity.EffectiveConfigJson = run.EffectiveConfigJson;
         await db.SaveChangesAsync(ct);
     }
 
@@ -117,7 +119,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         return new BacktestRunSummary(
             e.RunId, e.StartedAtUtc, completedAt,
             e.Symbol, e.Period, e.BacktestFrom, e.BacktestTo,
-            e.InitialBalance, e.AlgoHash, e.StrategyParamsJson,
+            e.InitialBalance, e.AlgoHash, e.StrategyParamsJson, e.EffectiveConfigJson,
             net, maxDd, total, wins, winRate,
             exitCode, e.ErrorMessage);
     }

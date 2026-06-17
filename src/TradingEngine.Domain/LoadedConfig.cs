@@ -4,9 +4,9 @@ namespace TradingEngine.Domain;
 
 public sealed record LoadedConfig(
     IReadOnlyList<PropFirmRuleSet> PropFirms,
-    IReadOnlyList<RiskProfile> RiskProfiles,
-    IReadOnlyList<StrategyConfigEntry> StrategyConfigs)
+    IReadOnlyList<RiskProfile> RiskProfiles)
 {
+    public IReadOnlyList<StrategyConfigEntry> StrategyConfigs { get; set; } = [];
     public IReadOnlyList<NewsBlockWindow> NewsWindows { get; init; } = [];
     public StrategyRotationOptions? StrategyRotation { get; init; }
     public GovernorOptions Governor { get; init; } = new();

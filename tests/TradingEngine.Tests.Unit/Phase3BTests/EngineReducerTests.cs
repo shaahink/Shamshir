@@ -50,6 +50,22 @@ public sealed class EngineReducerTests
     }
 
     [Fact]
+    public void Apply_OrderCancelled_RemovesPosition_AndRecordsReason()
+    {
+        var state = EngineState.Empty;
+        var orderId = Guid.NewGuid();
+        var submitted = new OrderSubmitted(orderId, Symbol.Parse("EURUSD"), TradeDirection.Long, 0.1m, new Price(1.0800m), "test", DateTime.UtcNow);
+        var r1 = EngineReducer.Apply(state, submitted);
+
+        var cancelled = new OrderCancelled(orderId, Symbol.Parse("EURUSD"), "ENTRY_EXPIRED", DateTime.UtcNow);
+        var r2 = EngineReducer.Apply(r1.State, cancelled);
+
+        r2.State.Positions.Should().BeEmpty("an expired resting limit must leave no zombie position");
+        r2.State.OpenPositionCount.Should().Be(0);
+        r2.Effects.Should().ContainSingle(e => e is RecordDecisionEvent);
+    }
+
+    [Fact]
     public void Apply_FullLifecycle_OpenThenClose_ReturnsEmpty()
     {
         var state = EngineState.Empty;

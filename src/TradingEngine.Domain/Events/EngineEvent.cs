@@ -16,6 +16,11 @@ public record OrderPartiallyFilled(Guid OrderId, Symbol Symbol, decimal FilledLo
 
 public record OrderRejected(Guid OrderId, Symbol Symbol, string Reason, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 
+/// <summary>A resting order (e.g. an expired limit entry) was cancelled by the venue before it ever
+/// filled. Distinct from <see cref="OrderRejected"/> (refused at submit) and <see cref="OrderFilled"/>
+/// (a real fill) so the lifecycle never mistakes a cancellation for a zero-lot fill.</summary>
+public record OrderCancelled(Guid OrderId, Symbol Symbol, string Reason, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+
 public record CloseRequested(Guid PositionId, string Reason, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 
 public record EquityObserved(decimal Equity, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);

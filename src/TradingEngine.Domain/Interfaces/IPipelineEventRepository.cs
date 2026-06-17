@@ -13,7 +13,8 @@ public sealed record PipelineEvent(
     string? PhaseAfter = null,
     string? GuardResult = null,
     string? Reason = null,
-    string? StrategyId = null);
+    string? StrategyId = null,
+    string? NormalizedKind = null);
 
 public interface IPipelineEventRepository
 {

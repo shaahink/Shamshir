@@ -25,6 +25,7 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                     InitialBalance = table.Column<decimal>(type: "TEXT", nullable: false),
                     AlgoHash = table.Column<string>(type: "TEXT", nullable: false),
                     StrategyParamsJson = table.Column<string>(type: "TEXT", nullable: false),
+                    EffectiveConfigJson = table.Column<string>(type: "TEXT", nullable: true),
                     NetProfit = table.Column<decimal>(type: "TEXT", nullable: false),
                     MaxDrawdownPct = table.Column<decimal>(type: "TEXT", nullable: false),
                     TotalTrades = table.Column<int>(type: "INTEGER", nullable: false),
@@ -65,6 +66,7 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    RunId = table.Column<string>(type: "TEXT", nullable: false),
                     Symbol = table.Column<string>(type: "TEXT", nullable: false),
                     Timeframe = table.Column<string>(type: "TEXT", nullable: false),
                     OpenTimeUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
@@ -129,7 +131,8 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                     CurrentDailyDrawdown = table.Column<decimal>(type: "TEXT", nullable: false),
                     CurrentMaxDrawdown = table.Column<decimal>(type: "TEXT", nullable: false),
                     Mode = table.Column<string>(type: "TEXT", nullable: false),
-                    Type = table.Column<string>(type: "TEXT", nullable: false)
+                    Type = table.Column<string>(type: "TEXT", nullable: false),
+                    RunId = table.Column<string>(type: "TEXT", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -196,7 +199,8 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                     PhaseAfter = table.Column<string>(type: "TEXT", maxLength: 32, nullable: true),
                     GuardResult = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
                     Reason = table.Column<string>(type: "TEXT", maxLength: 512, nullable: true),
-                    StrategyId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true)
+                    StrategyId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
+                    NormalizedKind = table.Column<string>(type: "TEXT", maxLength: 32, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -223,6 +227,28 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Positions", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "StrategyConfigs",
+                columns: table => new
+                {
+                    Id = table.Column<string>(type: "TEXT", nullable: false),
+                    DisplayName = table.Column<string>(type: "TEXT", nullable: false),
+                    Enabled = table.Column<bool>(type: "INTEGER", nullable: false),
+                    DefaultSymbols = table.Column<string>(type: "TEXT", nullable: false),
+                    Timeframe = table.Column<string>(type: "TEXT", nullable: false),
+                    RiskProfileId = table.Column<string>(type: "TEXT", nullable: false),
+                    ParametersJson = table.Column<string>(type: "TEXT", nullable: false),
+                    PositionManagementJson = table.Column<string>(type: "TEXT", nullable: true),
+                    OrderEntryJson = table.Column<string>(type: "TEXT", nullable: true),
+                    RegimeFilterJson = table.Column<string>(type: "TEXT", nullable: true),
+                    ReentryJson = table.Column<string>(type: "TEXT", nullable: true),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_StrategyConfigs", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -321,9 +347,9 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 columns: new[] { "RunId", "StrategyId", "BarOpenTimeUtc" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_Bars_Symbol_Timeframe_OpenTimeUtc",
+                name: "IX_Bars_RunId_Symbol_Timeframe_OpenTimeUtc",
                 table: "Bars",
-                columns: new[] { "Symbol", "Timeframe", "OpenTimeUtc" });
+                columns: new[] { "RunId", "Symbol", "Timeframe", "OpenTimeUtc" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_DailyProtectionLedgers_Date",
@@ -344,6 +370,11 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 name: "IX_EngineEvents_OccurredAtUtc",
                 table: "EngineEvents",
                 column: "OccurredAtUtc");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_EquitySnapshots_RunId",
+                table: "EquitySnapshots",
+                column: "RunId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_EquitySnapshots_TimestampUtc",
@@ -423,6 +454,9 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
 
             migrationBuilder.DropTable(
                 name: "ProtectionLedgerEntries");
+
+            migrationBuilder.DropTable(
+                name: "StrategyConfigs");
 
             migrationBuilder.DropTable(
                 name: "TradeResults");

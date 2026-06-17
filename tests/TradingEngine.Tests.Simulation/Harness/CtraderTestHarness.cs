@@ -283,8 +283,9 @@ public sealed class CtraderTestHarness : IAsyncDisposable
             Reentry = s.Reentry,
         }).ToList();
 
-        return new LoadedConfig(baseConfig.PropFirms, baseConfig.RiskProfiles, adapted)
+        return new LoadedConfig(baseConfig.PropFirms, baseConfig.RiskProfiles)
         {
+            StrategyConfigs = adapted,
             NewsWindows = baseConfig.NewsWindows,
             StrategyRotation = baseConfig.StrategyRotation,
             Governor = baseConfig.Governor,

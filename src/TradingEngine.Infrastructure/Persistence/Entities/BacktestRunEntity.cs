@@ -12,6 +12,7 @@ public sealed class BacktestRunEntity
     public decimal InitialBalance { get; set; }
     public string AlgoHash { get; set; } = "";
     public string StrategyParamsJson { get; set; } = "{}";
+    public string? EffectiveConfigJson { get; set; }
     public decimal NetProfit { get; set; }
     public decimal MaxDrawdownPct { get; set; }
     public int TotalTrades { get; set; }

@@ -22,6 +22,9 @@ public static class EngineReducer
             case OrderRejected rejected:
                 return HandleOrderRejected(state, rejected);
 
+            case OrderCancelled cancelled:
+                return HandleOrderCancelled(state, cancelled);
+
             case CloseRequested close:
                 return HandleCloseRequested(state, close);
 
@@ -146,6 +149,28 @@ public static class EngineReducer
 
         var effects = new List<EngineEffect>(posEffects);
         return new EngineDecision(nextState, effects);
+    }
+
+    private static EngineDecision HandleOrderCancelled(EngineState state, OrderCancelled evt)
+    {
+        var posState = FindPositionByOrderId(state, evt.OrderId);
+        if (posState is null)
+        {
+            return new EngineDecision(state, []);
+        }
+
+        var (nextPos, posEffects) = PositionLifecycle.Apply(posState, evt);
+
+        var newPositions = new Dictionary<Guid, PositionState>(state.Positions);
+        newPositions.Remove(nextPos.PositionId);
+
+        var nextState = state with
+        {
+            Positions = newPositions,
+            OpenPositionCount = Math.Max(0, state.OpenPositionCount - 1)
+        };
+
+        return new EngineDecision(nextState, new List<EngineEffect>(posEffects));
     }
 
     private static EngineDecision HandleCloseRequested(EngineState state, CloseRequested evt)

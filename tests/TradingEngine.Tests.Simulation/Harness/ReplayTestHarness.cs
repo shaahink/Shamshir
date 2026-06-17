@@ -149,6 +149,7 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                         RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
                         OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                         PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                        EntryPlanner = sp.GetRequiredService<TradingEngine.Services.EntryPlanner>(),
                         SignalGate = sp.GetRequiredService<ISignalGate>(),
                     },
                     Persistence = new PersistenceServices

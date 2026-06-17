@@ -18,6 +18,14 @@ public sealed record EngineHostOptions
     /// </summary>
     public IReadOnlyList<string> ActiveStrategyIds { get; init; } = [];
 
+    /// <summary>
+    /// Overrides the strategy's built-in symbols/timeframe. When provided,
+    /// <see cref="IStrategyBank.GetActive"/> filters strategies by whether the
+    /// run plan includes the (strategyId, symbol, timeframe) combination.
+    /// When null, falls back to the stored config's symbols/timeframe.
+    /// </summary>
+    public RunPlan? RunPlan { get; init; }
+
     public IProgress<BacktestProgressEvent>? Progress { get; init; }
     public LogLevel MinLogLevel { get; init; } = LogLevel.Information;
     public LoadedConfig? PreloadedConfig { get; init; }

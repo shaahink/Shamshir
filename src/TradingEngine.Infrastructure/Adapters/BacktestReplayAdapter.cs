@@ -27,11 +27,21 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         Channel.CreateBounded<ExecutionEvent>(new BoundedChannelOptions(1_000)
         { FullMode = BoundedChannelFullMode.Wait, SingleWriter = true });
 
-    private readonly Dictionary<Guid, (TradeDirection Direction, decimal EntryPrice, decimal Lots)> _openTrades = new();
+    private readonly Dictionary<Guid, OpenTrade> _openTrades = new();
+    private readonly Dictionary<Guid, PendingLimit> _pendingLimits = new();
     private decimal _balance;
     private decimal _lastClose;
     private Task _feedTask = Task.CompletedTask;
     private CancellationTokenSource? _feedCts;
+
+    private sealed record OpenTrade(TradeDirection Direction, decimal EntryPrice, decimal Lots, DateTime OpenedAtUtc);
+    private sealed class PendingLimit
+    {
+        public required TradeDirection Direction { get; init; }
+        public required decimal Lots { get; init; }
+        public required decimal LimitPrice { get; init; }
+        public int BarsRemaining { get; set; }
+    }
 
     public bool IsConnected { get; private set; }
     public ChannelReader<Tick> TickStream => _tickChannel.Reader;
@@ -137,13 +147,69 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
     public Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
         var orderId = Guid.NewGuid();
+
+        // Resting limit order: hold it until a later bar's range reaches the limit price, or until it
+        // expires. Market orders (and limits with no price) fill instantly at the last close.
+        if (request.Type == OrderType.Limit && request.LimitPrice is { } limit)
+        {
+            _pendingLimits[orderId] = new PendingLimit
+            {
+                Direction = request.Direction,
+                Lots = request.Lots,
+                LimitPrice = limit.Value,
+                BarsRemaining = request.Intent.Entry?.LimitOrderExpiryBars ?? 3,
+            };
+            _logger.LogDebug("BacktestReplay: limit rest {Id} at {Price:F5} dir={Dir} lots={Lots} expiry={Bars}b",
+                orderId, limit.Value, request.Direction, request.Lots, _pendingLimits[orderId].BarsRemaining);
+            return Task.FromResult(orderId);
+        }
+
         var fillPrice = new Price(_lastClose > 0 ? _lastClose : 1m);
-        _executionChannel.Writer.TryWrite(
-            new ExecutionEvent(orderId, OrderState.Filled, fillPrice, request.Lots, null, BrokerTimeUtc));
-        _openTrades[orderId] = (request.Direction, fillPrice.Value, request.Lots);
+        FillEntry(orderId, request.Direction, fillPrice.Value, request.Lots);
         _logger.LogDebug("BacktestReplay: instant fill {Id} at {Price:F5} dir={Dir} lots={Lots}",
             orderId, fillPrice.Value, request.Direction, request.Lots);
         return Task.FromResult(orderId);
+    }
+
+    private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots)
+    {
+        _executionChannel.Writer.TryWrite(
+            new ExecutionEvent(orderId, OrderState.Filled, new Price(fillPrice), lots, null, BrokerTimeUtc));
+        _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc);
+    }
+
+    // Match resting limit orders against the bar that just became current. A buy limit fills when the
+    // bar trades down to (or below) the limit; a sell limit when it trades up to it. Fill is at the
+    // limit price (no slippage). Orders that don't fill burn one bar of life and, once expired, emit a
+    // cancellation carrying ENTRY_EXPIRED so the engine journals the expiry instead of a phantom fill.
+    private void ProcessPendingLimits(Bar bar)
+    {
+        if (_pendingLimits.Count == 0) return;
+
+        foreach (var (orderId, limit) in _pendingLimits.ToList())
+        {
+            var reached = limit.Direction == TradeDirection.Long
+                ? bar.Low <= limit.LimitPrice
+                : bar.High >= limit.LimitPrice;
+
+            if (reached)
+            {
+                _pendingLimits.Remove(orderId);
+                FillEntry(orderId, limit.Direction, limit.LimitPrice, limit.Lots);
+                _logger.LogDebug("BacktestReplay: limit fill {Id} at {Price:F5} dir={Dir}",
+                    orderId, limit.LimitPrice, limit.Direction);
+                continue;
+            }
+
+            limit.BarsRemaining--;
+            if (limit.BarsRemaining <= 0)
+            {
+                _pendingLimits.Remove(orderId);
+                _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc));
+                _logger.LogDebug("BacktestReplay: limit expired {Id} at {Price:F5}", orderId, limit.LimitPrice);
+            }
+        }
     }
 
     public Task ModifyOrderAsync(Guid orderId, Price newStopLoss, Price? newTakeProfit, CancellationToken ct)
@@ -153,9 +219,16 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         => Task.CompletedTask;
 
     // Called on the ENGINE thread (RunBacktestLoopAsync) before each bar is processed. This is where
-    // we advance the venue clock/price AND publish the per-bar mark-to-market equity so the breach
-    // watchdog and the equity curve see the real open book (F1 iter-26).
-    public void OnBarObserved(Bar bar) => SyncToBar(bar.Close, bar.OpenTimeUtc);
+    // we advance the venue clock/price, match any resting limit orders against the bar's range, AND
+    // publish the per-bar mark-to-market equity so the breach watchdog and the equity curve see the
+    // real open book (F1 iter-26).
+    public void OnBarObserved(Bar bar)
+    {
+        _lastClose = bar.Close;
+        BrokerTimeUtc = bar.OpenTimeUtc;
+        ProcessPendingLimits(bar);
+        EmitAccountUpdate(bar.OpenTimeUtc);
+    }
 
     public void SyncToBar(decimal close, DateTime openTimeUtc)
     {
@@ -183,34 +256,53 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
 
     private Task CloseAtAsync(Guid positionId, Price fillPrice, CancellationToken ct)
     {
-        _executionChannel.Writer.TryWrite(
-            new ExecutionEvent(positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc));
-
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
-            var symbolInfo = _symbolRegistry.Get(_symbol);
-            decimal pnl = 0;
-            try
-            {
-                var priceDiff = trade.Direction == TradeDirection.Long
-                    ? fillPrice.Value - trade.EntryPrice
-                    : trade.EntryPrice - fillPrice.Value;
-                var pipValue = PipCalculator.PipValuePerLot(symbolInfo, fillPrice.Value, _crossRateProvider);
-                pnl = (priceDiff / symbolInfo.PipSize) * pipValue * trade.Lots;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to compute PnL for close {PositionId}", positionId);
-            }
-            _balance += pnl;
+            var costs = ComputeCosts(trade, fillPrice.Value);
+            _balance += costs.NetProfit;
             _openTrades.Remove(positionId);
+
+            // Stamp the itemised economics on the close fill so the engine ledger (and the DB/report)
+            // match the account — net of commission/swap, not a cost-free recompute downstream.
+            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc)
+            {
+                GrossProfit = costs.GrossProfit,
+                Commission = costs.Commission,
+                Swap = costs.Swap,
+                NetProfit = costs.NetProfit,
+            });
+
             // F1: surface the realized balance change as an account update so equity/drawdown move.
             EmitAccountUpdate(BrokerTimeUtc);
-            _logger.LogDebug("BacktestReplay: close {PositionId} at {Price:F5} PnL={PnL:F2} balance={Balance:F2}",
-                positionId, fillPrice.Value, pnl, _balance);
+            _logger.LogDebug("BacktestReplay: close {PositionId} at {Price:F5} gross={Gross:F2} comm={Comm:F2} swap={Swap:F2} net={Net:F2} balance={Balance:F2}",
+                positionId, fillPrice.Value, costs.GrossProfit, costs.Commission, costs.Swap, costs.NetProfit, _balance);
+        }
+        else
+        {
+            // No tracked trade (unknown / already closed) — surface a cost-free fill so the lifecycle
+            // FSM can still resolve.
+            _executionChannel.Writer.TryWrite(
+                new ExecutionEvent(positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc));
         }
 
         return Task.CompletedTask;
+    }
+
+    private TradeCosts ComputeCosts(OpenTrade trade, decimal exitPrice)
+    {
+        try
+        {
+            var symbolInfo = _symbolRegistry.Get(_symbol);
+            return TradeCostCalculator.Compute(
+                trade.Direction, new Price(trade.EntryPrice), new Price(exitPrice), trade.Lots,
+                symbolInfo, _crossRateProvider, trade.OpenedAtUtc, BrokerTimeUtc);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to compute costs for {Symbol}", _symbol);
+            return new TradeCosts(0, 0, 0, 0, 0);
+        }
     }
 
     public Task ClosePartialPositionAsync(Guid positionId, decimal lots, CancellationToken ct)
@@ -240,7 +332,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             if (remaining <= 0)
                 _openTrades.Remove(positionId);
             else
-                _openTrades[positionId] = (trade.Direction, trade.EntryPrice, remaining);
+                _openTrades[positionId] = trade with { Lots = remaining };
             // F1: realized partial PnL must reach the account stream too.
             EmitAccountUpdate(BrokerTimeUtc);
             _logger.LogDebug("BacktestReplay: partial close {PositionId} lots={Lots} remaining={Remaining} PnL={PnL:F2}",
@@ -259,10 +351,10 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             var symbolInfo = _symbolRegistry.Get(_symbol);
             var pipValue = PipCalculator.PipValuePerLot(symbolInfo, close, _crossRateProvider);
             var total = 0m;
-            foreach (var (_, (dir, entry, lots)) in _openTrades)
+            foreach (var (_, t) in _openTrades)
             {
-                var diff = dir == TradeDirection.Long ? close - entry : entry - close;
-                total += (diff / symbolInfo.PipSize) * pipValue * lots;
+                var diff = t.Direction == TradeDirection.Long ? close - t.EntryPrice : t.EntryPrice - close;
+                total += (diff / symbolInfo.PipSize) * pipValue * t.Lots;
             }
             return total;
         }
@@ -281,6 +373,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         _accountChannel.Writer.TryComplete();
         _executionChannel.Writer.TryComplete();
         _openTrades.Clear();
+        _pendingLimits.Clear();
         try { await _feedTask; } catch (OperationCanceledException) { }
         _feedCts?.Dispose();
     }

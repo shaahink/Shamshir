@@ -136,23 +136,37 @@ public sealed class BacktestController : ControllerBase
     }
 
     [HttpGet("{runId}/journal")]
-    public async Task<IActionResult> Journal(string runId)
+    public async Task<IActionResult> Journal(
+        string runId,
+        [FromQuery] string? kind = null,
+        [FromQuery] long? afterSeq = null,
+        [FromQuery] int limit = 50)
     {
-        var events = await _pipelineRepo.GetByRunIdAsync(runId, HttpContext.RequestAborted);
-        var funnel = events
-            .GroupBy(e => e.Stage)
-            .OrderBy(g => g.Key)
-            .Select(g => new { stage = g.Key, count = g.Count() })
-            .ToList();
+        var all = await _pipelineRepo.GetByRunIdAsync(runId, HttpContext.RequestAborted);
 
-        return Ok(new { runId, funnel, events = events.Select(e => new
+        var filtered = all.AsEnumerable();
+        if (afterSeq.HasValue)
+        {
+            filtered = filtered.Where(e => e.Seq > afterSeq.Value);
+        }
+        if (!string.IsNullOrWhiteSpace(kind))
+        {
+            filtered = filtered.Where(e =>
+                string.Equals(e.NormalizedKind, kind, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var page = filtered.Take(Math.Clamp(limit, 1, 500)).ToList();
+
+        return Ok(page.Select(e => new
         {
             seq = e.Seq,
-            stage = e.Stage,
             simTime = e.SimTimeUtc,
-            correlationId = e.CorrelationId,
+            symbol = e.CorrelationId,
+            strategy = e.StrategyId,
+            kind = e.NormalizedKind,
+            reason = e.Reason,
             detail = e.DetailJson
-        }).ToList() });
+        }));
     }
 
     // LEGACY / intentionally unconsumed: the live Monitor moved to SignalR (RunHub +

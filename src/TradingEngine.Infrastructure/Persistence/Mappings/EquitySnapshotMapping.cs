@@ -12,6 +12,8 @@ public sealed class EquitySnapshotMapping : IEntityTypeConfiguration<EquitySnaps
         builder.Property(e => e.PeakEquity).HasColumnType("TEXT");
         builder.Property(e => e.DailyStartEquity).HasColumnType("TEXT");
         builder.Property(e => e.Mode).HasColumnType("TEXT").IsRequired();
+        builder.Property(e => e.RunId).HasColumnType("TEXT");
         builder.HasIndex(e => e.TimestampUtc);
+        builder.HasIndex(e => e.RunId);
     }
 }

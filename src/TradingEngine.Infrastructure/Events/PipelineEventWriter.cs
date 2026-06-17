@@ -47,7 +47,8 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
             r.PhaseAfter,
             r.GuardResult,
             r.Reason,
-            r.StrategyId);
+            r.StrategyId,
+            JournalNormalizer.NormalizeKind(r.Event, r.Reason));
         _channel.Writer.TryWrite(evt);
     }
 
@@ -61,7 +62,8 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
             correlationId,
             simTime,
             DateTime.UtcNow,
-            detailJson);
+            detailJson,
+            NormalizedKind: JournalNormalizer.NormalizeKind(stage, null));
         _channel.Writer.TryWrite(evt);
     }
 

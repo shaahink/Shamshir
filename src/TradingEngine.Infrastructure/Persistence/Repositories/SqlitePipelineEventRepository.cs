@@ -23,6 +23,7 @@ public sealed class SqlitePipelineEventRepository(TradingDbContext db) : IPipeli
             GuardResult = e.GuardResult,
             Reason = e.Reason,
             StrategyId = e.StrategyId,
+            NormalizedKind = e.NormalizedKind,
         }).ToList();
 
         db.PipelineEvents.AddRange(entities);
@@ -37,7 +38,8 @@ public sealed class SqlitePipelineEventRepository(TradingDbContext db) : IPipeli
             .Select(e => new PipelineEvent(
                 e.Id, e.RunId, e.Seq, e.Stage, e.CorrelationId,
                 e.SimTimeUtc, e.WallTimeUtc, e.DetailJson,
-                e.PhaseBefore, e.PhaseAfter, e.GuardResult, e.Reason, e.StrategyId))
+                e.PhaseBefore, e.PhaseAfter, e.GuardResult, e.Reason, e.StrategyId,
+                e.NormalizedKind))
             .ToListAsync(ct);
     }
 }

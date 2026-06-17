@@ -35,6 +35,7 @@ public sealed class EngineReducerWiringTests
             nameof(OrderFilled),
             nameof(OrderPartiallyFilled),
             nameof(OrderRejected),
+            nameof(OrderCancelled),
             nameof(CloseRequested),
             // Force-close — wired via PositionTracker.RequestForceCloseAllAsync
             "ForceCloseAllRequested",

@@ -15,6 +15,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<ExperimentRunEntity> ExperimentRuns => Set<ExperimentRunEntity>();
     public DbSet<DailyProtectionLedgerEntity> DailyProtectionLedgers => Set<DailyProtectionLedgerEntity>();
     public DbSet<ProtectionLedgerEntryEntity> ProtectionLedgerEntries => Set<ProtectionLedgerEntryEntity>();
+    public DbSet<StrategyConfigEntity> StrategyConfigs => Set<StrategyConfigEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -30,6 +31,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
         {
             e.ToTable("BacktestRuns");
             e.HasKey(x => x.RunId);
+            e.Property(x => x.EffectiveConfigJson).HasColumnType("TEXT");
         });
 
         modelBuilder.Entity<BarEvaluationEntity>(e =>
@@ -74,6 +76,23 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.HasOne(x => x.Ledger)
                 .WithMany(x => x.Entries)
                 .HasForeignKey(x => x.LedgerId);
+        });
+
+        modelBuilder.Entity<StrategyConfigEntity>(e =>
+        {
+            e.ToTable("StrategyConfigs");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.DisplayName).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.DefaultSymbols).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.Timeframe).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.RiskProfileId).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.ParametersJson).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.PositionManagementJson).HasColumnType("TEXT");
+            e.Property(x => x.OrderEntryJson).HasColumnType("TEXT");
+            e.Property(x => x.RegimeFilterJson).HasColumnType("TEXT");
+            e.Property(x => x.ReentryJson).HasColumnType("TEXT");
+            e.Property(x => x.UpdatedAtUtc).HasColumnType("TEXT");
         });
     }
 }

@@ -102,9 +102,23 @@ public sealed class MarketEventSource
             execEvent.FillPrice?.Value.ToString("F5") ?? "none",
             execEvent.FilledLots);
 
+        // A cancellation (expired resting limit) is neither a fill nor a rejection — surface it as its
+        // own event so it never inflates the "fills" funnel, and the reason (ENTRY_EXPIRED) is visible.
+        var eventType = state switch
+        {
+            OrderState.Rejected => "REJECTED",
+            OrderState.Cancelled => "ENTRY_EXPIRED",
+            _ => "EXEC",
+        };
+        var detail = state switch
+        {
+            OrderState.Rejected => $" reason={execEvent.RejectionReason ?? "?"}",
+            OrderState.Cancelled => $" reason={execEvent.RejectionReason ?? "ENTRY_EXPIRED"}",
+            _ => "",
+        };
         progress?.Report(new BacktestProgressEvent(
-            runId, state == OrderState.Rejected ? "REJECTED" : "EXEC",
-            $"EXEC {execEvent.OrderId} [{state}] fill={execEvent.FillPrice?.Value.ToString("F5") ?? "none"} lots={execEvent.FilledLots}{(state == OrderState.Rejected ? " reason=" + (execEvent.RejectionReason ?? "?") : "")}",
+            runId, eventType,
+            $"{eventType} {execEvent.OrderId} [{state}] fill={execEvent.FillPrice?.Value.ToString("F5") ?? "none"} lots={execEvent.FilledLots}{detail}",
             clock.UtcNow));
     }
 }

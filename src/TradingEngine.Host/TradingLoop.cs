@@ -28,6 +28,7 @@ public sealed class TradingLoop(
     Func<EquitySnapshot> currentEquity,
     IProgress<BacktestProgressEvent>? progress,
     IPipelineJournal? journal,
+    TradingEngine.Services.EntryPlanner entryPlanner,
     Microsoft.Extensions.Logging.ILogger logger)
 {
     private long _barCount;
@@ -119,6 +120,8 @@ public sealed class TradingLoop(
                 continue;
             }
 
+            intent = entryPlanner.Plan(intent, strategy.Config.OrderEntry, closeTick.Mid);
+
             if (signalGate is not null)
             {
                 var gateResult = signalGate.Check(strategy.Id, intent.Symbol.Value, intent.Direction, bar.OpenTimeUtc);
@@ -140,6 +143,21 @@ public sealed class TradingLoop(
                 intent.StopLoss.Value, intent.TakeProfit?.Value.ToString("F5") ?? "none");
             logger.LogInformation("SIGNAL_REASON|{Strategy}|{Reason}", strategy.Id, intent.Reason);
 
+            // Persist the signal (with the WHY) to the queryable journal — the dispatcher only records
+            // the downstream order/reject, so without this the journal can't explain why a position was
+            // entered. Low volume: written only when a strategy actually fires.
+            journal?.Write("SIGNAL", bar.Symbol.Value, bar.OpenTimeUtc, JsonSerializer.Serialize(new
+            {
+                strategy = strategy.Id,
+                direction = intent.Direction.ToString(),
+                reason = intent.Reason,
+                entryType = intent.OrderType.ToString(),
+                limit = intent.LimitPrice?.Value,
+                sl = intent.StopLoss.Value,
+                tp = intent.TakeProfit?.Value,
+                indicators = strategyIndicators,
+            }));
+
             progress?.Report(new BacktestProgressEvent(
                 runContext.RunId, "SIGNAL",
                 $"SIGNAL {strategy.Id} {intent.Direction} sl={intent.StopLoss.Value:F5} tp={intent.TakeProfit?.Value.ToString("F5") ?? "none"} reason={intent.Reason}",
@@ -158,7 +176,7 @@ public sealed class TradingLoop(
             if (orderCtx is null) continue;
 
             var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,
-                intent.Direction, OrderType.Market, intent.LimitPrice);
+                intent.Direction, intent.OrderType, intent.LimitPrice);
             positionTracker.TrackOrder(orderCtx.OrderId, orderReq, orderCtx.RiskAmount);
 
             logger.LogInformation("ORDER|{Strategy}|{OrderId}|{Dir}|lots={Lots}|entry={Entry:F5}",
