@@ -67,7 +67,13 @@ public sealed class StrategyConfigSeeder
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            var parameters = root.TryGetProperty("parameters", out var p) ? p : default;
+            // Clone() detaches the element from `doc`, which is disposed at the end of this loop
+            // iteration. Without it the stored JsonElement points at a disposed JsonDocument and any
+            // later read (GetRawText in the store) throws ObjectDisposedException — crashing startup
+            // the first time a fresh DB is seeded.
+            var parameters = root.TryGetProperty("parameters", out var p) && p.ValueKind != JsonValueKind.Undefined
+                ? p.Clone()
+                : default;
             var timeframe = root.TryGetProperty("timeframe", out var tf) ? tf.GetString()! : "H1";
 
             results.Add(new StrategyConfigEntry(

@@ -793,6 +793,22 @@ so it never reached the default backtest path. These items fix the wiring and th
   (price) → close (reason + net + costs)*; the exhaustive per-bar "why no signal" indicator log stays in
   `BarEvaluations`.
 
+- **SEEDER-01 — StrategyConfigSeeder crashed app startup on a fresh DB** ✅ **Fixed (Iter-31 cont.)**.
+  `StrategyConfigSeeder.LoadFromJson` stored a `JsonElement` (`parameters`) backed by a `JsonDocument`
+  disposed at the end of each loop iteration; the later `GetRawText()` in `SqliteStrategyConfigStore`
+  threw `ObjectDisposedException`, aborting `Program.cs` startup. Only fired on a fresh DB (empty
+  `StrategyConfigs` → seeder runs), so it was invisible while a pre-seeded DB existed. Fixed by
+  `.Clone()`-ing the element (matching the already-correct `ConfigLoader`) + an `Undefined`-safe guard
+  in the store. Verified live: app boots, seeds 9 configs, all pages 200, a real EURUSD/H1 replay
+  backtest produces 4 trades with itemised commission/swap and a CLOSE-kind journal carrying
+  gross/commission/swap/net.
+
+- **MIGRATIONS-01 — collapsed to a single InitialCreate** ✅ **Done (Iter-31 cont.)**. Per the plan's
+  "redo InitialCreate at the end", the 3 migrations (InitialCreate + AddBarRunId +
+  AddNormalizedKindToPipelineEvents) were squashed into one fresh `InitialCreate` capturing the full
+  schema (StrategyConfigs, NormalizedKind, EffectiveConfigJson, Bars.RunId). **Existing DBs must be
+  deleted and recreated** (the new migration id won't apply onto a history with the old ids).
+
 - **WEB-BUILD-01 — Web project did not compile on this branch** ✅ **Fixed (Iter-31 cont.)**. A commit
   in `iter/31-costs-journal` **replaced** `global using TradingEngine.Infrastructure.Persistence.Reporting;`
   with `...Configuration;` in `src/TradingEngine.Web/GlobalUsings.cs` (instead of adding it), so

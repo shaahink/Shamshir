@@ -31,7 +31,7 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyCo
             existing.DefaultSymbols = JsonSerializer.Serialize(entry.Symbols);
             existing.Timeframe = entry.Timeframe;
             existing.RiskProfileId = entry.RiskProfileId;
-            existing.ParametersJson = entry.Parameters.GetRawText();
+            existing.ParametersJson = RawTextOrEmpty(entry.Parameters);
             existing.PositionManagementJson = SerializeOptional(entry.PositionManagement);
             existing.OrderEntryJson = SerializeOptional(entry.OrderEntry);
             existing.RegimeFilterJson = SerializeOptional(entry.RegimeFilter);
@@ -51,7 +51,7 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyCo
             DefaultSymbols = JsonSerializer.Serialize(entry.Symbols),
             Timeframe = entry.Timeframe,
             RiskProfileId = entry.RiskProfileId,
-            ParametersJson = entry.Parameters.GetRawText(),
+            ParametersJson = RawTextOrEmpty(entry.Parameters),
             PositionManagementJson = SerializeOptional(entry.PositionManagement),
             OrderEntryJson = SerializeOptional(entry.OrderEntry),
             RegimeFilterJson = SerializeOptional(entry.RegimeFilter),
@@ -80,6 +80,11 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyCo
             Reentry = DeserializeOptional<ReentryOptions>(entity.ReentryJson),
         };
     }
+
+    // A default/Undefined JsonElement (config with no "parameters" block) has no raw text — persist an
+    // empty object rather than throwing. Cloned elements from a live document round-trip normally.
+    private static string RawTextOrEmpty(JsonElement element) =>
+        element.ValueKind == JsonValueKind.Undefined ? "{}" : element.GetRawText();
 
     private static string? SerializeOptional<T>(T? value) where T : class =>
         value is null ? null : JsonSerializer.Serialize(value);

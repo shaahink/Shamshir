@@ -282,10 +282,10 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("RunId")
+                    b.Property<decimal>("PeakEquity")
                         .HasColumnType("TEXT");
 
-                    b.Property<decimal>("PeakEquity")
+                    b.Property<string>("RunId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("TimestampUtc")

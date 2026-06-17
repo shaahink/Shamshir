@@ -11,7 +11,7 @@ using TradingEngine.Infrastructure.Persistence;
 namespace TradingEngine.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TradingDbContext))]
-    [Migration("20260615213334_InitialCreate")]
+    [Migration("20260617141237_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -36,6 +36,9 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CompletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EffectiveConfigJson")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ErrorMessage")
@@ -106,6 +109,10 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("OpenTimeUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("RunId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Symbol")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -119,7 +126,7 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Symbol", "Timeframe", "OpenTimeUtc");
+                    b.HasIndex("RunId", "Symbol", "Timeframe", "OpenTimeUtc");
 
                     b.ToTable("Bars", (string)null);
                 });
@@ -281,6 +288,9 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("PeakEquity")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("RunId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("TimestampUtc")
                         .HasColumnType("TEXT");
 
@@ -289,6 +299,8 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("RunId");
 
                     b.HasIndex("TimestampUtc");
 
@@ -452,6 +464,10 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("NormalizedKind")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PhaseAfter")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
@@ -573,6 +589,54 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                     b.HasIndex("LedgerId");
 
                     b.ToTable("ProtectionLedgerEntries", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.StrategyConfigEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DefaultSymbols")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OrderEntryJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParametersJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PositionManagementJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReentryJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RegimeFilterJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RiskProfileId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Timeframe")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StrategyConfigs", (string)null);
                 });
 
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.TradeResultEntity", b =>
