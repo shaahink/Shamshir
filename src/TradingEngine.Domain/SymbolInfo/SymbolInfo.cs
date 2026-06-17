@@ -13,4 +13,8 @@ public record SymbolInfo(
     decimal LotStep,
     decimal MarginRate,
     decimal TypicalSpread,
-    string AccountCurrency = "USD");
+    string AccountCurrency = "USD",
+    decimal CommissionPerLotPerSide = 0,
+    decimal SwapLongPerLotPerNight = 0,
+    decimal SwapShortPerLotPerNight = 0,
+    string TripleSwapWeekday = "Wednesday");
