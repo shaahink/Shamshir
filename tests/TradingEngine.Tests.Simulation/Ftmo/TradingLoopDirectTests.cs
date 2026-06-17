@@ -84,6 +84,7 @@ public sealed class TradingLoopDirectTests
             broker, indicatorSnapshot, dispatcher, positionTracker,
             strategyBank, regimeDetector, signalGate: null, symbolRegistry,
             eventBus, clock, runContext, (_, _) => 1m, () => equity, progress: null, journal: null,
+            new TradingEngine.Services.EntryPlanner(symbolRegistry, NullLogger<TradingEngine.Services.EntryPlanner>.Instance),
             NullLogger.Instance);
 
         // AlwaysSignalStrategy fires a Long once bar count exceeds 5. Drive 8 bars.

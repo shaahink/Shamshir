@@ -136,6 +136,7 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                             RegimeDetector = Substitute.For<IRegimeDetector>(),
                             OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                             PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                            EntryPlanner = sp.GetRequiredService<TradingEngine.Services.EntryPlanner>(),
                             SignalGate = sp.GetRequiredService<ISignalGate>(),
                         },
                         Persistence = new PersistenceServices

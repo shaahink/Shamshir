@@ -155,7 +155,9 @@ public sealed class EngineHarnessBuilder
             eventBus, clock, runContext,
             getCrossRate: crossRate,
             currentEquity: () => equity.Value,
-            progress: null, journal: null, NullLogger.Instance);
+            progress: null, journal: null,
+            new TradingEngine.Services.EntryPlanner(symbolRegistry, NullLogger<TradingEngine.Services.EntryPlanner>.Instance),
+            NullLogger.Instance);
 
         return Task.FromResult(new EngineHarness(
             tradingLoop, fakeVenue, positionTracker, riskManager, strategies,

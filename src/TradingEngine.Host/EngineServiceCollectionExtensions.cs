@@ -150,6 +150,7 @@ public static class EngineServiceCollectionExtensions
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
         services.AddSingleton<OrderDispatcher>();
         services.AddSingleton<PositionTracker>();
+        services.AddSingleton<EntryPlanner>();
         services.AddSingleton<EffectExecutor>();
         services.AddSingleton<IEffectExecutor>(sp => sp.GetRequiredService<EffectExecutor>());
         services.AddSingleton<ISignalGate, SignalGateService>();
@@ -237,6 +238,7 @@ public static class EngineServiceCollectionExtensions
                 RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
                 OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                 PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                EntryPlanner = sp.GetRequiredService<EntryPlanner>(),
                 SignalGate = sp.GetRequiredService<ISignalGate>(),
             },
             Persistence = new PersistenceServices
@@ -314,6 +316,7 @@ public static class EngineServiceCollectionExtensions
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
         services.AddSingleton<OrderDispatcher>();
         services.AddSingleton<PositionTracker>();
+        services.AddSingleton<EntryPlanner>();
         services.AddSingleton<EffectExecutor>();
         services.AddSingleton<IEffectExecutor>(sp => sp.GetRequiredService<EffectExecutor>());
         services.AddSingleton<ISignalGate, SignalGateService>();
@@ -386,6 +389,7 @@ public static class EngineServiceCollectionExtensions
                 RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
                 OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                 PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                EntryPlanner = sp.GetRequiredService<EntryPlanner>(),
                 SignalGate = sp.GetRequiredService<ISignalGate>(),
             },
             Persistence = new PersistenceServices

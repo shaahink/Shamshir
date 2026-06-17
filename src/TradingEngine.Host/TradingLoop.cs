@@ -28,6 +28,7 @@ public sealed class TradingLoop(
     Func<EquitySnapshot> currentEquity,
     IProgress<BacktestProgressEvent>? progress,
     IPipelineJournal? journal,
+    TradingEngine.Services.EntryPlanner entryPlanner,
     Microsoft.Extensions.Logging.ILogger logger)
 {
     private long _barCount;
@@ -118,6 +119,8 @@ public sealed class TradingLoop(
                 logger.LogDebug("EVAL|{Strategy}|{Symbol}|NO_SIGNAL", strategy.Id, bar.Symbol.Value);
                 continue;
             }
+
+            intent = entryPlanner.Plan(intent, strategy.Config.OrderEntry, closeTick.Mid);
 
             if (signalGate is not null)
             {

@@ -35,6 +35,7 @@ public sealed record StrategyServices
     public required IRegimeDetector RegimeDetector { get; init; }
     public required OrderDispatcher OrderDispatcher { get; init; }
     public required PositionTracker PositionTracker { get; init; }
+    public required TradingEngine.Services.EntryPlanner EntryPlanner { get; init; }
     public ISignalGate? SignalGate { get; init; }
 }
 
