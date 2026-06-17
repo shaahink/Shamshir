@@ -7,6 +7,9 @@
 This document is the authoritative issues log. Update it as items are fixed or new findings are added.
 Never delete a resolved item — mark it `✅ Fixed (Iteration N)` so there is a record.
 
+> **Forward-looking roadmap** (reporting, strategy/config UX + custom profiles, SPA/CSS-framework,
+> backtest performance, rule-pressure testing) lives in **`docs/NEXT-STEPS.md`** — logged 2026-06-17.
+
 ---
 
 ## Iteration 17 Resolved Items
