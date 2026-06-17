@@ -65,7 +65,7 @@ public sealed class EffectExecutor : IEffectExecutor
                     submit.LimitPrice, submit.StopLoss, submit.TakeProfit,
                     submit.StrategyId, "standard", "", _clock.UtcNow);
                 var orderReq = new OrderRequest(intent, submit.Lots, submit.Symbol, submit.Direction,
-                    OrderType.Market, submit.LimitPrice);
+                    submit.LimitPrice is not null ? OrderType.Limit : OrderType.Market, submit.LimitPrice);
                 await _broker.SubmitOrderAsync(orderReq, ct);
                 break;
 

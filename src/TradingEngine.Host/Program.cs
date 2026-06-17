@@ -31,13 +31,14 @@ public static class Program
 
             builder.Services.AddMarketData(mode, root, slip, builder.Configuration);
             builder.Services.AddRisk(root);
-            builder.Services.AddPersistence(dbPath);
+            builder.Services.AddPersistence(dbPath, root);
             builder.Services.AddStrategies();
             builder.Services.AddEventInfrastructure(mode);
             builder.Services.AddEngineWorker(mode);
             builder.Services.AddHostedService<DailyResetService>();
 
             var app = builder.Build();
+            app.Services.GetRequiredService<StrategyConfigSeeder>().SeedAsync().GetAwaiter().GetResult();
             app.WireEventHandlers();
             app.WireRiskRules(cfg);
             app.Run();

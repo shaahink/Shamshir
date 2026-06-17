@@ -35,6 +35,7 @@ builder.Services.AddScoped<IPipelineEventRepository, SqlitePipelineEventReposito
 builder.Services.AddScoped<IExperimentRepository, SqliteExperimentRepository>();
 builder.Services.AddScoped<ITradeRepository, SqliteTradeRepository>();
 builder.Services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+builder.Services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
 builder.Services.AddSingleton<IExperimentHostFactory, ExperimentHostFactoryAdapter>();
 builder.Services.AddTransient<ExperimentRunner>();
 builder.Services.AddSingleton<BacktestProgressStore>();
@@ -72,6 +73,13 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
     await db.Database.MigrateAsync();
+
+    var solRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<StrategyConfigSeeder>>();
+    var seeder = new StrategyConfigSeeder(
+        scope.ServiceProvider.GetRequiredService<IServiceScopeFactory>(),
+        solRoot, logger);
+    await seeder.SeedAsync();
 }
 
 

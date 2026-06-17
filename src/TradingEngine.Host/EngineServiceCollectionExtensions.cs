@@ -29,7 +29,7 @@ public static class EngineServiceCollectionExtensions
         return services
             .AddMarketDataFromOptions(options)
             .AddRiskFromOptions(options)
-            .AddPersistence(options.DbPath)
+            .AddPersistence(options.DbPath, options.SolutionRoot)
             .AddStrategiesFromOptions(options)
             .AddEventInfrastructureFromOptions(options)
             .AddEngineWorkerFromOptions(options);
@@ -117,12 +117,18 @@ public static class EngineServiceCollectionExtensions
 
     public static IServiceCollection AddPersistence(this IServiceCollection services, string dbPath)
     {
+        return services.AddPersistence(dbPath, null);
+    }
+
+    public static IServiceCollection AddPersistence(this IServiceCollection services, string dbPath, string? basePath)
+    {
         services.AddDbContext<TradingDbContext>(o =>
             o.UseSqlite($"Data Source={dbPath}"));
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
         services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
+        services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
         services.AddSingleton<PersistenceService>();
         services.AddSingleton<PipelineEventWriter>(sp => new PipelineEventWriter(
             sp.GetRequiredService<EngineRunContext>().RunId,
@@ -138,6 +144,14 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton<ProtectionLedgerPersistenceHandler>();
         services.AddSingleton<BarPersistenceHandler>();
         services.AddSingleton<BufferedBarWriter>();
+
+        if (basePath is not null)
+        {
+            services.AddSingleton<StrategyConfigSeeder>(sp => new StrategyConfigSeeder(
+                sp.GetRequiredService<IServiceScopeFactory>(),
+                basePath,
+                sp.GetRequiredService<ILogger<StrategyConfigSeeder>>()));
+        }
 
         return services;
     }

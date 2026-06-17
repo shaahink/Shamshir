@@ -114,6 +114,9 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                 StopLoss = request.Intent.StopLoss,
                 TakeProfit = request.Intent.TakeProfit,
                 StrategyId = request.Intent.StrategyId,
+                OrderType = request.Type,
+                LimitPrice = request.LimitPrice,
+                ExpiryBarCount = request.Intent.Entry?.LimitOrderExpiryBars ?? 3,
             };
         }
         return Task.FromResult(orderId);
@@ -200,34 +203,40 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                 var symbolInfo = ResolveSymbolInfo(order.Symbol);
                 if (symbolInfo is null) continue;
 
-                var pipSize = symbolInfo.PipSize;
-                var fillPrice = order.Direction == TradeDirection.Long
-                    ? tick.Ask + (decimal)_slippagePips * pipSize
-                    : tick.Bid - (decimal)_slippagePips * pipSize;
-
-                var pos = new SimPosition
+                if (order.OrderType == OrderType.Limit && order.LimitPrice is not null)
                 {
-                    OrderId = id,
-                    Symbol = order.Symbol,
-                    Direction = order.Direction,
-                    Lots = order.Lots,
-                    EntryPrice = new Price(fillPrice),
-                    StopLoss = order.StopLoss,
-                    TakeProfit = order.TakeProfit,
-                    StrategyId = order.StrategyId,
-                    SymbolInfo = symbolInfo,
-                    OpenedAtUtc = tick.TimestampUtc,
-                };
+                    var limitPrice = order.LimitPrice.Value.Value;
+                    var limitReached = order.Direction == TradeDirection.Long
+                        ? tick.Ask <= limitPrice
+                        : tick.Bid >= limitPrice;
 
-                _openPositions[id] = pos;
-                _pendingOrders.Remove(id);
+                    if (limitReached)
+                    {
+                        _pendingOrders.Remove(id);
+                        FillOrder(id, order, limitPrice, tick, symbolInfo);
+                    }
+                    else
+                    {
+                        order.ExpiryBarCount--;
+                        if (order.ExpiryBarCount <= 0)
+                        {
+                            _pendingOrders.Remove(id);
+                            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                                id, OrderState.Cancelled, null,
+                                0, null, tick.TimestampUtc));
+                        }
+                    }
+                }
+                else
+                {
+                    var pipSize = symbolInfo.PipSize;
+                    var fillPrice = order.Direction == TradeDirection.Long
+                        ? tick.Ask + (decimal)_slippagePips * pipSize
+                        : tick.Bid - (decimal)_slippagePips * pipSize;
 
-                _executionChannel.Writer.TryWrite(new ExecutionEvent(
-                    id, OrderState.Filled, new Price(fillPrice),
-                    order.Lots, null, tick.TimestampUtc));
-
-                _accountChannel.Writer.TryWrite(new AccountUpdate(
-                    _currentBalance, 0m, _currentBalance, tick.TimestampUtc));
+                    _pendingOrders.Remove(id);
+                    FillOrder(id, order, fillPrice, tick, symbolInfo);
+                }
             }
         }
 
@@ -330,6 +339,32 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         catch { return 0.0001m; }
     }
 
+    private void FillOrder(Guid id, PendingOrder order, decimal fillPrice, Tick tick, SymbolInfo symbolInfo)
+    {
+        var pos = new SimPosition
+        {
+            OrderId = id,
+            Symbol = order.Symbol,
+            Direction = order.Direction,
+            Lots = order.Lots,
+            EntryPrice = new Price(fillPrice),
+            StopLoss = order.StopLoss,
+            TakeProfit = order.TakeProfit,
+            StrategyId = order.StrategyId,
+            SymbolInfo = symbolInfo,
+            OpenedAtUtc = tick.TimestampUtc,
+        };
+
+        _openPositions[id] = pos;
+
+        _executionChannel.Writer.TryWrite(new ExecutionEvent(
+            id, OrderState.Filled, new Price(fillPrice),
+            order.Lots, null, tick.TimestampUtc));
+
+        _accountChannel.Writer.TryWrite(new AccountUpdate(
+            _currentBalance, 0m, _currentBalance, tick.TimestampUtc));
+    }
+
     private sealed class PendingOrder
     {
         public Symbol Symbol { get; set; }
@@ -338,6 +373,9 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         public Price StopLoss { get; set; }
         public Price? TakeProfit { get; set; }
         public string StrategyId { get; set; } = "";
+        public OrderType OrderType { get; set; } = OrderType.Market;
+        public Price? LimitPrice { get; set; }
+        public int ExpiryBarCount { get; set; } = 3;
     }
 
     private sealed class SimPosition

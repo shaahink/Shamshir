@@ -161,7 +161,7 @@ public sealed class TradingLoop(
             if (orderCtx is null) continue;
 
             var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,
-                intent.Direction, OrderType.Market, intent.LimitPrice);
+                intent.Direction, intent.OrderType, intent.LimitPrice);
             positionTracker.TrackOrder(orderCtx.OrderId, orderReq, orderCtx.RiskAmount);
 
             logger.LogInformation("ORDER|{Strategy}|{OrderId}|{Dir}|lots={Lots}|entry={Entry:F5}",

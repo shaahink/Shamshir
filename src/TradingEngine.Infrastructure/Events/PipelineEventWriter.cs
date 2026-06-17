@@ -47,7 +47,8 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
             r.PhaseAfter,
             r.GuardResult,
             r.Reason,
-            r.StrategyId);
+            r.StrategyId,
+            JournalNormalizer.NormalizeKind(r.Event, r.Reason));
         _channel.Writer.TryWrite(evt);
     }
 
