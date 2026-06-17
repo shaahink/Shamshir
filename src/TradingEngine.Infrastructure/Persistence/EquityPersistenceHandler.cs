@@ -7,8 +7,8 @@ public sealed class EquityPersistenceHandler : IEventHandler<EquityUpdated>, IAs
 {
     private readonly PersistenceService _persistence;
     private readonly ILogger<EquityPersistenceHandler> _logger;
-    private readonly Channel<EquitySnapshot> _channel =
-        Channel.CreateBounded<EquitySnapshot>(new BoundedChannelOptions(10_000)
+    private readonly Channel<(EquitySnapshot Snapshot, string RunId)> _channel =
+        Channel.CreateBounded<(EquitySnapshot, string)>(new BoundedChannelOptions(10_000)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleWriter = false
@@ -25,24 +25,26 @@ public sealed class EquityPersistenceHandler : IEventHandler<EquityUpdated>, IAs
 
     public async Task HandleAsync(EquityUpdated evt, CancellationToken ct)
     {
-        await _channel.Writer.WriteAsync(evt.Snapshot, ct);
+        await _channel.Writer.WriteAsync((evt.Snapshot, evt.RunId), ct);
     }
 
     private async Task FlushLoopAsync(CancellationToken ct)
     {
-        var buffer = new List<EquitySnapshot>(100);
+        var buffer = new List<(EquitySnapshot Snapshot, string RunId)>(100);
         while (!ct.IsCancellationRequested)
         {
             try
             {
                 await Task.Delay(5_000, ct);
                 buffer.Clear();
-                while (_channel.Reader.TryRead(out var snapshot) && buffer.Count < 100)
-                    buffer.Add(snapshot);
+                while (_channel.Reader.TryRead(out var item) && buffer.Count < 100)
+                    buffer.Add(item);
                 if (buffer.Count > 0)
                 {
                     _logger.LogDebug("Flushing {Count} equity snapshots", buffer.Count);
-                    await _persistence.SaveEquitySnapshotsBatchAsync(buffer, ct);
+                    var snapshots = buffer.Select(b => b.Snapshot).ToList();
+                    var runId = buffer[0].RunId;
+                    await _persistence.SaveEquitySnapshotsBatchAsync(snapshots, runId, ct);
                 }
             }
             catch (OperationCanceledException) { break; }

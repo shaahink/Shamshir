@@ -22,8 +22,6 @@ public static class Program
             var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder(args);
             builder.Services.AddSerilog(Log.Logger);
             var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-            var cfg = new ConfigLoader(root).Load();
-            builder.Services.AddSingleton(cfg);
             var mode = builder.Configuration.GetValue<EngineMode?>("Engine:Mode") ?? EngineMode.Backtest;
             var dbPath = builder.Configuration.GetValue<string>("Persistence:DbPath") ?? Path.Combine(root, "data", "trading.db");
             Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
@@ -39,8 +37,14 @@ public static class Program
 
             var app = builder.Build();
             app.Services.GetRequiredService<StrategyConfigSeeder>().SeedAsync().GetAwaiter().GetResult();
+
+            var store = app.Services.GetRequiredService<IStrategyConfigStore>();
+            var strategyConfigs = store.GetAllAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var loadedConfig = app.Services.GetRequiredService<LoadedConfig>();
+            loadedConfig.StrategyConfigs = strategyConfigs;
+
             app.WireEventHandlers();
-            app.WireRiskRules(cfg);
+            app.WireRiskRules(loadedConfig);
             app.Run();
         }
         catch (Exception ex) { Log.Fatal(ex, "Engine terminated unexpectedly"); }

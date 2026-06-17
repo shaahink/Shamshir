@@ -11,6 +11,7 @@ public sealed record BacktestRunSummary(
     decimal InitialBalance,
     string AlgoHash,
     string StrategyParamsJson,
+    string? EffectiveConfigJson,
     decimal NetProfit,
     decimal MaxDrawdownPct,
     int TotalTrades,

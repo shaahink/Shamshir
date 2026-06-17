@@ -26,7 +26,7 @@ public sealed class BacktestQueryService : IBacktestQueryService
             s.Symbol, s.Period, s.BacktestFrom, s.BacktestTo,
             s.InitialBalance, s.NetProfit, s.MaxDrawdownPct,
             s.TotalTrades, s.WinningTrades, s.WinRatePct,
-            s.AlgoHash, s.ErrorMessage)).ToList();
+            s.AlgoHash, s.ErrorMessage, s.EffectiveConfigJson)).ToList();
     }
 
     public async Task<BacktestRunView?> GetRunAsync(string runId, CancellationToken ct)
@@ -41,7 +41,7 @@ public sealed class BacktestQueryService : IBacktestQueryService
             s.Symbol, s.Period, s.BacktestFrom, s.BacktestTo,
             s.InitialBalance, s.NetProfit, s.MaxDrawdownPct,
             s.TotalTrades, s.WinningTrades, s.WinRatePct,
-            s.AlgoHash, s.ErrorMessage);
+            s.AlgoHash, s.ErrorMessage, s.EffectiveConfigJson);
     }
 
     private static string StatusOf(BacktestRunSummary s) =>

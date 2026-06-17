@@ -31,6 +31,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
         {
             e.ToTable("BacktestRuns");
             e.HasKey(x => x.RunId);
+            e.Property(x => x.EffectiveConfigJson).HasColumnType("TEXT");
         });
 
         modelBuilder.Entity<BarEvaluationEntity>(e =>

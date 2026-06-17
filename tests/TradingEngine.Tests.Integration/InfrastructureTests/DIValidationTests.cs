@@ -50,7 +50,7 @@ public sealed class DIValidationTests
         services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
         var registry = new StrategyRegistry();
         services.AddSingleton(registry);
-        services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(registry, null, sp.GetRequiredService<ILogger<StrategyBankService>>()));
+        services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(registry, null, null, sp.GetRequiredService<ILogger<StrategyBankService>>()));
 
         // Trading services
         services.AddSingleton<IPositionManager, PositionManager>();

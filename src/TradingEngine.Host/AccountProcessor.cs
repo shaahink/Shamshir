@@ -151,9 +151,9 @@ public sealed class AccountProcessor
                 update.TimestampUtc, update.Balance, update.Equity, update.FloatingPnL,
                 _riskManager.Drawdown.PeakEquity, _riskManager.Drawdown.DailyStartEquity,
                 riskState.DailyDrawdownUsed, riskState.MaxDrawdownUsed,
-                _positionTracker.OpenPositions.Count));
+                _positionTracker.OpenPositions.Count, _runId));
         }
-        _ = _eventBus.PublishAsync(new EquityUpdated(equity, riskState, _clock.UtcNow), CancellationToken.None);
+        _ = _eventBus.PublishAsync(new EquityUpdated(equity, riskState, _clock.UtcNow, _runId), CancellationToken.None);
         _logger.LogInformation("ACCOUNT|balance={Balance:F2}|equity={Equity:F2}|dd={DD:P1}",
             update.Balance, update.Equity, riskState.DailyDrawdownUsed);
     }

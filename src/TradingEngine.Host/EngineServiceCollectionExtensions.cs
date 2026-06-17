@@ -88,7 +88,7 @@ public static class EngineServiceCollectionExtensions
 
     public static IServiceCollection AddRisk(this IServiceCollection services, string solutionRoot)
     {
-        var loadedConfig = new ConfigLoader(solutionRoot).Load();
+        var loadedConfig = new ConfigLoader(solutionRoot).LoadBase();
         services.AddSingleton(loadedConfig);
 
         services.AddSingleton<INewsFilter>(sp =>
@@ -161,6 +161,7 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
             sp.GetRequiredService<StrategyRegistry>(),
             sp.GetRequiredService<LoadedConfig>().StrategyRotation,
+            sp.GetService<RunPlan>(),
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
         services.AddSingleton<OrderDispatcher>();
         services.AddSingleton<PositionTracker>();
@@ -327,6 +328,7 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
             sp.GetRequiredService<StrategyRegistry>(),
             sp.GetRequiredService<LoadedConfig>().StrategyRotation,
+            options.RunPlan,
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
         services.AddSingleton<OrderDispatcher>();
         services.AddSingleton<PositionTracker>();

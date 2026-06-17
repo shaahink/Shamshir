@@ -4,6 +4,7 @@ using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Infrastructure.Persistence.Reporting;
 using TradingEngine.Risk.Compliance;
+using TradingEngine.Services;
 using TradingEngine.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -41,6 +42,7 @@ builder.Services.AddTransient<ExperimentRunner>();
 builder.Services.AddSingleton<BacktestProgressStore>();
 builder.Services.AddSingleton<BacktestJournal>();
 builder.Services.AddSingleton<RunProjection>();
+builder.Services.AddSingleton<EffectiveConfigResolver>();
 builder.Services.AddSingleton<BacktestOrchestrator>();
 builder.Services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
 builder.Services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
@@ -60,6 +62,7 @@ builder.Services.AddSingleton<ISymbolInfoRegistry>(_ =>
 builder.Services.AddSingleton<StrategyRegistry>();
 builder.Services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
     sp.GetRequiredService<StrategyRegistry>(),
+    null,
     null,
     sp.GetRequiredService<ILogger<StrategyBankService>>()));
 builder.Services.AddSingleton<ITradingGovernor, TradingGovernorService>();

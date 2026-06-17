@@ -35,7 +35,7 @@ public sealed class PersistentEquitySink : IEquitySink
                 snapshot.DailyDrawdown,
                 snapshot.MaxDrawdown,
                 EngineMode.Live);
-            await repo.SaveAsync(equitySnapshot, CancellationToken.None);
+            await repo.SaveAsync(equitySnapshot, snapshot.RunId, CancellationToken.None);
         }
         catch (Exception ex)
         {

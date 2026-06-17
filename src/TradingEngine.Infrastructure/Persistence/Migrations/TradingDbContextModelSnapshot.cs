@@ -35,6 +35,9 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CompletedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("EffectiveConfigJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("TEXT");
 
@@ -279,6 +282,9 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("RunId")
+                        .HasColumnType("TEXT");
+
                     b.Property<decimal>("PeakEquity")
                         .HasColumnType("TEXT");
 
@@ -290,6 +296,8 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("RunId");
 
                     b.HasIndex("TimestampUtc");
 

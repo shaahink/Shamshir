@@ -5,7 +5,7 @@ namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
 public sealed class SqliteEquityRepository(TradingDbContext db) : IEquityRepository
 {
-    public async Task SaveAsync(EquitySnapshot snapshot, CancellationToken ct)
+    public async Task SaveAsync(EquitySnapshot snapshot, string? runId, CancellationToken ct)
     {
         var entity = new EquitySnapshotEntity
         {
@@ -19,12 +19,13 @@ public sealed class SqliteEquityRepository(TradingDbContext db) : IEquityReposit
             CurrentDailyDrawdown = snapshot.CurrentDailyDrawdown,
             CurrentMaxDrawdown = snapshot.CurrentMaxDrawdown,
             Mode = snapshot.Mode.ToString(),
+            RunId = runId,
         };
         db.EquitySnapshots.Add(entity);
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task SaveBatchAsync(IReadOnlyList<EquitySnapshot> snapshots, CancellationToken ct)
+    public async Task SaveBatchAsync(IReadOnlyList<EquitySnapshot> snapshots, string? runId, CancellationToken ct)
     {
         foreach (var snapshot in snapshots)
         {
@@ -40,6 +41,7 @@ public sealed class SqliteEquityRepository(TradingDbContext db) : IEquityReposit
                 CurrentDailyDrawdown = snapshot.CurrentDailyDrawdown,
                 CurrentMaxDrawdown = snapshot.CurrentMaxDrawdown,
                 Mode = snapshot.Mode.ToString(),
+                RunId = runId,
             });
         }
         await db.SaveChangesAsync(ct);
@@ -49,6 +51,18 @@ public sealed class SqliteEquityRepository(TradingDbContext db) : IEquityReposit
     {
         return await db.EquitySnapshots
             .Where(e => e.TimestampUtc >= from && e.TimestampUtc <= to)
+            .OrderBy(e => e.TimestampUtc)
+            .Select(e => new EquitySnapshot(
+                e.TimestampUtc, e.Balance, e.FloatingPnL, e.Equity,
+                e.PeakEquity, e.DailyStartEquity, e.CurrentDailyDrawdown,
+                e.CurrentMaxDrawdown, Enum.Parse<EngineMode>(e.Mode)))
+            .ToListAsync<EquitySnapshot>(ct);
+    }
+
+    public async Task<IReadOnlyList<EquitySnapshot>> GetByRunIdAsync(string runId, CancellationToken ct)
+    {
+        return await db.EquitySnapshots
+            .Where(e => e.RunId == runId)
             .OrderBy(e => e.TimestampUtc)
             .Select(e => new EquitySnapshot(
                 e.TimestampUtc, e.Balance, e.FloatingPnL, e.Equity,

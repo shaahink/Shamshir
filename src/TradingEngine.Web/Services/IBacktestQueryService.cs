@@ -15,7 +15,8 @@ public sealed record BacktestRunView(
     int WinningTrades,
     double WinRatePct,
     string AlgoHash,
-    string? Error);
+    string? Error,
+    string? EffectiveConfigJson = null);
 
 public sealed record EquityPoint(DateTime TimestampUtc, decimal Equity, decimal Balance);
 

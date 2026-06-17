@@ -9,4 +9,5 @@ public sealed record AccountSnapshot(
     decimal DailyStartEquity,
     decimal DailyDrawdown,
     decimal MaxDrawdown,
-    int OpenPositions);
+    int OpenPositions,
+    string RunId = "");
