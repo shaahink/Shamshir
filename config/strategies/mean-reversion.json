@@ -22,9 +22,12 @@
   },
   "parameters": {
     "rsiPeriod": 14,
+    "rsiOversold": 30,
+    "rsiOverbought": 70,
     "bbPeriod": 20,
     "bbStdDev": 2.0,
-    "atrPeriod": 14
+    "atrPeriod": 14,
+    "proximityToExtremeFraction": 0.33
   },
   "reentry": {
     "blockWhileSameDirectionOpen": true,

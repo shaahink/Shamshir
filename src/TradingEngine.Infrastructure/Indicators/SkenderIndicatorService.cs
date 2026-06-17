@@ -2,44 +2,28 @@ using Skender.Stock.Indicators;
 
 namespace TradingEngine.Infrastructure.Indicators;
 
+// Stateless: the previous internal cache keyed by bars.Count was unsafe. The bar window is capped
+// (TradingLoop trims to 500), so once saturated every bar produced the SAME key and ATR/EMA/SMA were
+// served stale; as a process-lifetime singleton it also leaked values across backtest runs. Indicator
+// de-duplication now happens per-bar in IndicatorSnapshotService, which is both correct and cheap.
 public sealed class SkenderIndicatorService : IIndicatorService
 {
-    private readonly IndicatorCache _cache = new();
-
     public double Atr(IReadOnlyList<Bar> bars, int period)
     {
-        var key = IndicatorCache.BuildKey(bars[0].Symbol, bars[0].Timeframe, "ATR", period, bars.Count);
-        var cached = _cache.Get(key);
-        if (cached.HasValue) return cached.Value;
-
         var quotes = bars.Select(b => new SkenderQuote(b)).ToList();
-        var result = quotes.GetAtr(period).LastOrDefault()?.Atr ?? 0;
-        _cache.Set(key, result);
-        return result;
+        return quotes.GetAtr(period).LastOrDefault()?.Atr ?? 0;
     }
 
     public double Ema(IReadOnlyList<Bar> bars, int period)
     {
-        var key = IndicatorCache.BuildKey(bars[0].Symbol, bars[0].Timeframe, "EMA", period, bars.Count);
-        var cached = _cache.Get(key);
-        if (cached.HasValue) return cached.Value;
-
         var quotes = bars.Select(b => new SkenderQuote(b)).ToList();
-        var result = quotes.GetEma(period).LastOrDefault()?.Ema ?? 0;
-        _cache.Set(key, result);
-        return result;
+        return quotes.GetEma(period).LastOrDefault()?.Ema ?? 0;
     }
 
     public double Sma(IReadOnlyList<Bar> bars, int period)
     {
-        var key = IndicatorCache.BuildKey(bars[0].Symbol, bars[0].Timeframe, "SMA", period, bars.Count);
-        var cached = _cache.Get(key);
-        if (cached.HasValue) return cached.Value;
-
         var quotes = bars.Select(b => new SkenderQuote(b)).ToList();
-        var result = quotes.GetSma(period).LastOrDefault()?.Sma ?? 0;
-        _cache.Set(key, result);
-        return result;
+        return quotes.GetSma(period).LastOrDefault()?.Sma ?? 0;
     }
 
     public (double Upper, double Middle, double Lower) BollingerBands(IReadOnlyList<Bar> bars, int period, double stdDev)
@@ -76,6 +60,4 @@ public sealed class SkenderIndicatorService : IIndicatorService
         var direction = last.UpperBand is not null ? -1.0 : last.LowerBand is not null ? 1.0 : 0;
         return new IndSuperTrendResult((double)(last.SuperTrend ?? 0), direction);
     }
-
-    public void InvalidateCache() => _cache.Clear();
 }

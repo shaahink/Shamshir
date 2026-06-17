@@ -55,8 +55,13 @@ public sealed class MeanReversionStrategy : IStrategy
             var latestBar = h1Bars[^1];
             TradeDirection? dir = null;
 
-            var nearLow = (latestBar.Close - latestBar.Low) / latestBar.Close < 0.002m;
-            var nearHigh = (latestBar.High - latestBar.Close) / latestBar.Close < 0.002m;
+            // Close must sit in the lower (long) / upper (short) fraction of the bar's own range —
+            // a rejection wick — rather than within a fixed 0.2% of price (which on H1 majors is
+            // ~20+ pips and almost always satisfied, i.e. effectively no filter).
+            var range = latestBar.High - latestBar.Low;
+            var frac = (decimal)p.ProximityToExtremeFraction;
+            var nearLow = range > 0 && (latestBar.Close - latestBar.Low) <= range * frac;
+            var nearHigh = range > 0 && (latestBar.High - latestBar.Close) <= range * frac;
 
             if (rsi < p.RsiOversold && nearLow)
                 dir = TradeDirection.Long;

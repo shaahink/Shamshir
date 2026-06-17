@@ -1,3 +1,3 @@
 namespace TradingEngine.Domain;
 
-public enum TrailingMethod { StepPips, AtrMultiple, BreakevenThenTrail, Structure, SteppedR }
+public enum TrailingMethod { StepPips, AtrMultiple, BreakevenThenTrail, Structure, SteppedR, None }

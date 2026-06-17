@@ -25,6 +25,7 @@ public sealed class ConfigLoader
         var rotation = LoadOptionalFile<StrategyRotationOptions>("rotation.json");
         var governor = LoadOptionalFile<GovernorOptions>("governor.json") ?? new GovernorOptions();
         var sizingPolicy = LoadOptionalFile<SizingPolicyOptions>("sizing-policy.json") ?? new SizingPolicyOptions();
+        var regime = LoadOptionalFile<RegimeOptions>("regime.json") ?? new RegimeOptions();
 
         return new LoadedConfig(propFirms, riskProfiles, strategyConfigs)
         {
@@ -32,6 +33,7 @@ public sealed class ConfigLoader
             StrategyRotation = rotation,
             Governor = governor,
             SizingPolicy = sizingPolicy,
+            Regime = regime,
         };
     }
 

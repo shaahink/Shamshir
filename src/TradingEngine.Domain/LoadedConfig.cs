@@ -11,6 +11,7 @@ public sealed record LoadedConfig(
     public StrategyRotationOptions? StrategyRotation { get; init; }
     public GovernorOptions Governor { get; init; } = new();
     public SizingPolicyOptions SizingPolicy { get; init; } = new();
+    public RegimeOptions Regime { get; init; } = new();
 }
 
 public sealed record StrategyConfigEntry(

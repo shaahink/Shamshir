@@ -104,10 +104,9 @@ public sealed class PositionTracker(
                 if (ps is null || ps.Phase != PositionPhase.Open) { continue; }
 
                 var position = ToPosition(ps);
-                var posConfig = new PositionManagementConfig(
-                    position.StrategyId,
-                    new TrailingConfig(TrailingMethod.AtrMultiple, 0, 1.0, 1.0),
-                    true, 1.0, new Pips(1), new Money(0m, "USD"));
+                var pmOptions = strategies.FirstOrDefault(s => s.Id == position.StrategyId)?.Config.PositionManagement
+                    ?? new PositionManagementOptions();
+                var posConfig = PositionManager.BuildConfig(position.StrategyId, pmOptions, 0m);
                 positionManager.RegisterPosition(position, posConfig);
                 riskManager.RegisterPosition(position.Id, position.StrategyId, 0m);
                 signalGate?.OnPositionOpened(position.StrategyId, position.Symbol.Value, position.Direction, clock.UtcNow);
@@ -339,11 +338,9 @@ public sealed class PositionTracker(
             ps.Lots, ps.EntryPrice, ps.CurrentStopLoss, ps.TakeProfit,
             clock.UtcNow, ps.StrategyId);
 
-        var posConfig = new PositionManagementConfig(
-            position.StrategyId,
-            new TrailingConfig(TrailingMethod.AtrMultiple, 0, 1.0, 1.0),
-            true, 1.0, new Pips(1),
-            new Money(riskAmount, "USD"));
+        var pmOptions = strategies.FirstOrDefault(s => s.Id == position.StrategyId)?.Config.PositionManagement
+            ?? new PositionManagementOptions();
+        var posConfig = PositionManager.BuildConfig(position.StrategyId, pmOptions, riskAmount);
         positionManager.RegisterPosition(position, posConfig);
 
         signalGate?.OnPositionOpened(position.StrategyId, position.Symbol.Value, position.Direction, clock.UtcNow);

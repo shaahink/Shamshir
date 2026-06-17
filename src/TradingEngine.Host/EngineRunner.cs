@@ -179,6 +179,9 @@ public sealed class EngineRunner
                 try
                 {
                     await _tradingLoop.ProcessBarAsync(bar, ct);
+                    // Live venues fill SL/TP server-side; manage breakeven/trailing for open positions
+                    // each bar so the venue stop is ratcheted up.
+                    await _tradingLoop.UpdateTrailingStopsAsync(bar, ct);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -221,6 +224,10 @@ public sealed class EngineRunner
                     // Venue concern: a live broker fills SL/TP server-side; in backtest we
                     // simulate it against the bar range, then drain the resulting fills.
                     await SimulateBarExitsAsync(bar, ct);
+
+                    // Manage still-open positions (breakeven/trailing) AFTER the exit check, so a moved
+                    // stop only affects the next bar (no intrabar look-ahead).
+                    await _tradingLoop.UpdateTrailingStopsAsync(bar, ct);
 
                     await _broker.CompleteBarAsync(ct);
                 }

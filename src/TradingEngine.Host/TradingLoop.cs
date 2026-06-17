@@ -176,6 +176,48 @@ public sealed class TradingLoop(
         // (MarketEventSource.ConsumeExecutionsAsync); the backtest caller drains explicitly.
     }
 
+    /// <summary>
+    /// Per-bar position management — breakeven and trailing for open positions. Runs at the END of a
+    /// bar (after entries and, in backtest, after exit simulation) so a trailed stop only takes effect
+    /// on the NEXT bar (no intrabar look-ahead). Shared by both the live and backtest drivers. The
+    /// resulting stop is written to the venue AND the tracker (the simulated venue has no
+    /// stop-confirmation callback, so the tracker — which the backtest exit check reads — must be
+    /// updated directly).
+    /// </summary>
+    public async Task UpdateTrailingStopsAsync(Bar bar, CancellationToken ct)
+    {
+        var open = positionTracker.OpenPositions;
+        if (open.Count == 0) return;
+
+        var recentBars = GetRecentBars(bar.Symbol, bar.Timeframe);
+        var halfSpread = ResolveHalfSpread(bar.Symbol);
+        var tick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread,
+            bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
+
+        foreach (var (orderId, pos) in open)
+        {
+            if (pos.Symbol != bar.Symbol) continue;
+
+            var mods = positionTracker.EvaluatePosition(pos, tick, recentBars);
+            foreach (var mod in mods)
+            {
+                if (mod is not MoveStopLoss move) continue;
+                // Pass the existing TP through: the simulated venue nulls TP if it's null here.
+                await broker.ModifyOrderAsync(orderId, move.NewStopLoss, pos.TakeProfit, ct);
+                positionTracker.ConfirmStopLoss(orderId, move.NewStopLoss, pos.TakeProfit);
+                logger.LogInformation("TRAIL|{Strategy}|{OrderId}|{Dir}|newSL={SL:F5}",
+                    pos.StrategyId, orderId, pos.Direction, move.NewStopLoss.Value);
+            }
+        }
+    }
+
+    private IReadOnlyList<Bar> GetRecentBars(Symbol symbol, Timeframe tf)
+    {
+        if (indicatorSnapshot.Bars.TryGetValue(symbol, out var byTf) && byTf.TryGetValue(tf, out var list))
+            lock (list) return list.ToList();
+        return [];
+    }
+
     private IReadOnlyList<ProjectedPosition> MapOpenPositionsToProjected()
     {
         var result = new List<ProjectedPosition>();

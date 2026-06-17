@@ -28,6 +28,5 @@ global using TradingEngine.Infrastructure.Venues.Simulated;
 global using TradingEngine.Infrastructure.Transport.NetMq;
 global using TradingEngine.Services.Helpers;
 global using TradingEngine.Services.SLTPCalculation;
-global using TradingEngine.Services.TrailingStop;
 global using TradingEngine.Strategies.TrendBreakout;
 global using TradingEngine.Application.Experiments;

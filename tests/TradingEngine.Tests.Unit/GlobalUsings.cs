@@ -17,5 +17,4 @@ global using TradingEngine.Infrastructure.Venues.CTrader;
 global using TradingEngine.Infrastructure.Venues.Simulated;
 global using TradingEngine.Services.Helpers;
 global using TradingEngine.Services.SLTPCalculation;
-global using TradingEngine.Services.TrailingStop;
 global using TradingEngine.Strategies.TrendBreakout;

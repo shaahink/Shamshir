@@ -269,6 +269,9 @@ public sealed class EngineHarness : IAsyncDisposable
 
             await DrainFillsAsync();
 
+            // Mirror EngineRunner: manage breakeven/trailing for still-open positions at the end of the bar.
+            await Loop.UpdateTrailingStopsAsync(bar, ct);
+
             var totalClosedPnl = EventBus.OfType<TradeClosed>().Sum(tc => tc.Result.NetPnL.Amount);
             var delta = totalClosedPnl - closedPnlBaseline;
             closedPnlBaseline = totalClosedPnl;

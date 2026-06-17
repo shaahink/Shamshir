@@ -55,16 +55,17 @@ public sealed class SuperTrendStrategy : IStrategy
                 return null;
             }
 
-            var prefix = $"{context.Symbol}:";
             var p = _config.Parameters;
 
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ST_{p.AtrPeriod}_{p.AtrMultiplier}", out var stLine))
+            // Indicator keys are bare (e.g. "ST_10_3"), matching IndicatorSnapshotService —
+            // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
+            if (!context.IndicatorValues.TryGetValue($"ST_{p.AtrPeriod}_{p.AtrMultiplier}", out var stLine))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ST_{p.AtrPeriod}_{p.AtrMultiplier}_Direction", out var stDirRaw))
+            if (!context.IndicatorValues.TryGetValue($"ST_{p.AtrPeriod}_{p.AtrMultiplier}_Direction", out var stDirRaw))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ADX_{p.AdxPeriod}", out var adx))
+            if (!context.IndicatorValues.TryGetValue($"ADX_{p.AdxPeriod}", out var adx))
                 return null;
-            context.IndicatorValues.TryGetValue($"{prefix}ATR_{p.AtrPeriod}", out var atr);
+            context.IndicatorValues.TryGetValue($"ATR_{p.AtrPeriod}", out var atr);
 
             var stDir = (int)stDirRaw;
             if (stDir is not 1 and not -1)

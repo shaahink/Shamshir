@@ -35,6 +35,11 @@ public sealed class IndicatorSnapshotService
         IReadOnlyList<Bar> bars;
         lock (list) { bars = list.ToList(); }
 
+        // De-dupe across strategies: many strategies request the same indicator (e.g. ATR_14) on the
+        // same symbol/timeframe. Compute each unique signature once per bar — recomputing per strategy
+        // is the (now-removed) reason the indicator service carried a fragile internal cache.
+        var computed = new HashSet<string>();
+
         foreach (var strategy in _strategies)
         {
             foreach (var req in strategy.RequiredIndicators)
@@ -49,6 +54,7 @@ public sealed class IndicatorSnapshotService
                 }
 
                 var sigKey = IndicatorCache.BuildKey(symbol, req);
+                if (!computed.Add(sigKey)) continue;
                 switch (req.Type)
                 {
                     case IndicatorType.Atr:

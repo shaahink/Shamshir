@@ -11,6 +11,7 @@ public sealed class BollingerSqueezeStrategy : IStrategy
     private readonly Timeframe _timeframe;
     private readonly Queue<double> _bbWidthQueue = new();
     private int _cooldownRemaining;
+    private bool _squeezeActive;
     private int _winStreak;
     private int _lossStreak;
 
@@ -55,16 +56,17 @@ public sealed class BollingerSqueezeStrategy : IStrategy
                 return null;
             }
 
-            var prefix = $"{context.Symbol}:";
             var p = _config.Parameters;
 
-            if (!context.IndicatorValues.TryGetValue($"{prefix}BB_{p.BbPeriod}_{p.BbStdDev}", out var middleBand))
+            // Indicator keys are bare (e.g. "BB_20_2"), matching IndicatorSnapshotService —
+            // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
+            if (!context.IndicatorValues.TryGetValue($"BB_{p.BbPeriod}_{p.BbStdDev}", out var middleBand))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}BB_{p.BbPeriod}_{p.BbStdDev}_Upper", out var upperBand))
+            if (!context.IndicatorValues.TryGetValue($"BB_{p.BbPeriod}_{p.BbStdDev}_Upper", out var upperBand))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}BB_{p.BbPeriod}_{p.BbStdDev}_Lower", out var lowerBand))
+            if (!context.IndicatorValues.TryGetValue($"BB_{p.BbPeriod}_{p.BbStdDev}_Lower", out var lowerBand))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ATR_{p.AtrPeriod}", out var atr))
+            if (!context.IndicatorValues.TryGetValue($"ATR_{p.AtrPeriod}", out var atr))
                 return null;
 
             if (middleBand <= 0 || upperBand <= lowerBand || atr <= 0)
@@ -74,15 +76,25 @@ public sealed class BollingerSqueezeStrategy : IStrategy
             }
 
             var bbWidth = (upperBand - lowerBand) / middleBand;
+
+            // Squeeze = bandwidth contracted to <= SqueezeThreshold (e.g. 0.8 = 80%) of its recent
+            // AVERAGE, measured over the PRIOR window (before enqueuing the current width). The old code
+            // compared to Min() of a window that already included the current width, so `bbWidth < 0.8*min`
+            // (min ≤ bbWidth) was mathematically impossible and the squeeze never triggered.
+            var priorCount = _bbWidthQueue.Count;
+            var avgPriorWidth = priorCount > 0 ? _bbWidthQueue.Average() : bbWidth;
             _bbWidthQueue.Enqueue(bbWidth);
             while (_bbWidthQueue.Count > p.BbPeriod)
                 _bbWidthQueue.Dequeue();
 
-            if (_bbWidthQueue.Count < p.BbPeriod / 2)
+            if (priorCount < p.BbPeriod / 2)
                 return null;
 
-            var minBbbWidth = _bbWidthQueue.Min();
-            var isSqueezing = bbWidth < p.SqueezeThreshold * minBbbWidth;
+            // Latch the squeeze: a contraction sets the flag, and the breakout that fires it can land on a
+            // LATER bar. Requiring squeeze AND breakout on the same bar (as before) is self-contradictory —
+            // the breakout bar is the one expanding the bands.
+            if (bbWidth <= p.SqueezeThreshold * avgPriorWidth)
+                _squeezeActive = true;
 
             if (_cooldownRemaining > 0)
             {
@@ -91,7 +103,7 @@ public sealed class BollingerSqueezeStrategy : IStrategy
                 return null;
             }
 
-            if (!isSqueezing)
+            if (!_squeezeActive)
                 return null;
 
             var latestBar = bars[^1];
@@ -117,6 +129,7 @@ public sealed class BollingerSqueezeStrategy : IStrategy
             }
 
             _cooldownRemaining = p.CooldownBars;
+            _squeezeActive = false;
 
             var entryPrice = new Price(context.LatestTick.Mid);
             var symbolInfo = _symbolRegistry.Get(context.Symbol);
@@ -157,6 +170,7 @@ public sealed class BollingerSqueezeStrategy : IStrategy
     {
         _bbWidthQueue.Clear();
         _cooldownRemaining = 0;
+        _squeezeActive = false;
         _winStreak = 0;
         _lossStreak = 0;
     }

@@ -56,16 +56,17 @@ public sealed class MacdMomentumStrategy : IStrategy
                 return null;
             }
 
-            var prefix = $"{context.Symbol}:";
             var p = _config.Parameters;
 
-            if (!context.IndicatorValues.TryGetValue($"{prefix}SMA_{p.SmaPeriod}", out var sma200))
+            // Indicator keys are bare (e.g. "ATR_14"), matching IndicatorSnapshotService —
+            // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
+            if (!context.IndicatorValues.TryGetValue($"SMA_{p.SmaPeriod}", out var sma200))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}MACD_12_26_9_Histogram", out var histNow))
+            if (!context.IndicatorValues.TryGetValue("MACD_12_26_9_Histogram", out var histNow))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ADX_{p.AdxPeriod}", out var adx))
+            if (!context.IndicatorValues.TryGetValue($"ADX_{p.AdxPeriod}", out var adx))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ATR_{p.AtrPeriod}", out var atr))
+            if (!context.IndicatorValues.TryGetValue($"ATR_{p.AtrPeriod}", out var atr))
                 return null;
 
             if (adx < p.AdxMinThreshold)

@@ -57,14 +57,16 @@ public sealed class MtfTrendStrategy : IStrategy
                 return null;
             }
 
-            var prefix = $"{context.Symbol}:";
             var p = _config.Parameters;
 
-            if (!context.IndicatorValues.TryGetValue($"{prefix}EMA_{p.EmaPeriod}", out var h4Ema200))
+            // Indicator keys are bare (e.g. "EMA_200"), matching IndicatorSnapshotService —
+            // see MarketContext.IndicatorValues. Do NOT prefix with the symbol. Note the EMA is
+            // computed on the higher timeframe, so it is only present when HigherTimeframe bars are fed.
+            if (!context.IndicatorValues.TryGetValue($"EMA_{p.EmaPeriod}", out var h4Ema200))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}RSI_{p.RsiPeriod}", out var rsi))
+            if (!context.IndicatorValues.TryGetValue($"RSI_{p.RsiPeriod}", out var rsi))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ATR_{p.AtrPeriod}", out var atr))
+            if (!context.IndicatorValues.TryGetValue($"ATR_{p.AtrPeriod}", out var atr))
                 return null;
 
             if (atr <= 0)

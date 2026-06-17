@@ -2,7 +2,7 @@
   "id": "trend-breakout",
   "displayName": "Trend Breakout v1",
   "enabled": true,
-  "symbols": ["EURUSD", "GBPUSD"],
+  "symbols": ["EURUSD", "GBPUSD", "USDJPY"],
   "riskProfileId": "standard",
   "timeframe": "H1",
   "regimeFilter": {
@@ -19,7 +19,8 @@
   "positionManagement": {
     "stopLoss": { "method": "AtrMultiple", "atrMultiple": 1.5 },
     "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0 },
-    "trailing": { "method": "AtrMultiple", "atrMultiple": 1.0 }
+    "breakeven": { "enabled": true, "triggerRMultiple": 1.0, "offsetPips": 1.0 },
+    "trailing": { "method": "AtrMultiple", "atrMultiple": 2.5 }
   },
   "parameters": {
     "lookbackBars": 20,

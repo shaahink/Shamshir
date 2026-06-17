@@ -33,10 +33,11 @@ public sealed class RsiDivergenceStrategy : IStrategy
         var found = Array.Find(_symbols, s => s.Symbol == context.Symbol);
         if (found is null) return null;
 
-        var indicatorPrefix = $"{context.Symbol}:";
-        if (!context.IndicatorValues.TryGetValue($"{indicatorPrefix}RSI_{_config.Parameters.RsiPeriod}", out var rsi))
+        // Indicator keys are bare (e.g. "RSI_14"), matching IndicatorSnapshotService —
+        // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
+        if (!context.IndicatorValues.TryGetValue($"RSI_{_config.Parameters.RsiPeriod}", out var rsi))
             return null;
-        if (!context.IndicatorValues.TryGetValue($"{indicatorPrefix}ATR_{_config.Parameters.AtrPeriod}", out var atr))
+        if (!context.IndicatorValues.TryGetValue($"ATR_{_config.Parameters.AtrPeriod}", out var atr))
             return null;
 
         var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);

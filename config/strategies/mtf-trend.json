@@ -9,7 +9,9 @@
   "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
   "positionManagement": {
     "stopLoss": { "method": "SwingPoint", "atrMultiple": 1.5, "maxPips": 200 },
-    "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0 }
+    "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0 },
+    "breakeven": { "enabled": true, "triggerRMultiple": 1.0, "offsetPips": 1.0 },
+    "trailing": { "method": "Structure", "atrMultiple": 1.0, "structureLookbackBars": 10 }
   },
   "parameters": {
     "emaPeriod": 200,

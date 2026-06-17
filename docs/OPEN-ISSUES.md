@@ -662,3 +662,87 @@ Items 13–14 are infrastructure hygiene.
 legacy/unconsumed (the Monitor uses SignalR) rather than deleted, because `BacktestProgressStore` is
 still woven into `BacktestJournal`. `BarsTotal` still ignores weekend/market gaps (display-only,
 low priority).
+
+---
+
+## Part 10 — Rework: UI & Config Flexibility (open)
+
+**Logged**: 2026-06-17. Backlog captured while deciding next direction, after the iter-29/iter-30 engine
+fixes (indicator-key/regime correctness; breakeven/trailing wired). These five are *flexibility/UX*
+features, not correctness bugs — they make the engine usable for real experimentation. Listed roughly in
+dependency order; see the sequencing note at the end.
+
+> **Cross-cutting prerequisite (not in the original list):** all of RW-03/04/05 are only as useful as the
+> **data behind them**. Today the only bundled history is H1 EURUSD (bull/bear/ranging/ddcrash/maxdd) +
+> USDJPY (bull) — no H4, no other symbols. A real multi-symbol / multi-timeframe data import is the
+> implicit unblocker for batch sweeps, auto-mode, and global symbol selection to mean anything.
+
+### RW-01 — Settings page: view/edit every tunable constant
+**What**: A UI screen to inspect and edit the preset values currently spread across `config/*.json`
+**and** the ones that exist only as C# defaults (invisible to anyone editing JSON).
+**Why**: After iter-29/30 the number of knobs grew (regime thresholds, mean-reversion RSI/proximity,
+per-strategy breakeven/trailing). Some are reachable from JSON; others are still code-only defaults, so a
+JSON editor sees an incomplete picture.
+**Where it lives today**: `config/strategies/*.json`, `config/risk-profiles/*.json`,
+`config/prop-firms/*.json`, `config/regime.json`, `config/sizing-policy.json`, `config/governor.json`,
+`config/rotation.json`, `config/symbols.json`; plus code-default records — `*Parameters`/`*Config` in
+`src/TradingEngine.Strategies/*`, `PositionManagementOptions`/`SlOptions`/`TpOptions`/`TrailingOptions`/
+`BreakevenOptions` (`src/TradingEngine.Domain/PositionManagement`), `RegimeOptions`.
+**Notes / gotchas**:
+- The goal is *surface every knob* — including defaults that the JSON omits (e.g. a strategy JSON that
+  doesn't set `rsiOversold` silently inherits the record default). The page should show the *effective*
+  value (JSON-or-default) and let you make it explicit.
+- `config/playbook.json` and `config/position-management.json` are **dead** (never loaded) — decide
+  whether to wire or delete before exposing them, or the settings page will surface phantom knobs.
+- Validation must reuse `ConfigLoader`'s cross-reference checks (riskProfileId → risk-profiles,
+  propFirmRuleSetId → prop-firms) so edits can't produce an unloadable config.
+
+### RW-02 — Inherited / layered config for backtests
+**What**: Let a run override/inherit from a base config — swap the prop-firm ruleset, risk profile, or a
+handful of strategy params *on top of* a shared default, without duplicating whole files.
+**Why**: Today changing one knob for one run means editing a global file or duplicating it. Layering
+(`base → profile → per-run overrides`) is the backbone that RW-03 (sweeps) and RW-05 (symbols) need.
+**Where it lives today**: `ConfigLoader.Load()` reads whole files into `LoadedConfig`;
+`EngineHostOptions.PreloadedConfig`/`ActiveStrategyIds` already hint at per-run injection (added iter-27).
+**Notes**: Define a small override/merge model (deep-merge JSON over the base `LoadedConfig`), thread it
+through `EngineHostOptions`, and keep the merged result immutable per run. Watch param-record
+deserialization (it's case-insensitive, no `Disallow`).
+
+### RW-03 — Batch / multi-run backtest runner
+**What**: Run many backtests in one go (across rulesets, symbols, timeframes, parameter sweeps) and
+compare results in one view.
+**Why**: The only way to actually evaluate the now-working strategies + BE/trailing settings.
+**Depends on**: RW-02 (per-run overrides define each cell of the sweep).
+**⚠️ Isolation gotcha (verify when this lands)**: the cross-run indicator-state leak was the
+`SkenderIndicatorService` `bars.Count`-keyed cache — **removed in iter-29** (the service is now stateless;
+per-bar de-dupe lives in `IndicatorSnapshotService`). So in-process batch runs no longer share indicator
+values. **Still verify**: each run gets a fresh/`Reset()`-ed `IndicatorSnapshotService` + `TradingLoop`
+(see `EngineRunner.ResetState`) and no other singleton carries state across runs (e.g. `PositionManager`
+dictionaries, `CrossRateStore`). Add a regression test: two back-to-back runs with different data must not
+influence each other.
+
+### RW-04 — Auto strategy mode (regime-based / performance-based selection)
+**What**: The deferred "auto-apply per regime" — pick/weight strategies automatically instead of running
+the fixed `ActiveStrategyIds` set.
+**Why**: The product feature behind "auto apply them … on nominated symbols/timeframes."
+**Foundations now real**: regime detection actually works post-iter-29 (was always `Unknown`);
+`StrategyBankService.GetActive` already *filters* by regime; `config/rotation.json` has a
+`PerformanceBased` mode that is currently `Disabled`, with the hook in `StrategyBankService.NotifyResult`.
+**Notes**: This is *selection/weighting*, a layer above the existing regime *filter*. Best built after
+RW-03 so the selection rules can be validated against batch results rather than guessed.
+
+### RW-05 — Global symbol selection, end-to-end
+**What**: A single place to nominate which symbols the system trades, flowing through to strategies and
+the data feed — instead of per-strategy `symbols` arrays + `ActiveStrategyIds` in `appsettings.json`.
+**Where it lives today**: per-strategy `symbols` (JSON), `Engine.ActiveStrategyIds` (appsettings),
+`HistoricalDataProvider.BuildPath` (keys data files by `{symbol}-{tf}`), `SymbolCatalog`/`symbols.json`.
+**Notes**: Decide precedence (global selection ∩ per-strategy `symbols`?), and gate on data availability
+(a symbol with no history just produces nothing). Overlaps with RW-01 (it's a config surface) and RW-02
+(per-run symbol override).
+
+### Sequencing note
+RW-02 is the backbone (unblocks RW-03 and RW-05) and is contained backend work. RW-03 gives the most
+analytical payoff and its one-time blocker (the cache leak) is already cleared. RW-01 can land
+incrementally (start read-only, then editable). RW-04 should come last — it needs RW-03 to validate
+selection rules. None of RW-03/04/05 pay off without real multi-symbol / multi-TF data, so a data import
+is the highest-leverage *non-listed* prerequisite.

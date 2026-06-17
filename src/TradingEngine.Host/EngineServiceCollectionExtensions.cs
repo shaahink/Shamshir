@@ -100,6 +100,7 @@ public static class EngineServiceCollectionExtensions
 
         services.AddSingleton(loadedConfig.SizingPolicy);
         services.AddSingleton(loadedConfig.Governor);
+        services.AddSingleton(loadedConfig.Regime);
         services.AddSingleton<ITradingGovernor, TradingGovernorService>();
         services.AddSingleton<ISizeModifier, GovernorSizeModifier>();
         services.AddSingleton<IRiskProfileResolver>(sp =>
@@ -292,6 +293,7 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
         services.AddSingleton(loadedConfig.SizingPolicy);
         services.AddSingleton(loadedConfig.Governor);
+        services.AddSingleton(loadedConfig.Regime);
         services.AddSingleton<ITradingGovernor, TradingGovernorService>();
         services.AddSingleton<ISizeModifier, GovernorSizeModifier>();
         services.AddSingleton<IRiskProfileResolver>(sp => new RiskProfileResolver(loadedConfig.RiskProfiles));
