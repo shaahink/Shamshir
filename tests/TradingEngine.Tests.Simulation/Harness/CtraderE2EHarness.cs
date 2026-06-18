@@ -96,14 +96,14 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
     {
         AllocatePorts();
 
-        var ctid = CtraderTestHarness.ResolveCredential("CtId", "CTrader__CtId");
-        var pwdFile = CtraderTestHarness.ResolveCredential("PwdFile", "CTrader__PwdFile");
-        var account = CtraderTestHarness.ResolveCredential("Account", "CTrader__Account");
+        var ctid = CtraderTestHelpers.ResolveCredential("CtId", "CTrader__CtId");
+        var pwdFile = CtraderTestHelpers.ResolveCredential("PwdFile", "CTrader__PwdFile");
+        var account = CtraderTestHelpers.ResolveCredential("Account", "CTrader__Account");
         if (string.IsNullOrEmpty(ctid))
             throw new InvalidOperationException("No cTrader credentials configured.");
 
-        var solutionRoot = CtraderTestHarness.SolutionRoot;
-        var algoPath = CtraderTestHarness.ResolveAlgo();
+        var solutionRoot = CtraderTestHelpers.SolutionRoot;
+        var algoPath = CtraderTestHelpers.ResolveAlgo();
         var preloadedConfig = BuildConfig(_symbol, _period);
 
         _transport = new NetMqMessageTransport(
@@ -158,10 +158,10 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
             await _recorder.StartAsync(_symbol, _period, Artifacts.RunId);
         }
 
-        var ctid = CtraderTestHarness.ResolveCredential("CtId", "CTrader__CtId");
-        var pwdFile = CtraderTestHarness.ResolveCredential("PwdFile", "CTrader__PwdFile");
-        var account = CtraderTestHarness.ResolveCredential("Account", "CTrader__Account");
-        var algoPath = CtraderTestHarness.ResolveAlgo();
+        var ctid = CtraderTestHelpers.ResolveCredential("CtId", "CTrader__CtId");
+        var pwdFile = CtraderTestHelpers.ResolveCredential("PwdFile", "CTrader__PwdFile");
+        var account = CtraderTestHelpers.ResolveCredential("Account", "CTrader__Account");
+        var algoPath = CtraderTestHelpers.ResolveAlgo();
 
         var request = new BacktestCliRequest
         {
@@ -366,7 +366,7 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
 
     private static LoadedConfig BuildConfig(string symbol, string period)
     {
-        var solutionRoot = CtraderTestHarness.SolutionRoot;
+        var solutionRoot = CtraderTestHelpers.SolutionRoot;
         var baseConfig = new ConfigLoader(solutionRoot).Load();
         var adapted = baseConfig.StrategyConfigs.Select(s => new StrategyConfigEntry(
             s.Id, s.DisplayName, s.Enabled, s.Symbols, s.RiskProfileId, s.Parameters,

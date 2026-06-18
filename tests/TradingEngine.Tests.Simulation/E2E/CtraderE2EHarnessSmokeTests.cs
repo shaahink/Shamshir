@@ -9,7 +9,7 @@ namespace TradingEngine.Tests.Simulation.E2E;
 public sealed class CtraderE2EHarnessSmokeTests
 {
     private static bool HasCredentials =>
-        !string.IsNullOrEmpty(CtraderTestHarness.ResolveCredential("CtId", "CTrader__CtId"));
+        !string.IsNullOrEmpty(CtraderTestHelpers.ResolveCredential("CtId", "CTrader__CtId"));
 
     [Fact(Timeout = 300_000)]
     public async Task EurUsd_H1_3Days_ProducesTrades_UsingPhasedHarness()
