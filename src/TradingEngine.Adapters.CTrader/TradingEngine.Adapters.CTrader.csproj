@@ -4,6 +4,8 @@
     <LangVersion>10</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Shamshir</AssemblyName>
+    <_AlgoFileName>Shamshir.algo</_AlgoFileName>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="cTrader.Automate" Version="*" />
@@ -12,9 +14,9 @@
 
   <Target Name="AutoDeployAlgo" AfterTargets="Build"
           Condition="'$(AutoDeploy)' == 'true' AND '$(CTraderSourcesPath)' != ''">
-    <Copy SourceFiles="$(OutputPath)src.algo"
+    <Copy SourceFiles="$(OutputPath)Shamshir.algo"
           DestinationFolder="$(CTraderSourcesPath)"
           OverwriteReadOnlyFiles="true" />
-    <Message Text="[Shamshir] Deployed src.algo → $(CTraderSourcesPath)" Importance="high" />
+    <Message Text="[Shamshir] Deployed Shamshir.algo → $(CTraderSourcesPath)" Importance="high" />
   </Target>
 </Project>

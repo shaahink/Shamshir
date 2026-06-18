@@ -373,7 +373,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 cfg.Balance, result.AlgoHash, "{}", effectiveConfigJson,
                 stats.NetProfit, stats.MaxDrawdownPct,
                 stats.TotalTrades, stats.WinningTrades, stats.WinRatePct,
-                result.ExitCode, result.ErrorMessage);
+                result.ExitCode, result.ErrorMessage,
+                result.ReportJsonPath);
             await repo.UpdateAsync(summary, CancellationToken.None);
         }
         catch (Exception ex)
@@ -581,6 +582,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
+        var reportJsonPath = Path.Combine(resultsDir, "events.json");
 
         var cli = new CTraderCli();
         var args = new[]
@@ -626,6 +628,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
 
         var reportHtmlPath = "";
+        var captureSucceeded = false;
         try
         {
             var algoDir = Path.GetDirectoryName(algoPath)!;
@@ -648,7 +651,26 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                         EnqueueLog(runId, logLines,
                             $"[{DateTime.UtcNow:HH:mm:ss}] cTrader report: {destHtml}");
                     }
+
+                    foreach (var dir in backtestDirs)
+                    {
+                        var jsonFile = Path.Combine(dir, "events.json");
+                        if (!File.Exists(jsonFile)) continue;
+                        if (new FileInfo(jsonFile).Length == 0) continue;
+                        File.Copy(jsonFile, reportJsonPath, overwrite: true);
+                        captureSucceeded = true;
+                        EnqueueLog(runId, logLines,
+                            $"[{DateTime.UtcNow:HH:mm:ss}] cTrader events JSON: {reportJsonPath}");
+                        break;
+                    }
                 }
+            }
+
+            if (!captureSucceeded && File.Exists(reportJsonPath))
+            {
+                captureSucceeded = true;
+                EnqueueLog(runId, logLines,
+                    $"[{DateTime.UtcNow:HH:mm:ss}] cTrader events JSON: {reportJsonPath}");
             }
         }
         catch (Exception ex)
@@ -665,6 +687,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             ErrorMessage = isKnownCrash ? null : (cliResult.ExitCode != 0
                 ? cliResult.StandardError.Trim() ?? $"CLI exited with code {cliResult.ExitCode}"
                 : null),
+            ReportJsonPath = captureSucceeded ? reportJsonPath : null,
         };
     }
 
@@ -689,13 +712,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var candidates = new[]
         {
             Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "src.algo")),
+                "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "Shamshir.algo")),
             Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "src.algo")),
+                "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "Shamshir.algo")),
         };
 
         return candidates.FirstOrDefault(File.Exists)
-            ?? throw new FileNotFoundException("src.algo not found. Build TradingEngine.Adapters.CTrader first.");
+            ?? throw new FileNotFoundException("Shamshir.algo not found. Build TradingEngine.Adapters.CTrader first.");
     }
 
     private static string ComputeAlgoHash(string algoPath)

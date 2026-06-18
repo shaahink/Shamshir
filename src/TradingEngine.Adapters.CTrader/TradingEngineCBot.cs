@@ -11,6 +11,9 @@ namespace TradingEngine.Adapters.CTrader;
 [Robot(AccessRights = AccessRights.FullAccess)]
 public class TradingEngineCBot : Robot
 {
+    private const string Version = "2.0.0";
+    private static readonly string BuildDate = "2026-06-18";
+
     [Parameter("DataPort", DefaultValue = "15555")]
     public int DataPort { get; set; } = 15555;
 
@@ -54,7 +57,7 @@ public class TradingEngineCBot : Robot
 
     protected override void OnStart()
     {
-        Print($"CBOT|START|symbol={SymbolName}|tf={TimeFrame.ShortName}|dataPort={DataPort}|cmdPort={CommandPort}");
+        Print($"CBOT|START|symbol={SymbolName}|tf={TimeFrame.ShortName}|dataPort={DataPort}|cmdPort={CommandPort}|v={Version}|build={BuildDate}");
 
         _pub = new PublisherSocket();
         _pub.Bind($"tcp://*:{DataPort}");

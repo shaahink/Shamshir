@@ -4,7 +4,8 @@
     <LangVersion>10</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>TestCbot</AssemblyName>
+    <AssemblyName>ShamshirTest</AssemblyName>
+    <_AlgoFileName>Shamshir-test.algo</_AlgoFileName>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="cTrader.Automate" Version="*" />

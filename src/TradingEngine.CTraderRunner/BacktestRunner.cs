@@ -224,13 +224,13 @@ public sealed class BacktestRunner
         var candidates = new[]
         {
             Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "src.algo")),
+                "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "Shamshir.algo")),
             Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "src.algo")),
+                "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "Shamshir.algo")),
         };
 
         return candidates.FirstOrDefault(File.Exists)
-            ?? throw new FileNotFoundException("src.algo not found. Build TradingEngine.Adapters.CTrader first.");
+            ?? throw new FileNotFoundException("Shamshir.algo not found. Build TradingEngine.Adapters.CTrader first.");
     }
 
     private static string ComputeAlgoHash(string algoPath)

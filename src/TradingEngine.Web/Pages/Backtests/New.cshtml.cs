@@ -29,7 +29,7 @@ public sealed class NewBacktestModel : PageModel
         var algoPath = ResolveAlgoPath();
         AlgoExists = algoPath is not null;
         if (!AlgoExists)
-            AlgoMissingMessage = "src.algo not found. Build TradingEngine.Adapters.CTrader project first.";
+            AlgoMissingMessage = "Shamshir.algo not found. Build TradingEngine.Adapters.CTrader project first.";
 
         if (!CredentialsConfigured)
             PreflightMessage = "CTrader credentials not configured. Set CTrader:CtId, CTrader:PwdFile, CTrader:Account.";
@@ -49,9 +49,9 @@ public sealed class NewBacktestModel : PageModel
         var candidates = new[]
         {
             Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "src.algo")),
+                "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "Shamshir.algo")),
             Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "src.algo")),
+                "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "Shamshir.algo")),
         };
 
         return candidates.FirstOrDefault(System.IO.File.Exists);
