@@ -13,11 +13,19 @@ public static class CTraderCliLocator
         if (!Directory.Exists(spotwarePath))
             throw new FileNotFoundException("cTrader installation not found. Set CTrader:CliPath in config.");
 
-        var found = Directory.EnumerateFiles(spotwarePath, "ctrader-cli.exe", SearchOption.AllDirectories)
+        var candidates = Directory.EnumerateFiles(spotwarePath, "ctrader-cli.exe", SearchOption.AllDirectories)
             .OrderByDescending(File.GetLastWriteTimeUtc)
-            .FirstOrDefault();
+            .ToList();
 
-        return found ?? throw new FileNotFoundException(
-            "ctrader-cli.exe not found under AppData\\Spotware\\cTrader. Set CTrader:CliPath in config.");
+        // Prefer the root binary. The x64 subdirectory copy often fails with .NET runtime errors.
+        var rootPath = spotwarePath;
+        var rootBinary = candidates.FirstOrDefault(c =>
+            string.Equals(Path.GetDirectoryName(c), rootPath, StringComparison.OrdinalIgnoreCase));
+        if (rootBinary is not null)
+            return rootBinary;
+
+        return candidates.FirstOrDefault()
+            ?? throw new FileNotFoundException(
+                "ctrader-cli.exe not found under AppData\\Spotware\\cTrader. Set CTrader:CliPath in config.");
     }
 }
