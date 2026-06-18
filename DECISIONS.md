@@ -422,3 +422,14 @@ Quick reference:
  | D67 | Pipe name coordinated via Aspire env vars | ✅ A — AppHost sets `Engine__Broker__PipeName` on both engine and web; BacktestRunner reads `_config["Engine:Broker:PipeName"]`; no hardcoded strings |
  | D68 | Engine state reset on new pipe connection | ✅ A — `NamedPipeBrokerAdapter.OnClientConnected` callback; `EngineWorker.ResetState()` clears bars, indicators, equity, counters on every new cBot connection |
  | D69 | WebSmokeTests won't spawn engine subprocesses | ✅ A — `WebApplicationFactory` overrides `CTrader:StartEngineSubprocess=false`; fire-and-forget BacktestRunner never starts engine subprocess in tests |
+ | D70 | NetMQ transport for cBot↔engine | ✅ Final — Named pipes abandoned. ctrader-cli sandbox intercepts .NET managed sockets; NetMQ uses native P/Invoke (ZeroMQ) which bypasses. PUB/SUB + ROUTER/DEALER. |
+ | D71 | Strategy evaluation on bar close | ✅ Final — Indicators only change on bar close. `ProcessBarsAsync` evaluates once per bar. `ProcessTicksAsync` handles fills/risk only. |
+ | D72 | World ACL pipe security | ✅ Superseded by D70 |
+ | D73 | bars.BarClosed event for bar data | ✅ Final — cBot uses `MarketData.GetBars().BarClosed` instead of `OnBar()`. |
+ | D74 | Fixed ports 15555/15556 for NetMQ | ⚠️ Tech debt — hardcoded, fine for single-user, log for future dynamic allocation |
+ | D75 | TickEveryN = 10 throttling | ✅ Final — Ticks published 1 in 10. Used for fills/SL/TP only, not strategy signals. |
+ | D76 | --full-access required | ✅ Confirmed — Both .NET managed sockets AND NetMQ native sockets intercepted without it. |
+ | D77 | No 3-arg GetBars overload | ✅ Accepted — `MarketData.GetBars(tf, symbol, count)` doesn't exist. 34-bar default is platform limit. |
+ | D78 | bar.OpenTime must be UTC | ✅ Final — `DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc)` before serialization. |
+ | D79 | diag PUB topic for observability | ✅ Final — cBot publishes trace lines on `diag` topic; engine logs as `CBOT|…`. |
+ | D80 | Multi-symbol via cBot parameters | ✅ Final — Comma-separated `SymbolString` parameter. `SubscribeAll()` for `(symbol, tf, barClosed)`. Dedup via `HashSet<(symbol, tf, openTime)>`. |

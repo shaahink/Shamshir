@@ -132,7 +132,7 @@ Template for both files: `docs/agents/ITERATION-TEMPLATE.md`
 - **JPY pairs: pip size 0.01; XAUUSD: pip size 0.01; most forex: 0.0001**
 - **Cross-rate pip values change per tick** — never cache them
 
-Full rules: `trading-domain-knowledge.md` in repo root.
+Full rules: `docs/reference/DOMAIN-KNOWLEDGE.md`.
 
 ---
 
