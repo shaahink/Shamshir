@@ -9,7 +9,7 @@ public sealed class FullBacktestPipelineTest
     private async Task<CtraderTestHarness.Result> RunAsync(
         string symbol, string period, DateTime start, DateTime end, string label)
     {
-        await using var harness = new CtraderTestHarness();
+        await using var harness = new CtraderTestHarness(label);
         return await harness.RunAsync(symbol, period, start, end, label);
     }
 

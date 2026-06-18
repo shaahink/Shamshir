@@ -16,7 +16,7 @@ public sealed class InProcessCtraderTest
             return;
         }
 
-        await using var harness = new CtraderTestHarness();
+        await using var harness = new CtraderTestHarness("inproc-1d");
         var result = await harness.RunAsync(
             "EURUSD", "H1",
             new DateTime(2024, 1, 15), new DateTime(2024, 1, 16),

@@ -9,7 +9,7 @@ public sealed class CtraderPipelineDiagnosticTest
     private async Task<(int trades, int barEvals, int signals, int orders, int execs)> RunDiagnostic(
         string symbol, string period, DateTime start, DateTime end, string label)
     {
-        await using var harness = new CtraderTestHarness();
+        await using var harness = new CtraderTestHarness(label);
         var result = await harness.RunAsync(symbol, period, start, end, label);
         return (result.Trades, result.BarEvals, result.Signals, result.Orders, result.Execs);
     }
@@ -85,7 +85,7 @@ public sealed class CtraderPipelineDiagnosticTest
         var account = CtraderTestHarness.ResolveCredential("Account", "CTrader__Account");
         if (string.IsNullOrEmpty(ctid)) throw new InvalidOperationException("No credentials");
 
-        await using var harness = new CtraderTestHarness();
+        await using var harness = new CtraderTestHarness(label);
         // Multi-symbol runs all symbols but result from primary
         var result = await harness.RunAsync(symbols[0], periods[0], start, end, label);
         return (result.Trades, result.BarEvals);

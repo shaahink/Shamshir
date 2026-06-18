@@ -26,7 +26,7 @@ public sealed class CtraderScenarioTests
             Console.WriteLine($"[{label}] No cTrader credentials — skipping");
             return null;
         }
-        await using var harness = new CtraderTestHarness();
+        await using var harness = new CtraderTestHarness(label);
         return await harness.RunAsync(symbol, period, start, end, label);
     }
 
