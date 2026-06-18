@@ -45,16 +45,15 @@ public sealed class CtraderTestFixture : IAsyncLifetime
 /// </summary>
 public sealed class CtraderTestHarness : IAsyncDisposable
 {
-    private readonly RunArtifacts _artifacts;
+    public RunArtifacts Artifacts { get; }
     private IHost? _host;
 
-    public string DbPath => _artifacts.DbPath;
-    public string RunId => _artifacts.RunId;
-    public RunArtifacts Artifacts => _artifacts;
+    public string DbPath => Artifacts.DbPath;
+    public string RunId => Artifacts.RunId;
 
     public CtraderTestHarness(string testName = "ctrader")
     {
-        _artifacts = RunArtifacts.Create(testName);
+        Artifacts = RunArtifacts.Create(testName);
     }
 
     public record Result(
@@ -109,7 +108,7 @@ public sealed class CtraderTestHarness : IAsyncDisposable
         var account = ResolveCredential("Account", "CTrader__Account");
         if (string.IsNullOrEmpty(ctid)) throw new InvalidOperationException("No cTrader credentials");
 
-        var runId = _artifacts.RunId;
+        var runId = Artifacts.RunId;
         var algoPath = ResolveAlgo();
 
         // Dynamic ports
@@ -242,7 +241,7 @@ public sealed class CtraderTestHarness : IAsyncDisposable
         foreach (var line in cliResult.CbotLines.TakeLast(10))
             Log(diagLog, $"  {line}");
 
-        if (!File.Exists(_artifacts.EventsJsonPath))
+        if (!File.Exists(Artifacts.EventsJsonPath))
         {
             try
             {
@@ -257,8 +256,8 @@ public sealed class CtraderTestHarness : IAsyncDisposable
                     {
                         var jsonFile = Path.Combine(dir, "events.json");
                         if (!File.Exists(jsonFile)) continue;
-                        File.Copy(jsonFile, _artifacts.EventsJsonPath, overwrite: true);
-                        Log(diagLog, $"[{label}] cTrader events JSON ({new FileInfo(jsonFile).Length} bytes): {_artifacts.EventsJsonPath}");
+                        File.Copy(jsonFile, Artifacts.EventsJsonPath, overwrite: true);
+                        Log(diagLog, $"[{label}] cTrader events JSON ({new FileInfo(jsonFile).Length} bytes): {Artifacts.EventsJsonPath}");
                         break;
                     }
                 }
@@ -301,7 +300,7 @@ public sealed class CtraderTestHarness : IAsyncDisposable
 
         return new Result(tradeCount, barEvalCount, signalCount, orderCount, execCount,
             cliExitCode, cliResult.StdErr, runId, tradeRows,
-            File.Exists(_artifacts.EventsJsonPath) ? _artifacts.EventsJsonPath : null);
+            File.Exists(Artifacts.EventsJsonPath) ? Artifacts.EventsJsonPath : null);
     }
 
     // ─── timeframe-adapted config ───────────────────────────────────
@@ -345,6 +344,6 @@ public sealed class CtraderTestHarness : IAsyncDisposable
             try { await _host.StopAsync(CancellationToken.None); } catch { }
             _host.Dispose();
         }
-        await _artifacts.DisposeAsync();
+        await Artifacts.DisposeAsync();
     }
 }
