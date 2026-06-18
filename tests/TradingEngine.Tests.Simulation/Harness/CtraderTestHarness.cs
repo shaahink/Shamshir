@@ -193,47 +193,34 @@ public sealed class CtraderTestHarness : IAsyncDisposable
         }
         Log(diagLog, $"[{label}] Engine started in {sw.Elapsed.TotalSeconds:F1}s");
 
-        // Launch cTrader CLI via Process.Start (matches BacktestRunner).
-        var cliPath = CTraderCliLocator.Locate(
-            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build());
-        var cliArgs = new StringBuilder();
-        cliArgs.Append($"backtest \"{algoPath}\"");
-        cliArgs.Append($" --start={start:dd/MM/yyyy}");
-        cliArgs.Append($" --end={end:dd/MM/yyyy}");
-        cliArgs.Append($" --symbol={symbol}");
-        cliArgs.Append($" --period={period.ToLowerInvariant()}");
-        cliArgs.Append(" --balance=100000 --commission=30 --spread=1 --data-mode=m1");
-        cliArgs.Append($" --ctid={ctid}");
-        cliArgs.Append($" --pwd-file=\"{pwdFile}\"");
-        cliArgs.Append($" --account={account}");
-        cliArgs.Append($" --DataPort={dataPort}");
-        cliArgs.Append($" --CommandPort={commandPort}");
-        cliArgs.Append($" --SymbolString={symbol}");
-        cliArgs.Append($" --Periods={period.ToUpperInvariant()}");
-        cliArgs.Append(" --full-access");
-        var cliArgString = cliArgs.ToString();
+        // Launch cTrader CLI via BacktestCli (Process.Start, single code path).
+        var cliRequest = new BacktestCliRequest
+        {
+            AlgoPath = algoPath,
+            Symbol = symbol,
+            Period = period,
+            Start = start,
+            End = end,
+            CtId = ctid,
+            PwdFile = pwdFile,
+            Account = account,
+            DataPort = dataPort,
+            CommandPort = commandPort,
+            Balance = 100_000m,
+            CommissionPerMillion = 30m,
+            SpreadPips = 1m,
+            DataMode = "m1",
+            Symbols = new[] { symbol },
+            Periods = new[] { period.ToUpperInvariant() },
+            FullAccess = true,
+        };
 
         Log(diagLog, $"[{label}] Launching ctrader-cli...");
         var cliSw = Stopwatch.StartNew();
-        int cliExitCode = 1;
-        string cliStdOut = "", cliStdErr = "";
+        BacktestCliResult cliResult;
         try
         {
-            using var cliProcess = Process.Start(new ProcessStartInfo(cliPath, cliArgString)
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            }) ?? throw new InvalidOperationException("Failed to start ctrader-cli");
-
-            var stdoutTask = cliProcess.StandardOutput.ReadToEndAsync(ct);
-            var stderrTask = cliProcess.StandardError.ReadToEndAsync(ct);
-            await cliProcess.WaitForExitAsync(ct);
-
-            cliExitCode = cliProcess.ExitCode;
-            cliStdOut = await stdoutTask;
-            cliStdErr = await stderrTask;
+            cliResult = await BacktestCli.InvokeAsync(cliRequest, ct);
         }
         finally
         {
@@ -241,19 +228,19 @@ public sealed class CtraderTestHarness : IAsyncDisposable
         }
         sw.Stop();
 
+        var cliExitCode = cliResult.ExitCode;
         Log(diagLog, $"[{label}] CLI exit={cliExitCode} in {cliSw.Elapsed.TotalSeconds:F1}s (total {sw.Elapsed.TotalSeconds:F1}s)");
 
         if (cliExitCode != 0)
         {
-            var stderr = cliStdErr.Length > 500 ? cliStdErr[..500] : cliStdErr;
+            var stderr = cliResult.StdErr.Length > 500 ? cliResult.StdErr[..500] : cliResult.StdErr;
             Log(diagLog, $"[{label}] CLI STDERR (exit code={cliExitCode}): {stderr}");
             Console.WriteLine($"[{label}] CLI stderr: {stderr}");
         }
 
-        var cbotLines = cliStdOut.Split('\n').Where(l => l.Contains("CBOT|")).ToList();
-        Log(diagLog, $"[{label}] CBOT lines: {cbotLines.Count}");
-        foreach (var line in cbotLines.TakeLast(10))
-            Log(diagLog, $"  {line.Trim()}");
+        Log(diagLog, $"[{label}] CBOT lines: {cliResult.CbotLines.Count}");
+        foreach (var line in cliResult.CbotLines.TakeLast(10))
+            Log(diagLog, $"  {line}");
 
         if (!File.Exists(_artifacts.EventsJsonPath))
         {
@@ -313,7 +300,7 @@ public sealed class CtraderTestHarness : IAsyncDisposable
         await _host.StopAsync(CancellationToken.None);
 
         return new Result(tradeCount, barEvalCount, signalCount, orderCount, execCount,
-            cliExitCode, cliStdErr, runId, tradeRows,
+            cliExitCode, cliResult.StdErr, runId, tradeRows,
             File.Exists(_artifacts.EventsJsonPath) ? _artifacts.EventsJsonPath : null);
     }
 
