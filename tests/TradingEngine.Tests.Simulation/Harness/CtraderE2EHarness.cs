@@ -41,9 +41,19 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
     private IHost? _host;
     private BacktestCliResult? _cliResult;
     private NetMqMessageTransport? _transport;
+    private string? _snapshotPath;
+    private SnapshotRecorderSession? _recorder;
 
     public string RunId => Artifacts.RunId;
     public ITransportStatusSource? TransportStatus => _transport;
+
+    // ── Snapshot configuration ────────────────────────────────────────
+
+    public CtraderE2EHarness WithSnapshotRecording(string path)
+    {
+        _snapshotPath = path;
+        return this;
+    }
 
     public CtraderE2EHarness(string testName)
     {
@@ -139,6 +149,15 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
 
     public async Task StartCtraderAsync(CancellationToken ct = default)
     {
+        if (_transport is null) throw new InvalidOperationException("Engine not started.");
+
+        // Start snapshot recording BEFORE CLI launch (captures hello/bar messages)
+        if (_snapshotPath is not null)
+        {
+            _recorder = new SnapshotRecorderSession(_snapshotPath, _transport);
+            await _recorder.StartAsync(_symbol, _period, Artifacts.RunId);
+        }
+
         var ctid = CtraderTestHarness.ResolveCredential("CtId", "CTrader__CtId");
         var pwdFile = CtraderTestHarness.ResolveCredential("PwdFile", "CTrader__PwdFile");
         var account = CtraderTestHarness.ResolveCredential("Account", "CTrader__Account");
@@ -181,6 +200,12 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
         {
             throw new E2ECliException(Artifacts.RunId, _cliResult.ExitCode, _cliResult.StdErr,
                 "CLI exited with error and no CBOT output. Check " + Artifacts.CtraderLogPath);
+        }
+
+        // Stop recording after CLI finishes
+        if (_recorder is not null)
+        {
+            await _recorder.DisposeAsync();
         }
     }
 
@@ -367,6 +392,8 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_recorder is not null)
+            await _recorder.DisposeAsync();
         if (_host is not null)
         {
             try { await _host.StopAsync(CancellationToken.None); } catch { }

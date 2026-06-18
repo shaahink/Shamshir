@@ -178,7 +178,7 @@ public sealed class FakeCBot : IAsyncDisposable
         LogMsg($"EXEC_SENT|{exec.ClientOrderId}|{exec.State}|kind={exec.Kind}");
     }
 
-    public string SendStatsAndGetJson()
+    public void SendStatsAndGetJson()
     {
         var stats = Serialize("stats", new Dictionary<string, object>
         {
@@ -190,7 +190,11 @@ public sealed class FakeCBot : IAsyncDisposable
         });
         Dealer.SendFrame(stats);
         LogMsg($"STATS_SENT|bars={BarsSent}|cmds={CommandsReceived}|orders={OrdersExecuted}|execs={ExecsSent}");
-        return stats;
+    }
+
+    public void SendRawDealerFrame(string json)
+    {
+        Dealer.SendFrame(json);
     }
 
     public async Task StopAsync()
