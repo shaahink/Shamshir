@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Domain;
 
 namespace TradingEngine.Infrastructure.Venues.CTrader;
 
@@ -23,6 +24,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     public Action? OnConnected { get; set; }
     public Action<string, string>? OnStatusChange { get; set; }
+    public ITransportStatusSource? TransportStatus => _transport as ITransportStatusSource;
 
     /// <summary>Fired on every cBot hello (connect + reconnect) with the venue-reported open
     /// positions and account, so the engine can reconcile its position tracker (V1/V2).</summary>

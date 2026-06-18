@@ -2,10 +2,11 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using NetMQ;
 using NetMQ.Sockets;
+using TradingEngine.Domain;
 
 namespace TradingEngine.Infrastructure.Transport.NetMq;
 
-public sealed class NetMqMessageTransport : IMessageTransport, IAsyncDisposable
+public sealed class NetMqMessageTransport : IMessageTransport, ITransportStatusSource, IAsyncDisposable
 {
     private readonly string _dataEndpoint;
     private readonly string _commandEndpoint;
@@ -28,6 +29,23 @@ public sealed class NetMqMessageTransport : IMessageTransport, IAsyncDisposable
     private NetMQQueue<(byte[] Identity, string Json)>? _sendQueue;
     private byte[]? _cBotIdentity;
 
+    private TransportPhase _phase = TransportPhase.Disconnected;
+    private DateTime? _connectedAtUtc;
+    private DateTime? _disconnectedAtUtc;
+    private DateTime _lastMessageAtUtc;
+    private int _barsReceived;
+    private int _commandsSent;
+    private int _executionsReceived;
+    private string? _lastError;
+
+    public TransportStatus Current => new(
+        _phase, _connectedAtUtc, _disconnectedAtUtc,
+        _lastMessageAtUtc, Volatile.Read(ref _barsReceived),
+        Volatile.Read(ref _commandsSent), Volatile.Read(ref _executionsReceived),
+        _lastError);
+
+    public event Action<TransportStatus>? StatusChanged;
+
     public NetMqMessageTransport(string dataEndpoint, string commandEndpoint,
         ILogger<NetMqMessageTransport> logger)
     {
@@ -38,6 +56,8 @@ public sealed class NetMqMessageTransport : IMessageTransport, IAsyncDisposable
 
     public Task ConnectAsync(CancellationToken ct)
     {
+        TransitionTo(TransportPhase.Connecting);
+
         _sub = new SubscriberSocket();
         _sub.Connect(_dataEndpoint);
         _sub.SubscribeToAnyTopic();
@@ -59,6 +79,9 @@ public sealed class NetMqMessageTransport : IMessageTransport, IAsyncDisposable
 
     public async Task DisconnectAsync(CancellationToken ct)
     {
+        TransitionTo(TransportPhase.Disconnected);
+        _disconnectedAtUtc = DateTime.UtcNow;
+
         _poller?.Stop();
         _poller?.Dispose();
         _sendQueue?.Dispose();
@@ -73,12 +96,33 @@ public sealed class NetMqMessageTransport : IMessageTransport, IAsyncDisposable
     public void Send(byte[] identity, string json)
     {
         _sendQueue?.Enqueue((identity, json));
+        Interlocked.Increment(ref _commandsSent);
     }
 
     private void OnSendQueueReady(object? sender, NetMQQueueEventArgs<(byte[] Identity, string Json)> e)
     {
         while (e.Queue.TryDequeue(out var item, TimeSpan.Zero))
             _router!.SendMoreFrame(item.Identity).SendFrame(item.Json);
+    }
+
+    public void AcknowledgeHandshake()
+    {
+        if (_phase == TransportPhase.HandshakeReceived)
+            TransitionTo(TransportPhase.HandshakeAcknowledged);
+    }
+
+    private void TransitionTo(TransportPhase phase)
+    {
+        _phase = phase;
+        try { StatusChanged?.Invoke(Current); }
+        catch { }
+    }
+
+    private void TransportToError()
+    {
+        _phase = TransportPhase.Error;
+        try { StatusChanged?.Invoke(Current); }
+        catch { }
     }
 
     private void OnSubReceive(object? sender, NetMQSocketEventArgs e)
@@ -90,6 +134,8 @@ public sealed class NetMqMessageTransport : IMessageTransport, IAsyncDisposable
                 if (!e.Socket.TryReceiveFrameString(out var frame))
                     break;
 
+                _lastMessageAtUtc = DateTime.UtcNow;
+
                 if (topic == "diag")
                 {
                     _logger.LogInformation("CBOT|{Msg}", frame);
@@ -99,11 +145,17 @@ public sealed class NetMqMessageTransport : IMessageTransport, IAsyncDisposable
                 if (topic.StartsWith('{'))
                     continue;
 
+                if (topic == "acct")
+                    _phase = TransportPhase.Connected;
+
                 _subChannel.Writer.TryWrite((topic, frame));
+                Interlocked.Increment(ref _barsReceived);
             }
         }
         catch (Exception ex)
         {
+            _lastError = ex.Message;
+            TransportToError();
             _logger.LogWarning(ex, "NETMQ|SUB_PARSE_ERR");
         }
     }
@@ -112,16 +164,21 @@ public sealed class NetMqMessageTransport : IMessageTransport, IAsyncDisposable
     {
         while (e.Socket.TryReceiveFrameBytes(out var identity))
         {
+            _lastMessageAtUtc = DateTime.UtcNow;
+
             var json = e.Socket.ReceiveFrameString();
             var isNewConnection = _cBotIdentity is null;
             _cBotIdentity = identity;
 
             if (isNewConnection)
             {
+                _connectedAtUtc = DateTime.UtcNow;
+                TransitionTo(TransportPhase.HandshakeReceived);
                 _logger.LogInformation("NETMQ|CONNECTED|data={DataEndpoint}|command={CommandEndpoint}", _dataEndpoint, _commandEndpoint);
             }
 
             _routerChannel.Writer.TryWrite((identity, json));
+            Interlocked.Increment(ref _executionsReceived);
         }
     }
 
