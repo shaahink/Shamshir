@@ -252,13 +252,14 @@ public static class EngineReducer
         return new EngineDecision(state with { Positions = newPositions }, effects);
     }
 
-    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
-    // EquityObserved is never constructed; equity tracking runs imperatively
-    // via RiskManager.UpdateEquityLevels, not through the reducer.
+    // iter-35 (A2): now WIRED via Kernel.DecideEquity. Folds the authoritative drawdown + account slice
+    // (pure, config-agnostic). The config-dependent breach watchdog (enter protection / force-close,
+    // toggle-gated) is layered on top in Kernel.DecideEquity — it absorbs AccountProcessor:79-115.
     private static EngineDecision HandleEquityObserved(EngineState state, EquityObserved evt)
     {
         var newDrawdown = DrawdownReducer.Apply(state.Drawdown, evt.Equity);
-        return new EngineDecision(state with { Drawdown = newDrawdown }, []);
+        var account = new AccountView(evt.Balance, evt.Equity, evt.FloatingPnL);
+        return new EngineDecision(state with { Drawdown = newDrawdown, Account = account }, []);
     }
 
     // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
