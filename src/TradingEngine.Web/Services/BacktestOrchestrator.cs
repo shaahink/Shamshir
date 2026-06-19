@@ -435,7 +435,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var govStore = scope.ServiceProvider.GetRequiredService<IGovernorOptionsStore>();
             governor = await govStore.GetAsync(CancellationToken.None);
         }
-        catch { governor = baseConfig.Governor; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load governor options from DB — falling back to JSON config defaults (M19 fix)");
+            governor = baseConfig.Governor;
+        }
 
         return new LoadedConfig(propFirms, riskProfiles)
         {

@@ -225,9 +225,9 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
     public void OnBarObserved(Bar bar)
     {
         _lastClose = bar.Close;
-        BrokerTimeUtc = bar.OpenTimeUtc;
+        BrokerTimeUtc = bar.OpenTimeUtc + BarDuration(bar.Timeframe);
         ProcessPendingLimits(bar);
-        EmitAccountUpdate(bar.OpenTimeUtc);
+        EmitAccountUpdate(BrokerTimeUtc);
     }
 
     public void SyncToBar(decimal close, DateTime openTimeUtc)
@@ -236,6 +236,19 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         BrokerTimeUtc = openTimeUtc;
         EmitAccountUpdate(openTimeUtc);
     }
+
+    private static TimeSpan BarDuration(Timeframe tf) => tf switch
+    {
+        Timeframe.M1 => TimeSpan.FromMinutes(1),
+        Timeframe.M5 => TimeSpan.FromMinutes(5),
+        Timeframe.M15 => TimeSpan.FromMinutes(15),
+        Timeframe.M30 => TimeSpan.FromMinutes(30),
+        Timeframe.H1 => TimeSpan.FromHours(1),
+        Timeframe.H4 => TimeSpan.FromHours(4),
+        Timeframe.D1 => TimeSpan.FromDays(1),
+        Timeframe.W1 => TimeSpan.FromDays(7),
+        _ => TimeSpan.FromHours(1),
+    };
 
     // Publishes balance + floating PnL of the current open book. Best-effort write (bounded
     // DropOldest channel) so it never blocks the engine loop.
@@ -358,11 +371,15 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         try
         {
             var symbolInfo = _symbolRegistry.Get(_symbol);
+            var halfSpread = symbolInfo.TypicalSpread / 2m;
             var pipValue = PipCalculator.PipValuePerLot(symbolInfo, close, _crossRateProvider);
             var total = 0m;
             foreach (var (_, t) in _openTrades)
             {
-                var diff = t.Direction == TradeDirection.Long ? close - t.EntryPrice : t.EntryPrice - close;
+                // H16: use directional bid/ask instead of mid. For longs the exit is at bid (lower);
+                // for shorts at ask (higher). This prices floating PnL conservatively.
+                var effectiveClose = t.Direction == TradeDirection.Long ? close - halfSpread : close + halfSpread;
+                var diff = t.Direction == TradeDirection.Long ? effectiveClose - t.EntryPrice : t.EntryPrice - effectiveClose;
                 total += (diff / symbolInfo.PipSize) * pipValue * t.Lots;
             }
             return total;

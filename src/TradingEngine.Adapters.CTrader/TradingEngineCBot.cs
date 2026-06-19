@@ -252,6 +252,11 @@ public class TradingEngineCBot : Robot
                                     var result = ExecuteClosePartialPosition(cmd);
                                     execs.Add(result);
                                 }
+                                else if (cmdType == "cancel_order")
+                                {
+                                    var result = ExecuteCancelOrder(cmd);
+                                    execs.Add(result);
+                                }
                                 else if (cmdType == "modify_order")
                                 {
                                     var result = ExecuteModifyOrder(cmd);
@@ -303,8 +308,10 @@ public class TradingEngineCBot : Robot
         var lots = cmd.GetProperty("lots").GetDouble();
         var slPrice = cmd.GetProperty("slPrice").GetDouble();
         var tpPrice = cmd.GetProperty("tpPrice").GetDouble();
+        var orderType = cmd.TryGetProperty("orderType", out var ot) ? ot.GetString() : "Market";
+        var limitPrice = cmd.TryGetProperty("limitPrice", out var lp) ? lp.GetDouble() : 0.0;
 
-        Diag($"CMD_RECV|submit_order|{clientOrderId}|{symbol}|{direction}|lots={lots:F4}");
+        Diag($"CMD_RECV|submit_order|{clientOrderId}|{symbol}|{direction}|type={orderType}|lots={lots:F4}|limit={limitPrice:F5}");
 
         var sym = Symbols.GetSymbol(symbol);
         if (sym is null)
@@ -313,9 +320,20 @@ public class TradingEngineCBot : Robot
         var tradeType = direction == "Long" ? TradeType.Buy : TradeType.Sell;
         var volumeInUnits = Math.Floor(lots * sym.LotSize / sym.VolumeInUnitsStep) * sym.VolumeInUnitsStep;
 
-        // V2 — persist the engine clientOrderId in the position Comment so the Guid↔venue-id map
-        // can be rebuilt after a cBot restart/reconnect (see RebuildPositionMap).
-        var result = ExecuteMarketOrder(tradeType, symbol, volumeInUnits, "Shamshir", null, null, clientOrderId);
+        TradeResult? result;
+        if (orderType == "Limit" && limitPrice > 0)
+        {
+#pragma warning disable CS0618
+            result = PlaceLimitOrder(tradeType, symbol, volumeInUnits, limitPrice, "Shamshir",
+                slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null);
+#pragma warning restore CS0618
+        }
+        else
+        {
+            result = ExecuteMarketOrder(tradeType, symbol, volumeInUnits, "Shamshir",
+                slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null, clientOrderId);
+        }
+
         if (result?.IsSuccessful == true)
         {
             var pos = result.Position;
@@ -325,7 +343,7 @@ public class TradingEngineCBot : Robot
             _tradeLog.RecordOpen(pos.Id, clientOrderId, direction, pos.EntryPrice,
                 pos.VolumeInUnits / sym.LotSize, EpochMs(Server.TimeInUtc), Account.Balance, Account.Equity);
 
-            if (slPrice > 0 || tpPrice > 0)
+            if ((slPrice > 0 || tpPrice > 0) && pos.StopLoss != slPrice && pos.TakeProfit != tpPrice)
             {
                 try
                 {
@@ -342,6 +360,27 @@ public class TradingEngineCBot : Robot
         }
 
         return MakeExecResult(clientOrderId, "entry_fill", 0, "Rejected", 0, lots, result?.Error.ToString() ?? "Null result");
+    }
+
+    private object ExecuteCancelOrder(JsonElement cmd)
+    {
+        var orderIdStr = cmd.GetProperty("orderId").GetString()!;
+        foreach (var pos in Positions)
+        {
+            if (_positionMap.TryGetValue(pos.Id, out var orderGuid) && orderGuid.ToString() == orderIdStr)
+            {
+                // C2: close the open position. For pending (limit) orders, cancel via the platform.
+                var result = ClosePosition(pos);
+                Diag($"CANCEL_ORDER|{orderIdStr}|posId={pos.Id}|success={result?.IsSuccessful}");
+                if (result?.IsSuccessful == true) PublishAccount();
+                return MakeExecResult(orderIdStr, "entry_cancelled", pos.Id,
+                    result?.IsSuccessful == true ? "Cancelled" : "Rejected",
+                    pos.CurrentPrice > 0 ? pos.CurrentPrice : 0d, pos.VolumeInUnits / (Symbols.GetSymbol(pos.SymbolName)?.LotSize ?? 100000.0),
+                    "ENTRY_EXPIRED");
+            }
+        }
+        Print($"CBOT|CANCEL_NOT_FOUND|orderId={orderIdStr}");
+        return MakeExecResult(orderIdStr, "entry_cancelled", 0, "Rejected", 0, 0, "Order not found: " + orderIdStr);
     }
 
     private object ExecuteClosePosition(JsonElement cmd)
@@ -392,14 +431,16 @@ public class TradingEngineCBot : Robot
                 var volumeInUnits = (int)((double)closeLots * lotSize);
                 if (volumeInUnits <= 0) volumeInUnits = 1000;
 
-                // Realized PnL for the closed portion ≈ full-position floating PnL scaled by the
-                // fraction of volume being closed (captured before the close).
                 var fraction = pos.VolumeInUnits > 0 ? Math.Min(1.0, volumeInUnits / (double)pos.VolumeInUnits) : 1.0;
                 var grossProfit = pos.GrossProfit * fraction;
-                var netProfit = pos.NetProfit * fraction;
+                var result = ClosePosition(pos, volumeInUnits);
+                // M1 (iter-35 B2): read commission/swap AFTER the close. The full-close path does
+                // the same — before close only entry-side commission is charged. After partial
+                // close these reflect round-trip costs for the remaining portion; scaling by
+                // fraction gives a close estimate for the closed portion.
                 var commission = pos.Commissions * fraction;
                 var swap = pos.Swap * fraction;
-                var result = ClosePosition(pos, volumeInUnits);
+                var netProfit = grossProfit - commission - swap;
                 Diag($"CLOSE_PARTIAL|{positionIdStr}|lots={closeLots}|units={volumeInUnits}|success={result?.IsSuccessful}|net={netProfit:F2}");
                 if (result?.IsSuccessful == true) PublishAccount();
 

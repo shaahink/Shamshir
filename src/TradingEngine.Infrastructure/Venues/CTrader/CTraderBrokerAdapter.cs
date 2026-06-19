@@ -37,6 +37,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     // GetAccountStateAsync so startup/reconnect reconciliation sees real open positions
     // instead of the old (0,0,[]) stub (V1).
     private volatile AccountState _lastKnownState = new(0, 0, []);
+    private decimal _lastMid = 1.0m;
 
     public DateTime BrokerTimeUtc { get; private set; } = DateTime.UtcNow;
     public bool IsConnected => _transport.IsConnected;
@@ -217,10 +218,12 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         {
             case "tick":
             {
+                var bid = root.GetProperty("bid").GetDecimal();
+                var ask = root.GetProperty("ask").GetDecimal();
+                _lastMid = (bid + ask) / 2m;
                 var tick = new Tick(
                     Symbol.Parse(root.GetProperty("symbol").GetString()!),
-                    root.GetProperty("bid").GetDecimal(),
-                    root.GetProperty("ask").GetDecimal(),
+                    bid, ask,
                     root.GetProperty("time").GetDateTime().ToUniversalTime());
                 BrokerTimeUtc = tick.TimestampUtc;
                 _tickChannel.Writer.TryWrite(tick);
@@ -449,7 +452,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         {
             _execChannel.Writer.TryWrite(
                 new ExecutionEvent(positionId, OrderState.Filled,
-                    new Price(0m), 0, "FORCE_CLOSE_ENGINE_SHUTDOWN", BrokerTimeUtc)
+                    new Price(_lastMid), 0, "FORCE_CLOSE_ENGINE_SHUTDOWN", BrokerTimeUtc)
                 {
                     GrossProfit = 0m, NetProfit = 0m, Commission = 0m, Swap = 0m
                 });
