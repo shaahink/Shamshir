@@ -18,6 +18,12 @@ public static class MiddlewarePipeline
             scope.ServiceProvider.GetRequiredService<IServiceScopeFactory>(), solRoot, logger);
         await seeder.SeedAsync();
 
+        // Single-origin hosting: ASP.NET serves the built Angular SPA (web-ui → wwwroot) alongside the
+        // JSON API, the SignalR hub and the Scalar docs. One `dotnet run` gives the whole app — no
+        // separate `ng serve`/proxy/port-4200 needed (that remains available for HMR via `npm start`).
+        app.UseDefaultFiles();
+        app.UseStaticFiles();
+
         app.UseCors();
         app.UseRouting();
         app.MapControllers();
@@ -25,5 +31,9 @@ public static class MiddlewarePipeline
 
         app.MapOpenApi();
         app.MapScalarApiReference();
+
+        // SPA client-side routes (e.g. /runs/:id) fall through to index.html. API/hub/scalar routes are
+        // matched first, so this only catches genuine client routes.
+        app.MapFallbackToFile("index.html");
     }
 }

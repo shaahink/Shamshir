@@ -76,6 +76,10 @@ public sealed class RunsController : ControllerBase
 
         if (stratList.Length > 0)
             cfg.CustomParams["StrategyIds"] = string.Join(",", stratList);
+        if (!string.IsNullOrWhiteSpace(req.RiskProfileId))
+            cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
+        if (!string.IsNullOrWhiteSpace(req.Venue))
+            cfg.CustomParams["Venue"] = req.Venue.Trim().ToLowerInvariant();
 
         var runId = await _command.StartAsync(cfg, ct);
         var state = _orchestrator.GetState(runId);

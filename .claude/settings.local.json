@@ -33,7 +33,9 @@
       "Bash(node *)",
       "Bash(python3 *)",
       "Bash(sqlite3 /c/code/shamshir/data/trading.db \"SELECT COUNT\\(*\\) FROM Bars;\")",
-      "Bash(sqlite3 *)"
+      "Bash(sqlite3 *)",
+      "Bash(rm -rf src/TradingEngine.Web/wwwroot/*)",
+      "Bash(npm run *)"
     ]
   }
 }

@@ -284,7 +284,15 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             BacktestResult result;
 
-            var useCtader = _configuration.GetValue<bool>("CTrader:UseForBacktest");
+            // Venue is selectable per run (New-Backtest page). Absent selection falls back to the
+            // configured default (CTrader:UseForBacktest). "ctrader" = stream bars from cTrader via
+            // NetMQ; "replay" = credential-free replay from stored bars.
+            var useCtader = cfg.CustomParams.GetValueOrDefault("Venue")?.ToLowerInvariant() switch
+            {
+                "ctrader" => true,
+                "replay" or "sim" or "simulated" => false,
+                _ => _configuration.GetValue<bool>("CTrader:UseForBacktest"),
+            };
             if (useCtader)
             {
                 EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
@@ -383,6 +391,32 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
     }
 
+    // Builds the engine's LoadedConfig from the DATABASE (canonical config source) rather than letting
+    // the inner host re-read config/strategies/*.json. Strategy parameters, symbols, timeframe, regime
+    // filter, order-entry and position-management all come from the seeded DB store, so what the New-
+    // Backtest UI shows/edits is exactly what the engine evaluates. Risk profiles / prop-firm rules /
+    // sizing still come from JSON (LoadBase); the per-run risk-profile choice is applied on top.
+    private async Task<LoadedConfig> BuildLoadedConfigFromDbAsync(BacktestConfig cfg)
+    {
+        var solutionRoot = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var baseConfig = new ConfigLoader(solutionRoot).LoadBase();
+
+        using var scope = _scopeFactory.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
+        var dbConfigs = await store.GetAllAsync(CancellationToken.None);
+
+        var chosenProfile = cfg.CustomParams.GetValueOrDefault("RiskProfileId");
+        var profileIsKnown = !string.IsNullOrWhiteSpace(chosenProfile)
+            && baseConfig.RiskProfiles.Any(r => r.Id == chosenProfile);
+
+        baseConfig.StrategyConfigs = dbConfigs
+            .Select(c => profileIsKnown ? c with { RiskProfileId = chosenProfile! } : c)
+            .ToList();
+
+        return baseConfig;
+    }
+
     private async Task<BacktestResult> RunEngineReplayAsync(
         string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines)
     {
@@ -437,6 +471,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             SolutionRoot = solutionRoot,
             SymbolNames = cfg.Symbols,
             ActiveStrategyIds = ParseStrategyIds(cfg),
+            PreloadedConfig = await BuildLoadedConfigFromDbAsync(cfg),
             Progress = progressCallback,
             MinLogLevel = LogLevel.Warning,
         });
@@ -458,7 +493,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             EnqueueLog(runId, logLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] No bars found for {cfg.Symbol}/{cfg.Period} in {cfg.Start:yyyy-MM-dd}–{cfg.End:yyyy-MM-dd}. Run scripts/seed-bars.ps1 to seed data.");
             await innerHost.StopAsync(CancellationToken.None);
-            innerHost.Dispose();
+            await DisposeHostAsync(innerHost);
             return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = "",
                 ErrorMessage = $"No bars found for {cfg.Symbol}/{cfg.Period}." };
         }
@@ -467,9 +502,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     EnqueueLog(runId, logLines,
         $"[{DateTime.UtcNow:HH:mm:ss}] Engine replay complete.");
+    await FlushRunPersistenceAsync(innerHost);
     CaptureFinalEquity(state, innerHost, runId);
     await innerHost.StopAsync(CancellationToken.None);
-    innerHost.Dispose();
+    await DisposeHostAsync(innerHost);
 
         return new BacktestResult { RunId = runId, ExitCode = 0, AlgoHash = "" };
     }
@@ -556,6 +592,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             SolutionRoot = solutionRoot,
             SymbolNames = cfg.Symbols,
             ActiveStrategyIds = ParseStrategyIds(cfg),
+            PreloadedConfig = await BuildLoadedConfigFromDbAsync(cfg),
             Progress = progressCallback,
             MinLogLevel = LogLevel.Warning,
         });
@@ -568,7 +605,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
         catch (Exception ex)
         {
-            innerHost.Dispose();
+            await DisposeHostAsync(innerHost);
             EnqueueLog(runId, logLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] Engine start failed: {ex.Message}");
             return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = algoHash,
@@ -612,9 +649,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
     finally
     {
+        await FlushRunPersistenceAsync(innerHost);
         CaptureFinalEquity(_runs[runId], innerHost, runId);
         await innerHost.StopAsync(CancellationToken.None);
-        innerHost.Dispose();
+        await DisposeHostAsync(innerHost);
     }
 
         EnqueueLog(runId, logLines,
@@ -821,6 +859,25 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         if (store is null) return;
         try { ApplySnapshot(state, store.GetByRunIdAsync(runId, CancellationToken.None).GetAwaiter().GetResult()); }
         catch { /* best effort */ }
+    }
+
+    // Drain the buffered DB writers while the inner host's provider is still fully alive, so a short
+    // run's equity curve and the tail of its bars are persisted (otherwise the 5s equity flush window
+    // and the 500-bar batch threshold drop the run's data — the empty equity chart / "no bars" bugs).
+    private static async Task FlushRunPersistenceAsync(IHost host)
+    {
+        try { await host.Services.GetRequiredService<EquityPersistenceHandler>().FlushAsync(); }
+        catch { /* best effort */ }
+        try { await host.Services.GetRequiredService<BufferedBarWriter>().FlushAsync(); }
+        catch { /* best effort */ }
+    }
+
+    private static async Task DisposeHostAsync(IHost host)
+    {
+        // Several engine singletons (BufferedBarWriter, EquityPersistenceHandler) are IAsyncDisposable;
+        // sync Dispose() can't run their async teardown. Dispose the host asynchronously.
+        if (host is IAsyncDisposable ad) await ad.DisposeAsync();
+        else host.Dispose();
     }
 
     private static void ApplySnapshot(BacktestRunState state, IReadOnlyList<AccountSnapshot> snaps)

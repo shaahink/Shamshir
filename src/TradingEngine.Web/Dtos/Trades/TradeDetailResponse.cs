@@ -25,4 +25,8 @@ public sealed record TradeDetailResponse
     public required string ExitReason { get; init; }
     public required string StrategyId { get; init; }
     public double DurationSeconds { get; init; }
+
+    /// <summary>The run's timeframe (e.g. "H1"), so the trade-detail chart queries bars at the right
+    /// resolution instead of guessing.</summary>
+    public string Timeframe { get; init; } = "H1";
 }

@@ -30,6 +30,8 @@ export class RunsApiService {
       symbols: req.symbols.join(','),
       periods: req.periods.join(','),
       strategyIds: req.strategyIds.join(','),
+      riskProfileId: req.riskProfileId ?? '',
+      venue: req.venue ?? '',
     };
     return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }

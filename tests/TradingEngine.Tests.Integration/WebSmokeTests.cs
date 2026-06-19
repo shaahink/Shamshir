@@ -79,12 +79,14 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     }
 
     [Fact]
-    public async Task NewBacktestPage_ShowsPreflightAndDataSource()
+    public async Task NewBacktestRoute_ServesSpaShell()
     {
-        var response = await _client.GetAsync("/backtests/new");
+        // The New-Backtest form is now an Angular client route; the server returns the SPA shell for it
+        // (via MapFallbackToFile) and Angular renders the symbol/timeframe/strategy/risk/venue pickers.
+        var response = await _client.GetAsync("/runs/new");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("Data source");
+        body.Should().Contain("app-root");
     }
 
     [Fact]
@@ -121,7 +123,8 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
         var response = await _client.GetAsync("/");
         var body = await response.Content.ReadAsStringAsync();
 
-        body.Should().Contain("sidebar");
+        // SPA shell: Angular bootstraps into <app-root>; nav/sidebar is rendered client-side.
+        body.Should().Contain("app-root");
         body.Should().Contain("Shamshir");
     }
 

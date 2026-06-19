@@ -50,7 +50,8 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
           <div><label class="block text-xs font-medium text-gray-400 mb-1">Initial Balance</label><input type="number" [(ngModel)]="balance" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
           <div><label class="block text-xs font-medium text-gray-400 mb-1">Commission (per M)</label><input type="number" [(ngModel)]="commission" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
           <div><label class="block text-xs font-medium text-gray-400 mb-1">Spread (pips)</label><input type="number" [(ngModel)]="spread" step="0.1" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
-          <div><label class="block text-xs font-medium text-gray-400 mb-1">Risk Profile</label><select [(ngModel)]="riskProfile" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none"><option value="standard">Standard</option><option value="conservative">Conservative</option><option value="aggressive">Aggressive</option></select></div>
+          <div><label class="block text-xs font-medium text-gray-400 mb-1">Risk Profile</label><select [(ngModel)]="riskProfile" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">@for (p of riskProfiles(); track p.id) {<option [value]="p.id">{{ p.displayName }} ({{ (p.riskPerTradePercent*100).toFixed(2) }}%/trade)</option>}</select></div>
+          <div><label class="block text-xs font-medium text-gray-400 mb-1">Data Venue</label><select [(ngModel)]="venue" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none"><option value="">Default</option><option value="ctrader">cTrader (live stream)</option><option value="replay">Replay (stored bars)</option></select></div>
         </div>
 
         <div>
@@ -79,8 +80,9 @@ export class NewBacktestComponent implements OnInit {
   selectedSymbols = signal(new Set<string>(['EURUSD']));
   selectedPeriods = signal(new Set<string>(['h1']));
   startDate = ''; endDate = '';
-  balance = 100_000; commission = 30; spread = 1; riskProfile = 'standard';
+  balance = 100_000; commission = 30; spread = 1; riskProfile = 'standard'; venue = '';
   strategies = signal<any[]>([]);
+  riskProfiles = signal<any[]>([{ id: 'standard', displayName: 'Standard', riskPerTradePercent: 0.005 }]);
   selectedStrategyIds = signal<Set<string>>(new Set());
   loading = this.store.isLoading; error = this.store.error;
 
@@ -101,6 +103,15 @@ export class NewBacktestComponent implements OnInit {
       if (s.size === 0 && data.length > 0) s.add(data[0].id);
       this.selectedStrategyIds.set(s);
     } catch { /* */ }
+
+    try {
+      const rp = await firstValueFrom(this.http.get<any>('/api/risk-profiles'));
+      const profiles: any[] = Array.isArray(rp) ? rp : (rp.profiles || []);
+      if (profiles.length > 0) {
+        this.riskProfiles.set(profiles);
+        if (!profiles.some(p => p.id === this.riskProfile)) this.riskProfile = profiles[0].id;
+      }
+    } catch { /* keep default */ }
   }
 
   toggleSymbol(sym: string) { const s = new Set(this.selectedSymbols()); if (s.has(sym)) s.delete(sym); else s.add(sym); this.selectedSymbols.set(s); }
@@ -121,7 +132,7 @@ export class NewBacktestComponent implements OnInit {
     const req: StartRunRequest = {
       symbol: symList[0] || 'EURUSD', period: perList[0] || 'h1', start: this.startDate, end: this.endDate,
       balance: this.balance, commissionPerMillion: this.commission, spreadPips: this.spread,
-      symbols: symList, periods: perList, strategyIds: [...this.selectedStrategyIds()], riskProfileId: this.riskProfile,
+      symbols: symList, periods: perList, strategyIds: [...this.selectedStrategyIds()], riskProfileId: this.riskProfile, venue: this.venue,
     };
     const runId = await this.store.startBacktest(req);
     this.router.navigate(['/runs', runId, 'monitor']);

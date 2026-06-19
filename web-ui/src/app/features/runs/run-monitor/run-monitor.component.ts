@@ -109,9 +109,19 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       if (e.governorState) this.governorState.set(e.governorState);
       if (e.counters) {
         this.counters.set({ signals: e.counters.signals ?? 0, orders: e.counters.orders ?? 0, fills: e.counters.fills ?? 0, closes: e.counters.closes ?? 0, rejections: e.counters.rejections ?? 0, breaches: e.counters.breaches ?? 0 });
+        if (e.counters.breaches > 0 && !this.breachBanner()) this.breachBanner.set('Daily/Max drawdown breach detected');
+      }
+      // The backend embeds recent journal lines inside each progress frame (DecisionRecordView shape:
+      // `event` is the kind, `detailJson` the payload). There is no separate JournalAppend message.
+      if (Array.isArray(e.recentJournal) && e.recentJournal.length > 0) {
+        const mapped = e.recentJournal.map((r: any) => ({
+          runId: this.runId(), seq: r.seq, simTimeUtc: r.simTimeUtc,
+          kind: r.kind ?? r.event, symbol: r.symbol, strategyId: r.strategyId,
+          reason: r.reason, detail: r.detail ?? r.detailJson,
+        }));
+        this.journalEntries.set(mapped.slice(-200));
       }
     }));
-    this.subs.add(this.hub.journal$.subscribe((e: JournalEnvelope) => { this.journalEntries.update(x => [...x.slice(-199), e]); }));
     this.subs.add(this.hub.completed$.subscribe((e: any) => { this.status.set(e.status || 'completed'); if (e.error) this.breachBanner.set(e.error); }));
   }
 

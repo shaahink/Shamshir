@@ -12,4 +12,12 @@ public sealed record StartRunRequest
     public string? Symbols { get; init; }
     public string? Periods { get; init; }
     public string? StrategyIds { get; init; }
+
+    /// <summary>Risk profile id chosen for this run (applied to every strategy; overrides the stored
+    /// per-strategy profile). Must match a configured/seeded risk profile.</summary>
+    public string? RiskProfileId { get; init; }
+
+    /// <summary>Data venue: "ctrader" (stream bars over NetMQ) or "replay" (credential-free, from
+    /// stored bars). Absent = the configured default (CTrader:UseForBacktest).</summary>
+    public string? Venue { get; init; }
 }

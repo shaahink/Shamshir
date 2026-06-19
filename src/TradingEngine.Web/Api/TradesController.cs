@@ -59,8 +59,15 @@ public sealed class TradesController : ControllerBase
         var t = await _db.Trades.FirstOrDefaultAsync(t => t.Id == id, ct);
         if (t is null) return NotFound(new { error = $"Trade {id} not found" });
 
+        // The trade's bars live at the run's timeframe; resolve it so the chart asks for the right bars.
+        var timeframe = await _db.BacktestRuns
+            .Where(r => r.RunId == t.RunId)
+            .Select(r => r.Period)
+            .FirstOrDefaultAsync(ct);
+
         return Ok(new TradeDetailResponse
         {
+            Timeframe = string.IsNullOrWhiteSpace(timeframe) ? "H1" : timeframe.ToUpperInvariant(),
             Id = t.Id,
             PositionId = t.PositionId,
             OrderId = t.OrderId,

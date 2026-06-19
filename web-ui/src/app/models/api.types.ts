@@ -99,6 +99,18 @@ export interface StartRunRequest {
   periods: string[];
   strategyIds: string[];
   riskProfileId?: string;
+  venue?: string;
+}
+
+export interface RiskProfile {
+  id: string;
+  displayName: string;
+  riskPerTradePercent: number;
+  maxDailyDrawdownPercent: number;
+  maxTotalDrawdownPercent: number;
+  maxConcurrentPositions: number;
+  lotSizingMethod: string;
+  propFirmRuleSetId: string;
 }
 
 export interface StartRunResponse {

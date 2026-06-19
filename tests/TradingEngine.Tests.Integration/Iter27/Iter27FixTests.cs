@@ -1,7 +1,6 @@
 using FluentAssertions;
 using TradingEngine.Domain;
 using TradingEngine.Host;
-using TradingEngine.Web.Pages.Runs;
 using TradingEngine.Web.Services;
 using Xunit;
 
@@ -61,7 +60,7 @@ public sealed class Iter27FixTests
         t.Add(Rec("OrderFilled", "Filled"));
         t.Add(Rec("OrderFilled", "TP"));           // a winning close
 
-        var funnel = ReportModel.BuildFunnel(t);
+        var funnel = RunFunnel.BuildFunnel(t);
 
         var row = funnel.Should().ContainSingle().Subject;
         row.StrategyId.Should().Be("trend-breakout");

@@ -59,6 +59,34 @@ public sealed class EquityPersistenceHandler : IEventHandler<EquityUpdated>, IAs
     {
         _cts.Cancel();
         try { await _flushTask; } catch { }
+        try { await FlushAsync(); } catch { }
         _cts.Dispose();
+    }
+
+    /// <summary>
+    /// Drain everything currently buffered and persist it, grouped by run. Safe to call while the
+    /// background loop is still running — it does NOT complete the channel. Called at run end (and from
+    /// <see cref="DisposeAsync"/>) so a backtest that finishes inside one 5s flush window doesn't lose
+    /// its equity curve (the bug behind the empty Report/Live equity chart).
+    /// </summary>
+    public async Task FlushAsync(CancellationToken ct = default)
+    {
+        var buffer = new List<(EquitySnapshot Snapshot, string RunId)>();
+        while (_channel.Reader.TryRead(out var item))
+            buffer.Add(item);
+        if (buffer.Count == 0) return;
+
+        foreach (var group in buffer.GroupBy(b => b.RunId))
+        {
+            try
+            {
+                await _persistence.SaveEquitySnapshotsBatchAsync(
+                    group.Select(b => b.Snapshot).ToList(), group.Key, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Equity final drain failed for run {RunId}", group.Key);
+            }
+        }
     }
 }
