@@ -90,7 +90,36 @@ public static class ServiceRegistration
             foreach (var si in catalog.GetAll()) reg.Register(si);
             return reg;
         });
-        services.AddSingleton<StrategyRegistry>();
+
+        var registry = new StrategyRegistry();
+        services.AddSingleton(registry);
+
+        services.AddSingleton<IReadOnlyList<IStrategy>>(sp =>
+        {
+            var reg = sp.GetRequiredService<StrategyRegistry>();
+            var store = sp.GetRequiredService<IStrategyConfigStore>();
+            var configs = store.GetAllAsync(default).GetAwaiter().GetResult();
+
+            var loaded = new LoadedConfig([], [])
+            {
+                StrategyConfigs = configs.Select(c => new StrategyConfigEntry(
+                    c.Id, c.DisplayName, c.Enabled, c.Symbols, c.RiskProfileId,
+                    c.Parameters, c.Timeframe)
+                {
+                    RegimeFilter = c.RegimeFilter,
+                    OrderEntry = c.OrderEntry,
+                    PositionManagement = c.PositionManagement,
+                    Reentry = c.Reentry,
+                }).ToList(),
+            };
+
+            var activeIds = configs.Where(c => c.Enabled).Select(c => c.Id).ToList();
+            if (activeIds.Count == 0 && configs.Count > 0)
+                activeIds = [configs[0].Id];
+            return reg.CreateStrategies(activeIds, loaded, sp).ToList();
+        });
+        services.AddSingleton<IEnumerable<IStrategy>>(sp => sp.GetRequiredService<IReadOnlyList<IStrategy>>());
+
         services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
             sp.GetRequiredService<StrategyRegistry>(), null, null,
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
