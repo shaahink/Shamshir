@@ -1,19 +1,15 @@
 using System.Diagnostics;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 
 namespace TradingEngine.Web.Services;
 
-/// <summary>
-/// Spawns <c>ng serve</c> when the app starts in development. Angular CLI compiles,
-/// watches for changes, and serves on port 4200 with proxy to this API.
-/// Intentionally NOT an IHostedService — it's fire-and-forget; the Angular dev server
-/// outlives API restarts.
-/// </summary>
 public sealed class NgServeHost : IHostedService, IDisposable
 {
     private Process? _process;
     private readonly IHostEnvironment _env;
     private readonly ILogger<NgServeHost> _logger;
+    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(3) };
 
     public NgServeHost(IHostEnvironment env, ILogger<NgServeHost> logger)
     {
@@ -21,27 +17,24 @@ public sealed class NgServeHost : IHostedService, IDisposable
         _logger = logger;
     }
 
-    public Task StartAsync(CancellationToken ct)
+    public async Task StartAsync(CancellationToken ct)
     {
-        if (!_env.IsDevelopment()) return Task.CompletedTask;
+        if (!_env.IsDevelopment()) return;
 
         var webUiDir = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "..", "web-ui"));
         if (!Directory.Exists(webUiDir))
         {
-            _logger.LogWarning("NgServe: web-ui directory not found at {Dir}", webUiDir);
-            return Task.CompletedTask;
+            _logger.LogWarning("NgServe: web-ui dir not found at {Dir}", webUiDir);
+            return;
         }
 
         var isWin = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-        var cmd = isWin ? "cmd.exe" : "npm";
-        var args = isWin ? "/c npm start" : "start";
-
         _process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = cmd,
-                Arguments = args,
+                FileName = isWin ? "cmd.exe" : "npm",
+                Arguments = isWin ? "/c npm start" : "start",
                 WorkingDirectory = webUiDir,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -52,21 +45,32 @@ public sealed class NgServeHost : IHostedService, IDisposable
         };
 
         _process.OutputDataReceived += (_, e) =>
-        {
-            if (!string.IsNullOrWhiteSpace(e.Data)) _logger.LogInformation("[ng] {Msg}", e.Data);
-        };
+        { if (!string.IsNullOrWhiteSpace(e.Data)) _logger.LogInformation("[ng] {Msg}", e.Data); };
         _process.ErrorDataReceived += (_, e) =>
-        {
-            if (!string.IsNullOrWhiteSpace(e.Data)) _logger.LogWarning("[ng:err] {Msg}", e.Data);
-        };
-        _process.Exited += (_, _) => _logger.LogWarning("NgServe exited (code {Code})", _process.ExitCode);
+        { if (!string.IsNullOrWhiteSpace(e.Data)) _logger.LogWarning("[ng:err] {Msg}", e.Data); };
 
         _process.Start();
         _process.BeginOutputReadLine();
         _process.BeginErrorReadLine();
 
-        _logger.LogInformation("NgServe started — Angular on http://localhost:4200");
-        return Task.CompletedTask;
+        _logger.LogInformation("NgServe started — waiting for Angular to be ready...");
+
+        for (var i = 0; i < 60; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var resp = await _http.GetAsync("http://localhost:4200", ct);
+                if (resp.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("Angular ready on http://localhost:4200");
+                    return;
+                }
+            }
+            catch { /* not ready yet */ }
+            await Task.Delay(1000, ct);
+        }
+        _logger.LogWarning("Angular did not become ready within 60s");
     }
 
     public Task StopAsync(CancellationToken ct)

@@ -14,24 +14,37 @@ public static class ServiceRegistration
 {
     public static IServiceCollection AddShamshir(this IServiceCollection services, IConfiguration config)
     {
+        services.AddApi();
+        services.AddPersistence(config);
+        services.AddAppServices();
+        services.AddEngineServices();
+
+        if (config.GetValue<bool>("Dev:NgServe", false))
+            services.AddHostedService<NgServeHost>();
+
+        return services;
+    }
+
+    private static IServiceCollection AddApi(this IServiceCollection services)
+    {
         services.AddControllers();
         services.AddSignalR()
             .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy =
                 System.Text.Json.JsonNamingPolicy.CamelCase);
         services.AddSingleton<RunProgressBroadcaster>();
         services.AddOpenApi();
-
         services.AddCors(o => o.AddDefaultPolicy(p =>
-        {
-            p.WithOrigins("http://localhost:4200")
-             .AllowAnyHeader().AllowAnyMethod().AllowCredentials();
-        }));
+            p.WithOrigins("http://localhost:4200").AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+        return services;
+    }
 
+    private static IServiceCollection AddPersistence(this IServiceCollection services, IConfiguration config)
+    {
         var dbPath = config.GetValue<string>("Persistence:DbPath")
             ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-
         var cs = $"Data Source={dbPath}";
+
         services.AddDbContext<TradingDbContext>(o => o.UseSqlite(cs));
         services.AddDbContext<ReportingDbContext>(o => o.UseSqlite(cs));
 
@@ -43,7 +56,11 @@ public static class ServiceRegistration
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
         services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
+        return services;
+    }
 
+    private static IServiceCollection AddAppServices(this IServiceCollection services)
+    {
         services.AddScoped<IRunQueryService, RunQueryService>();
         services.AddScoped<IProtectionQueryService, ProtectionQueryService>();
         services.AddScoped<IBarQueryService, BarQueryService>();
@@ -57,7 +74,11 @@ public static class ServiceRegistration
         services.AddSingleton<BacktestOrchestrator>();
         services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
         services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
+        return services;
+    }
 
+    private static IServiceCollection AddEngineServices(this IServiceCollection services)
+    {
         services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
         services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
         services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
@@ -77,10 +98,6 @@ public static class ServiceRegistration
         services.AddSingleton(new GovernorOptions());
         services.AddSingleton(new RegimeOptions());
         services.AddSingleton<ProtectionLedgerWriter>();
-
-        if (config.GetValue<bool>("Dev:NgServe", false))
-            services.AddHostedService<NgServeHost>();
-
         return services;
     }
 }
