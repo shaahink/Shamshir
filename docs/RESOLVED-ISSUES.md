@@ -109,3 +109,57 @@ trail — items are never deleted, only added.
 - **H14** — `BacktestReplayAdapter` close exec now reports `trade.Lots` instead of `0` (stays a full close in the lifecycle FSM; ledger/reconciliation see real volume)
 - **C8 (residual)** — `SessionBreakoutStrategy` session range now filters to **today's** date AND the time-of-day window (was time-of-day across the whole buffer → cross-day contamination)
 - **A3 lossless journal** — added `JournalLosslessTests`: no-drop-under-burst (500 records into capacity-8 Wait channel all persist) + retry-failed-batch-no-loss (sink throws once → batch retried, `DroppedBatches==0`). Closes the untested A3 guarantee.
+
+### Iter-35 finish — Part A+B completion + Phases 1-4 (verified green, 11/11 smoke)
+
+#### Part A remaining (kernel cutover)
+- **AF1** — Determinism: `PositionLifecycle.CreateIntended` no longer calls `Guid.NewGuid()` (uses orderId as positionId); body-scan purity test in `EnginePurityTests`; `DeterminismTests` rewritten with position lifecycle.
+- **AF3** — Bar exits: `EngineReducer.DetectSlTpExit` exposed as public static; `SimulateBarExitsAsync` delegates to kernel authority.
+- **AF4** — Equity/breach: `Kernel.EvaluateDrawdownBreach` static helper replaces `AccountProcessor` watchdog (toggle-gated, includes weekly/monthly).
+- **AF5** — Resets: `ProtectionState.ClearsOn` matrix complete (Never/AccountReset/unknown policies); C4 MaxDD protection exit fixed in production.
+- **AF6** — Governor: `GovernorMachine` implements `ITradingGovernor`; `TradingGovernorService.cs` deleted; DI swapped.
+- **AF7** — Sizing: `PositionSizer.cs` + `DrawdownScaler.cs` deleted; all callers repointed to `KernelSizing`.
+- **AF8** — Journal: H20 flush-loss fix (buffer clear after save); MIN-02 `SingleReader=true` on `BarEvaluationHandler`.
+- **AF9** — Replay: `ReplayEffectExecutor` no longer fills at price 0 (uses fallback price 1.0m).
+- **AF10** — Hash stability: `DatasetConfigHashTests` (6 tests — ConfigSet determinism, DatasetRef round-trip).
+- **AF12** — Architecture: `EnginePurityTests` updated for `ITradingGovernor` DateTime allowance.
+
+#### Part B (venue + cTrader)
+- **C1** — cBot `ExecuteSubmitOrder` reads `orderType`/`limitPrice`; "Limit" orders route through `PlaceLimitOrder`.
+- **C2** — cBot `cancel_order` handler added (`ExecuteCancelOrder` → `ClosePosition`).
+- **M1** — Partial close reads commission/swap AFTER `ClosePosition()` (TradeResult).
+- **H15** — `BacktestReplayAdapter` fill timestamp now uses bar close time (`OpenTimeUtc + BarDuration`).
+- **H16** — `BacktestReplayAdapter.ComputeFloatingPnL` uses directional bid/ask instead of mid.
+- **H11** — `CTraderBrokerAdapter` synthetic close uses `_lastMid` instead of `Price(0m)`.
+- **M19** — `BuildLoadedConfigFromDbAsync` bare `catch{}` → logged warning with fallback.
+
+#### Phase 1 — Web run lifecycle
+- **C12** — `RunsController.Cancel` cancels only target run via per-run CTS; `StopAllAsync` deprecated.
+- **C11** — `RunEngineReplayAsync` uses linked user token + 30-min timeout (no isolated CTS).
+- **C13** — `BacktestAnalyticsController` route renamed to `api/backtest/analytics`.
+- **H22** — `ResolveEffectiveConfigJsonAsync`/`WriteStartRecordAsync` moved inside try/finally.
+- **H24** — `StrategyOverrides` on `StartRunRequest` → `CustomParams` → `EffectiveConfigResolver`.
+- **H25** — `BarCount` field + `Interlocked.Increment` (was race-prone property).
+- **H27** — `_runs` + `_lastSentTicks` purged on run completion (was memory leak).
+- **H26** — Journal `DecisionRecordView` uses sim-time parsed from `state.SimTime`.
+- **H10** — Last-bar `AccountStream` drain runs even on cancellation.
+- **H23** — Legacy `StartRequest` gains `RiskProfileId` + `Venue` fields.
+
+#### Phase 2 — Data-loss stop
+- **C9** — `PipelineEventWriter` logs dropped writes (warning every 1000 drops).
+- **C10** — `EquityPersistenceHandler` flush loop groups by RunId (was first-item-only).
+- **H18** — `BarEvaluationHandler` logs dropped writes.
+- **H19** — `BufferedBarWriter` logs dropped writes.
+- **H21** — SQLite WAL mode + busy_timeout set via PRAGMA on startup.
+- **M16** — `EquityPersistenceHandler.DisposeAsync` completes channel before canceling.
+
+#### Phase 3+4 — Trade chart + reporting
+- **NEW-6** — `Timeframe` field added to `TradeResult` domain model + `TradeSummaryResponse` DTO.
+- **M11** — `JournalNormalizer`: `OrderCancelled` maps to `CANCELLED` when reason contains "cancelled".
+- **M12** — `JournalNormalizer.CloseReasons`: added `TRAIL`, `BREAKEVEN`, `PARTIAL`.
+- **H28** — `ScatterChartComponent` plots both MAE and MFE (two series, not just MFE).
+- **H29** — `run-report.component.ts`: cost reconciliation uses `Gross - Comm - Swap - Net` (no per-term `abs`).
+- **H30** — Journal filter: dropped invalid `BAR`, added `GOVERNOR`, `ENTRY_EXPIRED`, `CANCELLED`.
+- **M20** — `ExportController` queries real trades from `IRunQueryService` (was header-only stub).
+- **M21** — `RunSummary` Angular interface gains `grossPnL`, `commissionTotal`, `swapTotal`.
+- **H20** — `PipelineEventWriter` + `BarEvaluationHandler` buffer.Clear() moved after successful save.
