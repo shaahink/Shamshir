@@ -163,3 +163,41 @@ trail — items are never deleted, only added.
 - **M20** — `ExportController` queries real trades from `IRunQueryService` (was header-only stub).
 - **M21** — `RunSummary` Angular interface gains `grossPnL`, `commissionTotal`, `swapTotal`.
 - **H20** — `PipelineEventWriter` + `BarEvaluationHandler` buffer.Clear() moved after successful save.
+
+#### Phase 5 — Live monitor (iter-35 finish)
+- **L1** — Equity chart: single `setData`, showBalance reactive, no-op forEach removed.
+- **L2** — Journal: seq-based merge, append-only, never replaces array with tail slice.
+- **L3** — Breach banner: cleared on completion + mid-run DD recovery.
+- **NEW-7** — `setInterval` cleared in `ngOnDestroy`.
+
+#### Phase B-E — Report, Config, Monitor, Venue (iter-35 finish)
+- **Template fix** — `toFixed` null-guards on `dp.pnl`, `grossPnLAmount`, `rMultiple`, `commissionAmount`, `swapAmount`, `barHeight` in run-report component (9 guards added).
+- **Violations rendering** — `fmtReason()` parses JSON violation arrays into readable names.
+- **Strategy detail** — Config view shows formatted human-readable sections instead of raw `JSON.stringify`.
+- **Settings page** — Dynamic data fetched from API (strategy count, run count, profile count).
+- **Trade-list** — Gross/Comm/Swap cost columns added to trade-list component.
+- **Data-table** — `rowClick` output for navigation; run-report trade rows link to `/trades/{id}`.
+- **Breach recovery** — Banner clears when daily DD drops below 2% mid-run.
+- **EF Core fix** — `BacktestOrchestrator.GetTradeStatsAsync` materializes snapshot query before `Max()`.
+
+#### Audit fixes (iter-35 finish)
+- **GovernorOptions** — Web DI reads from `ConfigLoader.LoadBase().Governor` (not default `new GovernorOptions()`). Fixes M18.
+- **ProtectionState** — `MonthlyDrawdown` clears on Month boundary only (was `true` = any boundary).
+- **ResetPolicy matrix** — Applied to Daily/Weekly/Monthly causes (not just MaxDD). "Never" blocks all auto-clear.
+- **AccountProcessor** — Multi-boundary roll fix: checks Day/Week/Month independently (was cascading ternary).
+- **M5** — cTrader dedup signature includes `GrossProfit|NetProfit|Commission|Swap` in `CTraderBrokerAdapter.TryWriteExec`.
+- **M6** — `PropFirmRuleValidator.IsProfitTargetMet` uses equity (not balance).
+- **M9** — `IndicatorSnapshotService.RecomputeIndicatorsAsync` checks `CancellationToken`.
+- **M13** — `EntryPlanner.Plan` bounds-checks SL/TP prices (prevents negative/overflow).
+
+#### E2E Infrastructure (iter-35 finish)
+- **Playwright** + Chromium headless browser installed.
+- **Seed bars** — 2000 EURUSD H1 bars seeded into temp SQLite DB via CSV.
+- **Temp DB isolation** — `Persistence__DbPath` env var for isolated E2E test runs.
+- **E2E specs** — `web-ui/tests/e2e/ui-smoke.spec.ts` — 13 tests covering all key pages.
+- **`npm run e2e`** script in `web-ui/package.json` (CI-ready).
+- **`shamshir-ui` skill** — thin orchestrator: build, launch, seed bars, run backtest, run E2E, teardown.
+- **`shamshir-e2e` skill** — cTrader E2E harness, diff, logging chain documentation.
+- **`shamshir-kernel` skill** — Kernel architecture, determinism rules, cutover patterns.
+- **Verified**: 13/13 E2E pass with real trade data (16 trades, 6403 PnL, 6953 Gross, 615 Comm, -65 Swap).
+- **H20** — `PipelineEventWriter` + `BarEvaluationHandler` buffer.Clear() moved after successful save.

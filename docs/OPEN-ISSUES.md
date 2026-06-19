@@ -1,18 +1,14 @@
 # Shamshir — Open Issues
 
-**Updated**: 2026-06-19 (iter-35 finish — Parts A+B complete, Phases 1-4 of C/D delivered)
+**Updated**: 2026-06-19 (iter-35 finish — Parts A+B+C+D+E complete, final E2E 13/13)
 **Branch**: `iter/35-kernel-finish-ab`
-**Total open**: ~45 remaining (35+ resolved across iter-35 + finish session)
+**Total open**: ~20 remaining (55+ resolved across iter-35 + finish session)
 
-> **iter-35 finish.** The kernel is the **single production authority** for: order gate, SL/TP detection,
+> **iter-35 complete.** The kernel is the **single production authority** for: order gate, SL/TP detection,
 > breach watchdog, drawdown evaluation, protection exit, position sizing, and governor logic.
-> `SimulateBarExitsAsync` delegates to `EngineReducer.DetectSlTpExit`. `AccountProcessor` watchdog
-> delegates to `Kernel.EvaluateDrawdownBreach` (toggle-gated, weekly/monthly included). `GovernorMachine`
-> implements `ITradingGovernor`. `PositionSizer`/`DrawdownScaler`/`TradingGovernorService` deleted.
-> Determinism: `PositionLifecycle` no longer mints `Guid.NewGuid()`.
-> Web lifecycle: per-run cancel, linked CT, route collision resolved, strategy overrides, memory
-> leak purged. Journal: sim-time stamps, correct cost reconciliation, proper filters, drop logging.
-> All verified: build 0 errors, 209 unit + 18 golden + 4 arch + 11/11 smoke.
+> E2E infrastructure: Playwright headless Chromium, temp DB + seed bars (2000 EURUSD H1), replay
+> backtest produces 16 real trades, 13/13 browser checks pass with verified data.
+> All suites: build 0 errors, 209 unit + 18 golden + 4 arch + 13/13 E2E.
 
 Fixed items → `docs/RESOLVED-ISSUES.md`. Roadmap → `docs/NEXT-STEPS.md`.
 Full audit narrative + system model → `docs/reference/SYSTEM-AUDIT.md`.
@@ -273,16 +269,13 @@ Duplicate `TradeClosed` events insert two rows with different IDs but same Posit
 ## Low (4) — Cosmetic / latent
 
 ### L1 — Angular equity chart double `setData` + no-op `forEach`
-**File**: `web-ui/src/app/shared/equity-chart.component.ts:82-88`
-No-op `forEach` mutates objects pointlessly. `setData()` called twice. `showBalance` input change doesn't trigger re-render.
+**File**: `web-ui/src/app/shared/equity-chart.component.ts:82-88` — ✅ **FIXED iter-35 finish** — no-op forEach removed, setData consolidated to one call, showBalance input triggers re-render via effect params.
 
 ### L2 — Angular journal replaces instead of appends in live monitor
-**File**: `web-ui/src/app/features/runs/run-monitor/run-monitor.component.ts:122`
-`journalEntries.set(mapped.slice(-200))` replaces entire array. If a progress message has fewer entries than before, entries disappear.
+**File**: `web-ui/src/app/features/runs/run-monitor/run-monitor.component.ts:122` — ✅ **FIXED iter-35 finish** — seq-based merge, deduplication, append-only with 500-item cap.
 
 ### L3 — Angular breach banner never clears after recovery
-**File**: `web-ui/src/app/features/runs/run-monitor/run-monitor.component.ts:112`
-Once `breachBanner` set, never cleared back to `null`.
+**File**: `web-ui/src/app/features/runs/run-monitor/run-monitor.component.ts:112` — ✅ **FIXED iter-35 finish** — cleared on run completion (no error) AND on DD recovery below 2% during live run.
 
 ### L4 — cBot 5-second blocking sleep during hello retry loop
 **File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:125-133`
