@@ -1,7 +1,10 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'runs', pathMatch: 'full' },
+  {
+    path: '',
+    loadComponent: () => import('./features/dashboard/dashboard.component').then((m) => m.DashboardComponent),
+  },
   {
     path: 'runs',
     loadChildren: () => import('./features/runs/runs.routes').then((m) => m.RUNS_ROUTES),
@@ -22,5 +25,9 @@ export const routes: Routes = [
     path: 'events',
     loadComponent: () => import('./features/events/events.component').then((m) => m.EventsComponent),
   },
-  { path: '**', redirectTo: 'runs' },
+  {
+    path: 'settings',
+    loadComponent: () => import('./features/settings/settings.component').then((m) => m.SettingsComponent),
+  },
+  { path: '**', redirectTo: '' },
 ];

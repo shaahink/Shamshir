@@ -4,11 +4,24 @@ import * as signalR from '@microsoft/signalr';
 
 export interface RunProgressEnvelope {
   runId: string;
-  eventType: string;
-  message: string;
+  status: string;
   simTimeUtc: string;
-  barCount?: number;
-  totalBars?: number;
+  barsProcessed: number;
+  barsTotal: number;
+  percent: number;
+  etaSeconds: number;
+  wallElapsedMs: number;
+  barsPerSec: number;
+  equity: number;
+  balance: number;
+  openPositions: number;
+  dailyDdPct: number;
+  maxDdPct: number;
+  distanceToDailyLimit: number;
+  governorState: string;
+  governorReason: string;
+  counters: { signals: number; orders: number; fills: number; closes: number; rejections: number; breaches: number };
+  recentJournal: JournalEnvelope[];
 }
 
 export interface JournalEnvelope {

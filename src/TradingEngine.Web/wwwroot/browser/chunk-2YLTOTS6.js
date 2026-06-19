@@ -1,1 +1,0 @@
-import"./chunk-UVEM5LZV.js";var t=[{path:"",loadComponent:()=>import("./chunk-SZNVCJXT.js").then(o=>o.TradeListComponent)},{path:":id",loadComponent:()=>import("./chunk-5CFFDLYO.js").then(o=>o.TradeDetailComponent)}];export{t as TRADES_ROUTES};

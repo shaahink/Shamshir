@@ -2,102 +2,70 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
-import { NgClass } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { RunsStore } from '../runs.store';
 import type { StrategySummary, StartRunRequest } from '../../../models/api.types';
 
+const ALL_SYMBOLS = ['EURUSD', 'GBPUSD', 'USDJPY', 'GBPJPY', 'XAUUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'XAGUSD'];
+const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
+
 @Component({
   selector: 'app-new-backtest',
   standalone: true,
-  imports: [FormsModule, NgClass],
+  imports: [FormsModule],
   template: `
     <div class="mx-auto max-w-3xl space-y-6">
       <h1 class="text-xl font-semibold">New Backtest</h1>
 
       <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-6 space-y-5">
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Symbols (comma)</label>
-            <input [(ngModel)]="symbols"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-emerald-500 focus:outline-none"
-              placeholder="EURUSD,GBPUSD" />
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-2">Symbols</label>
+          <div class="flex flex-wrap gap-2">
+            @for (s of allSymbols; track s) {
+              <label [attr.class]="symClass(s)" (click)="toggleSymbol(s)"><input type="checkbox" [checked]="selectedSymbols().has(s)" class="hidden" />{{ s }}</label>
+            }
           </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Timeframes (comma)</label>
-            <input [(ngModel)]="periods"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-emerald-500 focus:outline-none"
-              placeholder="h1,h4" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-2">Timeframes</label>
+          <div class="flex flex-wrap gap-2">
+            @for (tf of allTimeframes; track tf) {
+              <label [attr.class]="tfClass(tf)" (click)="togglePeriod(tf)"><input type="checkbox" [checked]="selectedPeriods().has(tf)" class="hidden" />{{ tf }}</label>
+            }
           </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Start Date</label>
-            <input type="date" [(ngModel)]="startDate"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-2">Date Range</label>
+          <div class="flex gap-2 mb-2">
+            <button (click)="setDateRange(1)" class="rounded-md border border-gray-700 px-3 py-1 text-xs text-gray-300 hover:bg-gray-800">Last Month</button>
+            <button (click)="setDateRange(3)" class="rounded-md border border-gray-700 px-3 py-1 text-xs text-gray-300 hover:bg-gray-800">Last Quarter</button>
+            <button (click)="setDateRange(12)" class="rounded-md border border-gray-700 px-3 py-1 text-xs text-gray-300 hover:bg-gray-800">Last Year</button>
           </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">End Date</label>
-            <input type="date" [(ngModel)]="endDate"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Initial Balance</label>
-            <input type="number" [(ngModel)]="balance"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Commission (per M)</label>
-            <input type="number" [(ngModel)]="commission"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Spread (pips)</label>
-            <input type="number" [(ngModel)]="spread" step="0.1"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Risk Profile</label>
-            <select [(ngModel)]="riskProfile"
-              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
-              <option value="standard">Standard</option>
-              <option value="conservative">Conservative</option>
-              <option value="aggressive">Aggressive</option>
-            </select>
-          </div>
+          <div class="grid grid-cols-2 gap-3"><input type="date" [(ngModel)]="startDate" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /><input type="date" [(ngModel)]="endDate" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-xs font-medium text-gray-400 mb-1">Initial Balance</label><input type="number" [(ngModel)]="balance" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
+          <div><label class="block text-xs font-medium text-gray-400 mb-1">Commission (per M)</label><input type="number" [(ngModel)]="commission" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
+          <div><label class="block text-xs font-medium text-gray-400 mb-1">Spread (pips)</label><input type="number" [(ngModel)]="spread" step="0.1" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
+          <div><label class="block text-xs font-medium text-gray-400 mb-1">Risk Profile</label><select [(ngModel)]="riskProfile" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none"><option value="standard">Standard</option><option value="conservative">Conservative</option><option value="aggressive">Aggressive</option></select></div>
         </div>
 
         <div>
           <label class="block text-xs font-medium text-gray-400 mb-2">Strategies</label>
           <div class="grid gap-2 md:grid-cols-2">
             @for (s of strategies(); track s.id) {
-              <label class="flex items-center gap-2 rounded-md border border-gray-700 p-3 cursor-pointer hover:border-gray-600 transition"
-                [ngClass]="{ 'border-emerald-600 bg-emerald-900/10': selectedStrategies().has(s.id) }">
-                <input type="checkbox" [checked]="selectedStrategies().has(s.id)"
-                  (change)="toggleStrategy(s.id)"
-                  class="h-4 w-4 rounded border-gray-600 bg-gray-800 text-emerald-500 focus:ring-emerald-500" />
-                <div>
-                  <div class="text-sm font-medium text-gray-200">{{ s.displayName }}</div>
-                  <div class="text-xs text-gray-500">{{ s.id }}
-                    @if (s.stats?.totalTrades) {
-                      · {{ s.stats.totalTrades }} trades · {{ (s.stats.winRate * 100).toFixed(0) }}% WR
-                    }
-                  </div>
-                </div>
-              </label>
+              <label [attr.class]="stratClass(s.id)" (click)="toggleStrat(s.id)"><input type="checkbox" [checked]="selectedStrategyIds().has(s.id)" class="h-4 w-4 rounded border-gray-600 bg-gray-800 text-emerald-500 focus:ring-emerald-500" /><div><div class="text-sm font-medium text-gray-200">{{ s.displayName }}</div><div class="text-xs text-gray-500">{{ s.id }} @if (s.stats?.totalTrades) { · {{ s.stats.totalTrades }} trades }</div></div></label>
             }
           </div>
-          @if (strategies().length === 0) {
-            <p class="text-xs text-gray-500">Loading strategies...</p>
-          }
+          @if (strategies().length === 0) { <p class="text-xs text-gray-500">Loading strategies...</p> }
         </div>
 
-        @if (error()) {
-          <div class="rounded-md bg-red-900/20 p-3 text-sm text-red-400">{{ error() }}</div>
-        }
+        @if (error()) { <div class="rounded-md bg-red-900/20 p-3 text-sm text-red-400">{{ error() }}</div> }
 
-        <button (click)="start()" [disabled]="loading()"
-          class="w-full rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
-          {{ loading() ? 'Starting...' : 'Start Backtest' }}
-        </button>
+        <button (click)="start()" [disabled]="loading()" class="w-full rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">{{ loading() ? 'Starting...' : 'Start Backtest' }}</button>
       </div>
     </div>
   `,
@@ -107,55 +75,52 @@ export class NewBacktestComponent implements OnInit {
   private router = inject(Router);
   private http = inject(HttpClient);
 
-  symbols = 'EURUSD';
-  periods = 'h1';
-  startDate = '2024-01-01';
-  endDate = '2024-01-31';
-  balance = 100_000;
-  commission = 30;
-  spread = 1;
-  riskProfile = 'standard';
-
+  allSymbols = ALL_SYMBOLS; allTimeframes = ALL_TIMEFRAMES;
+  selectedSymbols = signal(new Set<string>(['EURUSD']));
+  selectedPeriods = signal(new Set<string>(['h1']));
+  startDate = ''; endDate = '';
+  balance = 100_000; commission = 30; spread = 1; riskProfile = 'standard';
   strategies = signal<StrategySummary[]>([]);
-  selectedStrategies = signal<Set<string>>(new Set());
+  selectedStrategyIds = signal<Set<string>>(new Set());
+  loading = this.store.isLoading; error = this.store.error;
 
-  loading = this.store.isLoading;
-  error = this.store.error;
+  constructor() {
+    const now = new Date();
+    this.endDate = now.toISOString().slice(0, 10);
+    const d = new Date(now); d.setMonth(d.getMonth() - 1);
+    this.startDate = d.toISOString().slice(0, 10);
+  }
 
   async ngOnInit(): Promise<void> {
     try {
       const data = await firstValueFrom(this.http.get<StrategySummary[]>('/api/strategies'));
       this.strategies.set(data);
-      if (data.length > 0) {
-        const s = new Set<string>();
-        data.filter(x => x.isEnabled).forEach(x => s.add(x.id));
-        if (s.size === 0) s.add(data[0].id);
-        this.selectedStrategies.set(s);
-      }
-    } catch { /* strategies endpoint may not be available */ }
+      const s = new Set<string>();
+      data.filter(x => x.isEnabled).forEach(x => s.add(x.id));
+      if (s.size === 0 && data.length > 0) s.add(data[0].id);
+      this.selectedStrategyIds.set(s);
+    } catch { /* */ }
   }
 
-  toggleStrategy(id: string): void {
-    const s = new Set(this.selectedStrategies());
-    if (s.has(id)) s.delete(id); else s.add(id);
-    this.selectedStrategies.set(s);
+  toggleSymbol(sym: string) { const s = new Set(this.selectedSymbols()); if (s.has(sym)) s.delete(sym); else s.add(sym); this.selectedSymbols.set(s); }
+  togglePeriod(tf: string) { const s = new Set(this.selectedPeriods()); if (s.has(tf)) s.delete(tf); else s.add(tf); this.selectedPeriods.set(s); }
+  toggleStrat(id: string) { const s = new Set(this.selectedStrategyIds()); if (s.has(id)) s.delete(id); else s.add(id); this.selectedStrategyIds.set(s); }
+  symClass(sym: string): string { const sel = this.selectedSymbols().has(sym); return `cursor-pointer rounded-md border px-2.5 py-1 text-xs transition ${sel ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-400'}`; }
+  tfClass(tf: string): string { const sel = this.selectedPeriods().has(tf); return `cursor-pointer rounded-md border px-2.5 py-1 text-xs uppercase transition ${sel ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-400'}`; }
+  stratClass(id: string): string { const sel = this.selectedStrategyIds().has(id); return `flex items-center gap-2 rounded-md border border-gray-700 p-3 cursor-pointer hover:border-gray-600 transition ${sel ? 'border-emerald-600 bg-emerald-900/10' : ''}`; }
+
+  setDateRange(months: number): void {
+    const now = new Date(); this.endDate = now.toISOString().slice(0, 10);
+    const d = new Date(now); d.setMonth(d.getMonth() - months);
+    this.startDate = d.toISOString().slice(0, 10);
   }
 
   async start(): Promise<void> {
-    const symList = this.symbols.split(',').map(x => x.trim().toUpperCase()).filter(Boolean);
-    const perList = this.periods.split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+    const symList = [...this.selectedSymbols()]; const perList = [...this.selectedPeriods()];
     const req: StartRunRequest = {
-      symbol: symList[0] || 'EURUSD',
-      period: perList[0] || 'h1',
-      start: this.startDate,
-      end: this.endDate,
-      balance: this.balance,
-      commissionPerMillion: this.commission,
-      spreadPips: this.spread,
-      symbols: symList,
-      periods: perList,
-      strategyIds: [...this.selectedStrategies()],
-      riskProfileId: this.riskProfile,
+      symbol: symList[0] || 'EURUSD', period: perList[0] || 'h1', start: this.startDate, end: this.endDate,
+      balance: this.balance, commissionPerMillion: this.commission, spreadPips: this.spread,
+      symbols: symList, periods: perList, strategyIds: [...this.selectedStrategyIds()], riskProfileId: this.riskProfile,
     };
     const runId = await this.store.startBacktest(req);
     this.router.navigate(['/runs', runId, 'monitor']);

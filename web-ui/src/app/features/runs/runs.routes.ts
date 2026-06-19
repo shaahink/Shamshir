@@ -17,4 +17,8 @@ export const RUNS_ROUTES: Routes = [
     path: ':runId/monitor',
     loadComponent: () => import('./run-monitor/run-monitor.component').then((m) => m.RunMonitorComponent),
   },
+  {
+    path: ':runId/analyzer',
+    loadComponent: () => import('./run-analyzer/run-analyzer.component').then((m) => m.RunAnalyzerComponent),
+  },
 ];
