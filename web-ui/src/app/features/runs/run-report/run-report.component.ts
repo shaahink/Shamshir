@@ -37,9 +37,9 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
             <app-stat-tile label="Profit Factor" [value]="pfDisplay()" [positive]="profitFactor() > 1" />
             <app-stat-tile label="Win Rate" [value]="(d.winRatePct * 100).toFixed(1) + '%'" [positive]="d.winRatePct > 0.5" />
             <app-stat-tile label="Trades" [value]="d.totalTrades" />
-            <app-stat-tile label="Gross P/L" [value]="grossTotal().toFixed(2)" [positive]="grossTotal() > 0" [negative]="grossTotal() < 0" />
-            <app-stat-tile label="Commission" [value]="commTotal().toFixed(2)" [negative]="commTotal() < 0" />
-            <app-stat-tile label="Swap" [value]="swapTotal().toFixed(2)" [negative]="swapTotal() < 0" />
+            <app-stat-tile label="Gross P/L" [value]="grossDisplay()" [positive]="(d.grossPnL ?? 0) > 0" [negative]="(d.grossPnL ?? 0) < 0" />
+            <app-stat-tile label="Commission" [value]="commDisplay()" [negative]="(d.commissionTotal ?? 0) !== 0" />
+            <app-stat-tile label="Swap" [value]="swapDisplay()" [negative]="(d.swapTotal ?? 0) !== 0" />
             <app-stat-tile label="Avg R" [value]="avgR().toFixed(2)" [positive]="avgR() > 0" />
           </div>
 
@@ -56,7 +56,7 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
           </div>
 
           @if (equityPoints().length > 1) {
-            <app-equity-chart title="Equity & Drawdown" [data]="equityPoints()" [showDrawdown]="true" />
+            <app-equity-chart title="Equity & Drawdown" [data]="equityPoints()" [showDrawdown]="true" [showBalance]="true" />
           }
 
           @if (dailyPnl().length > 0) {
@@ -121,6 +121,9 @@ export class RunReportComponent implements OnInit {
   grossTotal = computed(() => this.trades().reduce((s, t) => s + t.grossPnLAmount, 0));
   commTotal = computed(() => this.trades().reduce((s, t) => s + t.commissionAmount, 0));
   swapTotal = computed(() => this.trades().reduce((s, t) => s + t.swapAmount, 0));
+  grossDisplay = computed(() => { const d = this.store.selectedRun(); return d ? ((d.grossPnL ?? this.trades().reduce((s, t) => s + t.grossPnLAmount, 0))).toFixed(2) : '0.00'; });
+  commDisplay = computed(() => { const d = this.store.selectedRun(); return d ? ((d.commissionTotal ?? this.trades().reduce((s, t) => s + t.commissionAmount, 0))).toFixed(2) : '0.00'; });
+  swapDisplay = computed(() => { const d = this.store.selectedRun(); return d ? ((d.swapTotal ?? this.trades().reduce((s, t) => s + t.swapAmount, 0))).toFixed(2) : '0.00'; });
   avgR = computed(() => { const t = this.trades(); return t.length ? t.reduce((s, x) => s + x.rMultiple, 0) / t.length : 0; });
   profitFactor = computed(() => {
     const t = this.trades(); const g = t.filter(x => x.grossPnLAmount > 0).reduce((s, x) => s + x.grossPnLAmount, 0);
@@ -154,6 +157,6 @@ export class RunReportComponent implements OnInit {
       this.api.getRunEquity(runId), this.api.getRunDailyPnl(runId),
     ]);
     this.trades.set(trades); this.journal.set(journal); this.dailyPnl.set(dailyPnl);
-    this.equityPoints.set(equity.map((p: EquityPoint) => ({ time: new Date(p.timestampUtc).getTime(), value: p.equity })));
+    this.equityPoints.set(equity.map((p: EquityPoint) => ({ time: new Date(p.timestampUtc).getTime(), value: p.equity, balance: p.balance })));
   }
 }

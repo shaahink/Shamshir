@@ -24,6 +24,9 @@ export interface RunDetail {
   backtestTo: string;
   initialBalance: number;
   netProfit: number;
+  grossPnL: number;
+  commissionTotal: number;
+  swapTotal: number;
   maxDrawdownPct: number;
   totalTrades: number;
   winningTrades: number;
@@ -181,12 +184,15 @@ export interface StrategyDetail {
   id: string;
   displayName: string;
   isEnabled: boolean;
+  enabled: boolean;
   timeframe: string;
   symbols: string[];
+  riskProfileId: string;
   parametersJson: string | null;
   positionManagementJson: string | null;
   orderEntryJson: string | null;
   regimeFilterJson: string | null;
+  reentryJson: string | null;
 }
 
 export interface BarData {

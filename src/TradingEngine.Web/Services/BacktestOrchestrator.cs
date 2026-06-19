@@ -29,7 +29,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private readonly EffectiveConfigResolver _configResolver;
     private readonly ConcurrentDictionary<string, BacktestRunState> _runs = new();
 
-    private sealed record TradeStats(decimal NetProfit, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
+    private sealed record TradeStats(decimal NetProfit, decimal GrossPnL, decimal CommissionTotal, decimal SwapTotal, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
 
     public sealed record BacktestRunState
     {
@@ -111,7 +111,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
         else if (barsTotal > 0 && state.BarCount > 0)
         {
-            percent = Math.Min(99.0, (double)state.BarCount / barsTotal * 100.0);
+            percent = state.BarCount >= barsTotal ? 99.9 : (double)state.BarCount / barsTotal * 100.0;
             etaSeconds = barsPerSec > 0 ? (barsTotal - state.BarCount) / barsPerSec : null;
         }
         else
@@ -320,7 +320,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             state.Error = result.ErrorMessage;
 
             EnqueueLog(runId, state.LogLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Done. Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1}");
+                $"[{DateTime.UtcNow:HH:mm:ss}] Done. Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1} Gross={tradeStats.GrossPnL:N2} Comm={tradeStats.CommissionTotal:N2} Swap={tradeStats.SwapTotal:N2}");
 
             await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson);
         }
@@ -331,9 +331,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Error: {ex.Message}");
             _logger.LogError(ex, "Backtest {RunId} failed", runId);
 
+            var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
+
             await WriteEndRecordAsync(runId, cfg, startedAt,
                 new BacktestResult { RunId = runId, ExitCode = 1, ErrorMessage = ex.Message },
-                new(0, 0, 0, 0, 0), effectiveConfigJson);
+                tradeStats, effectiveConfigJson);
         }
         finally
         {
@@ -358,7 +360,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 runId, startedAt, DateTime.MinValue,
                 cfg.Symbol, cfg.Period, cfg.Start, cfg.End,
                 cfg.Balance, "", "{}", effectiveConfigJson,
-                0, 0, 0, 0, 0, -1, null);
+                0, 0, 0, 0, 0, 0, 0, 0, -1, null);
             await repo.SaveAsync(summary, CancellationToken.None);
         }
         catch (Exception ex)
@@ -379,7 +381,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 runId, startedAt, DateTime.UtcNow,
                 cfg.Symbol, cfg.Period, cfg.Start, cfg.End,
                 cfg.Balance, result.AlgoHash, "{}", effectiveConfigJson,
-                stats.NetProfit, stats.MaxDrawdownPct,
+                stats.NetProfit, stats.GrossPnL, stats.CommissionTotal, stats.SwapTotal, stats.MaxDrawdownPct,
                 stats.TotalTrades, stats.WinningTrades, stats.WinRatePct,
                 result.ExitCode, result.ErrorMessage,
                 result.ReportJsonPath);
@@ -394,8 +396,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     // Builds the engine's LoadedConfig from the DATABASE (canonical config source) rather than letting
     // the inner host re-read config/strategies/*.json. Strategy parameters, symbols, timeframe, regime
     // filter, order-entry and position-management all come from the seeded DB store, so what the New-
-    // Backtest UI shows/edits is exactly what the engine evaluates. Risk profiles / prop-firm rules /
-    // sizing still come from JSON (LoadBase); the per-run risk-profile choice is applied on top.
+    // Backtest UI shows/edits is exactly what the engine evaluates. Risk profiles, prop-firm rules,
+    // governor and sizing are also loaded from DB stores (seeded from JSON at startup).
     private async Task<LoadedConfig> BuildLoadedConfigFromDbAsync(BacktestConfig cfg)
     {
         var solutionRoot = Path.GetFullPath(Path.Combine(
@@ -410,11 +412,35 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var profileIsKnown = !string.IsNullOrWhiteSpace(chosenProfile)
             && baseConfig.RiskProfiles.Any(r => r.Id == chosenProfile);
 
-        baseConfig.StrategyConfigs = dbConfigs
+        var strategyConfigs = dbConfigs
             .Select(c => profileIsKnown ? c with { RiskProfileId = chosenProfile! } : c)
             .ToList();
 
-        return baseConfig;
+        var rpStore = scope.ServiceProvider.GetRequiredService<IRiskProfileStore>();
+        var dbRiskProfiles = await rpStore.GetAllAsync(CancellationToken.None);
+        var riskProfiles = dbRiskProfiles.Count > 0 ? dbRiskProfiles : baseConfig.RiskProfiles;
+
+        var pfStore = scope.ServiceProvider.GetRequiredService<IPropFirmRuleSetStore>();
+        var dbPropFirms = await pfStore.GetAllAsync(CancellationToken.None);
+        var propFirms = dbPropFirms.Count > 0 ? dbPropFirms : baseConfig.PropFirms;
+
+        GovernorOptions governor;
+        try
+        {
+            var govStore = scope.ServiceProvider.GetRequiredService<IGovernorOptionsStore>();
+            governor = await govStore.GetAsync(CancellationToken.None);
+        }
+        catch { governor = baseConfig.Governor; }
+
+        return new LoadedConfig(propFirms, riskProfiles)
+        {
+            StrategyConfigs = strategyConfigs,
+            NewsWindows = baseConfig.NewsWindows,
+            StrategyRotation = baseConfig.StrategyRotation,
+            Governor = governor,
+            SizingPolicy = baseConfig.SizingPolicy,
+            Regime = baseConfig.Regime,
+        };
     }
 
     private async Task<BacktestResult> RunEngineReplayAsync(
@@ -488,6 +514,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     await adapter.BarStream.Completion;
 
         var barCount = (adapter as BacktestReplayAdapter)?.BarCount ?? 0;
+        state.BarsTotal = barCount;
         if (barCount == 0)
         {
             EnqueueLog(runId, logLines,
@@ -793,11 +820,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 .OrderBy(t => t.ClosedAtUtc)
                 .ToListAsync();
 
-            if (trades.Count == 0) return new(0, 0, 0, 0, 0);
+            if (trades.Count == 0) return new(0, 0, 0, 0, 0, 0, 0, 0);
 
-            var netPnL  = trades.Sum(t => t.NetPnLAmount);
-            var wins    = trades.Count(t => t.NetPnLAmount > 0);
-            var winRate = (double)wins / trades.Count;
+            var netPnL    = trades.Sum(t => t.NetPnLAmount);
+            var grossPnL  = trades.Sum(t => t.GrossPnLAmount);
+            var commissionTotal = trades.Sum(t => t.CommissionAmount);
+            var swapTotal = trades.Sum(t => t.SwapAmount);
+            var wins      = trades.Count(t => t.NetPnLAmount > 0);
+            var winRate   = (double)wins / trades.Count;
 
             // Max drawdown from the engine's per-bar equity snapshots (these include floating PnL, so
             // they capture intra-trade drawdown the trade-close balance series misses — the latter
@@ -822,12 +852,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 }
             }
 
-            return new(netPnL, snapshotDd > 0 ? snapshotDd : tradeDd, trades.Count, wins, winRate);
+            return new(netPnL, grossPnL, commissionTotal, swapTotal, snapshotDd > 0 ? snapshotDd : tradeDd, trades.Count, wins, winRate);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to query trade stats for {RunId}", runId);
-            return new(0, 0, 0, 0, 0);
+            return new(0, 0, 0, 0, 0, 0, 0, 0);
         }
     }
 

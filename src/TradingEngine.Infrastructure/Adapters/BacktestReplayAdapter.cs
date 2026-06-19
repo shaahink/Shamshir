@@ -308,35 +308,36 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
     public Task ClosePartialPositionAsync(Guid positionId, decimal lots, CancellationToken ct)
     {
         var fillPrice = new Price(_lastClose > 0 ? _lastClose : 1m);
-        _executionChannel.Writer.TryWrite(
-            new ExecutionEvent(positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc));
 
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
-            var symbolInfo = _symbolRegistry.Get(_symbol);
-            decimal pnl = 0;
-            try
+            var partialTrade = trade with { Lots = lots };
+            var costs = ComputeCosts(partialTrade, fillPrice.Value);
+            _balance += costs.NetProfit;
+
+            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc)
             {
-                var priceDiff = trade.Direction == TradeDirection.Long
-                    ? fillPrice.Value - trade.EntryPrice
-                    : trade.EntryPrice - fillPrice.Value;
-                var pipValue = PipCalculator.PipValuePerLot(symbolInfo, fillPrice.Value, _crossRateProvider);
-                pnl = (priceDiff / symbolInfo.PipSize) * pipValue * lots;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to compute partial PnL for {PositionId}", positionId);
-            }
-            _balance += pnl;
+                GrossProfit = costs.GrossProfit,
+                Commission = costs.Commission,
+                Swap = costs.Swap,
+                NetProfit = costs.NetProfit,
+            });
+
             var remaining = trade.Lots - lots;
-            if (remaining <= 0)
+            if (remaining <= 0m)
                 _openTrades.Remove(positionId);
             else
                 _openTrades[positionId] = trade with { Lots = remaining };
             // F1: realized partial PnL must reach the account stream too.
             EmitAccountUpdate(BrokerTimeUtc);
-            _logger.LogDebug("BacktestReplay: partial close {PositionId} lots={Lots} remaining={Remaining} PnL={PnL:F2}",
-                positionId, lots, remaining, pnl);
+            _logger.LogDebug("BacktestReplay: partial close {PositionId} lots={Lots} remaining={Remaining} gross={Gross:F2} net={Net:F2}",
+                positionId, lots, remaining, costs.GrossProfit, costs.NetProfit);
+        }
+        else
+        {
+            _executionChannel.Writer.TryWrite(
+                new ExecutionEvent(positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc));
         }
 
         return Task.CompletedTask;

@@ -12,6 +12,9 @@ public sealed record RunDetailResponse
     public DateTime BacktestTo { get; init; }
     public decimal InitialBalance { get; init; }
     public decimal NetProfit { get; init; }
+    public decimal GrossPnL { get; init; }
+    public decimal CommissionTotal { get; init; }
+    public decimal SwapTotal { get; init; }
     public decimal MaxDrawdownPct { get; init; }
     public int TotalTrades { get; init; }
     public int WinningTrades { get; init; }

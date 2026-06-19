@@ -20,6 +20,9 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             StrategyParamsJson = run.StrategyParamsJson,
             EffectiveConfigJson = run.EffectiveConfigJson,
             NetProfit = run.NetProfit,
+            GrossPnL = run.GrossPnL,
+            CommissionTotal = run.CommissionTotal,
+            SwapTotal = run.SwapTotal,
             MaxDrawdownPct = run.MaxDrawdownPct,
             TotalTrades = run.TotalTrades,
             WinningTrades = run.WinningTrades,
@@ -38,6 +41,9 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         if (entity is null) return;
         entity.CompletedAtUtc = run.CompletedAtUtc;
         entity.NetProfit = run.NetProfit;
+        entity.GrossPnL = run.GrossPnL;
+        entity.CommissionTotal = run.CommissionTotal;
+        entity.SwapTotal = run.SwapTotal;
         entity.MaxDrawdownPct = run.MaxDrawdownPct;
         entity.TotalTrades = run.TotalTrades;
         entity.WinningTrades = run.WinningTrades;
@@ -77,6 +83,9 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
     private async Task<BacktestRunSummary> ReconcileAsync(BacktestRunEntity e, CancellationToken ct)
     {
         var net = e.NetProfit;
+        var grossPnL = e.GrossPnL;
+        var commissionTotal = e.CommissionTotal;
+        var swapTotal = e.SwapTotal;
         var maxDd = e.MaxDrawdownPct;
         var total = e.TotalTrades;
         var wins = e.WinningTrades;
@@ -89,7 +98,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             var trades = await db.Trades
                 .Where(t => t.RunId == e.RunId)
                 .OrderBy(t => t.ClosedAtUtc)
-                .Select(t => new { t.NetPnLAmount, t.ClosedAtUtc })
+                .Select(t => new { t.NetPnLAmount, t.GrossPnLAmount, t.CommissionAmount, t.SwapAmount, t.ClosedAtUtc })
                 .ToListAsync(ct);
 
             if (trades.Count > 0)
@@ -98,6 +107,9 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
                 wins = trades.Count(t => t.NetPnLAmount > 0);
                 winRate = (double)wins / total;
                 net = trades.Sum(t => t.NetPnLAmount);
+                grossPnL = trades.Sum(t => t.GrossPnLAmount);
+                commissionTotal = trades.Sum(t => t.CommissionAmount);
+                swapTotal = trades.Sum(t => t.SwapAmount);
 
                 var equity = e.InitialBalance;
                 var peak = equity;
@@ -122,7 +134,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             e.RunId, e.StartedAtUtc, completedAt,
             e.Symbol, e.Period, e.BacktestFrom, e.BacktestTo,
             e.InitialBalance, e.AlgoHash, e.StrategyParamsJson, e.EffectiveConfigJson,
-            net, maxDd, total, wins, winRate,
+            net, grossPnL, commissionTotal, swapTotal, maxDd, total, wins, winRate,
             exitCode, e.ErrorMessage, e.ReportJsonPath);
     }
 }

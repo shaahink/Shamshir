@@ -56,6 +56,9 @@ public static class ServiceRegistration
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
         services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
+        services.AddScoped<IRiskProfileStore, SqliteRiskProfileStore>();
+        services.AddScoped<IPropFirmRuleSetStore, SqlitePropFirmRuleSetStore>();
+        services.AddScoped<IGovernorOptionsStore, SqliteGovernorOptionsStore>();
         return services;
     }
 

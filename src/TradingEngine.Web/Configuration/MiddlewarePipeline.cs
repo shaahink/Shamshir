@@ -1,5 +1,6 @@
 using Scalar.AspNetCore;
 using TradingEngine.Infrastructure.Persistence;
+using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Web.Hubs;
 
 namespace TradingEngine.Web.Configuration;
@@ -17,6 +18,21 @@ public static class MiddlewarePipeline
         var seeder = new StrategyConfigSeeder(
             scope.ServiceProvider.GetRequiredService<IServiceScopeFactory>(), solRoot, logger);
         await seeder.SeedAsync();
+
+        var rpLogger = scope.ServiceProvider.GetRequiredService<ILogger<RiskProfileSeeder>>();
+        var rpSeeder = new RiskProfileSeeder(
+            scope.ServiceProvider.GetRequiredService<IRiskProfileStore>(), rpLogger);
+        await rpSeeder.SeedAsync(solRoot, default);
+
+        var pfLogger = scope.ServiceProvider.GetRequiredService<ILogger<PropFirmRuleSetSeeder>>();
+        var pfSeeder = new PropFirmRuleSetSeeder(
+            scope.ServiceProvider.GetRequiredService<IPropFirmRuleSetStore>(), pfLogger);
+        await pfSeeder.SeedAsync(solRoot, default);
+
+        var govLogger = scope.ServiceProvider.GetRequiredService<ILogger<GovernorOptionsSeeder>>();
+        var govSeeder = new GovernorOptionsSeeder(
+            scope.ServiceProvider.GetRequiredService<IGovernorOptionsStore>(), govLogger);
+        await govSeeder.SeedAsync(solRoot, default);
 
         // Single-origin hosting: ASP.NET serves the built Angular SPA (web-ui → wwwroot) alongside the
         // JSON API, the SignalR hub and the Scalar docs. One `dotnet run` gives the whole app — no

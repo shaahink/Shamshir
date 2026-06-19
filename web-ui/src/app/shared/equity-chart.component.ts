@@ -2,7 +2,7 @@ import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, eff
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 
-export interface ChartPoint { time: number; value: number }
+export interface ChartPoint { time: number; value: number; balance?: number; }
 
 @Component({
   selector: 'app-equity-chart',
@@ -17,11 +17,13 @@ export class EquityChartComponent {
   readonly data = input<ChartPoint[]>([]);
   readonly lineColor = input('#10b981');
   readonly showDrawdown = input(true);
+  readonly showBalance = input(false);
 
   private el = inject(ElementRef);
   private platformId = inject(PLATFORM_ID);
   private chart: IChartApi | null = null;
   private equitySeries: any = null;
+  private balanceSeries: any = null;
   private ddSeries: any = null;
 
   constructor() {
@@ -51,6 +53,17 @@ export class EquityChartComponent {
   private updateData(points: ChartPoint[]): void {
     if (!this.equitySeries || points.length === 0) return;
     const equityData = points.map((d) => ({ time: (d.time / 1000) as UTCTimestamp, value: d.value }));
+
+    const hasBalance = this.showBalance() && points.some(p => p.balance != null);
+    if (hasBalance && !this.balanceSeries && this.chart) {
+      this.balanceSeries = this.chart.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 1, lineStyle: 1 });
+    }
+    if (hasBalance && this.balanceSeries) {
+      this.balanceSeries.setData(points.filter(p => p.balance != null).map(p => ({ time: (p.time / 1000) as UTCTimestamp, value: p.balance! })));
+    }
+    if (!hasBalance && this.balanceSeries) {
+      this.chart?.removeSeries(this.balanceSeries); this.balanceSeries = null;
+    }
 
     if (this.showDrawdown() && points.length > 1) {
       let peak = points[0].value;

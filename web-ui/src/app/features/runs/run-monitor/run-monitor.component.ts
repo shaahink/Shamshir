@@ -51,7 +51,7 @@ import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-ch
       </div>
 
       @if (equityData().length > 2) {
-        <app-equity-chart title="Live Equity" [data]="equityData()" [showDrawdown]="false" />
+        <app-equity-chart title="Live Equity" [data]="equityData()" [showDrawdown]="false" [showBalance]="true" />
       }
 
       <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
@@ -100,7 +100,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       this.barsPerSec.set(e.barsPerSec ?? 0);
       if (e.etaSeconds > 0) { const m = Math.floor(e.etaSeconds / 60); this.eta.set(m > 60 ? `${Math.floor(m/60)}h ${m%60}m` : `${m}m`); }
       if (e.simTimeUtc) this.simTime.set(e.simTimeUtc);
-      if (e.equity != null) { this.equity.set(e.equity); this.equityData.update(d => [...d.slice(-499), { time: Date.now(), value: e.equity }]); }
+      if (e.equity != null) { this.equity.set(e.equity); this.equityData.update(d => [...d.slice(-499), { time: Date.now(), value: e.equity, balance: e.balance ?? 0 }]); }
       if (e.balance != null) this.balance.set(e.balance);
       if (e.openPositions != null) this.openPositions.set(e.openPositions);
       if (e.dailyDdPct != null) this.dailyDdPct.set(e.dailyDdPct);

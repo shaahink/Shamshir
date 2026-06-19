@@ -9,6 +9,9 @@ public sealed record RunListResponse
     public DateTime StartedAtUtc { get; init; }
     public DateTime? CompletedAtUtc { get; init; }
     public decimal NetProfit { get; init; }
+    public decimal GrossPnL { get; init; }
+    public decimal CommissionTotal { get; init; }
+    public decimal SwapTotal { get; init; }
     public decimal MaxDrawdownPct { get; init; }
     public int TotalTrades { get; init; }
     public int WinningTrades { get; init; }

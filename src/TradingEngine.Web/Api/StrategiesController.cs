@@ -137,6 +137,23 @@ public class StrategiesController : ControllerBase
         return Ok(new { id, saved = true });
     }
 
+    [HttpPost("{id}/duplicate")]
+    public async Task<IActionResult> Duplicate(string id, CancellationToken ct)
+    {
+        var source = (await _store.GetAllAsync(ct)).FirstOrDefault(s => s.Id == id);
+        if (source is null) return NotFound(new { error = $"Strategy {id} not found" });
+
+        var copy = source with
+        {
+            Id = $"{id}-copy",
+            DisplayName = $"{source.DisplayName} (Copy)",
+            Enabled = false,
+        };
+        await _store.UpsertAsync(copy, ct);
+        _logger.LogInformation("Strategy {SourceId} duplicated to {NewId}", id, copy.Id);
+        return Ok(new { id = copy.Id, saved = true });
+    }
+
     private async Task SetEnabledAsync(string id, bool enabled, CancellationToken ct)
     {
         var existing = (await _store.GetAllAsync(ct)).FirstOrDefault(s => s.Id == id);

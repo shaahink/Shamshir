@@ -1,1 +1,0 @@
-import"./chunk-AP4OEWII.js";var o=[{path:"",loadComponent:()=>import("./chunk-X3TBEZBZ.js").then(t=>t.StrategyListComponent)},{path:":id",loadComponent:()=>import("./chunk-N3BYV52D.js").then(t=>t.StrategyDetailComponent)}];export{o as STRATEGIES_ROUTES};

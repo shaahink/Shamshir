@@ -14,6 +14,9 @@ public sealed class BacktestRunEntity
     public string StrategyParamsJson { get; set; } = "{}";
     public string? EffectiveConfigJson { get; set; }
     public decimal NetProfit { get; set; }
+    public decimal GrossPnL { get; set; }
+    public decimal CommissionTotal { get; set; }
+    public decimal SwapTotal { get; set; }
     public decimal MaxDrawdownPct { get; set; }
     public int TotalTrades { get; set; }
     public int WinningTrades { get; set; }

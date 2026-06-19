@@ -115,7 +115,7 @@ public sealed class EffectExecutor : IEffectExecutor
         var gross = effect.GrossProfit is { } g ? new Money(g, currency) : recomputedGross;
         var commission = new Money(effect.Commission ?? 0m, currency);
         var swap = new Money(effect.Swap ?? 0m, currency);
-        var net = effect.NetProfit is { } n ? new Money(n, currency) : gross;
+        var net = effect.NetProfit is { } n ? new Money(n, currency) : gross.Subtract(commission).Subtract(swap);
 
         // Trade analytics, previously hardcoded to zero. Derived from the close geometry so they are
         // always consistent with the prices shown next to them. R uses a pip-distance ratio (reward

@@ -32,6 +32,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<DateTime>("BacktestTo")
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal>("CommissionTotal")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CompletedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -43,6 +46,9 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<int>("ExitCode")
                         .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("GrossPnL")
+                        .HasColumnType("TEXT");
 
                     b.Property<decimal>("InitialBalance")
                         .HasColumnType("TEXT");
@@ -65,6 +71,9 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<string>("StrategyParamsJson")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("SwapTotal")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Symbol")
@@ -374,6 +383,23 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.ToTable("ExperimentRuns", (string)null);
                 });
 
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.GovernorOptionsEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("GovernorOptions", (string)null);
+                });
+
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.OrderEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -553,6 +579,27 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.ToTable("Positions", (string)null);
                 });
 
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.PropFirmRuleSetEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PropFirmRuleSets", (string)null);
+                });
+
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ProtectionLedgerEntryEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -586,6 +633,27 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.HasIndex("LedgerId");
 
                     b.ToTable("ProtectionLedgerEntries", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.RiskProfileEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("RiskProfiles", (string)null);
                 });
 
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.StrategyConfigEntity", b =>

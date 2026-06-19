@@ -1,3 +1,5 @@
+using TradingEngine.Infrastructure.Persistence.Entities;
+
 namespace TradingEngine.Infrastructure.Persistence;
 
 public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options) : DbContext(options)
@@ -16,6 +18,9 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<DailyProtectionLedgerEntity> DailyProtectionLedgers => Set<DailyProtectionLedgerEntity>();
     public DbSet<ProtectionLedgerEntryEntity> ProtectionLedgerEntries => Set<ProtectionLedgerEntryEntity>();
     public DbSet<StrategyConfigEntity> StrategyConfigs => Set<StrategyConfigEntity>();
+    public DbSet<RiskProfileEntity> RiskProfiles => Set<RiskProfileEntity>();
+    public DbSet<PropFirmRuleSetEntity> PropFirmRuleSets => Set<PropFirmRuleSetEntity>();
+    public DbSet<GovernorOptionsEntity> GovernorOptions => Set<GovernorOptionsEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -92,6 +97,35 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.Property(x => x.OrderEntryJson).HasColumnType("TEXT");
             e.Property(x => x.RegimeFilterJson).HasColumnType("TEXT");
             e.Property(x => x.ReentryJson).HasColumnType("TEXT");
+            e.Property(x => x.UpdatedAtUtc).HasColumnType("TEXT");
+        });
+
+        modelBuilder.Entity<RiskProfileEntity>(e =>
+        {
+            e.ToTable("RiskProfiles");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.DisplayName).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.Json).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.UpdatedAtUtc).HasColumnType("TEXT");
+        });
+
+        modelBuilder.Entity<PropFirmRuleSetEntity>(e =>
+        {
+            e.ToTable("PropFirmRuleSets");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.DisplayName).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.Json).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.UpdatedAtUtc).HasColumnType("TEXT");
+        });
+
+        modelBuilder.Entity<GovernorOptionsEntity>(e =>
+        {
+            e.ToTable("GovernorOptions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.Json).HasColumnType("TEXT").IsRequired();
             e.Property(x => x.UpdatedAtUtc).HasColumnType("TEXT");
         });
     }
