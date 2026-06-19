@@ -22,7 +22,7 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
           <label class="block text-xs font-medium text-gray-400 mb-2">Symbols</label>
           <div class="flex flex-wrap gap-2">
             @for (s of allSymbols; track s) {
-              <label [attr.class]="symClass(s)" (click)="toggleSymbol(s)"><input type="checkbox" [checked]="selectedSymbols().has(s)" class="hidden" />{{ s }}</label>
+              <label [attr.class]="symClass(s)" (click)="toggleSymbol(s)">{{ s }}</label>
             }
           </div>
         </div>
@@ -31,7 +31,7 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
           <label class="block text-xs font-medium text-gray-400 mb-2">Timeframes</label>
           <div class="flex flex-wrap gap-2">
             @for (tf of allTimeframes; track tf) {
-              <label [attr.class]="tfClass(tf)" (click)="togglePeriod(tf)"><input type="checkbox" [checked]="selectedPeriods().has(tf)" class="hidden" />{{ tf }}</label>
+              <label [attr.class]="tfClass(tf)" (click)="togglePeriod(tf)">{{ tf }}</label>
             }
           </div>
         </div>
