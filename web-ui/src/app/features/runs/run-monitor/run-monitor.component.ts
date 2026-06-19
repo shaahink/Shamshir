@@ -107,6 +107,8 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       if (e.dailyDdPct != null) this.dailyDdPct.set(e.dailyDdPct);
       if (e.maxDdPct != null) this.maxDdPct.set(e.maxDdPct);
       if (e.distanceToDailyLimit != null) this.distanceToLimit.set(e.distanceToDailyLimit);
+      // Clear breach banner when DD recovers below threshold during a run
+      if (e.dailyDdPct != null && e.dailyDdPct < 0.02 && this.breachBanner()) this.breachBanner.set(null);
       if (e.governorState) this.governorState.set(e.governorState);
       if (e.counters) {
         this.counters.set({ signals: e.counters.signals ?? 0, orders: e.counters.orders ?? 0, fills: e.counters.fills ?? 0, closes: e.counters.closes ?? 0, rejections: e.counters.rejections ?? 0, breaches: e.counters.breaches ?? 0 });

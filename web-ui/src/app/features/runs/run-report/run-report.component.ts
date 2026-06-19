@@ -94,7 +94,7 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
                     <span class="text-gray-500">{{ entry.simTimeUtc | date:'MM-dd HH:mm' }}</span>
                     <app-badge [label]="entry.kind ?? '?'" [variant]="entry.kind === 'SIGNAL' ? 'warning' : entry.kind === 'CLOSE' ? 'success' : entry.kind === 'REJECTED' ? 'error' : 'neutral'" />
                     @if (entry.symbol) { <span class="ml-1 text-gray-500">{{ entry.symbol }}</span> }
-                    @if (entry.reason) { <span class="ml-2 text-gray-600">- {{ entry.reason }}</span> }
+                    @if (entry.reason) { <span class="ml-2 text-gray-600">- {{ fmtReason(entry.reason) }}</span> }
                   </div>
                 }
               </div>
@@ -139,6 +139,18 @@ export class RunReportComponent implements OnInit {
   recNetOk = computed(() => { const d = this.store.selectedRun(); return d ? Math.abs(d.netProfit - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01 : false; });
   recClosesOk = computed(() => { const d = this.store.selectedRun(); return d ? d.totalTrades === this.trades().length : false; });
   recCostOk = computed(() => Math.abs(this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01);
+
+  fmtReason(reason: string | null): string {
+    if (!reason) return '';
+    if (reason.startsWith('[') || reason.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(reason);
+        if (Array.isArray(parsed)) return parsed.map((v: any) => v.name || v.code || v.reason || JSON.stringify(v)).join(', ');
+        if (parsed.reason) return parsed.reason;
+      } catch { return reason; }
+    }
+    return reason;
+  }
 
   barHeight(pnl: number): number { const arr = this.dailyPnl(); const m = arr.length > 0 ? Math.max(...arr.map(d => Math.abs(d.pnl ?? 0)), 1) : 1; return Math.min(100, (Math.abs(pnl ?? 0) / m) * 100); }
 

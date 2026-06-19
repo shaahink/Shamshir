@@ -97,7 +97,23 @@ import { firstValueFrom } from 'rxjs';
             <button (click)="save()" [disabled]="saving()" class="w-full rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">{{ saving() ? 'Saving...' : 'Save Config' }}</button>
           </div>
         } @else {
-          <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4"><h2 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Config</h2><pre class="overflow-auto max-h-64 text-xs text-gray-400">{{ configPreview() }}</pre></div>
+          <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
+            <h2 class="text-xs font-medium uppercase tracking-wide text-gray-500">Config</h2>
+            @if (data(); as d) {
+              <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <div><span class="text-gray-500">Timeframe:</span> <span class="text-gray-300">{{ d.timeframe }}</span></div>
+                <div><span class="text-gray-500">Symbols:</span> <span class="text-gray-300">{{ d.symbols }}</span></div>
+                <div><span class="text-gray-500">Risk Profile:</span> <span class="text-gray-300">{{ d.riskProfileId }}</span></div>
+                <div><span class="text-gray-500">Enabled:</span> <span class="text-gray-300">{{ d.enabled ? 'Yes' : 'No' }}</span></div>
+              </div>
+              @if (d.parametersJson) {
+                <div><h3 class="mb-1 text-xs font-medium text-gray-500">Parameters</h3>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                  @for (k of paramKeys(); track k) { <div><span class="text-gray-500">{{ humanize(k) }}:</span> <span class="text-gray-300">{{ edit.parameters[k] ?? '-' }}</span></div> }
+                </div></div>
+              }
+            }
+          </div>
         }
       } @else {
         <div class="py-12 text-center text-sm text-gray-500">Strategy not found.</div>
