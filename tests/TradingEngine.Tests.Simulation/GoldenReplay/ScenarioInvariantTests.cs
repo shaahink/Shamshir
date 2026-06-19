@@ -197,4 +197,70 @@ public sealed class ScenarioInvariantTests
         rec.Should().NotBeNull("max positions reached must block orders");
         rec!.Decision.GuardResult.Should().StartWith("MAX_POSITIONS");
     }
+
+    // ── B1 toggle tests ──
+
+    [Fact]
+    public void Kernel_DoesNotEnterProtection_WhenDailyDdDisabled()
+    {
+        var state = CreateInitialState(10_000m);
+        var config = CreateConfig(0.05m, 0.10m);
+        config = config with
+        {
+            Constraints = config.Constraints with { DailyDdEnabled = false },
+        };
+
+        // Equity at 9,400 = 6% DD — would normally trigger daily DD at 4.5% threshold.
+        var equity = new EquityObserved(10_000m, 9_400m, -600m, DateTime.UtcNow);
+        var kernel = new Kernel(config);
+        var decision = kernel.Decide(state, equity);
+
+        decision.State.Protection.InProtectionMode.Should().BeFalse(
+            "daily DD disabled — no protection should trigger at the daily threshold");
+    }
+
+    [Fact]
+    public void Kernel_EntersProtection_ButDoesNotForceClose_WhenForceCloseDisabled()
+    {
+        var state = CreateInitialState(10_000m);
+        var config = CreateConfig(0.05m, 0.10m);
+        config = config with
+        {
+            Constraints = config.Constraints with { ForceCloseOnBreachEnabled = false },
+        };
+
+        var equity = new EquityObserved(10_000m, 9_400m, -600m, DateTime.UtcNow);
+        var kernel = new Kernel(config);
+        var decision = kernel.Decide(state, equity);
+
+        decision.State.Protection.InProtectionMode.Should().BeTrue("DD breach must still enter protection");
+        decision.Effects.Should().NotContain(e => e is CloseOpenPosition,
+            "force-close disabled — no CloseOpenPosition effects should be emitted");
+    }
+
+    [Fact]
+    public void Gate_AllowsOrder_WhenGovernorDisabled()
+    {
+        var state = CreateInitialState(10_000m) with
+        {
+            Governor = new GovernorState(GovernorTradingState.HardStop, 0, 0, 0, 1.0m, false, "Initial"),
+        };
+        var config = CreateConfig(0.05m, 0.10m);
+        config = config with
+        {
+            Constraints = config.Constraints with { GovernorEnabled = false },
+        };
+
+        var proposed = new OrderProposed(
+            Guid.NewGuid(), Eurusd, TradeDirection.Long, OrderType.Market,
+            null, new Price(1.0900m), null, "test", 1.0950m,
+            SlPips: 10m, PipValuePerLot: 10m, OccurredAtUtc: DateTime.UtcNow);
+
+        var kernel = new Kernel(config);
+        var decision = kernel.Decide(state, proposed);
+
+        decision.Effects.OfType<RecordDecisionEvent>()
+            .Where(r => r.Decision.GuardResult is not null && r.Decision.GuardResult.StartsWith("GOVERNOR"))
+            .Should().BeEmpty("governor disabled — governor state must not block orders");
+    }
 }

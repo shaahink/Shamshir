@@ -250,6 +250,11 @@ public sealed class EngineRunner
         _logger.LogDebug("Backtest loop stopped");
     }
 
+    /// <summary>
+    /// (iter-35/A2 DEPRECATED): replaced by kernel EngineReducer.HandleBarClosed + DetectSlTpExit.
+    /// The kernel path owns SL/TP detection as part of the pure reducer. This method remains only
+    /// until the full kernel cutover wires EngineRunner through KernelDriver — then DELETE.
+    /// </summary>
     internal async Task SimulateBarExitsAsync(Bar bar, CancellationToken ct)
     {
         foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())

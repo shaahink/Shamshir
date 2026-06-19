@@ -26,4 +26,5 @@ public record PropFirmRuleSet(
     public double MaxMonthlyLossPercent { get; init; } = 0.08;
     public bool RequireProfitTarget { get; init; } = true;
     public GracePeriodOptions GracePeriod { get; init; } = new();
+    public ProtectionToggles Toggles { get; init; } = new();
 }

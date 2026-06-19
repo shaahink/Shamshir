@@ -80,13 +80,12 @@ public sealed class Kernel(KernelConfig config) : IKernel
         var flatten = (decimal)_config.Sizing.FlattenAtFraction;
         var dd = s.Drawdown;
 
-        // Order mirrors AccountProcessor's watchdog (daily → max → weekly → monthly). TODO(deepseek):
-        // gate weekly/monthly behind the B1 enable-toggles; honor ForceCloseOnBreach per protection.
+        // B1: breach watchdog gated per toggle. Order mirrors daily → max → weekly → monthly.
         var (cause, used, limit) =
-            dd.CurrentDailyDrawdown >= c.MaxDailyLoss * flatten ? (ProtectionCause.DailyDrawdown, dd.CurrentDailyDrawdown, c.MaxDailyLoss)
-            : dd.CurrentMaxDrawdown >= c.MaxTotalLoss * flatten ? (ProtectionCause.MaxDrawdown, dd.CurrentMaxDrawdown, c.MaxTotalLoss)
-            : c.MaxWeeklyLoss > 0 && dd.CurrentWeeklyDrawdown >= c.MaxWeeklyLoss * flatten ? (ProtectionCause.WeeklyDrawdown, dd.CurrentWeeklyDrawdown, c.MaxWeeklyLoss)
-            : c.MaxMonthlyLoss > 0 && dd.CurrentMonthlyDrawdown >= c.MaxMonthlyLoss * flatten ? (ProtectionCause.MonthlyDrawdown, dd.CurrentMonthlyDrawdown, c.MaxMonthlyLoss)
+            c.DailyDdEnabled && dd.CurrentDailyDrawdown >= c.MaxDailyLoss * flatten ? (ProtectionCause.DailyDrawdown, dd.CurrentDailyDrawdown, c.MaxDailyLoss)
+            : c.MaxDdEnabled && dd.CurrentMaxDrawdown >= c.MaxTotalLoss * flatten ? (ProtectionCause.MaxDrawdown, dd.CurrentMaxDrawdown, c.MaxTotalLoss)
+            : c.WeeklyDdEnabled && c.MaxWeeklyLoss > 0 && dd.CurrentWeeklyDrawdown >= c.MaxWeeklyLoss * flatten ? (ProtectionCause.WeeklyDrawdown, dd.CurrentWeeklyDrawdown, c.MaxWeeklyLoss)
+            : c.MonthlyDdEnabled && c.MaxMonthlyLoss > 0 && dd.CurrentMonthlyDrawdown >= c.MaxMonthlyLoss * flatten ? (ProtectionCause.MonthlyDrawdown, dd.CurrentMonthlyDrawdown, c.MaxMonthlyLoss)
             : (ProtectionCause.None, 0m, 0m);
 
         if (cause == ProtectionCause.None)
@@ -98,7 +97,7 @@ public sealed class Kernel(KernelConfig config) : IKernel
         s = s with { Protection = s.Protection.Enter(cause, reason) };
 
         var effects = new List<EngineEffect>(baseDecision.Effects);
-        if (c.ForceCloseOnBreach)
+        if (c.ForceCloseOnBreachEnabled && c.ForceCloseOnBreach)
         {
             // Flatten every open position by VENUE order id (mirrors EngineReducer.HandleForceCloseAll).
             foreach (var ps in s.Positions.Values)

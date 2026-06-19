@@ -33,7 +33,7 @@ public static class Program
             builder.Services.AddStrategies();
             builder.Services.AddEventInfrastructure(mode);
             builder.Services.AddEngineWorker(mode);
-            builder.Services.AddHostedService<DailyResetService>();
+            // iter-35: DailyResetService retired — kernel HandleDayRolled + DecideReset own sim-time resets.
 
             var app = builder.Build();
             app.Services.GetRequiredService<StrategyConfigSeeder>().SeedAsync().GetAwaiter().GetResult();

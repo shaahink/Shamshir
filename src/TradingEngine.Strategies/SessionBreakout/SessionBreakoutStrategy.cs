@@ -52,8 +52,19 @@ public sealed class SessionBreakoutStrategy : IStrategy
 
             if (now >= p.RangeStartUtc && now < p.RangeEndUtc)
             {
-                _rangeHigh = h1Bars.Max(b => b.High);
-                _rangeLow = h1Bars.Min(b => b.Low);
+                // C8 (iter-35 B2): range = session window only, not full buffer.
+                var sessionBars = h1Bars
+                    .Where(b =>
+                    {
+                        var barTime = TimeOnly.FromDateTime(b.OpenTimeUtc);
+                        return barTime >= p.RangeStartUtc && barTime < p.RangeEndUtc;
+                    })
+                    .ToList();
+                if (sessionBars.Count > 0)
+                {
+                    _rangeHigh = sessionBars.Max(b => b.High);
+                    _rangeLow = sessionBars.Min(b => b.Low);
+                }
                 return null;
             }
 

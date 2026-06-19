@@ -30,7 +30,18 @@ public sealed record ConstraintSet(
     // ── Session / news ──
     bool AllowTradesDuringNews,
     bool AllowWeekendHolding,
-    bool ForceCloseOnBreach)
+    bool ForceCloseOnBreach,
+
+    // ── Protection toggles (iter-35 B1) ──
+    bool DailyDdEnabled = true,
+    bool MaxDdEnabled = true,
+    bool WeeklyDdEnabled = false,
+    bool MonthlyDdEnabled = false,
+    bool ProfitTargetEnabled = true,
+    bool ForceCloseOnBreachEnabled = true,
+    bool NewsFilterEnabled = false,
+    bool WeekendFilterEnabled = false,
+    bool GovernorEnabled = true)
 {
     /// <summary>
     /// Project from both config sources. PropFirmRuleSet limits take precedence over
@@ -61,6 +72,16 @@ public sealed record ConstraintSet(
 
             AllowTradesDuringNews: ruleSet.AllowTradesDuringNews,
             AllowWeekendHolding: ruleSet.AllowWeekendHolding,
-            ForceCloseOnBreach: ruleSet.ForceCloseOnBreach);
+            ForceCloseOnBreach: ruleSet.ForceCloseOnBreach,
+
+            DailyDdEnabled: ruleSet.Toggles.DailyDdEnabled,
+            MaxDdEnabled: ruleSet.Toggles.MaxDdEnabled,
+            WeeklyDdEnabled: ruleSet.Toggles.WeeklyDdEnabled,
+            MonthlyDdEnabled: ruleSet.Toggles.MonthlyDdEnabled,
+            ProfitTargetEnabled: ruleSet.Toggles.ProfitTargetEnabled,
+            ForceCloseOnBreachEnabled: ruleSet.Toggles.ForceCloseOnBreachEnabled,
+            NewsFilterEnabled: ruleSet.Toggles.NewsFilterEnabled,
+            WeekendFilterEnabled: ruleSet.Toggles.WeekendFilterEnabled,
+            GovernorEnabled: ruleSet.Toggles.GovernorEnabled);
     }
 }

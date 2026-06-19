@@ -300,8 +300,13 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to compute costs for {Symbol}", _symbol);
-            return new TradeCosts(0, 0, 0, 0, 0);
+            _logger.LogWarning(ex, "Failed to compute costs for {Symbol} at exit {ExitPrice} — using gross PnL only", _symbol, exitPrice);
+            // M10 (iter-35 B2): don't swallow gross PnL to zero. Commission/swap may be zero,
+            // but the trade's directional profit is still computable without symbol info.
+            var grossPnl = trade.Direction == TradeDirection.Long
+                ? (exitPrice - trade.EntryPrice) * trade.Lots
+                : (trade.EntryPrice - exitPrice) * trade.Lots;
+            return new TradeCosts(grossPnl, 0, 0, grossPnl, 0);
         }
     }
 

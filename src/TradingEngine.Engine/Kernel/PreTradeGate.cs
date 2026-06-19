@@ -47,12 +47,16 @@ public static class PreTradeGate
             return GateResult.Reject("PROTECTION_MODE_ACTIVE");
         }
 
-        var g = state.Governor;
-        if (g.State is GovernorTradingState.HardStop or GovernorTradingState.SoftStop
-                or GovernorTradingState.CoolingOff or GovernorTradingState.ProfitLocked
-            || g.CoolingOffBarsRemaining > 0 || g.ProfitLockedToday)
+        // B1: governor toggle — skip governor check when disabled.
+        if (c.GovernorEnabled)
         {
-            return GateResult.Reject($"GOVERNOR:{g.State}");
+            var g = state.Governor;
+            if (g.State is GovernorTradingState.HardStop or GovernorTradingState.SoftStop
+                    or GovernorTradingState.CoolingOff or GovernorTradingState.ProfitLocked
+                || g.CoolingOffBarsRemaining > 0 || g.ProfitLockedToday)
+            {
+                return GateResult.Reject($"GOVERNOR:{g.State}");
+            }
         }
 
         if (equity <= 0)
@@ -116,12 +120,12 @@ public static class PreTradeGate
             return GateResult.Reject("WorstCaseDDWouldBreachOverall");
         }
 
-        // 7. Weekly / monthly DD (H2). TODO(deepseek): gate these behind the B1 enable-toggles.
-        if (c.MaxWeeklyLoss > 0 && state.Drawdown.CurrentWeeklyDrawdown >= c.MaxWeeklyLoss)
+        // 7. Weekly / monthly DD (H2). B1: gated behind toggle flags.
+        if (c.WeeklyDdEnabled && c.MaxWeeklyLoss > 0 && state.Drawdown.CurrentWeeklyDrawdown >= c.MaxWeeklyLoss)
         {
             return GateResult.Reject("WEEKLY_DD_LIMIT");
         }
-        if (c.MaxMonthlyLoss > 0 && state.Drawdown.CurrentMonthlyDrawdown >= c.MaxMonthlyLoss)
+        if (c.MonthlyDdEnabled && c.MaxMonthlyLoss > 0 && state.Drawdown.CurrentMonthlyDrawdown >= c.MaxMonthlyLoss)
         {
             return GateResult.Reject("MONTHLY_DD_LIMIT");
         }
