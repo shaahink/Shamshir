@@ -34,7 +34,7 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
             <app-stat-tile label="Net P/L" [value]="d.netProfit.toFixed(2)" [positive]="d.netProfit > 0" [negative]="d.netProfit < 0" />
             <app-stat-tile label="Return %" [value]="(d.initialBalance > 0 ? (d.netProfit / d.initialBalance * 100) : 0).toFixed(2) + '%'" [positive]="d.netProfit > 0" [negative]="d.netProfit < 0" />
             <app-stat-tile label="Max DD" [value]="(d.maxDrawdownPct * 100).toFixed(2) + '%'" [negative]="true" />
-            <app-stat-tile label="Profit Factor" [value]="profitFactor().toFixed(2)" [positive]="profitFactor() > 1" />
+            <app-stat-tile label="Profit Factor" [value]="pfDisplay()" [positive]="profitFactor() > 1" />
             <app-stat-tile label="Win Rate" [value]="(d.winRatePct * 100).toFixed(1) + '%'" [positive]="d.winRatePct > 0.5" />
             <app-stat-tile label="Trades" [value]="d.totalTrades" />
             <app-stat-tile label="Gross P/L" [value]="grossTotal().toFixed(2)" [positive]="grossTotal() > 0" [negative]="grossTotal() < 0" />
@@ -125,13 +125,14 @@ export class RunReportComponent implements OnInit {
   profitFactor = computed(() => {
     const t = this.trades(); const g = t.filter(x => x.grossPnLAmount > 0).reduce((s, x) => s + x.grossPnLAmount, 0);
     const l = Math.abs(t.filter(x => x.grossPnLAmount < 0).reduce((s, x) => s + x.grossPnLAmount, 0));
-    return l === 0 ? (g > 0 ? Infinity : 0) : g / l;
+    return l === 0 ? (g > 0 ? Number.MAX_VALUE : 0) : g / l;
   });
+  pfDisplay = computed(() => this.profitFactor() >= Number.MAX_VALUE - 1 ? '∞' : this.profitFactor().toFixed(2));
   recNetOk = computed(() => { const d = this.store.selectedRun(); return d ? Math.abs(d.netProfit - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01 : false; });
   recClosesOk = computed(() => { const d = this.store.selectedRun(); return d ? d.totalTrades === this.trades().length : false; });
   recCostOk = computed(() => Math.abs(this.grossTotal() - Math.abs(this.commTotal()) - Math.abs(this.swapTotal()) - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01);
 
-  barHeight(pnl: number): number { const m = Math.max(...this.dailyPnl().map(d => Math.abs(d.pnl)), 1); return Math.min(100, (Math.abs(pnl) / m) * 100); }
+  barHeight(pnl: number): number { const arr = this.dailyPnl(); const m = arr.length > 0 ? Math.max(...arr.map(d => Math.abs(d.pnl)), 1) : 1; return Math.min(100, (Math.abs(pnl) / m) * 100); }
 
   tradeColumns: ColumnDef[] = [
     { key: 'symbol', label: 'Sym' }, { key: 'direction', label: 'Dir' }, { key: 'lots', label: 'Lots', format: 'number' },

@@ -10,7 +10,7 @@ export interface PriceMarker { price: number; label: string; color: string }
   standalone: true,
   template: `<div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
     <h3 class="mb-2 text-sm font-medium text-gray-400">{{ title() }}</h3>
-    <div class="h-96 w-full" #chartContainer></div>
+    <div class="h-96 w-full chart-host"></div>
   </div>`,
 })
 export class CandleChartComponent {
@@ -33,7 +33,7 @@ export class CandleChartComponent {
   }
 
   private initChart(): void {
-    const container = this.el.nativeElement.querySelector('[#chartContainer]') as HTMLDivElement;
+    const container = this.el.nativeElement.querySelector('.chart-host') as HTMLDivElement;
     if (!container || this.chart) return;
 
     this.chart = createChart(container, {
