@@ -1,19 +1,19 @@
 {
   "/api": {
-    "target": "http://localhost:5000",
+    "target": "http://localhost:5134",
     "secure": false
   },
   "/hubs": {
-    "target": "ws://localhost:5000",
+    "target": "ws://localhost:5134",
     "ws": true,
     "secure": false
   },
   "/scalar": {
-    "target": "http://localhost:5000",
+    "target": "http://localhost:5134",
     "secure": false
   },
   "/openapi": {
-    "target": "http://localhost:5000",
+    "target": "http://localhost:5134",
     "secure": false
   }
 }

@@ -7,7 +7,7 @@ using TradingEngine.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace TradingEngine.Infrastructure.Persistence.Migrations
+namespace TradingEngine.Infrastructure.Migrations
 {
     [DbContext(typeof(TradingDbContext))]
     partial class TradingDbContextModelSnapshot : ModelSnapshot
@@ -697,6 +697,9 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("OpenedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OrderId")
                         .HasColumnType("TEXT");
 
                     b.Property<double>("PnLPips")

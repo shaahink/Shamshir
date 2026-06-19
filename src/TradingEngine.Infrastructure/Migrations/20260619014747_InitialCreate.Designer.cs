@@ -8,10 +8,10 @@ using TradingEngine.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace TradingEngine.Infrastructure.Persistence.Migrations
+namespace TradingEngine.Infrastructure.Migrations
 {
     [DbContext(typeof(TradingDbContext))]
-    [Migration("20260617141237_InitialCreate")]
+    [Migration("20260619014747_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -700,6 +700,9 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("OpenedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OrderId")
                         .HasColumnType("TEXT");
 
                     b.Property<double>("PnLPips")

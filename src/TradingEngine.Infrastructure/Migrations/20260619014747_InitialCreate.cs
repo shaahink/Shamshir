@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace TradingEngine.Infrastructure.Persistence.Migrations
+namespace TradingEngine.Infrastructure.Migrations
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration
@@ -257,6 +257,7 @@ namespace TradingEngine.Infrastructure.Persistence.Migrations
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
                     PositionId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    OrderId = table.Column<Guid>(type: "TEXT", nullable: false),
                     Symbol = table.Column<string>(type: "TEXT", nullable: false),
                     Direction = table.Column<string>(type: "TEXT", nullable: false),
                     Lots = table.Column<decimal>(type: "TEXT", nullable: false),
