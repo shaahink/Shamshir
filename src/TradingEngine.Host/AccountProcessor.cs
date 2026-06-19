@@ -1,4 +1,5 @@
 using System.Globalization;
+using TradingEngine.Engine;
 
 namespace TradingEngine.Host;
 
@@ -75,42 +76,28 @@ public sealed class AccountProcessor
 
         _riskManager.UpdateEquityLevels(update.Equity);
 
+        // AF4: breach watchdog now delegates to the kernel's single authority (toggle-gated,
+        // includes daily→max→weekly→monthly — plus weekly/monthly checks that were previously missing).
         var constraints = _riskManager.Constraints;
         if (constraints is not null && !_riskManager.CurrentState.InProtectionMode)
         {
-            var flattenFraction = (decimal)_sizingPolicy.FlattenAtFraction;
+            var (cause, reason) = Kernel.EvaluateDrawdownBreach(
+                _riskManager.Drawdown, constraints, (decimal)_sizingPolicy.FlattenAtFraction);
 
-            if (_riskManager.CurrentState.DailyDrawdownUsed >= constraints.MaxDailyLoss * flattenFraction)
+            if (cause != ProtectionCause.None)
             {
-                _riskManager.EnterProtectionMode(
-                    $"Daily DD at {_riskManager.CurrentState.DailyDrawdownUsed:P1} >= {constraints.MaxDailyLoss * flattenFraction:P1} hard limit",
-                    ProtectionCause.DailyDrawdown);
-                _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — daily DD");
+                _riskManager.EnterProtectionMode(reason, cause);
+                _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — {Cause}", cause);
                 _progress?.Report(new BacktestProgressEvent(_runId, "BREACH",
-                    $"Daily DD breach at {_riskManager.CurrentState.DailyDrawdownUsed:P1}", update.TimestampUtc));
+                    reason, update.TimestampUtc));
                 _decisionJournal?.Record(new DecisionRecord(
                     string.Empty, update.TimestampUtc, 0, null, null, null,
-                    "BreachDetected", "DailyDD",
-                    null,
-                    $"Daily DD at {_riskManager.CurrentState.DailyDrawdownUsed:P1} >= {constraints.MaxDailyLoss * flattenFraction:P1}",
-                    "{}"));
-                await _positionTracker.RequestForceCloseAllAsync("DailyDD");
-            }
-            else if (_riskManager.CurrentState.MaxDrawdownUsed >= constraints.MaxTotalLoss * flattenFraction)
-            {
-                _riskManager.EnterProtectionMode(
-                    $"Max DD at {_riskManager.CurrentState.MaxDrawdownUsed:P1} >= {constraints.MaxTotalLoss * flattenFraction:P1} hard limit",
-                    ProtectionCause.MaxDrawdown);
-                _logger.LogCritical("BREACH_WATCHDOG: Entered protection mode — max DD");
-                _progress?.Report(new BacktestProgressEvent(_runId, "BREACH",
-                    $"Max DD breach at {_riskManager.CurrentState.MaxDrawdownUsed:P1}", update.TimestampUtc));
-                _decisionJournal?.Record(new DecisionRecord(
-                    string.Empty, update.TimestampUtc, 0, null, null, null,
-                    "BreachDetected", "MaxDD",
-                    null,
-                    $"Max DD at {_riskManager.CurrentState.MaxDrawdownUsed:P1} >= {constraints.MaxTotalLoss * flattenFraction:P1}",
-                    "{}"));
-                await _positionTracker.RequestForceCloseAllAsync("MaxDD");
+                    "BreachDetected", cause.ToString(),
+                    null, reason, "{}"));
+                if (constraints.ForceCloseOnBreachEnabled && constraints.ForceCloseOnBreach)
+                {
+                    await _positionTracker.RequestForceCloseAllAsync(cause.ToString());
+                }
             }
         }
 

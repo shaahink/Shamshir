@@ -78,22 +78,14 @@ public sealed class Kernel(KernelConfig config) : IKernel
 
         var c = _config.Constraints;
         var flatten = (decimal)_config.Sizing.FlattenAtFraction;
-        var dd = s.Drawdown;
 
-        // B1: breach watchdog gated per toggle. Order mirrors daily → max → weekly → monthly.
-        var (cause, used, limit) =
-            c.DailyDdEnabled && dd.CurrentDailyDrawdown >= c.MaxDailyLoss * flatten ? (ProtectionCause.DailyDrawdown, dd.CurrentDailyDrawdown, c.MaxDailyLoss)
-            : c.MaxDdEnabled && dd.CurrentMaxDrawdown >= c.MaxTotalLoss * flatten ? (ProtectionCause.MaxDrawdown, dd.CurrentMaxDrawdown, c.MaxTotalLoss)
-            : c.WeeklyDdEnabled && c.MaxWeeklyLoss > 0 && dd.CurrentWeeklyDrawdown >= c.MaxWeeklyLoss * flatten ? (ProtectionCause.WeeklyDrawdown, dd.CurrentWeeklyDrawdown, c.MaxWeeklyLoss)
-            : c.MonthlyDdEnabled && c.MaxMonthlyLoss > 0 && dd.CurrentMonthlyDrawdown >= c.MaxMonthlyLoss * flatten ? (ProtectionCause.MonthlyDrawdown, dd.CurrentMonthlyDrawdown, c.MaxMonthlyLoss)
-            : (ProtectionCause.None, 0m, 0m);
+        var (cause, reason) = EvaluateDrawdownBreach(s.Drawdown, c, flatten);
 
         if (cause == ProtectionCause.None)
         {
             return baseDecision;
         }
 
-        var reason = $"{cause} breach: {used:P2} >= {limit * flatten:P2}";
         s = s with { Protection = s.Protection.Enter(cause, reason) };
 
         var effects = new List<EngineEffect>(baseDecision.Effects);
@@ -106,6 +98,26 @@ public sealed class Kernel(KernelConfig config) : IKernel
             }
         }
         return new EngineDecision(s, effects);
+    }
+
+    /// <summary>
+    /// Static breach-evaluation helper (AF4). Checks drawdown levels against constraints (toggle-gated),
+    /// returning the most-severe breach cause (daily → max → weekly → monthly). Produces the same result
+    /// as the instance <c>DecideEquity</c> path. Used by the imperative AccountProcessor watchdog during
+    /// the cutover so both paths share one authority.
+    /// </summary>
+    public static (ProtectionCause Cause, string Reason) EvaluateDrawdownBreach(
+        DrawdownState dd, ConstraintSet c, decimal flattenFraction)
+    {
+        if (c.DailyDdEnabled && dd.CurrentDailyDrawdown >= c.MaxDailyLoss * flattenFraction)
+            return (ProtectionCause.DailyDrawdown, $"Daily DD breach: {dd.CurrentDailyDrawdown:P2} >= {c.MaxDailyLoss * flattenFraction:P2}");
+        if (c.MaxDdEnabled && dd.CurrentMaxDrawdown >= c.MaxTotalLoss * flattenFraction)
+            return (ProtectionCause.MaxDrawdown, $"Max DD breach: {dd.CurrentMaxDrawdown:P2} >= {c.MaxTotalLoss * flattenFraction:P2}");
+        if (c.WeeklyDdEnabled && c.MaxWeeklyLoss > 0 && dd.CurrentWeeklyDrawdown >= c.MaxWeeklyLoss * flattenFraction)
+            return (ProtectionCause.WeeklyDrawdown, $"Weekly DD breach: {dd.CurrentWeeklyDrawdown:P2} >= {c.MaxWeeklyLoss * flattenFraction:P2}");
+        if (c.MonthlyDdEnabled && c.MaxMonthlyLoss > 0 && dd.CurrentMonthlyDrawdown >= c.MaxMonthlyLoss * flattenFraction)
+            return (ProtectionCause.MonthlyDrawdown, $"Monthly DD breach: {dd.CurrentMonthlyDrawdown:P2} >= {c.MaxMonthlyLoss * flattenFraction:P2}");
+        return (ProtectionCause.None, "");
     }
 
     private static EngineDecision DecideReset(EngineState state, EngineEvent evt, ProtectionBoundary boundary)
