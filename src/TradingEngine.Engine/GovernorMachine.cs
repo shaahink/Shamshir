@@ -3,15 +3,14 @@ namespace TradingEngine.Engine;
 public sealed class GovernorMachine : ITradingGovernor
 {
     private readonly GovernorOptions _options;
-    private GovernorState _state;
 
     public GovernorMachine(GovernorOptions options)
     {
         _options = options;
-        _state = CreateInitial();
+        State = CreateInitial();
     }
 
-    public GovernorState State => _state;
+    public GovernorState State { get; private set; }
 
     public GovernorDecision Evaluate(GovernorContext context)
     {
@@ -24,43 +23,43 @@ public sealed class GovernorMachine : ITradingGovernor
             ? Math.Max(0m, -dayNetPnLFraction) / maxDailyLoss
             : 0m;
 
-        _state = EvaluateStatic(_state, dailyDdFraction, dayNetPnLFraction,
+        State = EvaluateStatic(State, dailyDdFraction, dayNetPnLFraction,
             _options.StreakPauseAt, _options.CoolingOffBars,
             _options.LossBandFractions, _options.LossBandMultipliers,
             _options.ProfitLockEnabled, _options.ProfitLockFraction,
             maxDailyLoss, _options.StreakReduceAt, _options.StreakMultiplier);
 
         return new GovernorDecision(
-            _state.State is GovernorTradingState.Normal or GovernorTradingState.Reduced,
-            _state.LastSizeMultiplier, _state.State, _state.Reason);
+            State.State is GovernorTradingState.Normal or GovernorTradingState.Reduced,
+            State.LastSizeMultiplier, State.State, State.Reason);
     }
 
     public GovernorSnapshot GetSnapshot()
     {
         var maxDailyLoss = (decimal)(_options.LossBandFractions.Length > 0 ? _options.LossBandFractions[^1] : 1);
         var dailyDdFraction = maxDailyLoss > 0
-            ? Math.Max(0m, -(decimal)_state.DayNetPnLFraction) / maxDailyLoss
+            ? Math.Max(0m, -(decimal)State.DayNetPnLFraction) / maxDailyLoss
             : 0m;
         var distanceToLimit = dailyDdFraction < 1 ? 1 - dailyDdFraction : 0m;
 
         return new GovernorSnapshot(
-            _state.State, _state.LastSizeMultiplier, _state.ConsecutiveLosses,
-            _state.DayNetPnLFraction, distanceToLimit, _state.Reason);
+            State.State, State.LastSizeMultiplier, State.ConsecutiveLosses,
+            State.DayNetPnLFraction, distanceToLimit, State.Reason);
     }
 
     public void OnTradeClosed(TradeResult result)
     {
-        _state = ApplyTradeClosed(_state, result.NetPnL.Amount > 0);
+        State = ApplyTradeClosed(State, result.NetPnL.Amount > 0, result.NetPnL.Amount < 0);
     }
 
     public void OnBar(DateTime barOpenTimeUtc)
     {
-        _state = ApplyBar(_state);
+        State = ApplyBar(State);
     }
 
     public void OnDailyReset()
     {
-        _state = ApplyDailyReset(_state);
+        State = ApplyDailyReset(State);
     }
 
     public void OnWeeklyReset()
@@ -104,9 +103,9 @@ public sealed class GovernorMachine : ITradingGovernor
         return state with { ProfitLockedToday = false };
     }
 
-    public static GovernorState ApplyTradeClosed(GovernorState state, bool isWin)
+    public static GovernorState ApplyTradeClosed(GovernorState state, bool isWin, bool isLoss)
     {
-        var losses = isWin ? 0 : state.ConsecutiveLosses + 1;
+        var losses = isWin ? 0 : isLoss ? state.ConsecutiveLosses + 1 : state.ConsecutiveLosses;
         return state with { ConsecutiveLosses = losses };
     }
 

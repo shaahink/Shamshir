@@ -13,7 +13,8 @@ public sealed class BarEvaluationHandler : IEventHandler<BarEvaluated>, IAsyncDi
         Channel.CreateBounded<BarEvaluated>(new BoundedChannelOptions(50_000)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
-            SingleWriter = false
+            SingleWriter = false,
+            SingleReader = true
         });
     private readonly Task _flushTask;
     private readonly CancellationTokenSource _cts = new();
@@ -39,7 +40,6 @@ public sealed class BarEvaluationHandler : IEventHandler<BarEvaluated>, IAsyncDi
             try
             {
                 await Task.Delay(3_000, ct);
-                buffer.Clear();
                 while (_channel.Reader.TryRead(out var evt) && buffer.Count < 500)
                     buffer.Add(evt);
                 if (buffer.Count == 0) continue;
@@ -65,6 +65,7 @@ public sealed class BarEvaluationHandler : IEventHandler<BarEvaluated>, IAsyncDi
                 }
                 await db.SaveChangesAsync(ct);
                 _logger.LogDebug("BAR_EVAL_FLUSHED|{Count}", buffer.Count);
+                buffer.Clear();
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)

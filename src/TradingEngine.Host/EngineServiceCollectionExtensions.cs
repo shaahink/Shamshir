@@ -16,7 +16,6 @@ using TradingEngine.Infrastructure.Venues.Simulated;
 using TradingEngine.Risk;
 using TradingEngine.Risk.Compliance;
 using TradingEngine.Risk.Filters;
-using TradingEngine.Risk.Governor;
 using TradingEngine.Risk.Sizing;
 using TradingEngine.Services;
 

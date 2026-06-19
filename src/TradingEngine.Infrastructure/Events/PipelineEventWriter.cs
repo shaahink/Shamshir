@@ -78,7 +78,6 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
             try
             {
                 await Task.Delay(3_000, ct);
-                buffer.Clear();
                 while (_channel.Reader.TryRead(out var evt) && buffer.Count < 500)
                     buffer.Add(evt);
                 if (buffer.Count == 0) continue;
@@ -87,6 +86,7 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
                 var repo = scope.ServiceProvider.GetRequiredService<IPipelineEventRepository>();
                 await repo.AppendBatchAsync(buffer, ct);
                 _logger.LogDebug("PIPELINE_FLUSHED|{Count}", buffer.Count);
+                buffer.Clear();
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)

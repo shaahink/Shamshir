@@ -8,7 +8,7 @@ global using TradingEngine.Risk;
 global using TradingEngine.Risk.Compliance;
 global using TradingEngine.Risk.Filters;
 global using TradingEngine.Risk.Sizing;
-global using TradingEngine.Risk.Governor;
+
 global using TradingEngine.Infrastructure;
 global using TradingEngine.Infrastructure.Adapters;
 global using TradingEngine.Infrastructure.Configuration;

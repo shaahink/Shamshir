@@ -56,7 +56,7 @@ public sealed class TradingLoop(
         lock (list)
         {
             list.Add(bar);
-            if (list.Count > 500)
+            while (list.Count > 500)
                 list.RemoveAt(0);
             barCount = list.Count;
         }

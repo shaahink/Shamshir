@@ -40,7 +40,7 @@ public sealed class ReplayRunner
 /// Effect executor for replay: does NOT call a real venue. Instead, simulates instant market fills
 /// and re-enqueues feedback events (OrderFilled, EquityObserved) for deterministic processing.
 /// </summary>
-public sealed class ReplayEffectExecutor(IEngineEventQueue queue) : IEffectExecutor
+public sealed class ReplayEffectExecutor(IEngineEventQueue queue, decimal fallbackPrice = 1.0m) : IEffectExecutor
 {
     public Task ExecuteAsync(EngineEffect effect, CancellationToken ct)
     {
@@ -51,15 +51,17 @@ public sealed class ReplayEffectExecutor(IEngineEventQueue queue) : IEffectExecu
                     so.OrderId, so.Symbol, so.Direction, so.Lots,
                     so.LimitPrice, so.StrategyId, DateTime.MinValue,
                     so.StopLoss, so.TakeProfit));
+                // AF9: fill at the limit price (deterministic) or fallback — no more fill-at-zero.
                 queue.Enqueue(new OrderFilled(
                     so.OrderId, so.Symbol, so.Lots,
-                    so.LimitPrice ?? new Price(0m), DateTime.MinValue));
+                    so.LimitPrice ?? new Price(fallbackPrice), DateTime.MinValue));
                 break;
 
             case CloseOpenPosition co:
                 queue.Enqueue(new CloseRequested(co.OrderId, co.Reason, DateTime.MinValue));
                 queue.Enqueue(new OrderFilled(
-                    co.OrderId, Symbol.Parse("EURUSD"), 0m, new Price(0m), DateTime.MinValue));
+                    co.OrderId, Symbol.Parse("EURUSD"), 0.01m,
+                    new Price(fallbackPrice), DateTime.MinValue));
                 break;
         }
         return Task.CompletedTask;
