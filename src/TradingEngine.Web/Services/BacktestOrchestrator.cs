@@ -44,7 +44,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public CancellationTokenSource? CancellationSource { get; set; }
         public Task? RunTask { get; set; }
         public IHost? EngineHost { get; set; }
-        public int BarCount { get; set; }
+        public int BarCount;
         public int BarsTotal { get; set; }
         public string SimTime { get; set; } = "";
         public IReadOnlyList<string> GetLogs() => LogLines.ToArray();
@@ -167,8 +167,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     barCount = state.BarCount,
                     indicators = indicatorDict,
                 });
+                var simTime = DateTime.TryParse(state.SimTime, out var parsed) ? parsed : DateTime.UtcNow;
                 state.RecentJournal.Enqueue(new DecisionRecordView(
-                    ++state.Seq, DateTime.UtcNow, null, null, evt.EventType,
+                    ++state.Seq, simTime, null, null, evt.EventType,
                     null, null, null, evt.Message, detail));
                 while (state.RecentJournal.Count > 30)
                     state.RecentJournal.Dequeue();
@@ -277,13 +278,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     {
         var state = _runs[runId];
         var startedAt = state.StartedAt;
-
-        var effectiveConfigJson = await ResolveEffectiveConfigJsonAsync(cfg);
-
-        await WriteStartRecordAsync(runId, cfg, startedAt, effectiveConfigJson);
+        string? effectiveConfigJson = null;
 
         try
         {
+            effectiveConfigJson = await ResolveEffectiveConfigJsonAsync(cfg);
+            await WriteStartRecordAsync(runId, cfg, startedAt, effectiveConfigJson);
+
             state.Status = "running";
             EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Starting backtest {runId}...");
 
@@ -306,7 +307,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             else
             {
                 EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running engine replay...");
-                result = await RunEngineReplayAsync(runId, cfg, state.LogLines);
+                result = await RunEngineReplayAsync(runId, cfg, state.LogLines, ct);
             }
 
             var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
@@ -352,6 +353,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             // iter-21 U1 — terminal frame, always delivered (bypasses the throttle).
             _broadcaster.PublishDone(BuildProgress(state,
                 state.Status == "failed" ? "failed" : "completed"));
+
+            _broadcaster.RemoveRun(runId);
+            _runs.TryRemove(runId, out _);
         }
     }
 
@@ -453,7 +457,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     }
 
     private async Task<BacktestResult> RunEngineReplayAsync(
-        string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines)
+        string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines, CancellationToken userCt = default)
     {
         var symbol = Symbol.Parse(cfg.Symbol);
         var timeframe = ParseTimeframe(cfg.Period);
@@ -476,7 +480,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             _journal.Write(runId, evt.EventType, evt.Message);
             if (evt.EventType == "BAR")
             {
-                state.BarCount++;
+                Interlocked.Increment(ref state.BarCount);
                 if (evt.Message.Length > 4 && evt.Message.StartsWith("Bar "))
                 {
                     // Message looks like "Bar 2024-01-01 00:00 | close=…" — keep the whole timestamp
@@ -492,7 +496,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             _broadcaster.Publish(BuildProgress(state, "running"), force: evt.EventType == "BREACH");
         });
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(userCt,
+            new CancellationTokenSource(TimeSpan.FromMinutes(30)).Token);
 
         var innerHost = EngineHostFactory.Create(new EngineHostOptions
         {

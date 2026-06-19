@@ -20,4 +20,8 @@ public sealed record StartRunRequest
     /// <summary>Data venue: "ctrader" (stream bars over NetMQ) or "replay" (credential-free, from
     /// stored bars). Absent = the configured default (CTrader:UseForBacktest).</summary>
     public string? Venue { get; init; }
+
+    /// <summary>Per-strategy parameter overrides keyed by strategy id (H24). Propagated through
+    /// <c>EffectiveConfigResolver</c> into the run's ConfigSet.</summary>
+    public Dictionary<string, Dictionary<string, object>>? StrategyOverrides { get; init; }
 }

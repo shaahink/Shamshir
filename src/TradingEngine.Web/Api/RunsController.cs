@@ -77,6 +77,8 @@ public sealed class RunsController : ControllerBase
             cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
         if (!string.IsNullOrWhiteSpace(req.Venue))
             cfg.CustomParams["Venue"] = req.Venue.Trim().ToLowerInvariant();
+        if (req.StrategyOverrides is { Count: > 0 })
+            cfg.CustomParams["StrategyOverrides"] = System.Text.Json.JsonSerializer.Serialize(req.StrategyOverrides);
 
         var runId = await _command.StartAsync(cfg, ct);
         var state = _orchestrator.GetState(runId);
@@ -88,7 +90,7 @@ public sealed class RunsController : ControllerBase
     [HttpDelete("{runId}")]
     public async Task<IActionResult> Cancel(string runId)
     {
-        await _orchestrator.StopAllAsync();
+        _orchestrator.Cancel(runId);
         return Ok(new { cancelled = true });
     }
 

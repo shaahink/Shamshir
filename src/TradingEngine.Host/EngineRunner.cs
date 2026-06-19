@@ -247,7 +247,14 @@ public sealed class EngineRunner
             while (_broker.AccountStream.TryRead(out var tail))
                 await _accountProcessor.HandleAsync(tail);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            // H10 (iter-35): drain the tail even on cancellation so the final bar's PnL reaches
+            // the account processor and the equity curve closes on the true balance. Previously
+            // the re-throw inside the foreach skipped this entirely.
+            while (_broker.AccountStream.TryRead(out var tail))
+                await _accountProcessor.HandleAsync(tail);
+        }
         _logger.LogDebug("Backtest loop stopped");
     }
 

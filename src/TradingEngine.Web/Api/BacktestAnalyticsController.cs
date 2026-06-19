@@ -3,7 +3,7 @@ namespace TradingEngine.Web.Api;
 using TradingEngine.Risk.Compliance;
 
 [ApiController]
-[Route("api/backtest")]
+[Route("api/backtest/analytics")]
 public class BacktestAnalyticsController : ControllerBase
 {
     private readonly TradingDbContext _db;

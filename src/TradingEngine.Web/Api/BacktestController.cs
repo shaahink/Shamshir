@@ -39,6 +39,8 @@ public sealed class BacktestController : ControllerBase
         public string? Symbols { get; init; }
         public string? Periods { get; init; }
         public string? StrategyIds { get; init; }
+        public string? RiskProfileId { get; init; }
+        public string? Venue { get; init; }
     }
 
     [HttpPost("start")]
@@ -74,6 +76,10 @@ public sealed class BacktestController : ControllerBase
 
         if (stratList.Length > 0)
             cfg.CustomParams["StrategyIds"] = string.Join(",", stratList);
+        if (!string.IsNullOrWhiteSpace(req.RiskProfileId))
+            cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
+        if (!string.IsNullOrWhiteSpace(req.Venue))
+            cfg.CustomParams["Venue"] = req.Venue.Trim().ToLowerInvariant();
 
         var runId = await _command.StartAsync(cfg, HttpContext.RequestAborted);
         var state = _orchestrator.GetState(runId);

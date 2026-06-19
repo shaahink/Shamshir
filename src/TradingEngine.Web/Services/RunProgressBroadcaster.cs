@@ -43,6 +43,11 @@ public sealed class RunProgressBroadcaster
         Send("RunCompleted", progress);
     }
 
+    public void RemoveRun(string runId)
+    {
+        _lastSentTicks.TryRemove(runId, out _);
+    }
+
     // Fire-and-forget, but observe the task so a send/serialization failure is logged rather than
     // becoming a silent unobserved exception.
     private void Send(string method, RunProgress progress)
