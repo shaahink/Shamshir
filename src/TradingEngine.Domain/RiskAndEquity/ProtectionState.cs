@@ -44,9 +44,9 @@ public sealed record ProtectionState(
     public bool ClearsOn(ProtectionBoundary boundary) => Cause switch
     {
         ProtectionCause.None => true,
-        ProtectionCause.DailyDrawdown => boundary == ProtectionBoundary.Day,
-        ProtectionCause.WeeklyDrawdown => boundary is ProtectionBoundary.Day or ProtectionBoundary.Week,
-        ProtectionCause.MonthlyDrawdown => true,
+        ProtectionCause.DailyDrawdown => ResetPolicy != "Never" && boundary == ProtectionBoundary.Day,
+        ProtectionCause.WeeklyDrawdown => ResetPolicy != "Never" && boundary is ProtectionBoundary.Day or ProtectionBoundary.Week,
+        ProtectionCause.MonthlyDrawdown => ResetPolicy != "Never" && boundary == ProtectionBoundary.Month,
         ProtectionCause.MaxDrawdown => ResetPolicy switch
         {
             "NextTradingDay" => boundary == ProtectionBoundary.Day,

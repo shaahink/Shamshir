@@ -75,25 +75,25 @@ public sealed class AccountProcessor
         if (monthRolled) { _lastResetMonth = month; _riskManager.OnMonthlyReset(update.Equity); }
 
         // AF5 (C4 fix): exit protection on period-roll per the kernel's ClearsOn policy.
-        // MaxDD protection now clears on Day boundary when ResetPolicy="NextTradingDay".
+        // Check EACH boundary independently — a Monday rolls both Day and Week.
         if (_riskManager.CurrentState.InProtectionMode)
         {
-            var boundary = dayRolled ? ProtectionBoundary.Day
-                : weekRolled ? ProtectionBoundary.Week
-                : monthRolled ? ProtectionBoundary.Month
-                : (ProtectionBoundary?)null;
-            if (boundary is not null)
+            var resetPolicy = _riskManager.ActiveRuleSet?.ProtectionResetPolicy ?? "NextTradingDay";
+            var cause = _riskManager.CurrentState.ProtectionCause;
+            var ps = new ProtectionState(true, cause,
+                _riskManager.CurrentState.ProtectionReason, resetPolicy, null);
+            var cleared = false;
+            if (dayRolled && ps.ClearsOn(ProtectionBoundary.Day))
+                cleared = true;
+            if (weekRolled && !cleared && ps.ClearsOn(ProtectionBoundary.Week))
+                cleared = true;
+            if (monthRolled && !cleared && ps.ClearsOn(ProtectionBoundary.Month))
+                cleared = true;
+            if (cleared)
             {
-                var cause = _riskManager.CurrentState.ProtectionCause;
-                var resetPolicy = _riskManager.ActiveRuleSet?.ProtectionResetPolicy ?? "NextTradingDay";
-                var ps = new ProtectionState(true, cause,
-                    _riskManager.CurrentState.ProtectionReason, resetPolicy, null);
-                if (ps.ClearsOn(boundary.Value))
-                {
-                    _riskManager.ExitProtectionMode();
-                    _logger.LogInformation("Protection cleared on {Boundary} roll (cause={Cause}, policy={Policy})",
-                        boundary, cause, resetPolicy);
-                }
+                _riskManager.ExitProtectionMode();
+                _logger.LogInformation("Protection cleared on roll (cause={Cause}, policy={Policy})",
+                    cause, resetPolicy);
             }
         }
 

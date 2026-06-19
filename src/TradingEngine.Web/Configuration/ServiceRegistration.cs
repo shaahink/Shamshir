@@ -147,7 +147,8 @@ public static class ServiceRegistration
         services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
             sp.GetRequiredService<StrategyRegistry>(), null, null,
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
-        services.AddSingleton(new GovernorOptions());
+        var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        services.AddSingleton(new ConfigLoader(solutionRoot).LoadBase().Governor);
         services.AddSingleton<ITradingGovernor>(sp => new GovernorMachine(sp.GetRequiredService<GovernorOptions>()));
         services.AddSingleton(new RegimeOptions());
         services.AddSingleton<ProtectionLedgerWriter>();
