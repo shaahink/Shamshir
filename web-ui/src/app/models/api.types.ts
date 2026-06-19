@@ -67,6 +67,8 @@ export interface TradeSummary {
   strategyId: string;
   durationSeconds: number;
   timeframe?: string;
+  slPrice?: number;
+  tpPrice?: number;
 }
 
 export interface JournalEntry {

@@ -858,14 +858,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var wins = trades.Count(t => t.NetPnLAmount > 0);
             var winRate = (double)wins / trades.Count;
 
-            // Max drawdown from the engine's per-bar equity snapshots (these include floating PnL, so
-            // they capture intra-trade drawdown the trade-close balance series misses — the latter
-            // understated DD vs the venue). Fall back to the trade-close series if no snapshots exist.
-            var snapshotDd = await db.EquitySnapshots
+            // Max drawdown from the engine's per-bar equity snapshots. Materialize first
+            // then compute max to avoid EF Core translation issues with DefaultIfEmpty on nullable.
+            var snapshotDds = await db.EquitySnapshots
                 .Where(s => s.RunId == runId)
-                .Select(s => s.CurrentMaxDrawdown)
-                .DefaultIfEmpty(0m)
-                .MaxAsync();
+                .Select(s => (decimal?)s.CurrentMaxDrawdown)
+                .ToListAsync();
+            var snapshotDd = snapshotDds.Count > 0 ? snapshotDds.Max().GetValueOrDefault() : 0m;
 
             var equity = initialBalance;
             var peak = initialBalance;

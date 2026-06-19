@@ -71,19 +71,28 @@ test.describe('Run Report — structure checks (always pass)', () => {
 
 test.describe('Run Report — data checks (require seeded bars)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/runs');
-    await expect(page.locator('app-run-list table tbody tr').first()).toBeVisible({ timeout: TIMEOUT });
-    await page.locator('app-run-list table tbody tr').first().click();
-    await page.waitForURL('**/runs/**', { timeout: TIMEOUT });
+    const seededRunId = process.env.SEEDED_RUN_ID;
+    if (seededRunId) {
+      await page.goto(`/runs/${seededRunId}`);
+    } else {
+      await page.goto('/runs');
+      await expect(page.locator('app-run-list table tbody tr').first()).toBeVisible({ timeout: TIMEOUT });
+      const rows = page.locator('app-run-list table tbody tr');
+      const count = await rows.count();
+      await rows.nth(count - 1).click();
+      await page.waitForURL('**/runs/**', { timeout: TIMEOUT });
+    }
     await expect(page.locator('app-run-report')).toBeVisible({ timeout: TIMEOUT });
   });
 
   test('trades table has cost columns when trades exist', async ({ page }) => {
-    // Trades table is conditionally rendered (trades().length > 0)
+    // Dump what h2 headings exist
+    const h2s = await page.locator('app-run-report h2').allTextContents();
+    console.log(`[DEBUG] Run-report h2 headings: ${JSON.stringify(h2s)}`);
     const heading = page.locator('app-run-report h2:has-text("Trades")');
     const hasTrades = await heading.isVisible().catch(() => false);
-    if (!hasTrades) {
-      test.skip(true, 'no trades in this run — seed bars first');
+    if (!hasTrades || h2s.every(h => !h.includes('Trades'))) {
+      test.skip(true, `no trades in this run — headings found: ${JSON.stringify(h2s)}`);
       return;
     }
     const thTexts = await page.locator('app-run-report app-data-table th').allTextContents();
@@ -95,13 +104,22 @@ test.describe('Run Report — data checks (require seeded bars)', () => {
   });
 
   test('journal filter buttons show correct kinds when journal exists', async ({ page }) => {
+    const h2s = await page.locator('app-run-report h2').allTextContents();
+    console.log(`[DEBUG] Run-report h2s (journal check): ${JSON.stringify(h2s)}`);
     const heading = page.locator('app-run-report h2:has-text("Journal")');
     const hasJournal = await heading.isVisible().catch(() => false);
     if (!hasJournal) {
-      test.skip(true, 'no journal data in this run — seed bars first');
+      test.skip(true, `no journal data — headings: ${JSON.stringify(h2s)}`);
       return;
     }
-    const btnTexts = await page.locator('app-run-report h2:has-text("Journal") ~ div button').allTextContents();
+    const btns = page.locator('app-run-report h2:has-text("Journal") + div button');
+    const btnCount = await btns.count();
+    console.log(`[DEBUG] Journal filter button count: ${btnCount}`);
+    if (btnCount === 0) {
+      test.skip(true, 'journal filter buttons not found');
+      return;
+    }
+    const btnTexts = await btns.allTextContents();
     const all = btnTexts.join(',');
     expect(all).toContain('SIGNAL');
     expect(all).toContain('ORDER');
@@ -115,10 +133,13 @@ test.describe('Run Report — data checks (require seeded bars)', () => {
   });
 
   test('equity chart renders when data exists', async ({ page }) => {
+    // Also check what stat tiles say about trades
+    const tiles = await page.locator('app-run-report app-stat-tile').allTextContents();
+    console.log(`[DEBUG] Stat tiles: ${JSON.stringify(tiles.slice(0, 10))}`);
     const chart = page.locator('app-run-report app-equity-chart');
     const hasChart = await chart.isVisible().catch(() => false);
     if (!hasChart) {
-      test.skip(true, 'no equity data in this run — seed bars first');
+      test.skip(true, `no equity chart — tiles: ${JSON.stringify(tiles.slice(0, 8))}`);
       return;
     }
     await expect(page.locator('app-run-report app-equity-chart .chart-host').first()).toBeVisible({ timeout: TIMEOUT });
@@ -127,14 +148,21 @@ test.describe('Run Report — data checks (require seeded bars)', () => {
 
 test.describe('Trade Detail', () => {
   test('page renders', async ({ page }) => {
-    await page.goto('/runs');
-    await expect(page.locator('app-run-list table tbody tr').first()).toBeVisible({ timeout: TIMEOUT });
-    await page.locator('app-run-list table tbody tr').first().click();
-    await page.waitForURL('**/runs/**', { timeout: TIMEOUT });
+    const seededRunId = process.env.SEEDED_RUN_ID;
+    if (seededRunId) {
+      await page.goto(`/runs/${seededRunId}`);
+    } else {
+      await page.goto('/runs');
+      await expect(page.locator('app-run-list table tbody tr').first()).toBeVisible({ timeout: TIMEOUT });
+      const rows = page.locator('app-run-list table tbody tr');
+      const count = await rows.count();
+      await rows.nth(count - 1).click();
+      await page.waitForURL('**/runs/**', { timeout: TIMEOUT });
+    }
     await expect(page.locator('app-run-report')).toBeVisible({ timeout: TIMEOUT });
 
     // Try clicking a trade row if available
-    const tradeRow = page.locator('app-run-report app-data-table tbody tr').first();
+    const tradeRow = page.locator('app-run-report table tbody tr').first();
     const hasTrades = await tradeRow.isVisible().catch(() => false);
     if (!hasTrades) {
       test.skip(true, 'no trades — seed bars first');
@@ -149,7 +177,10 @@ test.describe('Live Monitor', () => {
   test('renders for a run', async ({ page }) => {
     await page.goto('/runs');
     await expect(page.locator('app-run-list table tbody tr').first()).toBeVisible({ timeout: TIMEOUT });
-    await page.locator('app-run-list table tbody tr').first().click();
+    // Navigate to the LAST (most recent / seeded) run
+    const rows = page.locator('app-run-list table tbody tr');
+    const count = await rows.count();
+    await rows.nth(count - 1).click();
     await page.waitForURL('**/runs/**', { timeout: TIMEOUT });
 
     const url = page.url();

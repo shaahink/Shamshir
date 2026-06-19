@@ -47,10 +47,13 @@ export class TradeDetailComponent implements OnInit {
 
   chartMarkers = (): PriceMarker[] => {
     const t = this.trade(); if (!t) return [];
-    return [
+    const markers: PriceMarker[] = [
       { price: t.entryPrice, label: 'Entry', color: '#60a5fa' },
       { price: t.exitPrice, label: 'Exit', color: '#fb923c' },
     ];
+    if (t.slPrice && t.slPrice > 0) markers.push({ price: t.slPrice, label: 'SL', color: '#ef4444' });
+    if (t.tpPrice && t.tpPrice > 0) markers.push({ price: t.tpPrice, label: 'TP', color: '#10b981' });
+    return markers;
   };
 
   async ngOnInit(): Promise<void> {

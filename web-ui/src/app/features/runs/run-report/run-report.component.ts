@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe, NgClass, DecimalPipe } from '@angular/common';
 import { RunsStore } from '../runs.store';
 import { RunsApiService } from '../runs.service';
@@ -74,7 +74,7 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
           @if (trades().length > 0) {
             <div>
               <h2 class="mb-3 text-sm font-medium text-gray-400">Trades ({{ trades().length }})</h2>
-              <app-data-table [columns]="tradeColumns" [data]="$any(trades())" />
+              <app-data-table [columns]="tradeColumns" [data]="$any(trades())" (rowClick)="onTradeClick($event)" />
             </div>
           }
 
@@ -107,8 +107,13 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
 })
 export class RunReportComponent implements OnInit {
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private api = inject(RunsApiService);
   readonly store = inject(RunsStore);
+
+  onTradeClick(row: any): void {
+    if (row?.id) this.router.navigate(['/trades', row.id]);
+  }
 
   trades = signal<TradeSummary[]>([]);
   journal = signal<JournalEntry[]>([]);

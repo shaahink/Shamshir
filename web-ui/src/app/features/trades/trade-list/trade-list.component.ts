@@ -3,13 +3,12 @@ import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { DataTableComponent, type ColumnDef } from '../../../shared/data-table.component';
 import type { TradeSummary } from '../../../models/api.types';
 
 @Component({
   selector: 'app-trade-list',
   standalone: true,
-  imports: [RouterLink, FormsModule, DataTableComponent],
+  imports: [RouterLink, FormsModule],
   template: `
     <div class="space-y-6">
       <h1 class="text-xl font-semibold">All Trades</h1>
@@ -60,11 +59,14 @@ export class TradeListComponent implements OnInit {
   filterSymbol = ''; filterStrategy = ''; filterDirection = ''; filterFrom = ''; filterTo = '';
   page = signal(1); pageSize = 50;
 
-  columns: ColumnDef[] = [
+  columns = [
     { key: 'symbol', label: 'Sym' }, { key: 'direction', label: 'Dir' },
     { key: 'lots', label: 'Lots', format: 'number' },
     { key: 'entryPrice', label: 'Entry', format: 'number' },
     { key: 'exitPrice', label: 'Exit', format: 'number' },
+    { key: 'grossPnLAmount', label: 'Gross', format: 'currency', colorFn: (v: number) => v >= 0 ? '#34d399' : '#f87171' },
+    { key: 'commissionAmount', label: 'Comm', format: 'currency' },
+    { key: 'swapAmount', label: 'Swap', format: 'currency' },
     { key: 'netPnLAmount', label: 'Net P/L', format: 'currency', colorFn: (v: number) => v >= 0 ? '#34d399' : '#f87171' },
     { key: 'pnLPips', label: 'Pips', format: 'pips' },
     { key: 'rMultiple', label: 'R', format: 'number' },
@@ -87,7 +89,7 @@ export class TradeListComponent implements OnInit {
     return this.filtered().slice(start, start + this.pageSize);
   }
 
-  fmtVal(row: TradeSummary, col: ColumnDef): string {
+  fmtVal(row: TradeSummary, col: { key: string; label: string; format?: string; colorFn?: (v: number) => string }): string {
     const v = (row as any)[col.key]; if (v == null) return '-';
     const n = Number(v);
     switch (col.format) {

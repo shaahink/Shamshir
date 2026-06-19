@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 
 export interface ColumnDef {
   key: string;
@@ -22,7 +22,8 @@ export interface ColumnDef {
         </thead>
         <tbody class="divide-y divide-gray-800">
           @for (row of data(); track $index) {
-            <tr class="transition hover:bg-gray-800/30">
+            <tr class="transition hover:bg-gray-800/30 cursor-pointer"
+              (click)="rowClick.emit(row)">
               @for (col of columns(); track col.key) {
                 <td class="whitespace-nowrap px-4 py-2 font-mono text-xs tabular-nums" [style.color]="cellColor($any(row)[col.key], col)">{{ formatValue($any(row)[col.key], col.format) }}</td>
               }
@@ -39,6 +40,7 @@ export interface ColumnDef {
 export class DataTableComponent {
   readonly columns = input.required<ColumnDef[]>();
   readonly data = input.required<unknown[]>();
+  readonly rowClick = output<any>();
 
   cellColor(value: unknown, col: ColumnDef): string | null {
     if (!col.colorFn || value == null) return null;

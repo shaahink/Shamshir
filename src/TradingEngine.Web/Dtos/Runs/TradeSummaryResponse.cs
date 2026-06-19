@@ -24,4 +24,6 @@ public sealed record TradeSummaryResponse
     public required string StrategyId { get; init; }
     public double DurationSeconds { get; init; }
     public string? Timeframe { get; init; }
+    public decimal? SlPrice { get; init; }
+    public decimal? TpPrice { get; init; }
 }
