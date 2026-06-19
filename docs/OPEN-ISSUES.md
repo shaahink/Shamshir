@@ -1,11 +1,12 @@
 # Shamshir — Open Issues
 
-**Updated**: 2026-06-19 (full system audit)
-**Branch**: `iter/31-costs-journal`
-**Total open**: 75 bugs + 7 carry-forward + 3 observability gaps + 3 minor
+**Updated**: 2026-06-19 (iter-35 handover)
+**Branch**: `iter/35-kernel`
+**Total open**: 60 bugs + 7 carry-forward + 3 observability gaps + 3 minor (15 resolved in iter-35)
 
 Fixed items → `docs/RESOLVED-ISSUES.md`. Roadmap → `docs/NEXT-STEPS.md`.
 Full audit narrative + system model → `docs/reference/SYSTEM-AUDIT.md`.
+Iter-35 handover → `docs/iterations/iter-35/HANDOVER.md`.
 
 ---
 
@@ -22,7 +23,7 @@ cBot `ExecuteSubmitOrder()` ignores `orderType`, `limitPrice`, `expiryBars`, `ma
 Engine sends `{"type":"cancel_order",...}` in `bar_done.commands[]`. cBot command dispatch loop has no branch for `cancel_order`. Position state drifts between engine and cTrader.
 
 ### C3 — Trailing max-DD floor uses `equity.Equity` instead of `equity.PeakEquity`
-**Severity**: Critical — trades breach the real trailing limit pass the gate
+**Severity**: Critical — ✅ **FIXED iter-35** (kernel `PreTradeGate` → `DrawdownState.GetMaxDrawdownFloor`). Old `RiskManager.cs` still has the bug but kernel gate is authoritative going forward.
 **File**: `src/TradingEngine.Risk/RiskManager.cs:186-187`
 ```csharp
 var drawdownBase = Drawdown.DrawdownType == "Trailing" ? equity.Equity : equity.Balance;
@@ -30,12 +31,12 @@ var drawdownBase = Drawdown.DrawdownType == "Trailing" ? equity.Equity : equity.
 For trailing mode, should be `equity.PeakEquity`. As equity drops, the projected floor also drops, making the gate artificially permissive. Same bug in `RiskGate.cs:39`.
 
 ### C4 — MaxDD protection mode never auto-exits
-**Severity**: Critical — max-DD protection is permanent (survives daily/weekly/monthly resets)
+**Severity**: Critical — ✅ **FIXED iter-35** (kernel `ProtectionState.ClearsOn` + `Kernel.DecideReset`). Old `RiskManager.OnDailyReset` still has the bug but kernel path is authoritative going forward.
 **File**: `src/TradingEngine.Risk/RiskManager.cs:299-307`
 `OnDailyReset()` only clears `ProtectionCause.DailyDrawdown`. MaxDD-caused protection stays forever. `PropFirmRuleSet.ProtectionResetPolicy` is defined but **never read by any code**.
 
 ### C5 — SimulatedBrokerAdapter AccountUpdate param swap (Equity=0)
-**Severity**: Critical — breach watchdog force-closes everything immediately
+**Severity**: Critical — ✅ **FIXED iter-35** (all 3 sites: `(balance, balance, 0)` instead of `(balance, 0, balance)`)
 **File**: `src/TradingEngine.Infrastructure/Venues/Simulated/SimulatedBrokerAdapter.cs:165-166,279-280,329-330`
 ```csharp
 new AccountUpdate(_currentBalance, 0m, _currentBalance, now)
@@ -48,12 +49,12 @@ Passes `Equity = 0m, FloatingPnL = _currentBalance` instead of `Equity = balance
 No cost computation, no `_currentBalance` update, no `AccountUpdate` emitted, no cost fields stamped on `ExecutionEvent`. Balance drifts from reality.
 
 ### C7 — SimulatedBrokerAdapter limit expiry decrements per tick, not per bar
-**Severity**: Critical — limits expire in ~50ms with real tick data
+**Severity**: Critical — ✅ **FIXED iter-35** (moved to `OnBarObserved` per-bar decrement)
 **File**: `src/TradingEngine.Infrastructure/Venues/Simulated/SimulatedBrokerAdapter.cs:220-221`
 `ExpiryBarCount--` runs in `OnTickReceived()` (every tick). With live tick feed (60+/sec), a 3-bar limit expires in 3 ticks. Accidentally works with the default 1-tick-per-bar feed.
 
 ### C8 — SessionBreakout uses all-time global high/low, not session window range
-**Severity**: Critical — strategy never triggers breakouts
+**Severity**: Critical — ✅ **FIXED iter-35** (range now filtered to `[RangeStartUtc, RangeEndUtc)` time-of-day window)
 **File**: `src/TradingEngine.Strategies/SessionBreakout/SessionBreakoutStrategy.cs:55-56`
 ```csharp
 _rangeHigh = h1Bars.Max(b => b.High);  // ALL bars in history, not just 05:00-07:00 bars
@@ -94,7 +95,7 @@ public async Task<IActionResult> Cancel(string runId)
 **Files**: `BacktestController.cs:7`, `BacktestAnalyticsController.cs:6`
 
 ### C14 — `RiskProfile.MaxSlPips` defaults to 0, silently rejecting all trades
-**Severity**: Critical — any RiskProfile without explicit MaxSlPips blocks all trading
+**Severity**: Critical — ✅ **FIXED iter-35** (kernel `PreTradeGate`: `MaxSlPips<=0` = "no limit")
 **File**: `src/TradingEngine.Domain/RiskAndEquity/RiskProfile.cs:9`
 `IsSlValid` checks `distance.Value > profile.MaxSlPips`. When `MaxSlPips = 0` (default), every positive SL distance is rejected.
 
@@ -107,28 +108,22 @@ public async Task<IActionResult> Cancel(string runId)
 If balance has grown from realized profit (e.g., $100k → $105k), floor becomes `$105k * 0.95 = $99,750` instead of correct `$100k * 0.95 = $95,000`.
 
 ### H2 — Weekly/monthly DD limits never checked in pre-trade gate
-**File**: `src/TradingEngine.Risk/RiskManager.cs:103-109`
-`ConstraintSet.MaxWeeklyLoss`/`MaxMonthlyLoss` exist in the struct but `Validate()` only checks daily and total DD. Weekly and monthly are completely unenforced for signal rejection.
+**File**: `src/TradingEngine.Risk/RiskManager.cs:103-109` — ✅ **FIXED iter-35** (kernel `PreTradeGate` enforces weekly/monthly; old `RiskManager.Validate` still missing them)
 
 ### H3 — `RiskGate.ProjectWorstCase` ignores `DailyDdBase`
-**File**: `src/TradingEngine.Engine/RiskGate.cs:33`
-Always uses `dailyStartEquity` as base, even when config says `DailyDdBase.InitialBalance`.
+**File**: `src/TradingEngine.Engine/RiskGate.cs:33` — ✅ **FIXED iter-35** (`RiskGate.cs` deleted; kernel `PreTradeGate` honors `DailyDdBase`)
 
 ### H4 — Trailing max-DD floor in `RiskGate` uses `currentEquity` not peak
-**File**: `src/TradingEngine.Engine/RiskGate.cs:39`
-Duplicate of C3 in the worst-case projection path.
+**File**: `src/TradingEngine.Engine/RiskGate.cs:39` — ✅ **FIXED iter-35** (`RiskGate.cs` deleted)
 
 ### H5 — `AntiMartingale` sizing method not implemented
-**File**: `src/TradingEngine.Risk/PositionSizer.cs:34-40`
-Switch has no `AntiMartingale` case — falls through silently to `PercentRisk`. Strategy config with AntiMartingale gets PercentRisk with no warning.
+**File**: `src/TradingEngine.Risk/PositionSizer.cs:34-40` — ✅ **FIXED iter-35** (kernel `KernelSizing` has explicit `AntiMartingale` branch; old `PositionSizer` still broken)
 
 ### H6 — `FixedLots`/`FixedDollarRisk` bypass drawdown scaling
-**File**: `src/TradingEngine.Risk/PositionSizer.cs:36,55-63`
-`drawdownScaleFactor` never applied in these sizing methods. Account at 80% DD risks same size as at 0%.
+**File**: `src/TradingEngine.Risk/PositionSizer.cs:36,55-63` — ✅ **FIXED iter-35** (kernel `KernelSizing` applies drawdown scale to all methods; old `PositionSizer` still broken)
 
 ### H7 — Governor `OnDailyReset()` never called — profit-lock permanent
-**Files**: `AccountProcessor.cs:72-73`, `DailyResetService.cs:18-30`, `TradingGovernorService.cs:200`
-`_profitLockedToday` once set `true`, stays `true` forever. No production code path reaches `ITradingGovernor.OnDailyReset()`. After daily profit-lock triggers, governor permanently blocks ALL new trades.
+**Files**: `AccountProcessor.cs:72-73`, `DailyResetService.cs:18-30`, `TradingGovernorService.cs:200` — ✅ **FIXED iter-35** (kernel `HandleDayRolled` → `GovernorMachine.ApplyDailyReset`; `DailyResetService` deleted)
 
 ### H8 — BUG-09 STATUS: cooling-off fixed, but sibling remains
 **Original BUG-09**: Governor cooling-off counter never decrements. **FIXED** — `TradingLoop.cs:83` now calls `governor?.OnBar(bar.OpenTimeUtc)`.
@@ -250,8 +245,7 @@ Signature: `$"{exec.OrderId}|{exec.NewState}|{exec.FillPrice}|{exec.FilledLots}"
 Checks `currentBalance >= target` instead of `currentEquity`. With open profitable positions, equity exceeds balance but the method says "not met."
 
 ### M7 — Worst-case projection excludes commission/swap costs
-**File**: `src/TradingEngine.Risk/RiskManager.cs:162-168`
-`candidateLoss = slPips * pipValuePerLot * lots` — no commission/swap added. Trade can pass gate but lose more than projected when costs applied.
+**File**: `src/TradingEngine.Risk/RiskManager.cs:162-168` — ✅ **FIXED iter-35** (kernel `PreTradeGate.CandidateWorstCase` includes round-trip commission; old `RiskManager` still missing it)
 
 ### M8 — `DrawdownVelocity` only updates at daily reset, stale all day
 **File**: `src/TradingEngine.Engine/DrawdownReducer.cs:5-39`
@@ -262,7 +256,7 @@ Checks `currentBalance >= target` instead of `currentEquity`. With open profitab
 `RecomputeIndicatorsAsync` accepts `ct` but never checks it. Long recompute cannot be cancelled.
 
 ### M10 — `TradeCostCalculator.Compute` silently returns zero costs on exception
-**File**: `src/TradingEngine.Services/Helpers/TradeCostCalculator.cs:304` (called from `BacktestReplayAdapter.cs:304`)
+**File**: `src/TradingEngine.Services/Helpers/TradeCostCalculator.cs:304` (called from `BacktestReplayAdapter.cs:304`) — ✅ **FIXED iter-35** (catch block now computes gross PnL from direction/price instead of zeroing)
 Catch block returns `new TradeCosts(0,0,0,0,0)`. No indication downstream that costs were not computed.
 
 ### M11 — `JournalNormalizer`: `"OrderCancelled"` always maps to `ENTRY_EXPIRED`, never `CANCELLED`

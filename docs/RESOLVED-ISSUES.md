@@ -70,3 +70,36 @@ trail — items are never deleted, only added.
 - **SEEDER-01** — StrategyConfigSeeder crashed on fresh DB → `.Clone()` on `JsonElement` + `Undefined` guard.
 - **MIGRATIONS-01** — Collapsed to single `InitialCreate`.
 - **WEB-BUILD-01** — Web project didn't compile → Restored missing global using.
+
+## Iteration 35 — Kernel Skeleton + Parts A & B
+
+### Kernel gate bugs fixed (kernel authoritative; old paths to be deleted in cutover)
+- **C3/H1** — Trailing max-DD floor uses `equity.Equity` not `PeakEquity` → `DrawdownState.GetMaxDrawdownFloor` in `PreTradeGate`
+- **C4** — MaxDD protection never auto-exits → `ProtectionState.ClearsOn` + `Kernel.DecideReset`
+- **H2** — Weekly/monthly DD never enforced → `PreTradeGate` checks enabled by B1 toggles
+- **H3** — Worst-case ignored `DailyDdBase` → `PreTradeGate` honors `DailyDdBase`; `RiskGate.cs` deleted
+- **H4** — Duplicate C3 in `RiskGate.cs:39` → `RiskGate.cs` deleted
+- **H5** — AntiMartingale silent fall-through → `KernelSizing` explicit branch
+- **H6** — FixedLots/FixedDollarRisk bypass drawdown scaling → `KernelSizing` applies scale to all methods
+- **H7** — Governor `OnDailyReset()` never called → `HandleDayRolled` → `GovernorMachine.ApplyDailyReset` in kernel path
+- **M7** — Worst-case projection excludes commission → `PreTradeGate.CandidateWorstCase` includes round-trip commission
+- **NEW-3/C14** — SL-distance validation unenforced; `MaxSlPips=0` rejects all → `PreTradeGate`: `<=0` = "no limit"
+
+### Venue bugs fixed (live code, immediately effective)
+- **C5** — `AccountUpdate(balance, 0, balance)` at 3 sites → Fixed to `(balance, balance, 0)` in `SimulatedBrokerAdapter`
+- **C7** — Limit expiry per tick → Moved to `OnBarObserved` per-bar decrement
+- **C8** — SessionBreakout range = full buffer → Filtered to `[RangeStartUtc, RangeEndUtc)` time-of-day window
+- **M10** — `ComputeCosts` swallows gross PnL to zero → Catch computes gross PnL from direction/price
+
+### Architecture / debt removed
+- **RiskGate.cs** + **RiskGateTests.cs** — Dead code with zero callers in `src/`
+- **DailyResetService** — Wall-clock `BackgroundService`; kernel owns sim-time resets via `HandleDayRolled`
+- **All UNWIRED comments** — Removed from `EngineReducer`; all 5 branches now wired via `Kernel.Decide`
+
+### New additions
+- `ProtectionToggles` — 9 on/off flags (daily, max, weekly, monthly DD, profit target, force-close, news, weekend, governor)
+- 3 toggle tests verifying: disabled daily DD → no protection, disabled force-close → no flatten, disabled governor → orders pass
+- `DatasetEntity`/`ConfigSetEntity` persistence + `BarTape` + `RunSpec` on `BacktestRun`
+- Journal table + `SqliteStepRecordSink` + `KernelJournalController` (paged + NDJSON export)
+- `ReplayRunner` + determinism test + 7 scenario invariant tests
+- Golden replay oracle with committed `golden-snapshot.json` baseline
