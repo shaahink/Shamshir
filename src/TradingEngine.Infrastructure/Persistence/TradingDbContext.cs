@@ -23,6 +23,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<GovernorOptionsEntity> GovernorOptions => Set<GovernorOptionsEntity>();
     public DbSet<DatasetEntity> Datasets => Set<DatasetEntity>();
     public DbSet<ConfigSetEntity> ConfigSets => Set<ConfigSetEntity>();
+    public DbSet<JournalEntryEntity> JournalEntries => Set<JournalEntryEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -150,6 +151,17 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.Property(x => x.ContentHash).HasColumnType("TEXT").IsRequired();
             e.Property(x => x.Json).HasColumnType("TEXT").IsRequired();
             e.HasIndex(x => x.ContentHash);
+        });
+
+        modelBuilder.Entity<JournalEntryEntity>(e =>
+        {
+            e.ToTable("Journal");
+            e.HasKey(x => new { x.RunId, x.Seq });
+            e.Property(x => x.RunId).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.Seq).HasColumnType("INTEGER");
+            e.Property(x => x.SimTimeUtc).HasColumnType("TEXT");
+            e.Property(x => x.EventKind).HasColumnType("TEXT").IsRequired();
+            e.HasIndex(x => new { x.RunId, x.SimTimeUtc });
         });
     }
 }
