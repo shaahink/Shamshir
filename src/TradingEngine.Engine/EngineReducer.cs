@@ -219,17 +219,32 @@ public static class EngineReducer
         return new EngineDecision(state with { Positions = newPositions, Governor = newGovernor }, effects);
     }
 
-    private static string? DetectSlTpExit(PositionState state, BarClosed bar)
+    public static string? DetectSlTpExit(PositionState state, BarClosed bar)
     {
-        if (state.Direction == TradeDirection.Long)
+        return DetectSlTpExit(state.Direction, state.CurrentStopLoss, state.TakeProfit,
+            bar.High, bar.Low);
+    }
+
+    /// <summary>
+    /// Stateless overload for callers that don't hold a full <see cref="PositionState"/> (e.g. the old
+    /// PositionTracker loop during the AF3 cutover). Behaviour is byte-identical to the state-based overload.
+    /// </summary>
+    public static string? DetectSlTpExit(TradeDirection direction, Price stopLoss, Price? takeProfit, Bar bar)
+    {
+        return DetectSlTpExit(direction, stopLoss, takeProfit, bar.High, bar.Low);
+    }
+
+    private static string? DetectSlTpExit(TradeDirection direction, Price stopLoss, Price? takeProfit, decimal high, decimal low)
+    {
+        if (direction == TradeDirection.Long)
         {
-            if (bar.Low <= state.CurrentStopLoss.Value) return "SL";
-            if (state.TakeProfit is not null && bar.High >= state.TakeProfit.Value.Value) return "TP";
+            if (low <= stopLoss.Value) return "SL";
+            if (takeProfit is not null && high >= takeProfit.Value.Value) return "TP";
         }
         else
         {
-            if (bar.High >= state.CurrentStopLoss.Value) return "SL";
-            if (state.TakeProfit is not null && bar.Low <= state.TakeProfit.Value.Value) return "TP";
+            if (high >= stopLoss.Value) return "SL";
+            if (takeProfit is not null && low <= takeProfit.Value.Value) return "TP";
         }
         return null;
     }

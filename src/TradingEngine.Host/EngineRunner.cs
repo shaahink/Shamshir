@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using TradingEngine.Engine;
 
 namespace TradingEngine.Host;
 
@@ -251,26 +252,20 @@ public sealed class EngineRunner
     }
 
     /// <summary>
-    /// (iter-35/A2 DEPRECATED): replaced by kernel EngineReducer.HandleBarClosed + DetectSlTpExit.
-    /// The kernel path owns SL/TP detection as part of the pure reducer. This method remains only
-    /// until the full kernel cutover wires EngineRunner through KernelDriver — then DELETE.
+    /// (iter-35 AF3): SL/TP detection now delegates to the pure kernel static helper
+    /// <see cref="EngineReducer.DetectSlTpExit"/> — the single SL/TP authority.
     /// </summary>
     internal async Task SimulateBarExitsAsync(Bar bar, CancellationToken ct)
     {
         foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())
         {
             if (pos.Symbol != bar.Symbol) continue;
-            string? reason = null;
-            Price exitPrice = pos.CurrentStopLoss;
-            if (pos.Direction == TradeDirection.Long)
+
+            var exitPrice = pos.CurrentStopLoss;
+            var reason = EngineReducer.DetectSlTpExit(pos.Direction, pos.CurrentStopLoss, pos.TakeProfit, bar);
+            if (reason == "TP")
             {
-                if (bar.Low <= pos.CurrentStopLoss.Value) { reason = "SL"; exitPrice = pos.CurrentStopLoss; }
-                else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) { reason = "TP"; exitPrice = pos.TakeProfit.Value; }
-            }
-            else
-            {
-                if (bar.High >= pos.CurrentStopLoss.Value) { reason = "SL"; exitPrice = pos.CurrentStopLoss; }
-                else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) { reason = "TP"; exitPrice = pos.TakeProfit.Value; }
+                exitPrice = pos.TakeProfit!.Value;
             }
 
             if (reason is not null)
@@ -278,10 +273,7 @@ public sealed class EngineRunner
                 _logger.LogInformation("BAR_EXIT|{Id}|{Symbol}|reason={Reason}|sl={SL:F5}|tp={TP}|low={Low:F5}|high={High:F5}",
                     orderId, pos.Symbol, reason, pos.CurrentStopLoss.Value,
                     pos.TakeProfit?.Value ?? 0, bar.Low, bar.High);
-                // Stamp WHY before asking the venue to close, so the close fill records the real
-                // exit reason (SL/TP) in the journal/ledger instead of the generic "FORCE".
                 _positionTracker.SetCloseReason(orderId, reason);
-                // F2/D3: fill at the stop/target price, not the bar close.
                 await _broker.ClosePositionAtAsync(orderId, exitPrice, ct);
             }
         }
