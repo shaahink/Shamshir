@@ -168,6 +168,7 @@ public static class EngineServiceCollectionExtensions
             sp.GetService<RunPlan>(),
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
         services.AddSingleton<OrderDispatcher>();
+        services.AddSingleton<KernelOrderGate>(); // iter-35 AF2: the kernel gate is now the production authority
         services.AddSingleton<PositionTracker>();
         services.AddSingleton<EntryPlanner>();
         services.AddSingleton<EffectExecutor>();
@@ -255,7 +256,7 @@ public static class EngineServiceCollectionExtensions
                 Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
                 StrategyBank = sp.GetRequiredService<IStrategyBank>(),
                 RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
-                OrderGate = sp.GetRequiredService<OrderDispatcher>(),
+                OrderGate = sp.GetRequiredService<KernelOrderGate>(),
                 PositionTracker = sp.GetRequiredService<PositionTracker>(),
                 EntryPlanner = sp.GetRequiredService<EntryPlanner>(),
                 SignalGate = sp.GetRequiredService<ISignalGate>(),
@@ -335,6 +336,7 @@ public static class EngineServiceCollectionExtensions
             options.RunPlan,
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
         services.AddSingleton<OrderDispatcher>();
+        services.AddSingleton<KernelOrderGate>(); // iter-35 AF2: the kernel gate is now the production authority
         services.AddSingleton<PositionTracker>();
         services.AddSingleton<EntryPlanner>();
         services.AddSingleton<EffectExecutor>();
@@ -407,7 +409,7 @@ public static class EngineServiceCollectionExtensions
                 Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
                 StrategyBank = sp.GetRequiredService<IStrategyBank>(),
                 RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
-                OrderGate = sp.GetRequiredService<OrderDispatcher>(),
+                OrderGate = sp.GetRequiredService<KernelOrderGate>(),
                 PositionTracker = sp.GetRequiredService<PositionTracker>(),
                 EntryPlanner = sp.GetRequiredService<EntryPlanner>(),
                 SignalGate = sp.GetRequiredService<ISignalGate>(),
