@@ -1,8 +1,17 @@
 # Shamshir — Open Issues
 
-**Updated**: 2026-06-19 (iter-35 handover)
+**Updated**: 2026-06-19 (iter-35 cont. — AF2 order-gate cutover LIVE)
 **Branch**: `iter/35-kernel`
 **Total open**: 60 bugs + 7 carry-forward + 3 observability gaps + 3 minor (15 resolved in iter-35)
+
+> **iter-35 (cont.) — order-gate cutover is LIVE in production.** `TradingLoop` now decides via
+> `KernelOrderGate` → `PreTradeGate` → `KernelSizing` (DI flipped; verified by the golden-harness
+> equivalence test + a run-shamshir app run). So the kernel risk fixes below — **C3, H1, H2, H3, M7,
+> H5, H6, C14, NEW-3** — are now **effective in production**, not just in a sidecar. `RiskManager`'s
+> `ValidateOrder`/`CalculateLotSize`/`PositionSizer` order-decision path is **no longer wired** (kept
+> only as the equivalence-test baseline). Remaining cutover families (bar-exit SL/TP, equity-breach
+> watchdog, day/week/month resets, governor retirement, sizing-class deletion) are still pending — see
+> `docs/iterations/iter-35/PLAN-FINISH-AB.md`.
 
 Fixed items → `docs/RESOLVED-ISSUES.md`. Roadmap → `docs/NEXT-STEPS.md`.
 Full audit narrative + system model → `docs/reference/SYSTEM-AUDIT.md`.
