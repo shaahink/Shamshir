@@ -181,7 +181,9 @@ public sealed class KernelAcceptanceTests
             }
         }
 
-        await journal.FlushAsync(CancellationToken.None);
+        // DisposeAsync drains the background flush loop before we assert on the sink; FlushAsync is a
+        // no-op for the continuous-loop writer, so asserting straight after it raced the flush (flaky).
+        await journal.DisposeAsync();
 
         // --- Assert ---
         var submitEffects = effects.Effects.OfType<SubmitOrder>().ToList();

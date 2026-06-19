@@ -72,7 +72,7 @@ public sealed class EngineRunner
             e => Volatile.Write(ref _currentEquity, e), logger,
             progress: _progress, runId: runContext.RunId);
         _tradingLoop = new TradingLoop(
-            _broker, _indicatorSnapshot, deps.Strategies.OrderDispatcher, _positionTracker,
+            _broker, _indicatorSnapshot, deps.Strategies.OrderGate, _positionTracker,
             deps.Strategies.StrategyBank, deps.Strategies.RegimeDetector, _signalGate,
             deps.Risk.Governor,
             deps.Market.SymbolRegistry, deps.Persistence.EventBus, _clock, runContext,

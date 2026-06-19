@@ -15,7 +15,7 @@ namespace TradingEngine.Host;
 public sealed class TradingLoop(
     IBrokerAdapter broker,
     IndicatorSnapshotService indicatorSnapshot,
-    OrderDispatcher orderDispatcher,
+    IOrderGate orderGate,
     PositionTracker positionTracker,
     IStrategyBank strategyBank,
     IRegimeDetector regimeDetector,
@@ -174,7 +174,7 @@ public sealed class TradingLoop(
                 continue;
             }
             var openPositions = MapOpenPositionsToProjected();
-            var orderCtx = await orderDispatcher.DispatchAsync(intent, equity, bar.Close, broker, openPositions, ct);
+            var orderCtx = await orderGate.DispatchAsync(intent, equity, bar.Close, broker, openPositions, ct);
             if (orderCtx is null) continue;
 
             var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,

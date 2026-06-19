@@ -12,7 +12,7 @@ public sealed class OrderDispatcher(
     Func<string, string, decimal> crossRateProvider,
     IDecisionJournal decisionJournal,
     EngineRunContext runContext,
-    ILogger<OrderDispatcher> logger)
+    ILogger<OrderDispatcher> logger) : IOrderGate
 {
     public async Task<OrderContext?> DispatchAsync(
         TradeIntent intent, EquitySnapshot equity, decimal currentMid,
