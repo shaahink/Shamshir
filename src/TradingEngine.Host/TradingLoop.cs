@@ -20,6 +20,7 @@ public sealed class TradingLoop(
     IStrategyBank strategyBank,
     IRegimeDetector regimeDetector,
     ISignalGate? signalGate,
+    ITradingGovernor? governor,
     ISymbolInfoRegistry symbolRegistry,
     IEventBus eventBus,
     IEngineClock clock,
@@ -79,6 +80,7 @@ public sealed class TradingLoop(
         indicatorSnapshot.BuildSharedIndicatorSnapshot(bar.Symbol);
 
         signalGate?.OnBar(bar.OpenTimeUtc);
+        governor?.OnBar(bar.OpenTimeUtc);
 
         var regime = regimeDetector.Detect(bar.Symbol,
             barSnapshot[bar.Timeframe],

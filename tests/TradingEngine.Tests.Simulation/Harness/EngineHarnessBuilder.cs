@@ -151,7 +151,7 @@ public sealed class EngineHarnessBuilder
 
         var tradingLoop = new TradingLoop(
             fakeVenue, indicatorSnapshot, dispatcher, positionTracker,
-            strategyBank, regimeDetector, signalGate: null, symbolRegistry,
+            strategyBank, regimeDetector, signalGate: null, governor: null, symbolRegistry,
             eventBus, clock, runContext,
             getCrossRate: crossRate,
             currentEquity: () => equity.Value,

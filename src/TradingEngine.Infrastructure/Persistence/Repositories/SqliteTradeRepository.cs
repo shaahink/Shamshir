@@ -75,6 +75,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             new Pips(e.PnLPips), e.RMultiple,
             new Pips(e.MaxAdverseExcursion), new Pips(e.MaxFavorableExcursion),
             e.ExitReason, e.StrategyId, e.RiskProfileId,
-            Enum.Parse<EngineMode>(e.Mode));
+            Enum.Parse<EngineMode>(e.Mode),
+            OrderId: e.OrderId);
     }
 }

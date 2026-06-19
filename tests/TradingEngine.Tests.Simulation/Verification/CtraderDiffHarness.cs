@@ -198,32 +198,27 @@ public static class CtraderDiffHarness
         }
     }
 
-    // Per-trade reconciliation: join the venue history[] (cBot ledger) to DB trades and compare each
-    // trade's economics — surfacing per-trade drift (fill price, PnL, commission, swap) and trades
-    // present on only one side.
-    //
-    // Join key: the engine assigns a PositionId distinct from the venue clientOrderId, and the
-    // originating OrderId is not yet persisted on the trade, so we match by economic identity
-    // (direction + entry price, nearest open time). Once OrderId is persisted on TradeResult this
-    // should switch to an exact clientOrderId==OrderId join. See [[project-ctrader-report-extraction]].
+    // Per-trade reconciliation: join the venue history[] (cBot ledger) to DB trades by exact
+    // clientOrderId == TradeResult.OrderId. Compares each trade's economics — surfacing per-trade
+    // drift (fill price, PnL, commission, swap) and trades present on only one side.
     private static void CompareTradeHistory(
         CtraderDiffResult result, CtraderHistorySection? history,
         List<TradeResultEntity> dbTrades, ToleranceConfig tolerance)
     {
         if (history is null || history.Items.Count == 0) return;
 
-        var remaining = new List<TradeResultEntity>(dbTrades);
+        var dbByOrder = dbTrades
+            .Where(t => t.OrderId != Guid.Empty)
+            .GroupBy(t => t.OrderId.ToString(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var matched = new HashSet<Guid>();
         foreach (var v in history.Items)
         {
-            var venueOpen = DateTimeOffset.FromUnixTimeMilliseconds(v.EntryTime).UtcDateTime;
-            var match = remaining
-                .Where(t => SameDirection(t.Direction, v.Direction)
-                            && Math.Abs(t.EntryPrice - v.EntryPrice) <= 0.00005m)
-                .OrderBy(t => Math.Abs((venueOpen - t.OpenedAtUtc).TotalSeconds))
-                .FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(v.ClientOrderId)) continue;
+            var label = Short(v.ClientOrderId);
 
-            var label = Short(v.ClientOrderId ?? v.Id.ToString());
-            if (match is null)
+            if (!dbByOrder.TryGetValue(v.ClientOrderId, out var match))
             {
                 result.Discrepancies.Add(new CtraderDiscrepancy(
                     "TradeMissingInDb", DiscrepancyKind.Structural, Severity.Error,
@@ -231,7 +226,7 @@ public static class CtraderDiffHarness
                     "present", "missing"));
                 continue;
             }
-            remaining.Remove(match);
+            matched.Add(match.Id);
             CompareField(result, label, "Net", v.Net, match.NetPnLAmount, tolerance.NetPnLAbs);
             CompareField(result, label, "Gross", v.Gross, match.GrossPnLAmount, tolerance.NetPnLAbs);
             CompareField(result, label, "Commission", v.Commissions, match.CommissionAmount, tolerance.CommissionAbs);
@@ -239,21 +234,13 @@ public static class CtraderDiffHarness
             CompareField(result, label, "ExitPrice", v.ClosePrice, match.ExitPrice, 0.00005m);
         }
 
-        foreach (var t in remaining)
+        foreach (var t in dbTrades.Where(t => t.OrderId != Guid.Empty && !matched.Contains(t.Id)))
         {
             result.Discrepancies.Add(new CtraderDiscrepancy(
                 "TradeMissingInVenue", DiscrepancyKind.Structural, Severity.Error,
-                $"DB trade {Short(t.PositionId.ToString())} ({t.Direction} @ {t.EntryPrice:0.#####}, net {t.NetPnLAmount:F2}) has no matching venue row",
+                $"DB trade {Short(t.OrderId.ToString())} ({t.Direction} @ {t.EntryPrice:0.#####}, net {t.NetPnLAmount:F2}) has no matching venue row",
                 "missing", "present"));
         }
-    }
-
-    private static bool SameDirection(string db, string? venue)
-    {
-        if (venue is null) return false;
-        var d = db.Equals("Long", StringComparison.OrdinalIgnoreCase) || db.Equals("Buy", StringComparison.OrdinalIgnoreCase);
-        var v = venue.Equals("Long", StringComparison.OrdinalIgnoreCase) || venue.Equals("Buy", StringComparison.OrdinalIgnoreCase);
-        return d == v;
     }
 
     private static string Short(string id) => id.Length > 8 ? id[..8] : id;

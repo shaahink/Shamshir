@@ -82,7 +82,7 @@ public sealed class TradingLoopDirectTests
 
         var loop = new TradingLoop(
             broker, indicatorSnapshot, dispatcher, positionTracker,
-            strategyBank, regimeDetector, signalGate: null, symbolRegistry,
+            strategyBank, regimeDetector, signalGate: null, governor: null, symbolRegistry,
             eventBus, clock, runContext, (_, _) => 1m, () => equity, progress: null, journal: null,
             new TradingEngine.Services.EntryPlanner(symbolRegistry, NullLogger<TradingEngine.Services.EntryPlanner>.Instance),
             NullLogger.Instance);

@@ -1,4 +1,5 @@
 ﻿using Microsoft.Data.Sqlite;
+using Scalar.AspNetCore;
 using TradingEngine.Host;
 using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.Persistence.Repositories;
@@ -12,12 +13,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddControllers();
 
-// iter-21 U1 — live run channel. camelCase payloads so the RunProgress envelope arrives as
-// runId/simTimeUtc/... matching the documented contract (and the contract test).
 builder.Services.AddSignalR()
     .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy =
         System.Text.Json.JsonNamingPolicy.CamelCase);
-builder.Services.AddSingleton<TradingEngine.Web.Services.RunProgressBroadcaster>();
+builder.Services.AddSingleton<RunProgressBroadcaster>();
+
+// OpenAPI + Scalar
+builder.Services.AddOpenApi();
 
 var dbPath = builder.Configuration.GetValue<string>("Persistence:DbPath")
     ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));
@@ -46,6 +48,11 @@ builder.Services.AddSingleton<EffectiveConfigResolver>();
 builder.Services.AddSingleton<BacktestOrchestrator>();
 builder.Services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
 builder.Services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
+
+// Query services — no DbContext in controllers
+builder.Services.AddScoped<IRunQueryService, RunQueryService>();
+builder.Services.AddScoped<IProtectionQueryService, ProtectionQueryService>();
+builder.Services.AddScoped<IBarQueryService, BarQueryService>();
 
 // Register strategy bank infrastructure for APIs + Razor Pages
 builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
@@ -85,12 +92,14 @@ using (var scope = app.Services.CreateScope())
     await seeder.SeedAsync();
 }
 
-
 app.UseStaticFiles();
 app.UseRouting();
 app.MapRazorPages();
 app.MapControllers();
 app.MapHub<TradingEngine.Web.Hubs.RunHub>("/hubs/run");
+
+app.MapOpenApi();
+app.MapScalarApiReference();
 
 app.Run();
 
