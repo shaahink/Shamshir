@@ -191,6 +191,44 @@ async function main() {
     // Start a backtest with seeded bars
     const seededRunId = await startBacktest('bb-squeeze');
 
+    // ── Diagnose trades API ──────────────────────────────────────────
+    if (seededRunId) {
+      console.log(`\n--- Diagnosing trades for run ${seededRunId} ---`);
+      const tradesRes = await get(`/api/runs/${seededRunId}/trades`);
+      const tradesArray = Array.isArray(tradesRes.body) ? tradesRes.body : [];
+      console.log(`GET /api/runs/${seededRunId}/trades → ${tradesRes.status} (${tradesArray.length} trades)`);
+      if (tradesArray.length > 0) {
+        const first = tradesArray[0];
+        console.log(`  First trade: id=${first.id} symbol=${first.symbol} net=${first.netPnLAmount} exit=${first.exitReason}`);
+      }
+
+      const runRes = await get(`/api/runs/${seededRunId}`);
+      console.log(`GET /api/runs/${seededRunId} → ${runRes.status} (totalTrades=${runRes.body?.totalTrades || runRes.body?.TotalTrades || '?'})`);
+
+      const journalRes = await get(`/api/runs/${seededRunId}/journal`);
+      const journalArr = Array.isArray(journalRes.body) ? journalRes.body : [];
+      console.log(`GET /api/runs/${seededRunId}/journal → ${journalRes.status} (${journalArr.length} journal entries)`);
+
+      const equityRes = await get(`/api/runs/${seededRunId}/equity`);
+      const equityArr = Array.isArray(equityRes.body) ? equityRes.body : [];
+      console.log(`GET /api/runs/${seededRunId}/equity → ${equityRes.status} (${equityArr.length} equity points)`);
+
+      const dpRes = await get(`/api/runs/${seededRunId}/daily-pnl`);
+      const dpArr = Array.isArray(dpRes.body) ? dpRes.body : [];
+      console.log(`GET /api/runs/${seededRunId}/daily-pnl → ${dpRes.status} (${dpArr.length} daily PnL entries)`);
+
+      // Check DB directly via sqlite3
+      try {
+        const { execSync } = require('node:child_process');
+        const count = execSync(`sqlite3 "${dbPath}" "SELECT COUNT(*) FROM Trades WHERE RunId='${seededRunId}'"`, { encoding: 'utf-8' }).trim();
+        console.log(`DB: SELECT COUNT(*) FROM Trades WHERE RunId='${seededRunId}' → ${count}`);
+        if (count > 0) {
+          const sampleRunId = execSync(`sqlite3 "${dbPath}" "SELECT RunId FROM Trades LIMIT 1"`, { encoding: 'utf-8' }).trim();
+          console.log(`DB: Sample RunId from Trades = '${sampleRunId}' (expected: '${seededRunId}')`);
+        }
+      } catch { console.warn('sqlite3 CLI not available for DB diagnostics'); }
+    }
+
     console.log(`\n--- Running Playwright E2E tests ---\n`);
     const pw = spawn('npx', ['playwright', 'test'], {
       cwd: WEBUI,

@@ -159,11 +159,9 @@ export class RunReportComponent implements OnInit {
     const runId = this.route.snapshot.paramMap.get('runId');
     if (!runId) return;
     await this.store.loadRun(runId);
-    const [trades, journal, equity, dailyPnl] = await Promise.all([
-      this.api.getRunTrades(runId), this.api.getRunJournal(runId, undefined, undefined, 200),
-      this.api.getRunEquity(runId), this.api.getRunDailyPnl(runId),
-    ]);
-    this.trades.set(trades); this.journal.set(journal); this.dailyPnl.set(dailyPnl);
-    this.equityPoints.set(equity.map((p: EquityPoint) => ({ time: new Date(p.timestampUtc).getTime(), value: p.equity, balance: p.balance })));
+    try { this.trades.set(await this.api.getRunTrades(runId)); } catch { /* no trades */ }
+    try { this.journal.set(await this.api.getRunJournal(runId, undefined, undefined, 200)); } catch { /* no journal */ }
+    try { this.equityPoints.set((await this.api.getRunEquity(runId)).map((p: EquityPoint) => ({ time: new Date(p.timestampUtc).getTime(), value: p.equity, balance: p.balance }))); } catch { /* no equity */ }
+    try { this.dailyPnl.set(await this.api.getRunDailyPnl(runId)); } catch { /* no daily PnL */ }
   }
 }

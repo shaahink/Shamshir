@@ -86,9 +86,12 @@ test.describe('Run Report — data checks (require seeded bars)', () => {
   });
 
   test('trades table has cost columns when trades exist', async ({ page }) => {
-    // Dump what h2 headings exist
+    // Trades table is conditionally rendered (trades().length > 0)
     const h2s = await page.locator('app-run-report h2').allTextContents();
-    console.log(`[DEBUG] Run-report h2 headings: ${JSON.stringify(h2s)}`);
+    // Also check if trades data is visible in the stat tile
+    const tiles = await page.locator('app-run-report app-stat-tile').allTextContents();
+    const totalTrades = tiles.find(t => t.includes('Trades'));
+    console.log(`[DEBUG] Trades stat tile: ${totalTrades}`);
     const heading = page.locator('app-run-report h2:has-text("Trades")');
     const hasTrades = await heading.isVisible().catch(() => false);
     if (!hasTrades || h2s.every(h => !h.includes('Trades'))) {
