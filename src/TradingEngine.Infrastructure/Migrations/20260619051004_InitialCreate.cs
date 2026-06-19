@@ -20,6 +20,8 @@ namespace TradingEngine.Infrastructure.Migrations
                     CompletedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     Symbol = table.Column<string>(type: "TEXT", nullable: false),
                     Period = table.Column<string>(type: "TEXT", nullable: false),
+                    Symbols = table.Column<string>(type: "TEXT", nullable: false),
+                    Periods = table.Column<string>(type: "TEXT", nullable: false),
                     BacktestFrom = table.Column<DateTime>(type: "TEXT", nullable: false),
                     BacktestTo = table.Column<DateTime>(type: "TEXT", nullable: false),
                     InitialBalance = table.Column<decimal>(type: "TEXT", nullable: false),
@@ -27,6 +29,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     StrategyParamsJson = table.Column<string>(type: "TEXT", nullable: false),
                     EffectiveConfigJson = table.Column<string>(type: "TEXT", nullable: true),
                     NetProfit = table.Column<decimal>(type: "TEXT", nullable: false),
+                    GrossPnL = table.Column<decimal>(type: "TEXT", nullable: false),
+                    CommissionTotal = table.Column<decimal>(type: "TEXT", nullable: false),
+                    SwapTotal = table.Column<decimal>(type: "TEXT", nullable: false),
                     MaxDrawdownPct = table.Column<decimal>(type: "TEXT", nullable: false),
                     TotalTrades = table.Column<int>(type: "INTEGER", nullable: false),
                     WinningTrades = table.Column<int>(type: "INTEGER", nullable: false),
@@ -157,6 +162,19 @@ namespace TradingEngine.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "GovernorOptions",
+                columns: table => new
+                {
+                    Id = table.Column<string>(type: "TEXT", nullable: false),
+                    Json = table.Column<string>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_GovernorOptions", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Orders",
                 columns: table => new
                 {
@@ -227,6 +245,34 @@ namespace TradingEngine.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Positions", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PropFirmRuleSets",
+                columns: table => new
+                {
+                    Id = table.Column<string>(type: "TEXT", nullable: false),
+                    DisplayName = table.Column<string>(type: "TEXT", nullable: false),
+                    Json = table.Column<string>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PropFirmRuleSets", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "RiskProfiles",
+                columns: table => new
+                {
+                    Id = table.Column<string>(type: "TEXT", nullable: false),
+                    DisplayName = table.Column<string>(type: "TEXT", nullable: false),
+                    Json = table.Column<string>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_RiskProfiles", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -445,6 +491,9 @@ namespace TradingEngine.Infrastructure.Migrations
                 name: "ExperimentRuns");
 
             migrationBuilder.DropTable(
+                name: "GovernorOptions");
+
+            migrationBuilder.DropTable(
                 name: "Orders");
 
             migrationBuilder.DropTable(
@@ -454,7 +503,13 @@ namespace TradingEngine.Infrastructure.Migrations
                 name: "Positions");
 
             migrationBuilder.DropTable(
+                name: "PropFirmRuleSets");
+
+            migrationBuilder.DropTable(
                 name: "ProtectionLedgerEntries");
+
+            migrationBuilder.DropTable(
+                name: "RiskProfiles");
 
             migrationBuilder.DropTable(
                 name: "StrategyConfigs");

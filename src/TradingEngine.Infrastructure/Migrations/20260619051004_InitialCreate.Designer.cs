@@ -11,8 +11,8 @@ using TradingEngine.Infrastructure.Persistence;
 namespace TradingEngine.Infrastructure.Migrations
 {
     [DbContext(typeof(TradingDbContext))]
-    [Migration("20260619045126_AddConfigProfiles")]
-    partial class AddConfigProfiles
+    [Migration("20260619051004_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -66,6 +66,10 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Periods")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ReportJsonPath")
                         .HasColumnType("TEXT");
 
@@ -80,6 +84,10 @@ namespace TradingEngine.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Symbols")
                         .IsRequired()
                         .HasColumnType("TEXT");
 

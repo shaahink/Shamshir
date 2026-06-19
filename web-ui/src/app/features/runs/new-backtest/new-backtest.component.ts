@@ -128,11 +128,18 @@ export class NewBacktestComponent implements OnInit {
   }
 
   async start(): Promise<void> {
-    const symList = [...this.selectedSymbols()]; const perList = [...this.selectedPeriods()];
+    const symList = [...this.selectedSymbols()]; const perList = [...this.selectedPeriods()]; const stratIds = [...this.selectedStrategyIds()];
+    if (symList.length === 0) { this.error.set('Select at least one symbol'); return; }
+    if (perList.length === 0) { this.error.set('Select at least one timeframe'); return; }
+    if (stratIds.length === 0) { this.error.set('Select at least one strategy'); return; }
+    if (!this.startDate || !this.endDate) { this.error.set('Select start and end dates'); return; }
+    if (new Date(this.startDate) >= new Date(this.endDate)) { this.error.set('Start date must be before end date'); return; }
+    if (!this.balance || this.balance <= 0) { this.error.set('Balance must be greater than 0'); return; }
+    this.error.set(null);
     const req: StartRunRequest = {
       symbol: symList[0] || 'EURUSD', period: perList[0] || 'h1', start: this.startDate, end: this.endDate,
       balance: this.balance, commissionPerMillion: this.commission, spreadPips: this.spread,
-      symbols: symList, periods: perList, strategyIds: [...this.selectedStrategyIds()], riskProfileId: this.riskProfile, venue: this.venue,
+      symbols: symList, periods: perList, strategyIds: stratIds, riskProfileId: this.riskProfile, venue: this.venue,
     };
     const runId = await this.store.startBacktest(req);
     this.router.navigate(['/runs', runId, 'monitor']);
