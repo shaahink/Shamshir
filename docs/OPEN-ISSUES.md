@@ -201,20 +201,16 @@ Bar processing and account processing run concurrently via `Task.WhenAll`. `Curr
 **File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:400-401` — ✅ **FIXED iter-35 finish** — commission/swap read AFTER `ClosePosition()`, net calculated as `gross - comm - swap`.
 
 ### M2 — cTrader `_execsSent` excludes bar_result execs
-**File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:617`
-Only incremented for standalone venue-initiated exec frames. Bar_result execs not counted. Reconciliation counter permanently mismatched.
+**File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:617` — ✅ **FIXED iter-35 finish** — `_execsSent += execs.Count` added before bar_result send.
 
 ### M3 — cBot `Stop()` called from NetMQ poller thread
-**File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:557`
-cAlgo `Robot.Stop()` should be called from main robot thread, not the NetMQ poller background thread.
+**File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:557` — ⚠ **OWNER LIVE-VERIFY** — requires cTrader platform to confirm thread crossing. E2E test `AfterRun_NoOrphanCtraderProcesses` verifies clean exit. Fix: wrap in `BeginInvokeOnMainThread` if needed.
 
 ### M4 — cTrader modify confirmations inflate `_execsReceived`
-**File**: `src/TradingEngine.Infrastructure/Venues/CTrader/CTraderBrokerAdapter.cs:254`
-`count++` includes modify confirmations which are handled separately. Inflates the counter relative to actual fills.
+**File**: `src/TradingEngine.Infrastructure/Venues/CTrader/CTraderBrokerAdapter.cs:254` — ✅ **CONFIRMED ALREADY CORRECT** — `TryHandleModifyConfirmation` returns true for modify → `HandleExecEvent` returns early before `_execsReceived++`.
 
 ### M5 — cTrader dedup signature excludes cost fields
-**File**: `src/TradingEngine.Infrastructure/Venues/CTrader/CTraderBrokerAdapter.cs:547`
-Signature: `$"{exec.OrderId}|{exec.NewState}|{exec.FillPrice}|{exec.FilledLots}"` — excludes GrossProfit/NetProfit/Commission/Swap. Cost corrections silently dropped as duplicates.
+**File**: `src/TradingEngine.Infrastructure/Venues/CTrader/CTraderBrokerAdapter.cs:547` — ✅ **FIXED iter-35 finish** — signature now includes `GrossProfit|NetProfit|Commission|Swap`.
 
 ### M6 — `PropFirmRuleValidator.IsProfitTargetMet` uses balance, not equity
 **File**: `src/TradingEngine.Risk/PropFirmRuleValidator.cs:27-31`

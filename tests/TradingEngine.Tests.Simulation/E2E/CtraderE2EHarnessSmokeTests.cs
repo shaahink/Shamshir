@@ -1,4 +1,7 @@
+using Microsoft.EntityFrameworkCore;
+using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Tests.Simulation.Harness;
+using TradingEngine.Tests.Simulation.Verification;
 
 namespace TradingEngine.Tests.Simulation.E2E;
 
@@ -33,7 +36,7 @@ public sealed class CtraderE2EHarnessSmokeTests
         Console.WriteLine($"[{harness.RunId}] cTrader CLI finished");
 
         await harness.WaitForHandshakeAsync(TimeSpan.FromSeconds(30), cts.Token);
-        Console.WriteLine($"[{harness.RunId}] Handshake complete. Phase={harness.TransportStatus?.Current.Phase}");
+        Console.WriteLine($"[{harness.RunId}] Handshake complete");
 
         await harness.WaitForCompletionAsync(TimeSpan.FromMinutes(4), cts.Token);
         Console.WriteLine($"[{harness.RunId}] Completion reached");
@@ -41,7 +44,7 @@ public sealed class CtraderE2EHarnessSmokeTests
         var result = harness.CollectResult();
         Console.WriteLine($"[{harness.RunId}] Trades={result.Trades} BarEvals={result.BarEvals}");
 
-        result.Trades.Should().BeGreaterThan(0, "3 days EURUSD H1 should produce at least one trade in phased mode");
+        result.Trades.Should().BeGreaterThan(0, "3 days EURUSD H1 should produce at least one trade");
         result.FinalTransportStatus.Should().NotBeNull();
     }
 
@@ -60,9 +63,43 @@ public sealed class CtraderE2EHarnessSmokeTests
             .RunAsync();
 
         Console.WriteLine($"[{result.RunId}] Trades={result.Trades} BarEvals={result.BarEvals}");
-        Console.WriteLine($"[{result.RunId}] Transport phase={result.FinalTransportStatus?.Phase}");
 
         result.BarEvals.Should().BeGreaterThan(0, "bars should flow through the pipeline");
         result.Trades.Should().BeGreaterThan(0, "at least one trade expected in 3 days");
+    }
+
+    [Fact(Timeout = 300_000)]
+    public async Task TradeLedger_ClientOrderIdReconciliation_NoMissingTrades()
+    {
+        if (!HasCredentials)
+        {
+            Console.WriteLine("[Ledger-E2E] No cTrader credentials — skipping");
+            return;
+        }
+
+        await using var harness = new CtraderE2EHarness("ledger-recon-3d")
+            .WithSymbol("EURUSD", "H1")
+            .WithDateRange(new DateTime(2024, 1, 15), new DateTime(2024, 1, 18));
+
+        var result = await harness.RunAsync();
+
+        result.Trades.Should().BeGreaterThan(0);
+        result.ReportJsonPath.Should().NotBeNull("shamshir-report.json must exist for reconciliation");
+
+        await using var db = new TradingDbContext(new DbContextOptionsBuilder<TradingDbContext>()
+            .UseSqlite($"Data Source={harness.Artifacts.DbPath}")
+            .Options);
+        var diff = await CtraderDiffHarness.CompareAsync(db, result.RunId, result.ReportJsonPath!);
+
+        var tradeCountMismatch = diff.Discrepancies
+            .FirstOrDefault(d => d.Metric == "TradeCount");
+        tradeCountMismatch.Should().BeNull(
+            $"trade count must match. cTrader={diff.CtraderTradeCount} DB={diff.DbTradeCount}");
+
+        diff.Discrepancies
+            .Where(d => d.Severity == Severity.Error)
+            .Should().BeEmpty("no error-severity discrepancies in trade ledger reconciliation");
+
+        Console.WriteLine($"[Ledger-E2E] PASSED — {diff.CtraderTradeCount} trades reconciled");
     }
 }

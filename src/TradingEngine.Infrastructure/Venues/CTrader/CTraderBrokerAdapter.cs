@@ -547,7 +547,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     private void TryWriteExec(ExecutionEvent exec)
     {
-        var sig = $"{exec.OrderId}|{exec.NewState}|{exec.FillPrice?.Value ?? 0}|{exec.FilledLots}";
+        var sig = $"{exec.OrderId}|{exec.NewState}|{exec.FillPrice?.Value ?? 0}|{exec.FilledLots}|{exec.GrossProfit}|{exec.NetProfit}|{exec.Commission}|{exec.Swap}";
         lock (_recentExecSigs)
         {
             if (!_recentExecSigs.Add(sig))
