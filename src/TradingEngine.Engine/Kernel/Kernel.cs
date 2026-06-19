@@ -12,8 +12,8 @@ namespace TradingEngine.Engine;
 ///   • Day/Week/Month → reducer resets (drawdown + governor) + protection-exit via ProtectionState.ClearsOn (C4/H7).
 ///   • everything else (Order*/Close/ForceCloseAll) → the existing pure EngineReducer.
 ///
-/// Remaining seam: PositionLifecycle.CreateIntended mints a PositionId — that is the one determinism
-/// leak (NEW-10) to seed for bit-identical replay. Flagged in SKELETON-HANDOVER.md.
+/// NEW-10 determinism leak fixed: PositionLifecycle.CreateIntended now uses orderId as positionId
+/// (no Guid.NewGuid), so identical (Dataset, ConfigSet, Seed) ⇒ bit-identical journal.
 /// </summary>
 public sealed class Kernel(KernelConfig config) : IKernel
 {

@@ -32,7 +32,8 @@ public sealed class Iter26FixTests
 
         var close = fc.Effects.OfType<CloseOpenPosition>().Single();
         close.OrderId.Should().Be(orderId, "the venue keys open trades by the order id");
-        close.OrderId.Should().NotBe(internalPositionId, "the internal PositionId must not cross the venue boundary");
+        // AF1 determinism: PositionId now equals OrderId (no Guid.NewGuid), so the IDs ARE the same.
+        // The venue still receives the correct OrderId — no cross-contamination.
     }
 
     [Fact]

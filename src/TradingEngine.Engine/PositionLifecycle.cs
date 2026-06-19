@@ -246,7 +246,7 @@ public static class PositionLifecycle
         decimal lots, Price? limitPrice, Price stopLoss, Price? takeProfit, string strategyId)
     {
         return new PositionState(
-            Guid.NewGuid(), orderId, symbol, direction, lots,
+            orderId, orderId, symbol, direction, lots,
             limitPrice ?? stopLoss, stopLoss, takeProfit,
             DateTime.MinValue, strategyId, PositionPhase.Intended);
     }

@@ -194,6 +194,56 @@ public class EnginePurityTests
         }
     }
 
+    [Fact]
+    public void Engine_has_no_GuidNewGuid_or_DateTimeUtcNow_in_source()
+    {
+        var engineSrcDir = Path.GetFullPath(
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "..", "src", "TradingEngine.Engine"));
+
+        if (!Directory.Exists(engineSrcDir))
+        {
+            // Fallback: try relative to the test assembly location
+            engineSrcDir = Path.GetFullPath(
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "src", "TradingEngine.Engine"));
+        }
+
+        var forbiddenPatterns = new (string Pattern, string Description)[]
+        {
+            ("Guid.NewGuid()", "Guid.NewGuid()"),
+            ("DateTime.UtcNow", "DateTime.UtcNow"),
+            ("DateTime.Now", "DateTime.Now (non-Utc)"),
+            ("DateTimeOffset.UtcNow", "DateTimeOffset.UtcNow"),
+            ("DateTimeOffset.Now", "DateTimeOffset.Now"),
+        };
+
+        var violations = new List<string>();
+        var csFiles = Directory.GetFiles(engineSrcDir, "*.cs", SearchOption.AllDirectories);
+
+        foreach (var file in csFiles)
+        {
+            var lines = File.ReadAllLines(file);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                // Skip comments and strings
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith("//") || trimmed.StartsWith("///")) continue;
+
+                foreach (var (pattern, description) in forbiddenPatterns)
+                {
+                    if (line.Contains(pattern))
+                    {
+                        violations.Add(
+                            $"  {Path.GetFileName(file)}:{i + 1} — {description}: {trimmed}");
+                    }
+                }
+            }
+        }
+
+        violations.Should().BeEmpty(
+            $"TradingEngine.Engine source must not contain Guid.NewGuid(), DateTime.UtcNow, DateTime.Now, or DateTimeOffset.UtcNow/Now — these break determinism.\n{string.Join("\n", violations)}");
+    }
+
     private static bool ReferencesType(Type source, Type target)
     {
         // Check interfaces

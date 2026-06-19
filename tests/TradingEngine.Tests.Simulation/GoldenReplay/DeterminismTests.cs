@@ -3,11 +3,6 @@ using TradingEngine.Engine;
 
 namespace TradingEngine.Tests.Simulation.GoldenReplay;
 
-/// <summary>
-/// Determinism test (iter-35 A4) — the strongest correctness guarantee in the system.
-/// Running the same (DatasetRef, ConfigSet, Seed) through the kernel twice MUST produce
-/// a bit-identical journal. This locks the replay contract.
-/// </summary>
 [Trait("Category", "Determinism")]
 [Trait("Speed", "Fast")]
 public sealed class DeterminismTests
@@ -55,34 +50,85 @@ public sealed class DeterminismTests
     }
 
     [Fact]
-    public async Task KernelRun_IsDeterministic_SameRunSpec_BitIdenticalJournal()
+    public async Task KernelRun_IsDeterministic_WithPositionsOpen()
     {
-        var bars = CreateBars(10);
         var config = CreateConfig();
         var kernel = new Kernel(config);
         var initialState = CreateInitialState();
 
-        // Run 1
-        var run1 = await RunKernelAsync(kernel, bars, initialState);
+        var run1 = await RunWithPositionsAsync(kernel, initialState);
+        var run2 = await RunWithPositionsAsync(kernel, initialState);
 
-        // Run 2
-        var run2 = await RunKernelAsync(kernel, bars, initialState);
+        run1.Count.Should().Be(run2.Count, "both runs must produce same number of journal entries");
 
-        // Assert bit-identical journal.
-        run1.Count.Should().Be(run2.Count, "both runs must produce the same number of journal entries");
-
-        var json1 = SerializeJournal(run1);
-        var json2 = SerializeJournal(run2);
-        json1.Should().Be(json2, "the journal must be bit-identical across runs");
+        var json1 = SerializeJournalFull(run1);
+        var json2 = SerializeJournalFull(run2);
+        json1.Should().Be(json2, "journal must be bit-identical across runs with positions opening/closing");
     }
 
-    private static async Task<IReadOnlyList<StepRecord>> RunKernelAsync(
-        IKernel kernel, IReadOnlyList<Bar> bars, EngineState initialState)
+    [Fact]
+    public async Task KernelRun_IsDeterministic_BarClosedOnly()
+    {
+        var config = CreateConfig();
+        var kernel = new Kernel(config);
+        var initialState = CreateInitialState();
+
+        var run1 = await RunBarsOnlyAsync(kernel, initialState);
+        var run2 = await RunBarsOnlyAsync(kernel, initialState);
+
+        run1.Count.Should().Be(run2.Count);
+        var json1 = SerializeJournalFull(run1);
+        var json2 = SerializeJournalFull(run2);
+        json1.Should().Be(json2, "bar-only journal must be bit-identical");
+    }
+
+    private static async Task<IReadOnlyList<StepRecord>> RunWithPositionsAsync(IKernel kernel, EngineState initialState)
     {
         var queue = new InMemoryEngineEventQueue();
         var records = new List<StepRecord>();
 
-        // Feed BarClosed events.
+        // Feed: OrderProposed (triggers position open) → OrderFilled → BarClosed (with SL hit) → close
+        var orderId = new Guid("11111111-1111-1111-1111-111111111111");
+        var now = new DateTime(2024, 1, 1, 8, 0, 0, DateTimeKind.Utc);
+
+        // OrderProposed — triggers position open
+        queue.Enqueue(new OrderProposed(
+            orderId, Eurusd, TradeDirection.Long, OrderType.Market,
+            null, new Price(1.0950m), new Price(1.1050m), "test",
+            1.1000m, 50m, 10m, now));
+
+        // OrderFilled — moves position to Open
+        queue.Enqueue(new OrderFilled(orderId, Eurusd, 0.20m, new Price(1.1000m), now));
+
+        // Bar that hits SL
+        queue.Enqueue(new BarClosed(Eurusd, Timeframe.H1, 1.1000m, 1.1010m, 1.0940m, 1.0950m, now));
+
+        var state = initialState;
+        long seq = 0;
+
+        while (queue.TryDequeue(out var evt))
+        {
+            var decision = kernel.Decide(state, evt);
+            state = decision.State;
+
+            records.Add(new StepRecord(
+                "det-test", ++seq, evt.OccurredAtUtc,
+                evt.GetType().Name, "{}",
+                decision.Effects.Select(e => e.GetType().Name).ToList(),
+                JsonSerializer.Serialize(decision.Effects.Select(e => new { kind = e.GetType().Name })),
+                RiskSnapshots.Capture(state),
+                null, null, []));
+        }
+
+        return records;
+    }
+
+    private static async Task<IReadOnlyList<StepRecord>> RunBarsOnlyAsync(IKernel kernel, EngineState initialState)
+    {
+        var queue = new InMemoryEngineEventQueue();
+        var records = new List<StepRecord>();
+
+        var bars = CreateBars(10);
         foreach (var bar in bars)
         {
             queue.Enqueue(new BarClosed(bar.Symbol, bar.Timeframe, bar.Open, bar.High, bar.Low, bar.Close, bar.OpenTimeUtc));
@@ -115,13 +161,14 @@ public sealed class DeterminismTests
             1.1000m, -50, count).Build();
     }
 
-    private static string SerializeJournal(IReadOnlyList<StepRecord> records)
+    private static string SerializeJournalFull(IReadOnlyList<StepRecord> records)
     {
         return JsonSerializer.Serialize(records.Select(r => new
         {
             r.Seq,
             r.EventKind,
             EffectCount = r.EffectKinds.Count,
+            Effects = r.EffectsJson,
         }), new JsonSerializerOptions { WriteIndented = true });
     }
 }
