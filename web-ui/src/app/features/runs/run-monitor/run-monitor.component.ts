@@ -5,13 +5,12 @@ import { Subscription } from 'rxjs';
 import { RunHubService, type RunProgressEnvelope, type JournalEnvelope } from '../../../core/signalr/run-hub.service';
 import { RunsStore } from '../runs.store';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
-import { BadgeComponent } from '../../../shared/badge.component';
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
 
 @Component({
   selector: 'app-run-monitor',
   standalone: true,
-  imports: [DatePipe, RouterLink, StatTileComponent, BadgeComponent, EquityChartComponent],
+  imports: [DatePipe, RouterLink, StatTileComponent, EquityChartComponent],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">

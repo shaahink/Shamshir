@@ -3,12 +3,11 @@ import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { StatTileComponent } from '../../../shared/stat-tile.component';
 
 @Component({
   selector: 'app-strategy-detail',
   standalone: true,
-  imports: [RouterLink, FormsModule, StatTileComponent],
+  imports: [RouterLink, FormsModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">

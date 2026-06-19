@@ -80,7 +80,7 @@ export class NewBacktestComponent implements OnInit {
   selectedPeriods = signal(new Set<string>(['h1']));
   startDate = ''; endDate = '';
   balance = 100_000; commission = 30; spread = 1; riskProfile = 'standard';
-  strategies = signal<StrategySummary[]>([]);
+  strategies = signal<any[]>([]);
   selectedStrategyIds = signal<Set<string>>(new Set());
   loading = this.store.isLoading; error = this.store.error;
 
@@ -93,10 +93,11 @@ export class NewBacktestComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     try {
-      const data = await firstValueFrom(this.http.get<StrategySummary[]>('/api/strategies'));
+      const res = await firstValueFrom(this.http.get<any>('/api/strategies'));
+      const data: any[] = Array.isArray(res) ? res : (res.strategies || res.configs || []);
       this.strategies.set(data);
       const s = new Set<string>();
-      data.filter(x => x.isEnabled).forEach(x => s.add(x.id));
+      data.filter((x: any) => x.isEnabled).forEach((x: any) => s.add(x.id));
       if (s.size === 0 && data.length > 0) s.add(data[0].id);
       this.selectedStrategyIds.set(s);
     } catch { /* */ }

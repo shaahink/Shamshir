@@ -1,6 +1,5 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { DatePipe } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { StatTileComponent } from '../../shared/stat-tile.component';
 import { DataTableComponent, type ColumnDef } from '../../shared/data-table.component';
@@ -9,7 +8,7 @@ import type { GovernorState, ProtectionDay } from '../../models/api.types';
 @Component({
   selector: 'app-compliance',
   standalone: true,
-  imports: [DatePipe, StatTileComponent, DataTableComponent],
+  imports: [StatTileComponent, DataTableComponent],
   template: `
     <div class="space-y-6">
       <h1 class="text-xl font-semibold">Compliance</h1>

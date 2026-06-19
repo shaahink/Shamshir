@@ -10,17 +10,20 @@ public sealed class RunsController : ControllerBase
 {
     private readonly IRunQueryService _query;
     private readonly IBacktestCommandService _command;
+    private readonly IBacktestQueryService _legacyQuery;
     private readonly BacktestOrchestrator _orchestrator;
     private readonly ILogger<RunsController> _logger;
 
     public RunsController(
         IRunQueryService query,
         IBacktestCommandService command,
+        IBacktestQueryService legacyQuery,
         BacktestOrchestrator orchestrator,
         ILogger<RunsController> logger)
     {
         _query = query;
         _command = command;
+        _legacyQuery = legacyQuery;
         _orchestrator = orchestrator;
         _logger = logger;
     }
@@ -127,5 +130,12 @@ public sealed class RunsController : ControllerBase
         var analytics = await _query.GetRunAnalyticsAsync(runId, ct);
         if (analytics is null) return Ok(new RunAnalyticsResponse());
         return Ok(analytics);
+    }
+
+    [HttpGet("/api/equity")]
+    public async Task<IActionResult> GetEquity([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
+    {
+        var points = await _legacyQuery.GetEquityAsync(from, to, ct);
+        return Ok(points.Select(p => new { p.TimestampUtc, p.Equity, p.Balance }));
     }
 }

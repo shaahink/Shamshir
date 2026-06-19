@@ -1,6 +1,5 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { DataTableComponent, type ColumnDef } from '../../../shared/data-table.component';
@@ -9,7 +8,7 @@ import type { TradeSummary } from '../../../models/api.types';
 @Component({
   selector: 'app-trade-list',
   standalone: true,
-  imports: [RouterLink, FormsModule, DataTableComponent],
+  imports: [FormsModule, DataTableComponent],
   template: `
     <div class="space-y-6">
       <h1 class="text-xl font-semibold">All Trades</h1>
