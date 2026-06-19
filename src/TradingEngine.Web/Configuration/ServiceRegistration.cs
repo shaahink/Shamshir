@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.Data.Sqlite;
 using TradingEngine.Host;
 using TradingEngine.Infrastructure.Indicators;
@@ -27,7 +28,12 @@ public static class ServiceRegistration
 
     private static IServiceCollection AddApi(this IServiceCollection services)
     {
-        services.AddControllers();
+        services.AddControllers()
+            .AddJsonOptions(o =>
+            {
+                o.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+                o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+            });
         services.AddSignalR()
             .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy =
                 System.Text.Json.JsonNamingPolicy.CamelCase);

@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 
@@ -11,12 +9,6 @@ public sealed class RiskProfilesController : ControllerBase
 {
     private readonly IRiskProfileStore _store;
     private readonly ILogger<RiskProfilesController> _logger;
-
-    private static readonly JsonSerializerOptions _jsonOpts = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() },
-    };
 
     public RiskProfilesController(IRiskProfileStore store, ILogger<RiskProfilesController> logger)
     {
@@ -63,13 +55,8 @@ public sealed class RiskProfilesController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    public async Task<IActionResult> Update(string id, CancellationToken ct)
+    public async Task<IActionResult> Update(string id, [FromBody] RiskProfile profile, CancellationToken ct)
     {
-        using var reader = new StreamReader(Request.Body);
-        var json = await reader.ReadToEndAsync(ct);
-        RiskProfile profile;
-        try { profile = JsonSerializer.Deserialize<RiskProfile>(json, _jsonOpts)!; }
-        catch (JsonException ex) { return BadRequest(new { error = $"Invalid JSON: {ex.Message}" }); }
         if (profile is null || profile.Id != id)
             return BadRequest(new { error = "Id in body must match route id" });
         await _store.UpsertAsync(profile, ct);
@@ -78,14 +65,9 @@ public sealed class RiskProfilesController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(CancellationToken ct)
+    public async Task<IActionResult> Create([FromBody] RiskProfile profile, CancellationToken ct)
     {
-        using var reader = new StreamReader(Request.Body);
-        var json = await reader.ReadToEndAsync(ct);
-        RiskProfile profile;
-        try { profile = JsonSerializer.Deserialize<RiskProfile>(json, _jsonOpts)!; }
-        catch (JsonException ex) { return BadRequest(new { error = $"Invalid JSON: {ex.Message}" }); }
-        if (string.IsNullOrWhiteSpace(profile.Id))
+        if (profile is null || string.IsNullOrWhiteSpace(profile.Id))
             return BadRequest(new { error = "id is required" });
         var existing = await _store.GetByIdAsync(profile.Id, ct);
         if (existing is not null)

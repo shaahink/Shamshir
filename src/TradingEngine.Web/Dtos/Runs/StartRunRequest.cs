@@ -11,7 +11,7 @@ public sealed record StartRunRequest
     public double SpreadPips { get; init; } = 1;
     public List<string>? Symbols { get; init; }
     public List<string>? Periods { get; init; }
-    public string? StrategyIds { get; init; }
+    public List<string>? StrategyIds { get; init; }
 
     /// <summary>Risk profile id chosen for this run (applied to every strategy; overrides the stored
     /// per-strategy profile). Must match a configured/seeded risk profile.</summary>

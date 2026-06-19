@@ -54,9 +54,8 @@ public sealed class RunsController : ControllerBase
             ? req.Periods.Select(p => p.ToUpperInvariant()).ToArray()
             : new[] { req.Period.ToUpperInvariant() };
 
-        var stratList = !string.IsNullOrWhiteSpace(req.StrategyIds)
-            ? req.StrategyIds.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-                .Select(s => s.Trim()).ToArray()
+        var stratList = req.StrategyIds is { Count: > 0 }
+            ? req.StrategyIds.Select(s => s.Trim()).ToArray()
             : Array.Empty<string>();
 
         var cfg = new BacktestConfig
