@@ -12,6 +12,9 @@ export interface RunSummary {
   totalTrades: number;
   winningTrades: number;
   winRatePct: number;
+  grossPnL: number;
+  commissionTotal: number;
+  swapTotal: number;
   errorMessage: string | null;
 }
 
@@ -63,6 +66,7 @@ export interface TradeSummary {
   exitReason: string;
   strategyId: string;
   durationSeconds: number;
+  timeframe?: string;
 }
 
 export interface JournalEntry {

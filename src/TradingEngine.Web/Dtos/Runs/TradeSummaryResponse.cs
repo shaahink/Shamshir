@@ -23,4 +23,5 @@ public sealed record TradeSummaryResponse
     public required string ExitReason { get; init; }
     public required string StrategyId { get; init; }
     public double DurationSeconds { get; init; }
+    public string? Timeframe { get; init; }
 }

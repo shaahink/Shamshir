@@ -24,7 +24,8 @@ public record TradeResult(
     string StrategyId,
     string RiskProfileId,
     EngineMode Mode = EngineMode.Backtest,
-    Guid OrderId = default)
+    Guid OrderId = default,
+    string? Timeframe = null)
 {
     public double DurationSeconds => (ClosedAtUtc - OpenedAtUtc).TotalSeconds;
 }

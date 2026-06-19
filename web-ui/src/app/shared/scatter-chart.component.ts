@@ -22,7 +22,8 @@ export class ScatterChartComponent {
   private el = inject(ElementRef);
   private platformId = inject(PLATFORM_ID);
   private chart: IChartApi | null = null;
-  private series: any = null;
+  private seriesY: any = null;
+  private seriesX: any = null;
 
   constructor() {
     afterNextRender(() => {
@@ -41,17 +42,22 @@ export class ScatterChartComponent {
       grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
       rightPriceScale: { borderColor: '#374151' },
     });
-    this.series = this.chart.addSeries(LineSeries, {
+    this.seriesY = this.chart.addSeries(LineSeries, {
       color: this.color(), lineVisible: false, pointMarkersVisible: true,
+      lastValueVisible: false,
+    } as any);
+    this.seriesX = this.chart.addSeries(LineSeries, {
+      color: '#f59e0b', lineVisible: false, pointMarkersVisible: true,
+      lastValueVisible: false,
     } as any);
     this.updateData();
   }
 
   private updateData(): void {
-    if (!this.series || !this.chart) return;
-    const pts = this.data().map((d, i) => ({
-      time: i as UTCTimestamp, value: d.y,
-    }));
-    this.series.setData(pts);
+    if (!this.seriesY || !this.seriesX || !this.chart) return;
+    const ptsY = this.data().map((d, i) => ({ time: i as UTCTimestamp, value: d.y }));
+    const ptsX = this.data().map((d, i) => ({ time: i as UTCTimestamp, value: d.x }));
+    this.seriesY.setData(ptsY);
+    this.seriesX.setData(ptsX);
   }
 }

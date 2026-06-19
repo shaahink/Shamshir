@@ -60,7 +60,7 @@ export class TradeDetailComponent implements OnInit {
     const opened = new Date(t.openedAtUtc); const closed = new Date(t.closedAtUtc);
     const pad = (closed.getTime() - opened.getTime()) * 2 || 3600000;
     const from = new Date(opened.getTime() - pad); const to = new Date(closed.getTime() + pad);
-    const tf = (t as any).timeframe || 'H1';
+    const tf = t.timeframe || 'H1';
     try {
       const bars = await firstValueFrom(this.http.get<any[]>(`/api/bars?symbol=${t.symbol}&timeframe=${tf}&from=${from.toISOString()}&to=${to.toISOString()}`));
       this.bars.set(bars.map((b: any) => ({ time: b.time * 1000, open: b.open, high: b.high, low: b.low, close: b.close })));

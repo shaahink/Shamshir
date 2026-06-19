@@ -115,7 +115,7 @@ export class RunReportComponent implements OnInit {
   equityPoints = signal<ChartPoint[]>([]);
   dailyPnl = signal<DailyPnl[]>([]);
   journalKind = signal<string | null>(null);
-  journalKinds = ['ALL', 'SIGNAL', 'ORDER', 'FILL', 'CLOSE', 'REJECTED', 'BREACH', 'BAR'];
+  journalKinds = ['ALL', 'SIGNAL', 'ORDER', 'FILL', 'CLOSE', 'REJECTED', 'BREACH', 'GOVERNOR', 'ENTRY_EXPIRED', 'CANCELLED'];
 
   filteredJournal = computed(() => { const k = this.journalKind(); return k ? this.journal().filter(e => e.kind === k) : this.journal(); });
   grossTotal = computed(() => this.trades().reduce((s, t) => s + t.grossPnLAmount, 0));
@@ -133,7 +133,7 @@ export class RunReportComponent implements OnInit {
   pfDisplay = computed(() => this.profitFactor() >= Number.MAX_VALUE - 1 ? '∞' : this.profitFactor().toFixed(2));
   recNetOk = computed(() => { const d = this.store.selectedRun(); return d ? Math.abs(d.netProfit - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01 : false; });
   recClosesOk = computed(() => { const d = this.store.selectedRun(); return d ? d.totalTrades === this.trades().length : false; });
-  recCostOk = computed(() => Math.abs(this.grossTotal() - Math.abs(this.commTotal()) - Math.abs(this.swapTotal()) - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01);
+  recCostOk = computed(() => Math.abs(this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01);
 
   barHeight(pnl: number): number { const arr = this.dailyPnl(); const m = arr.length > 0 ? Math.max(...arr.map(d => Math.abs(d.pnl)), 1) : 1; return Math.min(100, (Math.abs(pnl) / m) * 100); }
 

@@ -8,7 +8,8 @@ public static class JournalNormalizer
     // hides under FILL.
     private static readonly HashSet<string> CloseReasons = new(StringComparer.OrdinalIgnoreCase)
     {
-        "SL", "TP", "FORCE", "DailyDD", "MaxDD", "STOPOUT", "CLOSED", "MANUAL"
+        "SL", "TP", "FORCE", "DailyDD", "MaxDD", "STOPOUT", "CLOSED", "MANUAL",
+        "TRAIL", "BREAKEVEN", "PARTIAL"
     };
 
     public static string? NormalizeKind(string eventName, string? reason)
@@ -33,7 +34,9 @@ public static class JournalNormalizer
                 : nameof(JournalEventKind.FILL),
             "OrderPartiallyFilled" => nameof(JournalEventKind.FILL),
             "OrderRejected" => nameof(JournalEventKind.REJECTED),
-            "OrderCancelled" => nameof(JournalEventKind.ENTRY_EXPIRED),
+            "OrderCancelled" => reason is not null && reason.Contains("cancelled", StringComparison.OrdinalIgnoreCase)
+                ? nameof(JournalEventKind.CANCELLED)
+                : nameof(JournalEventKind.ENTRY_EXPIRED),
             "BreachDetected" => nameof(JournalEventKind.BREACH),
             "GovernorStateChanged" => nameof(JournalEventKind.GOVERNOR),
             "TradeClosed" => nameof(JournalEventKind.CLOSE),
