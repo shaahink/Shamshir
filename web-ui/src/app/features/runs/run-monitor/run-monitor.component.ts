@@ -84,11 +84,12 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
 
   private subs = new Subscription();
   private startTime = 0;
+  private elapsedTimer: any = null;
 
   async ngOnInit(): Promise<void> {
     const rid = this.route.snapshot.paramMap.get('runId'); if (!rid) return;
     this.runId.set(rid); this.startTime = Date.now();
-    setInterval(() => { const s = Math.floor((Date.now() - this.startTime) / 1000); this.elapsed.set(s > 3600 ? `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m` : `${Math.floor(s/60)}m ${s%60}s`); }, 1000);
+    this.elapsedTimer = setInterval(() => { const s = Math.floor((Date.now() - this.startTime) / 1000); this.elapsed.set(s > 3600 ? `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m` : `${Math.floor(s/60)}m ${s%60}s`); }, 1000);
 
     await this.hub.start(); await this.hub.joinRun(rid);
 
@@ -109,23 +110,26 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       if (e.governorState) this.governorState.set(e.governorState);
       if (e.counters) {
         this.counters.set({ signals: e.counters.signals ?? 0, orders: e.counters.orders ?? 0, fills: e.counters.fills ?? 0, closes: e.counters.closes ?? 0, rejections: e.counters.rejections ?? 0, breaches: e.counters.breaches ?? 0 });
-        if (e.counters.breaches > 0 && !this.breachBanner()) this.breachBanner.set('Daily/Max drawdown breach detected');
       }
-      // The backend embeds recent journal lines inside each progress frame (DecisionRecordView shape:
-      // `event` is the kind, `detailJson` the payload). There is no separate JournalAppend message.
+      // L2: append-only journal — merge by seq, never replace the whole array. Keep last 500 entries.
       if (Array.isArray(e.recentJournal) && e.recentJournal.length > 0) {
-        const mapped = e.recentJournal.map((r: any) => ({
+        const mapped: JournalEnvelope[] = e.recentJournal.map((r: any) => ({
           runId: this.runId(), seq: r.seq, simTimeUtc: r.simTimeUtc,
           kind: r.kind ?? r.event, symbol: r.symbol, strategyId: r.strategyId,
           reason: r.reason, detail: r.detail ?? r.detailJson,
         }));
-        this.journalEntries.set(mapped.slice(-200));
+        const existing = this.journalEntries();
+        const existingSeqs = new Set(existing.map(x => x.seq));
+        const fresh = mapped.filter(m => !existingSeqs.has(m.seq));
+        if (fresh.length > 0) {
+          this.journalEntries.set([...existing, ...fresh].slice(-500));
+        }
       }
     }));
-    this.subs.add(this.hub.completed$.subscribe((e: any) => { this.status.set(e.status || 'completed'); if (e.error) this.breachBanner.set(e.error); }));
+    this.subs.add(this.hub.completed$.subscribe((e: any) => { this.status.set(e.status || 'completed'); if (e.error) { this.breachBanner.set(e.error); } else { this.breachBanner.set(null); } }));
   }
 
   async cancel(): Promise<void> { this.cancelling.set(true); await this.store.cancelRun(this.runId()); this.cancelling.set(false); }
 
-  ngOnDestroy(): void { this.subs.unsubscribe(); this.hub.leaveRun(this.runId()); }
+  ngOnDestroy(): void { if (this.elapsedTimer) clearInterval(this.elapsedTimer); this.subs.unsubscribe(); this.hub.leaveRun(this.runId()); }
 }

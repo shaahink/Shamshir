@@ -31,7 +31,7 @@ export class EquityChartComponent {
       if (!isPlatformBrowser(this.platformId)) return;
       this.initChart();
     });
-    effect(() => { this.updateData(this.data()); });
+    effect(() => { this.updateData(this.data(), this.showBalance(), this.showDrawdown()); });
   }
 
   private initChart(): void {
@@ -50,11 +50,11 @@ export class EquityChartComponent {
     this.equitySeries = this.chart.addSeries(LineSeries, { color: this.lineColor(), lineWidth: 2 });
   }
 
-  private updateData(points: ChartPoint[]): void {
+  private updateData(points: ChartPoint[], showBal: boolean, showDD: boolean): void {
     if (!this.equitySeries || points.length === 0) return;
     const equityData = points.map((d) => ({ time: (d.time / 1000) as UTCTimestamp, value: d.value }));
 
-    const hasBalance = this.showBalance() && points.some(p => p.balance != null);
+    const hasBalance = showBal && points.some(p => p.balance != null);
     if (hasBalance && !this.balanceSeries && this.chart) {
       this.balanceSeries = this.chart.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 1, lineStyle: 1 });
     }
@@ -65,13 +65,12 @@ export class EquityChartComponent {
       this.chart?.removeSeries(this.balanceSeries); this.balanceSeries = null;
     }
 
-    if (this.showDrawdown() && points.length > 1) {
+    if (showDD && points.length > 1) {
       let peak = points[0].value;
       const ddPoints: { time: UTCTimestamp; value: number }[] = [];
       for (const p of points) {
         if (p.value > peak) peak = p.value;
-        const dd = peak > 0 ? ((p.value - peak) / peak) * 100 : 0;
-        ddPoints.push({ time: (p.time / 1000) as UTCTimestamp, value: dd });
+        ddPoints.push({ time: (p.time / 1000) as UTCTimestamp, value: peak > 0 ? ((p.value - peak) / peak) * 100 : 0 });
       }
       if (!this.ddSeries) {
         this.ddSeries = this.chart!.addSeries(LineSeries, {
@@ -79,12 +78,10 @@ export class EquityChartComponent {
         });
         this.chart!.priceScale('dd').applyOptions({ mode: 2, invertScale: true, visible: false });
       }
-      equityData.forEach((e, i) => { e.value = e.value as number; });
-      this.equitySeries.setData(equityData);
       this.ddSeries.setData(ddPoints);
     } else {
       if (this.ddSeries) { this.chart?.removeSeries(this.ddSeries); this.ddSeries = null; }
-      this.equitySeries.setData(equityData);
     }
+    this.equitySeries.setData(equityData);
   }
 }
