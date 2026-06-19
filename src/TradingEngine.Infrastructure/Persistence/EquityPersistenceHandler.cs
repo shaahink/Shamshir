@@ -36,16 +36,17 @@ public sealed class EquityPersistenceHandler : IEventHandler<EquityUpdated>, IAs
             try
             {
                 await Task.Delay(5_000, ct);
-                buffer.Clear();
                 while (_channel.Reader.TryRead(out var item) && buffer.Count < 100)
                     buffer.Add(item);
-                if (buffer.Count > 0)
+                if (buffer.Count == 0) continue;
+
+                _logger.LogDebug("Flushing {Count} equity snapshots", buffer.Count);
+                foreach (var group in buffer.GroupBy(b => b.RunId))
                 {
-                    _logger.LogDebug("Flushing {Count} equity snapshots", buffer.Count);
-                    var snapshots = buffer.Select(b => b.Snapshot).ToList();
-                    var runId = buffer[0].RunId;
-                    await _persistence.SaveEquitySnapshotsBatchAsync(snapshots, runId, ct);
+                    var snapshots = group.Select(b => b.Snapshot).ToList();
+                    await _persistence.SaveEquitySnapshotsBatchAsync(snapshots, group.Key, ct);
                 }
+                buffer.Clear();
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
@@ -57,6 +58,7 @@ public sealed class EquityPersistenceHandler : IEventHandler<EquityUpdated>, IAs
 
     public async ValueTask DisposeAsync()
     {
+        _channel.Writer.Complete();
         _cts.Cancel();
         try { await _flushTask; } catch { }
         try { await FlushAsync(); } catch { }

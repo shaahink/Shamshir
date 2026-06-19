@@ -49,7 +49,7 @@ public static class ServiceRegistration
         var dbPath = config.GetValue<string>("Persistence:DbPath")
             ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-        var cs = $"Data Source={dbPath}";
+        var cs = $"Data Source={dbPath};Journal Mode=WAL;Busy Timeout=5000";
 
         services.AddDbContext<TradingDbContext>(o => o.UseSqlite(cs));
         services.AddDbContext<ReportingDbContext>(o => o.UseSqlite(cs));

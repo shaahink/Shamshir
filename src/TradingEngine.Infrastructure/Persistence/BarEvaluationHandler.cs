@@ -9,6 +9,7 @@ public sealed class BarEvaluationHandler : IEventHandler<BarEvaluated>, IAsyncDi
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BarEvaluationHandler> _logger;
+    private long _droppedCount;
     private readonly Channel<BarEvaluated> _channel =
         Channel.CreateBounded<BarEvaluated>(new BoundedChannelOptions(50_000)
         {
@@ -28,7 +29,12 @@ public sealed class BarEvaluationHandler : IEventHandler<BarEvaluated>, IAsyncDi
 
     public Task HandleAsync(BarEvaluated evt, CancellationToken ct)
     {
-        _channel.Writer.TryWrite(evt);
+        if (!_channel.Writer.TryWrite(evt))
+        {
+            var dropped = Interlocked.Increment(ref _droppedCount);
+            if (dropped % 1000 == 1)
+                _logger.LogWarning("BarEvaluationHandler: channel full — dropped event. Total drops: {Dropped}", dropped);
+        }
         return Task.CompletedTask;
     }
 

@@ -19,6 +19,7 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
     private readonly Task _flushTask;
     private readonly CancellationTokenSource _cts = new();
     private long _seq;
+    private long _droppedCount;
 
     public PipelineEventWriter(string runId, IServiceScopeFactory scopeFactory, ILogger<PipelineEventWriter> logger)
     {
@@ -49,7 +50,12 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
             r.Reason,
             r.StrategyId,
             JournalNormalizer.NormalizeKind(r.Event, r.Reason));
-        _channel.Writer.TryWrite(evt);
+        if (!_channel.Writer.TryWrite(evt))
+        {
+            var dropped = Interlocked.Increment(ref _droppedCount);
+            if (dropped % 1000 == 1)
+                _logger.LogWarning("PipelineEventWriter: channel full — dropped event. Total drops: {Dropped}", dropped);
+        }
     }
 
     public void Write(string stage, string? correlationId, DateTime simTime, string detailJson = "{}")
@@ -64,7 +70,12 @@ public sealed class PipelineEventWriter : IPipelineJournal, IDecisionJournal, IA
             DateTime.UtcNow,
             detailJson,
             NormalizedKind: JournalNormalizer.NormalizeKind(stage, null));
-        _channel.Writer.TryWrite(evt);
+        if (!_channel.Writer.TryWrite(evt))
+        {
+            var dropped = Interlocked.Increment(ref _droppedCount);
+            if (dropped % 1000 == 1)
+                _logger.LogWarning("PipelineEventWriter: channel full — dropped event. Total drops: {Dropped}", dropped);
+        }
     }
 
     public (long seq, long barsRecv, long cmdsSent, long execsRecv) GetCounters() =>
