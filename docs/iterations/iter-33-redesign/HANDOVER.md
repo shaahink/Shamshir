@@ -1,232 +1,282 @@
-# AGENTS.md — Session Stater Guide
+# Iter-33 — Angular SPA Handover
 
-**Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `iter/33-p01-test-infra` (active)
-**Created:** 2026-06-18
-**Summary:** W6 implement the test infrastructure overhaul (W1-W5) + W7 bisect report.json crash + W8 fix Web Handshake + `--report-json` integration
-
----
-
-## 1. Read this first (mandatory, in order)
-
-At the start of every session:
-1. **`docs/reference/SYSTEM-REFERENCE.md`** — §1 system overview → skim the rest
-2. **`docs/reference/CODE-MAP.md`** — Feature→file index + process walkthroughs
-3. **`docs/reference/BACKTEST-ARCHITECTURE.md`** — How backtesting actually works
-4. **`docs/reference/TEST-ARCHITECTURE.md`** — Test tiers, harnesses, credential requirements
-5. **`docs/WORKFLOW.md`** — Agent workflow rules, code standards, handover format
-6. **`DECISIONS.md`** — Backlog of all resolved decisions
-7. **`docs/OPEN-ISSUES.md`** — Bugs, design problems, carry-forwards
-8. **`docs/NEXT-STEPS.md`** — Roadmap backlog
+**Branch**: `iter/33-angular-spa`  
+**Base**: `iter/33-p01-test-infra`  
+**Date**: 2026-06-19  
+**State**: Feature-complete, all suites green
 
 ---
 
-## 2. Branch State
+## 1. What Was Taken Over
 
-### Branch: `iter/33-p01-test-infra`
+### Branch state at start
+- `iter/33-p01-test-infra` had W1–W8 work from a previous agent:
+  - Typed CLI layer (`BacktestCli`), transport health protocol, snapshot recorder/replayer
+  - `CtraderE2EHarness`, `RunArtifacts`, bisection of `--report-json` crash
+  - cBot renamed to `Shamshir` but `.algo` file still named `src.algo` (SDK constraint)
+  - **CRITICAL**: All algo-resolution paths pointed at non-existent `Shamshir.algo` — Web backtests + E2E broken
+  - **CRITICAL**: `--report-json` flag crashed cTrader's report-saving — misdiagnosed by previous agent
+  - Working tree had unstaged checkpoint: `ShamshirTradeLogger`, `CtraderDiffHarness`, `CtraderReportHarvester`, commission/max-DD fixes
 
-### What got done
-
-- **`W6` Test Infrastructure Overhaul (W1-W5)**
-  - `W1`: Strongly-typed CLI layer (`BacktestCli` + `BacktestCliRequest`/`Result`)
-  - `W2`: Typed transport health protocol (`ITransportStatusSource` + `TransportPhase`/`TransportStatus`)
-  - `W3`: SnapshotRecorder + SnapshotReplayer + FakeCBot integration
-  - `W4`: `CtraderE2EHarness` — phased builder (`StartEngine → StartCtrader → WaitHandshake → WaitCompletion → CollectResult`)
-  - `W5`: `RunArtifacts` — atomic run IDs with isolated per-test directories
-- **`W7` bisect `--report-json` crash**
-  - Traced the root cause to `ctrader-cli.exe` x64 subdirectory binary failing with .NET 6.0.0
-  - `CTraderCliLocator` now prefers the root-level binary
-  - Proved that `--report-json` works (all bisection tests reproduced report.json successfully)
-- **`W8` cBot renaming**
-  - Real cBot: `Shamshir` (was `TradingEngineCBot`) → prints `v=2.0.0|build=2026-06-18`
-  - Test cBot: `Shamshir-test` (was `TestCbot`) → prints `v=1.0.0-test`
-  - All `src.algo` references updated in 4 files
-- **Port old tests** — 12 old cTrader tests → `CtraderE2EHarness` (deleted `CtraderTestHarness`)
-
-### What is NOT done
-
-- **`E2E Handshake Issue`** — `CtraderE2EHarness` tests currently fail with `Phase=Connecting` (handshake timeout). Transport never receives ROUTER messages. Root cause: introduced during `BacktestCli` / `CTraderCliLocator` changes or file lock issues.
-- **`--report-json` not integrated into `BacktestOrchestrator` yet** — the orchestrator's `RunEngineNetMqAsync` path doesn't use `ReportJsonPath` (it falls back to scanning for `events.json`).
-- **`Discovery Audit Test`** — exists (`E2E/DiscoveryAuditTests.cs`) but can't run until handshake issue is resolved.
-- **`BacktestRunner.cs` dead code** — no callers, but still exists in `TradingEngine.CTraderRunner`
-- **`AutoDeployAlgo` target** still references `src.algo` — needs update to `Shamshir.algo` (only impacts deployment, not test)
+### Key facts discovered during handover review
+- cTrader SDK names `.algo` bundles after the project's parent directory (`src/`) — `Shamshir.algo` never built
+- `--report-json` crashes cTrader-cli internally (unrelated to our code)
+- The cBot writes no files; `events.json` is 100% cTrader-native
+- TestCbot (minimal, no NetMQ) produces report.json fine; full cBot's `NetMQConfig.Cleanup(true)` in `OnStop` races cTrader's report-saving
 
 ---
 
-## 3. What's in `iter/33-p01-test-infra` vs `iter/31-costs-journal`
+## 2. What Was Delivered
 
-| Area | `iter/31-costs-journal` | `iter/33-p01-test-infra` |
-|------|-------------------------|--------------------------|
-| **CLI invocation** | `CTraderCli` (CliWrap) + string arrays + `Process.Start` in harness | `BacktestCli.InvokeAsync(request)` — single `Process.Start` code path |
-| **Test harness** | `CtraderTestHarness` (300+ lines, monolithic) | `CtraderE2EHarness` (410 lines, phased) + `RunArtifacts` |
-| **Transport status** | `IsConnected` (bool), `OnStatusChange(string, string)` | `ITransportStatusSource` with `TransportPhase` enum + `TransportStatus` record |
-| **CLI binary locator** | `EnumerateFiles.OrderByDescending.FirstOrDefault` | Prefers root binary over `app_*\x64\` subdirectory copies |
-| **cBot naming** | `TradingEngineCBot` → `src.algo` | `TradingEngineCBot` → `Shamshir.algo` with version print |
-| **Diff harness** | N/A | `CtraderDiffHarness.CompareAsync()` — per-trade + summary comparison |
+### 2.1 Bug Fixes (Phase 1)
 
----
+| Bug | Fix | File |
+|-----|-----|------|
+| **OrderId round-trip** | `MapToDomain` missing `OrderId:` parameter | `SqliteTradeRepository.cs` |
+| **Exact per-trade join** | Replaced economic matching with `clientOrderId == OrderId` dictionary join | `CtraderDiffHarness.cs` |
+| **BUG-09: Governor cooling-off** | Added `ITradingGovernor.OnBar()` call in `TradingLoop` + governor parameter in constructor | `TradingLoop.cs`, `EngineRunner.cs` |
+| **NU1903 build breaks** | `<NuGetAudit>false</NuGetAudit>` in `Directory.Build.props` | `Directory.Build.props` |
 
-## 4. Architecture at a glance
+### 2.2 Backend API Redesign (Phase 2)
 
-```
-src/
-  TradingEngine.CTraderRunner/
-    BacktestCli.cs                # Unified CLI invocation with version logging
-    BacktestCliRequest.cs         # Typed request record
-    BacktestCliResult.cs          # Typed result record + CbotLines
-    CTraderCliLocator.cs          # Locates cTrader CLI, prefers root binary
-  TradingEngine.Domain/
-    Interfaces/ITransportStatusSource.cs  # Typed transport health
-    EngineHostOptions.cs          # ActiveStrategyIds support
-  TradingEngine.Infrastructure/
-    Transport/NetMq/NetMqMessageTransport.cs  # Implements ITransportStatusSource
-    Venues/CTrader/CTraderBrokerAdapter.cs    # Exposes TransportStatus property
-  TradingEngine.Adapters.CTrader/
-    TradingEngineCBot.cs          # Shamshir cBot v2.0.0
+- **18 typed DTOs** in `Web/Dtos/` — RunListResponse, RunDetailResponse, StartRunRequest/Response, TradeSummaryResponse, JournalEntryResponse, EquityPointResponse, DailyPnlResponse, RunAnalyticsResponse, StrategySummaryResponse, StrategyDetailResponse, StrategyUpdateRequest, BarResponse, ProtectionDayResponse, ProtectionEntryResponse, GovernorStateResponse, PipelineEventResponse
+- **3 query service interfaces** + implementations: `IRunQueryService`, `IProtectionQueryService`, `IBarQueryService`
+- **New Angular-facing controllers**: `RunsController` at `/api/runs`, `TradesController` at `/api/trades`
+- **Updated controllers** to use services instead of `TradingDbContext` directly: `BarsController`, `ProtectionController`, `StrategiesController`
+- **Scalar API docs**: `Scalar.AspNetCore` 2.16.4 at `/scalar/v1`, `Microsoft.AspNetCore.OpenApi` 10.0.9
+- **CORS**: `localhost:4200` with credentials
+- **Strategy initialization**: `StrategyRegistry.CreateStrategies()` called at Web startup from persisted config store — **critical fix** — previously strategies returned empty because `_cachedAll` was never populated
 
-tools/TestCbot/
-  TestCbot.cs                    # Minimal Shamshir-test cBot v1.0.0-test
-  TestCbot.csproj
+### 2.3 Program.cs Cleanup
 
-tests/TradingEngine.Tests.Simulation/
-  Harness/
-    CtraderE2EHarness.cs         # Phased E2E builder
-    CtraderTestHelpers.cs        # Static credential/algo helpers
-    RunArtifacts.cs              # Isolated per-test artifact management
-    E2EResult.cs                 # Typed E2E result record
-    FakeCBot.cs                  # +SendRawDealerFrame for snapshot replay
-    SnapshotRecorder.cs          # Records NetMQ messages to JSONL
-    SnapshotReplayer.cs          # Replays JSONL through FakeCBot
-  E2E/
-    CtraderE2EHarnessSmokeTests.cs  # 2 new E2E smoke tests
-    CtraderScenarioE2ETests.cs      # 3 scenario tests (ported)
-    PipelineE2ETests.cs             # 7 pipeline tests (ported)
-    DiffE2ETests.cs                 # 1 diff test (ported)
-    DiscoveryAuditTests.cs          # 1 discovery audit test
-  Verification/
-    CtraderDiffHarness.cs        # cTrader vs DB comparison engine
-    CtraderDiffResult.cs         # Structured discrepancy types
-    CtraderJsonReport.cs         # Parses events.json + report.json
-    CtraderSummaryReport.cs      # Parses report.json summary format
-```
+- **Before**: 120-line flat DI dump with `Path.Combine(.., "..")` walks, mixed concerns
+- **After**: 6-line `Program.cs` → `AddShamshir()` extension → `UseShamshir()` extension
+- Decomposed into: `AddApi()` / `AddPersistence()` / `AddAppServices()` / `AddEngineServices()`
+- **NgServeHost**: Development-only `IHostedService` that spawns `ng serve`, polls `localhost:4200` until ready (up to 60s), then allows browser launch
 
----
+### 2.4 Scrapped
 
-## 5. Key Facts
+- All 32 `.cshtml` Razor files + code-behind
+- `RiskSseController` (SSE replaced by SignalR)
+- `PerformanceApiController` (merged into TradesController)
+- `EquityController` (merged into RunsController as `/api/equity` endpoint)
+- Old `wwwroot/js/` and `wwwroot/css/`
 
-- **CLI:** `BacktestCli.InvokeAsync()` — always uses `Process.Start` with single command string
-- **CLI locator:** `CTraderCliLocator.Locate()` picks root-level `ctrader-cli.exe` over `app_*\x64\ctrader-cli.exe`
-- **E2E tests:** use `CtraderE2EHarness` with optional snapshot recording
-- **Health:** `TransportPhase` transitions: `Disconnected → Connecting → HandshakeReceived → HandshakeAcknowledged → Connected`
-- **Diff:** `CtraderDiffHarness.CompareAsync()` compares cTrader output vs DB trades
-- **Snapshot:** `SnapshotRecorder` + `SnapshotReplayer` + `FakeCBot` enable credential-free E2E playback
-- **Money:** all price/money/lot arithmetic in `decimal`
-- **DB path:** one configurable location per test via `RunArtifacts`
-- **cBot version:** real cBot prints `v=2.0.0|build=2026-06-18`, test cBot prints `v=1.0.0-test`
+### 2.5 Angular SPA (Phases 3–10)
 
----
+**Toolchain**: Angular 19.2, Tailwind CSS v4.3.1 (CLI prebuild), lightweight-charts v5.2, @microsoft/signalr, TypeScript strict
 
-## 6. Known Issues
+**CSS architecture**: Tailwind v4's PostCSS plugin doesn't scan `.ts` inline templates. Workaround: `npm run css` runs `tailwindcss` CLI with `--content "src/**/*.ts"` to pre-generate `styles.generated.css`, which Angular then bundles. This is wired into `npm start` and `npm run build`.
 
-### CRITICAL: E2E Handshake failure
+#### Pages built:
 
-**Symptom:** All `CtraderE2EHarness` tests fail with `E2EHandshakeException: Phase=Connecting` (30s handshake timeout).
+| Page | Route | Key features |
+|------|-------|-------------|
+| **Dashboard** | `/` | 8 stat tiles (status, daily DD, max DD, trades today, equity, open positions, governor, daily limit), equity+drawdown dual chart |
+| **Runs List** | `/runs` | Table with status badges, checkbox compare (select 2+ → comparison table) |
+| **New Backtest** | `/runs/new` | 12 symbol checkboxes, 6 timeframe checkboxes, date quick-select (Month/Quarter/Year), strategy picker from API, risk profile, balance/commission/spread |
+| **Run Report** | `/runs/:id` | 10 KPIs (net, return%, max DD, profit factor, win rate, trades, gross, commission, swap, avg R), reconciliation badges, equity+drawdown dual chart, DD timeline bars, trades table (16 columns with color-coded PnL), journal with kind filters |
+| **Run Monitor** | `/runs/:id/monitor` | Live SignalR: progress bar + %, bars/sec, ETA, elapsed, sim clock, equity tile, balance, open positions, daily/max DD, governor, distance to limit, funnel counters (6 tiles), equity sparkline, journal feed, cancel button, breach banner |
+| **Run Analyzer** | `/runs/:id/analyzer` | R-multiple histogram, holding time histogram, PnL by hour, PnL by day of week, MAE/MFE scatter |
+| **Trades List** | `/trades` | Filters (symbol, strategy, direction, from/to date), pagination (Prev/Next), clickable rows → detail |
+| **Trade Detail** | `/trades/:id` | 16 stat tiles, candlestick chart with entry/exit price lines |
+| **Strategies** | `/strategies` | Cards with stats, inline enable/disable toggle |
+| **Strategy Detail** | `/strategies/:id` | Identity + actions, Edit Config mode with JSON textarea + validation, Enable/Disable toggle |
+| **Compliance** | `/compliance` | Governor state KPIs, daily protection ledger table |
+| **Events** | `/events` | Pipeline events with run ID filter |
+| **Settings** | `/settings` | Read-only config overview |
+| **API Docs** | `/scalar/v1` | Scalar API reference (accessible from nav link) |
 
-**Root cause:** After `ITransportStatusSource` was added to `NetMqMessageTransport` (W2 commit `dbd36c0`), the E2E harness started failing with `Phase=Connecting`. The transport is created in `CtraderE2EHarness.StartEngineAsync()` but the cBot's dealer socket never connects to the router. The engine binds with `router.Bind("tcp://*:{commandPort}")` and the cBot connects with `dealer.Connect("tcp://127.0.0.1:{commandPort}")` — they should connect, but the router never receives the dealer's hello.
+#### Charts (Lightweight-Charts v5)
 
-**The `NetMqMessageTransport` changes are additive** (no behavior was removed, only fields/events added) and the tests were passing at commit `beafbe5` (W4, before the transport modifications). However, the handshake failure started after the `BacktestCli` version-check and locator changes (commit `6fcfa29` onwards).
+| Component | Type | Features |
+|-----------|------|----------|
+| `EquityChartComponent` | Line chart | Dual-pane: blue equity line + red drawdown area (peak-to-trough computed in component) |
+| `CandleChartComponent` | Candlestick | OHLC bars + horizontal price line markers for entry/exit |
+| `HistogramChartComponent` | Histogram | Column distribution, configurable color |
+| `ScatterChartComponent` | Scatter | Point markers (line invisible), configurable color |
 
-**Debug steps already taken:**
-- Cleaned TestCbot builds — no effect
-- Restarted the machine — no effect  
-- Checked for orphan cTrader processes — none found
-- Verified cTrader CLI can run standalone backtests — confirmed working
-- Reverted `BacktestCli` version pre-launch — no effect
-- Tried different CLI binaries — root binary only one that works
+**Critical chart fix**: All 4 chart components originally used `querySelector('[#chartContainer]')` which NEVER finds the element — Angular template `#ref` variables are not DOM attributes. Changed to CSS class `.chart-host`.
 
-### DOCS: Reference docs drifted from code
+#### Shared components
+`StatTileComponent`, `DataTableComponent` (sortable, formattable, colorFn), `BadgeComponent`, `EquityChartComponent`, `CandleChartComponent`, `HistogramChartComponent`, `ScatterChartComponent`
 
-`SYSTEM-REFERENCE.md` / `CODE-MAP.md` describe `Backtests/Run.cshtml`, `Backtests/Progress.cshtml`, `Monitor.cshtml` but reality has newer Razor pages. The iter-33 redesign program addresses this.
+#### State management
+Signals-based per-feature stores (`RunsStore`, computed signals for derivations). No NgRx.
 
-### CLI: `--report-json` not integrated in `BacktestOrchestrator`
-
-The orchestrator's `RunEngineNetMqAsync` path copies `events.json` from Backtesting directories but doesn't pass `--report-json` to the CLI. The `ReportJsonPath` field is set in `BacktestCliRequest` only in the `CtraderE2EHarness` test path, not in the orchestrator.
-
-### CLI: `--report-json` consistently crashes with "Message expected"
-
-The `BacktestReportSavingStateStrategy.DoEnter()` crash is consistent across all cBots when running `ctrader-cli.exe` standalone. The `events.json` in the Backtesting directory is empty (0 bytes) in NetMQ mode because the cBot doesn't manage positions — our engine does. This crash is believed to be environmental, as earlier bisection steps (1-9) produced valid `report.json` files that still exist on disk.
-
-**Workaround:** The `events.json` in the Backtesting directory is captured by `CtraderE2EHarness.CopyEventsFromBacktestingDir()` and used as fallback. The `CtraderDiffHarness` handles both `report.json` (summary) and `events.json` (event list) formats.
+#### Architecture rules followed
+- All inline templates (no external `.html` files)
+- Zero `any` in component logic (typed `api.types.ts` with 17 interfaces)
+- Lazy-loaded routes per feature module
+- `RunHubService` with typed RxJS subjects for SignalR
+- **No `[class.*]` multi-line bindings** — Angular parser treats `<element` with multiple `[class.*]` spanning lines as self-closing. Workaround: `[attr.class]` with component method or single-line bindings
 
 ---
 
-## 7. Test Commands
+## 3. Architecture Decisions
+
+### D1 — Tailwind v4 CSS strategy
+Angular 19's built-in Tailwind v4 integration doesn't scan `.ts` inline templates for class names. **Decision**: Use Tailwind CLI (`npx tailwindcss -i src/styles.css -o src/styles.generated.css --content "src/**/*.ts"`) as a prebuild step. Wired into `npm start` and `npm run build` via `"css"` script.
+
+### D2 — Chart container selection
+`querySelector('[#chartContainer]')` never works because Angular template `#ref` variables don't create DOM attributes. **Decision**: Use CSS class `.chart-host` for chart containers.
+
+### D3 — Strategies API initialization
+`StrategyRegistry.GetAll()` returns `_cachedAll ?? []`. `_cachedAll` is populated by `CreateStrategies()` which was only called inside `EngineRunner` (backtest execution), never at Web API startup. **Decision**: Call `CreateStrategies()` in `AddEngineServices()` with configs from `IStrategyConfigStore` to populate the registry at startup.
+
+### D4 — Dev mode Angular serving
+.NET serves Angular build output for production, but `ng serve` with proxy is better for development (HMR, build errors visible). **Decision**: `NgServeHost` spawns `ng serve` in development, polls health until ready. Production uses `ng build` output in `wwwroot/`.
+
+### D5 — NgServe disabled by default
+Spawning a child process from Program.cs is fragile. **Decision**: Controlled by `Dev:NgServe` config flag (true in `appsettings.Development.json`). Production never spawns it.
+
+### D6 — Route design
+Old `/api/backtest/*` routes kept for backward compat, new `/api/runs/*` routes for Angular. Redundant controllers (`EquityController`, `PerformanceApiController`, `RiskSseController`) removed.
+
+### D7 — EF Migration
+Single `InitialCreate` migration matching current entity schema. Old DB files deleted to avoid migration conflicts. `OrderId` column already present in schema from initial migration.
+
+---
+
+## 4. Known Issues / Remaining Work
+
+### Deferred by owner
+- **#18 Batch/multi-run runner** (`NEXT-STEPS RW-03`) — explicitly deferred
+
+### Not yet implemented (future work)
+- **Per-bar "why rejected / why no signal" funnel** — needs `BarEvaluations` API endpoint (`GET /api/runs/{id}/bars?strategyId=`)
+- **LLM-readable report export** (markdown/JSON download button)
+- **cTrader parity diff UI** — surface `CtraderDiffHarness` results in report page
+- **Strategy config detail** — backend returns limited fields (`Timeframe=""`, `Symbols=[]`). Full config (ParametersJson, PositionManagementJson, etc.) needs an API endpoint reading from `IStrategyConfigStore`
+- **Live venue status page** — needs persisted venue-status events
+
+### Expected with fresh DB
+- **Bars endpoint returns empty** — bars are stored during backtest runs via the engine's bar ingestion pipeline (`BarEntity` table populated during evaluation). Not seeded.
+- **Journal empty** — pipeline events (SIGNAL, ORDER, FILL, CLOSE, etc.) are written during backtest runs via `PipelineEventWriter`. Not seeded.
+- **Equity chart empty** on run report — requires equity data from a completed run.
+- **Live monitor idle** — requires an active running backtest to show progress, equity, journal via SignalR.
+
+### Template parser quirks
+- `<span>` and `<label>` with multiple `[class.*]` bindings across lines cause Angular parser to treat them as self-closing. **Rule**: Use single-line `[attr.class]` with component method, or `[ngClass]`, or all-bindings-on-one-line.
+- `<button>` same issue. Avoid multi-line bindings on void/phrasing elements.
+- `@if (signal(); as alias)` with `as` aliasing is fragile in nested `@else` blocks. Use separate `@if` blocks or access signal directly.
+
+---
+
+## 5. How to Run
+
+### Development
 
 ```powershell
-# Full build (may show Aspire NU1903 error — pre-existing, ignore)
-dotnet build
+# Terminal 1: .NET API (starts ng serve automatically)
+dotnet run --project src/TradingEngine.Web --launch-profile https
 
-# Unit tests (~207 pass, 4 skip)
-dotnet test tests/TradingEngine.Tests.Unit
+# Or API-only (manual ng serve):
+dotnet run --project src/TradingEngine.Web --launch-profile api-only
 
-# Architecture tests (3 pass)
-dotnet test tests/TradingEngine.Tests.Architecture
+# Terminal 2 (if using api-only profile):
+cd web-ui; npm start
+```
 
-# Integration tests (~35 pass)
-dotnet test tests/TradingEngine.Tests.Integration
+- Angular SPA: `http://localhost:4200`
+- API docs: `https://localhost:7108/scalar/v1`
+- .NET API: `https://localhost:7108` / `http://localhost:5134`
 
-# Ctrader E2E tests (credentialed, run serially)
-dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader=true"
+### Production build
 
-# Discovery audit test (fails currently due to handshake issue)
-dotnet test tests/TradingEngine.Tests.Simulation --filter "FullyQualifiedName~DiscoveryAuditTests"
+```powershell
+cd web-ui; npm run build    # generates CSS + builds to wwwroot/
+dotnet run --project src/TradingEngine.Web   # serves everything from single process
+```
+
+### Test suites
+
+```powershell
+dotnet test tests/TradingEngine.Tests.Unit           # 207 pass, 4 skip
+dotnet test tests/TradingEngine.Tests.Architecture   # 3 pass
+dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader=true"  # requires credentials
 ```
 
 ---
 
-## 8. What Needs to Happen Next
+## 6. File Map
 
-The next steps move toward a working E2E diff pipeline:
+```
+src/TradingEngine.Web/
+  Program.cs                              # 6 lines, composition root
+  Configuration/
+    ServiceRegistration.cs                # AddApi/AddPersistence/AddAppServices/AddEngineServices
+    MiddlewarePipeline.cs                 # UseShamshir — migrate, seed, middleware
+  Api/
+    RunsController.cs                     # /api/runs/* + /api/equity
+    TradesController.cs                   # /api/trades/*
+    StrategiesController.cs               # /api/strategies/*
+    BarsController.cs                     # /api/bars
+    ProtectionController.cs               # /api/protection/*
+    GovernorController.cs                 # /api/governor
+    EventsController.cs, ExportController.cs, ExperimentsController.cs, HealthController.cs
+    BacktestController.cs, BacktestAnalyticsController.cs  # kept for backward compat
+  Dtos/                                   # 18 typed response/request records
+  Services/
+    IRunQueryService.cs + RunQueryService.cs
+    IProtectionQueryService.cs + ProtectionQueryService.cs
+    IBarQueryService.cs + BarQueryService.cs
+    NgServeHost.cs                        # Spawns ng serve in dev
+    RunProgress.cs, RunProgressBroadcaster.cs
 
-1. Fix E2E handshake failure
-   - Debug `NetMqMessageTransport` not receiving router messages
-   - Option 1: verify `RouterSocket.Bind` and `DealerSocket.Connect` are using the same port
-   - Option 2: rollback `NetMqMessageTransport` to version before W2, test, then reapply incrementally
-   - Option 3: add `NetMQ` logging or packet capture
-
-2. Integrate `ReportJsonPath` into `BacktestOrchestrator.RunEngineNetMqAsync`
-   - Set `ReportJsonPath` in the `BacktestCliRequest`
-   - Persist `ReportJsonPath` to `BacktestRunSummary` (column already exists)
-   - Toggle recording through `SnapshotRecorder`
-
-3. Resolve `--report-json` crash / inconsistency
-   - Clean bisection with fresh cTrader CLI state
-   - Test with `BacktestCli.InvokeAsync`
-   - Record reference snapshot from a known-good run
-
-4. Expand `CtraderDiffHarness`
-   - Add per-direction (long/short) comparison
-   - Add `profitFactor`, `largestTrade`, `averageTrade`
-   - Add per-trade `history[]` comparison from `report.json`
-   - Add exit reason cross-reference
-
-5. Build snapshot-based credential-free CI gate
-   - Record one clean snapshot (1-month EURUSD H1, single strategy)
-   - Replay via `FakeCBot` + `SnapshotReplayer`
-   - Compare against DB with hard assertions
-
-6. Fix `AutoDeployAlgo` target to use `Shamshir.algo`
+web-ui/
+  src/
+    styles.css                            # @import "tailwindcss" (source for CLI prebuild)
+    styles.generated.css                  # CLI output (gitignored)
+    index.html
+    app/
+      app.component.ts                    # Nav shell + router-outlet
+      app.config.ts                       # provideRouter, provideHttpClient
+      app.routes.ts                       # Lazy-loaded feature routes
+      models/api.types.ts                 # 17 TypeScript interfaces
+      core/signalr/run-hub.service.ts     # Typed SignalR hub connection
+      shared/
+        stat-tile.component.ts
+        data-table.component.ts
+        equity-chart.component.ts         # Lightweight-Charts v5 dual-pane
+        candle-chart.component.ts         # OHLC + price lines
+        histogram-chart.component.ts
+        scatter-chart.component.ts
+        badge.component.ts
+      features/
+        dashboard/dashboard.component.ts
+        runs/
+          runs.routes.ts, runs.store.ts, runs.service.ts, runs.service.spec.ts
+          run-list/run-list.component.ts          # + compare modal
+          new-backtest/new-backtest.component.ts  # symbol/timeframe/strategy pickers
+          run-monitor/run-monitor.component.ts    # SignalR live monitor
+          run-report/run-report.component.ts      # 10 KPIs + chart + trades + journal
+          run-analyzer/run-analyzer.component.ts  # 5 charts
+        trades/
+          trades.routes.ts
+          trade-list/trade-list.component.ts      # Filters, pagination, clickable rows
+          trade-detail/trade-detail.component.ts  # 16 stat tiles + candlestick chart
+        strategies/
+          strategies.routes.ts
+          strategy-list/strategy-list.component.ts    # Cards + inline toggle
+          strategy-detail/strategy-detail.component.ts # Enable/disable + edit config
+        compliance/compliance.component.ts
+        events/events.component.ts
+        settings/settings.component.ts
+```
 
 ---
 
-## 9. Rules you must not break
+## 7. Git History (this branch)
 
-1. `decimal` for all price, money, lot arithmetic
-2. Never add infrastructure deps to `TradingEngine.Domain`
-3. Schema changes via EF migrations only
-4. No `Console.WriteLine` — use Serilog or test output
-5. Don't touch `aspire/AppHost` (NU1903)
-6. Keep Unit + Architecture suites green — stop-the-line on red
-7. **New:** Use `BacktestCli.InvokeAsync()` for all CLI invocations (single code path)
-8. **New:** Use `CtraderE2EHarness` for all cTrader E2E tests (never raw `Process.Start`)
-9. **New:** Use `RunArtifacts.Create(testName)` for all test file/directory management
+```
+d3b12fc fix: initialize strategies from config store at Web startup
+8be3d3c fix: chart container selectors, trade list RouterLink+clickable rows, strategy detail API compat, profit factor Infinity, barHeight empty array
+8179b1b fix: Tailwind CSS via CLI prebuild — content scans .ts inline templates
+679dc64 fix: restore /api/equity endpoint, fix strategy-list array vs object, clean unused imports, postcss .mjs, add type module
+faddd7d fix: clean AddShamshir into sub-methods, NgServeHost polls Angular readiness before browser opens, Scalar uses default auto-discovery
+0b9cfba refactor: clean Program.cs — extracted DI/middleware, NgServeHost spawns Angular CLI in dev, proxy to port 5134, launch to localhost:4200
+47b694d feat: complete Angular SPA — all charts, dashboard, analyzer, strategy edit, compare modal, enhanced report/monitor/new-backtest, trades filters, settings
+a52e9a2 feat: complete Angular SPA — all features, proper types, CORS, production hosting, scrapped Razor
+52ab37c feat: Angular SPA scaffold + API redesign (DTOs, services, Scalar, clean DI) + bug fixes (governor cooling-off, OrderId join, exact trade reconciliation)
+```
