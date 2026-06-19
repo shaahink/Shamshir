@@ -5,6 +5,7 @@ public record ExtendedRiskState
     public bool TradingAllowed { get; init; }
     public bool InProtectionMode { get; init; }
     public string? ProtectionReason { get; init; }
+    public ProtectionCause ProtectionCause { get; init; }
     public decimal DailyDrawdownUsed { get; init; }
     public decimal WeeklyDrawdownUsed { get; init; }
     public decimal MonthlyDrawdownUsed { get; init; }

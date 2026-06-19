@@ -68,7 +68,13 @@ public sealed class RiskManager(
     public void EnterProtectionMode(string reason, ProtectionCause cause)
     {
         _protectionCause = cause;
-        CurrentState = CurrentState with { InProtectionMode = true, ProtectionReason = reason, TradingAllowed = false };
+        CurrentState = CurrentState with { InProtectionMode = true, ProtectionReason = reason, ProtectionCause = cause, TradingAllowed = false };
+    }
+
+    public void ExitProtectionMode()
+    {
+        _protectionCause = ProtectionCause.None;
+        CurrentState = CurrentState with { InProtectionMode = false, ProtectionReason = null, ProtectionCause = ProtectionCause.None, TradingAllowed = true };
     }
 
     public string? CheckComplianceBlock(TradeIntent intent, RiskProfile profile)

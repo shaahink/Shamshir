@@ -20,6 +20,7 @@ public interface IRiskManager
     void RegisterPosition(Guid positionId, string strategyId, decimal openRiskAmount);
     void DeregisterPosition(Guid positionId);
     void EnterProtectionMode(string reason, ProtectionCause cause);
+    void ExitProtectionMode();
     bool ValidateBudgetEntry(decimal newRiskAmount, EquitySnapshot equity, decimal perTradeRiskAmount);
 
     /// <summary>

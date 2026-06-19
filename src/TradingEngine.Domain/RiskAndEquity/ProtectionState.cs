@@ -34,9 +34,12 @@ public sealed record ProtectionState(
     /// Whether protection from the current <see cref="Cause"/> should clear when the given period
     /// boundary rolls. Daily-DD protection clears on a day roll; weekly/monthly clear on their roll;
     /// MaxDD protection clears only per <see cref="ResetPolicy"/>.
-    /// TODO(deepseek): complete the ResetPolicy matrix (C4). The known policy today is "NextTradingDay";
-    /// confirm the full set from PropFirmRuleSet.ProtectionResetPolicy and the FTMO rule docs. This is
-    /// the ONLY place allowed to decide protection-exit — do not re-add the logic to RiskManager.
+    ///
+    /// Policies:
+    ///   • "NextTradingDay" — clears on the next day boundary (FTMO default)
+    ///   • "Never"           — protection is permanent until manual reset
+    ///   • "AccountReset"    — only clears on an explicit account-level reset
+    ///   • Unknown/missing  → treated as "Never" for safety
     /// </summary>
     public bool ClearsOn(ProtectionBoundary boundary) => Cause switch
     {
@@ -44,9 +47,13 @@ public sealed record ProtectionState(
         ProtectionCause.DailyDrawdown => boundary == ProtectionBoundary.Day,
         ProtectionCause.WeeklyDrawdown => boundary is ProtectionBoundary.Day or ProtectionBoundary.Week,
         ProtectionCause.MonthlyDrawdown => true,
-        // MaxDD: policy-driven. "NextTradingDay" clears on the next day roll; other policies (e.g. never,
-        // or only on account reset) must be honored here. TODO(deepseek): implement the full matrix.
-        ProtectionCause.MaxDrawdown => ResetPolicy == "NextTradingDay" && boundary == ProtectionBoundary.Day,
+        ProtectionCause.MaxDrawdown => ResetPolicy switch
+        {
+            "NextTradingDay" => boundary == ProtectionBoundary.Day,
+            "Never" => false,
+            "AccountReset" => false,
+            _ => false,
+        },
         _ => false,
     };
 }

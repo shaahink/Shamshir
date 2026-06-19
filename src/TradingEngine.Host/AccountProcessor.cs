@@ -74,6 +74,29 @@ public sealed class AccountProcessor
         if (weekRolled) { _lastResetIsoWeek = isoWeek; _riskManager.OnWeeklyReset(update.Equity); }
         if (monthRolled) { _lastResetMonth = month; _riskManager.OnMonthlyReset(update.Equity); }
 
+        // AF5 (C4 fix): exit protection on period-roll per the kernel's ClearsOn policy.
+        // MaxDD protection now clears on Day boundary when ResetPolicy="NextTradingDay".
+        if (_riskManager.CurrentState.InProtectionMode)
+        {
+            var boundary = dayRolled ? ProtectionBoundary.Day
+                : weekRolled ? ProtectionBoundary.Week
+                : monthRolled ? ProtectionBoundary.Month
+                : (ProtectionBoundary?)null;
+            if (boundary is not null)
+            {
+                var cause = _riskManager.CurrentState.ProtectionCause;
+                var resetPolicy = _riskManager.ActiveRuleSet?.ProtectionResetPolicy ?? "NextTradingDay";
+                var ps = new ProtectionState(true, cause,
+                    _riskManager.CurrentState.ProtectionReason, resetPolicy, null);
+                if (ps.ClearsOn(boundary.Value))
+                {
+                    _riskManager.ExitProtectionMode();
+                    _logger.LogInformation("Protection cleared on {Boundary} roll (cause={Cause}, policy={Policy})",
+                        boundary, cause, resetPolicy);
+                }
+            }
+        }
+
         _riskManager.UpdateEquityLevels(update.Equity);
 
         // AF4: breach watchdog now delegates to the kernel's single authority (toggle-gated,
