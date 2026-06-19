@@ -41,18 +41,18 @@ public sealed class EngineReducerWiringTests
             "ForceCloseAllRequested",
             // iter-35 (A2): now wired in reducer (drawdown + account fold). Breach is layered in Kernel.
             nameof(EquityObserved),
-        };
-
-        var unwiredTypes = new HashSet<string>(StringComparer.Ordinal)
-        {
-            // UNWIRED — RiskManager is authoritative; see EngineReducer.cs banners
+            // iter-35 (A2): reducer branches revived — fed by Kernel.Decide via KernelDriver tape.
             nameof(BarClosed),
             nameof(TickReceived),
             nameof(DayRolled),
             nameof(WeekRolled),
             nameof(MonthRolled),
+        };
+
+        var unwiredTypes = new HashSet<string>(StringComparer.Ordinal)
+        {
             // EventBus-only events — published via IEventBus, never fed to the reducer
-            "BarIngested",        // iter-26: TradingLoop → IEventBus → BarPersistenceHandler (bar persistence only)
+            "BarIngested",
             "BarEvaluated",
             "TradeClosed",
             "TradeOpened",

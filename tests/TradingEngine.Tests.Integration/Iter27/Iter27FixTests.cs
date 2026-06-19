@@ -56,7 +56,7 @@ public sealed class Iter27FixTests
         t.Add(Rec("OrderSubmitted", "Accepted"));
         t.Add(Rec("OrderSubmitted", "Accepted"));
         t.Add(Rec("OrderSubmitted", null));        // dispatcher dupe — ignored
-        t.Add(Rec("OrderRejected", "RiskGate"));
+        t.Add(Rec("OrderRejected", "PreTradeGate"));
         t.Add(Rec("OrderFilled", "Filled"));
         t.Add(Rec("OrderFilled", "TP"));           // a winning close
 

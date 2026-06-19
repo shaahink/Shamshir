@@ -191,10 +191,9 @@ public static class EngineReducer
         return new EngineDecision(state with { Positions = newPositions }, effects);
     }
 
-    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
-    // BarClosed is never constructed anywhere; this branch, GovernorMachine.ApplyBar,
-    // and DetectSlTpExit are dead. The live breach watchdog uses AccountProcessor;
-    // backtest SL/TP exits are simulated in EngineRunner.SimulateBarExitsAsync.
+    // iter-35 (A2): WIRED via Kernel.Decide → KernelDriver. The kernel feeds BarClosed events
+    // from the tape, and this reducer branch owns SL/TP detection + GovernorMachine.ApplyBar.
+    // Replaces EngineRunner.SimulateBarExitsAsync (Kill-List).
     private static EngineDecision HandleBarClosed(EngineState state, BarClosed evt, List<EngineEffect> effects)
     {
         var newPositions = new Dictionary<Guid, PositionState>(state.Positions);
@@ -235,9 +234,8 @@ public static class EngineReducer
         return null;
     }
 
-    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
-    // TickReceived is never constructed; tick-to-execution runs via the live
-    // MarketEventSource consumers, not through the reducer.
+    // iter-35 (A2): WIRED via Kernel.Decide. Ticks are fed from the tape (tick granularity, future)
+    // and this reducer branch applies PositionLifecycle.Apply per position.
     private static EngineDecision HandleTickReceived(EngineState state, TickReceived evt, List<EngineEffect> effects)
     {
         var newPositions = new Dictionary<Guid, PositionState>(state.Positions);
@@ -262,9 +260,8 @@ public static class EngineReducer
         return new EngineDecision(state with { Drawdown = newDrawdown, Account = account }, []);
     }
 
-    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
-    // DayRolled is published to EventBus but never fed to the reducer; daily reset
-    // runs imperatively via AccountProcessor / RiskManager.OnDailyReset.
+    // iter-35 (A2): WIRED via Kernel.DecideReset. The reducer handles the pure state transition
+    // (governor reset + drawdown daily re-base). Protection-exit policy is layered in the kernel.
     private static EngineDecision HandleDayRolled(EngineState state, DayRolled evt)
     {
         var newGovernor = GovernorMachine.ApplyDailyReset(state.Governor);
@@ -272,19 +269,14 @@ public static class EngineReducer
         return new EngineDecision(state with { Governor = newGovernor, Drawdown = newDrawdown }, []);
     }
 
-    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
-    // WeekRolled is published to EventBus but never fed to the reducer; weekly reset
-    // runs imperatively via AccountProcessor / RiskManager.OnWeeklyReset.
+    // iter-35 (A2): WIRED via Kernel.DecideReset. Pure weekly drawdown re-base.
     private static EngineDecision HandleWeekRolled(EngineState state, WeekRolled evt)
     {
         var newDrawdown = DrawdownReducer.ApplyWeeklyReset(state.Drawdown, state.Drawdown.WeeklyStartEquity);
         return new EngineDecision(state with { Drawdown = newDrawdown }, []);
     }
 
-    // MonthRolled — mirrors the pattern of DayRolled/WeekRolled: monthly reset runs
-    // imperatively via AccountProcessor / RiskManager.OnMonthlyReset. The reducer path
-    // is a pure mirror for the kernel state and is marked UNWIRED per Q2 convention.
-    // UNWIRED — RiskManager is authoritative; see SYSTEM-MODEL.md §3.2.
+    // iter-35 (A2): WIRED via Kernel.DecideReset. Pure monthly drawdown re-base.
     private static EngineDecision HandleMonthRolled(EngineState state, MonthRolled evt)
     {
         // F10 (iter-26): mirror WeekRolled — zero the monthly DD against the existing monthly baseline.
