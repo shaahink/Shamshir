@@ -24,7 +24,10 @@ public sealed record BacktestRunSummary(
     double WinRatePct,
     int ExitCode,
     string? ErrorMessage,
-    string? ReportJsonPath = null);
+    string? ReportJsonPath = null,
+    string? DatasetId = null,
+    string? ConfigSetId = null,
+    int Seed = 0);
 
 public interface IBacktestRunRepository
 {

@@ -26,4 +26,7 @@ public sealed class BacktestRunEntity
     public int ExitCode { get; set; }
     public string? ErrorMessage { get; set; }
     public string? ReportJsonPath { get; set; }
+    public string? DatasetId { get; set; }
+    public string? ConfigSetId { get; set; }
+    public int Seed { get; set; }
 }

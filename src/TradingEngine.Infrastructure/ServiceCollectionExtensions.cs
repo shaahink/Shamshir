@@ -21,6 +21,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
         services.AddScoped<IEventLogRepository, SqliteEventLogRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
+        services.AddScoped<IDatasetRepository, SqliteDatasetRepository>();
+        services.AddScoped<IConfigSetRepository, SqliteConfigSetRepository>();
         services.AddScoped<IDataProvider, SqliteDataProvider>();
 
         services.AddScoped(_ =>

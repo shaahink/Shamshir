@@ -32,6 +32,9 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             ExitCode = run.ExitCode,
             ErrorMessage = run.ErrorMessage,
             ReportJsonPath = run.ReportJsonPath,
+            DatasetId = run.DatasetId,
+            ConfigSetId = run.ConfigSetId,
+            Seed = run.Seed,
         };
         db.BacktestRuns.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -137,6 +140,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             e.Symbol, e.Period, e.Symbols, e.Periods, e.BacktestFrom, e.BacktestTo,
             e.InitialBalance, e.AlgoHash, e.StrategyParamsJson, e.EffectiveConfigJson,
             net, grossPnL, commissionTotal, swapTotal, maxDd, total, wins, winRate,
-            exitCode, e.ErrorMessage, e.ReportJsonPath);
+            exitCode, e.ErrorMessage, e.ReportJsonPath,
+            e.DatasetId, e.ConfigSetId, e.Seed);
     }
 }

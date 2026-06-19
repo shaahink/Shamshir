@@ -21,6 +21,8 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<RiskProfileEntity> RiskProfiles => Set<RiskProfileEntity>();
     public DbSet<PropFirmRuleSetEntity> PropFirmRuleSets => Set<PropFirmRuleSetEntity>();
     public DbSet<GovernorOptionsEntity> GovernorOptions => Set<GovernorOptionsEntity>();
+    public DbSet<DatasetEntity> Datasets => Set<DatasetEntity>();
+    public DbSet<ConfigSetEntity> ConfigSets => Set<ConfigSetEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -127,6 +129,27 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.Property(x => x.Id).HasColumnType("TEXT").IsRequired();
             e.Property(x => x.Json).HasColumnType("TEXT").IsRequired();
             e.Property(x => x.UpdatedAtUtc).HasColumnType("TEXT");
+        });
+
+        modelBuilder.Entity<DatasetEntity>(e =>
+        {
+            e.ToTable("Datasets");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.ContentHash).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.Symbols).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.Timeframes).HasColumnType("TEXT").IsRequired();
+            e.HasIndex(x => x.ContentHash);
+        });
+
+        modelBuilder.Entity<ConfigSetEntity>(e =>
+        {
+            e.ToTable("ConfigSets");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.ContentHash).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.Json).HasColumnType("TEXT").IsRequired();
+            e.HasIndex(x => x.ContentHash);
         });
     }
 }

@@ -128,6 +128,8 @@ public static class EngineServiceCollectionExtensions
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
         services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
+        services.AddScoped<IDatasetRepository, SqliteDatasetRepository>();
+        services.AddScoped<IConfigSetRepository, SqliteConfigSetRepository>();
         services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
         services.AddSingleton<PersistenceService>();
         services.AddSingleton<PipelineEventWriter>(sp => new PipelineEventWriter(
