@@ -246,16 +246,12 @@ public sealed class RiskManager(
                 Profile = profile,
                 Intent = intent,
             })
-            : (decimal)DrawdownScaler.ComputeScaleFactor(
+            : (decimal)KernelSizing.ComputeScaleFactor(
                 equity.CurrentMaxDrawdown, Constraints?.MaxTotalLoss ?? (decimal)profile.MaxTotalDrawdownPercent,
                 profile.DrawdownScaleThreshold, profile.DrawdownScaleFloor);
 
-        // F5 (iter-26): route through the profile-aware overload so LotSizingMethod actually applies
-        // (FixedLots / FixedDollarRisk / KellyFraction). The previous simple overload always sized as
-        // PercentRisk regardless of the configured method.
-        return PositionSizer.Calculate(
-            equity.Equity, profile,
-            slDistance, pipValue, drawdownScale,
+        return KernelSizing.Calculate(
+            equity.Equity, profile, (decimal)slDistance.Value, pipValue, drawdownScale,
             (decimal)symbolInfo.MaxLots, symbolInfo.MinLots, symbolInfo.LotStep);
     }
 

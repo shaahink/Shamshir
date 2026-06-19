@@ -67,7 +67,7 @@ public static class KernelSizing
         };
     }
 
-    private static decimal FromRiskAmount(decimal riskAmount, decimal slPips, decimal pipValuePerLot, decimal maxLots, decimal minLots, decimal lotStep)
+    public static decimal FromRiskAmount(decimal riskAmount, decimal slPips, decimal pipValuePerLot, decimal maxLots, decimal minLots, decimal lotStep)
     {
         return Clamp(riskAmount / (slPips * pipValuePerLot), maxLots, minLots, lotStep);
     }

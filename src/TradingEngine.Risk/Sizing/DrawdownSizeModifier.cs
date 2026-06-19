@@ -1,3 +1,5 @@
+using TradingEngine.Engine;
+
 namespace TradingEngine.Risk.Sizing;
 
 public sealed class DrawdownSizeModifier : ISizeModifier
@@ -6,7 +8,7 @@ public sealed class DrawdownSizeModifier : ISizeModifier
 
     public double ComputeScale(SizeModifierContext context)
     {
-        return (double)DrawdownScaler.ComputeScaleFactor(
+        return KernelSizing.ComputeScaleFactor(
             context.Equity.CurrentMaxDrawdown,
             (decimal)context.Profile.MaxTotalDrawdownPercent,
             context.Profile.DrawdownScaleThreshold,

@@ -62,10 +62,10 @@ public sealed class Iter26FixTests
             "s", "S", 0.01, 0.04, 0.08, 100, 0.05, 0.5, 0.5, 3, false, "ftmo",
             LotSizingMethod.FixedLots, FixedLots: 0.5m);
 
-        var lots = PositionSizer.Calculate(
-            equity: 100_000m, profile: profile, stopLossDistance: new Pips(20),
-            pipValue: 10m, drawdownScaleFactor: 1m,
-            maxLots: 10m, brokerMinLots: 0.01m, brokerLotStep: 0.01m);
+        var lots = KernelSizing.Calculate(
+            equity: 100_000m, profile: profile, slPips: 20m, pipValuePerLot: 10m,
+            drawdownScale: 1m,
+            maxLots: 10m, minLots: 0.01m, lotStep: 0.01m);
 
         lots.Should().Be(0.5m, "FixedLots must return the configured size, not a percent-risk calc");
     }
@@ -76,10 +76,10 @@ public sealed class Iter26FixTests
         var profile = new RiskProfile(
             "s", "S", 0.01, 0.04, 0.08, 100, 0.05, 0.5, 0.5, 3, false, "ftmo"); // PercentRisk default
 
-        var lots = PositionSizer.Calculate(
-            equity: 100_000m, profile: profile, stopLossDistance: new Pips(20),
-            pipValue: 10m, drawdownScaleFactor: 1m,
-            maxLots: 100m, brokerMinLots: 0.01m, brokerLotStep: 0.01m);
+        var lots = KernelSizing.Calculate(
+            equity: 100_000m, profile: profile, slPips: 20m, pipValuePerLot: 10m,
+            drawdownScale: 1m,
+            maxLots: 100m, minLots: 0.01m, lotStep: 0.01m);
 
         // risk = 100000*0.01 = 1000; rawLots = 1000/(20*10) = 5.0
         lots.Should().Be(5.0m);
