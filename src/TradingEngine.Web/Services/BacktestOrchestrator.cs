@@ -535,7 +535,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             };
         }
 
-        await Task.Delay(5_000, cts.Token);
+        await Task.Delay(2_000, cts.Token);
 
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] Engine replay complete.");
@@ -916,9 +916,18 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     // and the 500-bar batch threshold drop the run's data — the empty equity chart / "no bars" bugs).
     private static async Task FlushRunPersistenceAsync(IHost host)
     {
+        // Allow background flush loops (Equity every 5s, PipelineEvents every 3s) to catch the
+        // last few items before we force-drain everything. The old 5s settle was a blunt instrument;
+        // a shorter pause here is enough because FlushAsync/FlushRemainingAsync drain synchronously.
+        await Task.Delay(1_000);
+
         try { await host.Services.GetRequiredService<EquityPersistenceHandler>().FlushAsync(); }
         catch { /* best effort */ }
         try { await host.Services.GetRequiredService<BufferedBarWriter>().FlushAsync(); }
+        catch { /* best effort */ }
+        try { await host.Services.GetRequiredService<PipelineEventWriter>().FlushRemainingAsync(); }
+        catch { /* best effort */ }
+        try { await host.Services.GetRequiredService<BarEvaluationHandler>().FlushRemainingAsync(); }
         catch { /* best effort */ }
     }
 
