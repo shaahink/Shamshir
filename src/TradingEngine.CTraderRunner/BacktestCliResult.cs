@@ -8,4 +8,6 @@ public sealed record BacktestCliResult
     public bool IsKnownCrash { get; init; }
     public string? ReportJsonPath { get; init; }
     public List<string> CbotLines { get; init; } = [];
+    public string CliPath { get; init; } = "";
+    public string CliVersion { get; init; } = "";
 }

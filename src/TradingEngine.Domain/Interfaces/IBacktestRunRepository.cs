@@ -18,7 +18,8 @@ public sealed record BacktestRunSummary(
     int WinningTrades,
     double WinRatePct,
     int ExitCode,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    string? ReportJsonPath = null);
 
 public interface IBacktestRunRepository
 {

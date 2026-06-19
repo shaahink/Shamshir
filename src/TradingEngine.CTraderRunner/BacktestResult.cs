@@ -12,4 +12,5 @@ public sealed record BacktestResult
     public double WinRatePct { get; init; }
     public string AlgoHash { get; init; } = "";
     public string? ErrorMessage { get; init; }
+    public string? ReportJsonPath { get; init; }
 }

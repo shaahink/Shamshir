@@ -140,7 +140,7 @@ public static class PositionLifecycle
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, closed.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc,
-                HighWater: closed.HighWater, LowWater: closed.LowWater)
+                OrderId: closed.OrderId, HighWater: closed.HighWater, LowWater: closed.LowWater)
         };
         return (closed, effects);
     }
@@ -205,7 +205,7 @@ public static class PositionLifecycle
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc,
-                HighWater: closed.HighWater, LowWater: closed.LowWater)
+                OrderId: closed.OrderId, HighWater: closed.HighWater, LowWater: closed.LowWater)
         };
         return (closed, effects);
     }
@@ -236,7 +236,7 @@ public static class PositionLifecycle
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc,
-                HighWater: closed.HighWater, LowWater: closed.LowWater)
+                OrderId: closed.OrderId, HighWater: closed.HighWater, LowWater: closed.LowWater)
         };
         return (closed, effects);
     }

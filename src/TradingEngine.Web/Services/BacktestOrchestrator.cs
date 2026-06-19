@@ -583,6 +583,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
         var reportJsonPath = Path.Combine(resultsDir, "events.json");
+        // The cBot writes its own resilient ledger here (ShamshirTradeLogger), independent of
+        // cTrader-cli's crash-prone report-saving.
+        var cbotReportDir = Path.Combine(resultsDir, "cbot");
+        Directory.CreateDirectory(cbotReportDir);
 
         var cli = new CTraderCli();
         var args = new[]
@@ -595,6 +599,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             $"--DataPort={dataPort}", $"--CommandPort={commandPort}",
             $"--SymbolString={string.Join(",", cfg.Symbols)}",
             $"--Periods={string.Join(",", cfg.Periods)}",
+            $"--ReportPath={cbotReportDir}",
             "--full-access",
         };
 
@@ -679,6 +684,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 $"[{DateTime.UtcNow:HH:mm:ss}] Failed to capture cTrader report: {ex.Message}");
         }
 
+        // Prefer the cBot's own report.json (always written, carries clientOrderId + per-trade history)
+        // over cTrader's scraped events.json. This is the venue ledger used for reconciliation.
+        var cbotReport = Path.Combine(cbotReportDir, CtraderReportHarvester.CbotReportFileName);
+        string? finalReportPath =
+            File.Exists(cbotReport) && new FileInfo(cbotReport).Length > 0 ? cbotReport
+            : captureSucceeded ? reportJsonPath
+            : null;
+        if (finalReportPath == cbotReport)
+            EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cBot ledger: {cbotReport}");
+
         return new BacktestResult
         {
             RunId      = runId,
@@ -687,7 +702,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             ErrorMessage = isKnownCrash ? null : (cliResult.ExitCode != 0
                 ? cliResult.StandardError.Trim() ?? $"CLI exited with code {cliResult.ExitCode}"
                 : null),
-            ReportJsonPath = captureSucceeded ? reportJsonPath : null,
+            ReportJsonPath = finalReportPath,
         };
     }
 
@@ -712,13 +727,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var candidates = new[]
         {
             Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "Shamshir.algo")),
+                "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "src.algo")),
             Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "Shamshir.algo")),
+                "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "src.algo")),
         };
 
         return candidates.FirstOrDefault(File.Exists)
-            ?? throw new FileNotFoundException("Shamshir.algo not found. Build TradingEngine.Adapters.CTrader first.");
+            ?? throw new FileNotFoundException("src.algo not found. Build TradingEngine.Adapters.CTrader first.");
     }
 
     private static string ComputeAlgoHash(string algoPath)
@@ -746,9 +761,18 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var wins    = trades.Count(t => t.NetPnLAmount > 0);
             var winRate = (double)wins / trades.Count;
 
+            // Max drawdown from the engine's per-bar equity snapshots (these include floating PnL, so
+            // they capture intra-trade drawdown the trade-close balance series misses — the latter
+            // understated DD vs the venue). Fall back to the trade-close series if no snapshots exist.
+            var snapshotDd = await db.EquitySnapshots
+                .Where(s => s.RunId == runId)
+                .Select(s => s.CurrentMaxDrawdown)
+                .DefaultIfEmpty(0m)
+                .MaxAsync();
+
             var equity = initialBalance;
             var peak   = initialBalance;
-            var maxDd  = 0m;
+            var tradeDd = 0m;
             foreach (var t in trades)
             {
                 equity += t.NetPnLAmount;
@@ -756,11 +780,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 if (peak > 0)
                 {
                     var dd = (peak - equity) / peak;
-                    if (dd > maxDd) maxDd = dd;
+                    if (dd > tradeDd) tradeDd = dd;
                 }
             }
 
-            return new(netPnL, maxDd, trades.Count, wins, winRate);
+            return new(netPnL, snapshotDd > 0 ? snapshotDd : tradeDd, trades.Count, wins, winRate);
         }
         catch (Exception ex)
         {

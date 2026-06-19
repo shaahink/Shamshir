@@ -29,6 +29,11 @@ public class TradingEngineCBot : Robot
     [Parameter("Periods", DefaultValue = "H1")]
     public string Periods { get; set; } = "H1";
 
+    // Directory where the cBot writes its OWN report.json + events.json (our resilient venue ledger,
+    // replacing cTrader-cli's crashing --report-json). Empty = disabled.
+    [Parameter("ReportPath", DefaultValue = "")]
+    public string ReportPath { get; set; } = "";
+
     private PublisherSocket? _pub;
     private DealerSocket? _dealer;
     private NetMQPoller? _poller;
@@ -46,6 +51,13 @@ public class TradingEngineCBot : Robot
     private readonly HashSet<long> _commandCloses = new();
     private volatile bool _connected;
 
+    private readonly ShamshirTradeLogger _tradeLog = new();
+    private int _reportCheckpoint;
+    private const int ReportCheckpointEveryNBars = 50;
+
+    private static long EpochMs(DateTime utc) =>
+        new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -58,6 +70,13 @@ public class TradingEngineCBot : Robot
     protected override void OnStart()
     {
         Print($"CBOT|START|symbol={SymbolName}|tf={TimeFrame.ShortName}|dataPort={DataPort}|cmdPort={CommandPort}|v={Version}|build={BuildDate}");
+
+        _tradeLog.Symbol = SymbolName;
+        _tradeLog.Period = TimeFrame.ShortName;
+        _tradeLog.StartingCapital = Account.Balance;
+        _tradeLog.RecordEquity(Account.Balance, Account.Equity, EpochMs(Server.TimeInUtc));
+        if (!string.IsNullOrWhiteSpace(ReportPath))
+            Print($"CBOT|REPORT_PATH|{ReportPath}");
 
         _pub = new PublisherSocket();
         _pub.Bind($"tcp://*:{DataPort}");
@@ -174,6 +193,10 @@ public class TradingEngineCBot : Robot
               $"dup=false");
 
         var openTimeUtc = DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc);
+
+        _tradeLog.RecordEquity(Account.Balance, Account.Equity, EpochMs(openTimeUtc));
+        if (++_reportCheckpoint % ReportCheckpointEveryNBars == 0)
+            TryWriteReport();
 
         var barJson = Serialize("bar", new
         {
@@ -299,6 +322,9 @@ public class TradingEngineCBot : Robot
             _positionMap[pos.Id] = Guid.Parse(clientOrderId);
             _ordersExecuted++;
 
+            _tradeLog.RecordOpen(pos.Id, clientOrderId, direction, pos.EntryPrice,
+                pos.VolumeInUnits / sym.LotSize, EpochMs(Server.TimeInUtc), Account.Balance, Account.Equity);
+
             if (slPrice > 0 || tpPrice > 0)
             {
                 try
@@ -334,13 +360,17 @@ public class TradingEngineCBot : Robot
                 var grossProfit = pos.GrossProfit;
                 var netProfit = pos.NetProfit;
                 var result = ClosePosition(pos);
+                // Read commission/swap AFTER the close: before it, only the entry-side commission has
+                // been charged, so the venue-reported figure would be half the round-trip cost.
+                var commission = pos.Commissions;
+                var swap = pos.Swap;
                 _commandCloses.Add(pos.Id);
                 Diag($"CLOSE_POS|{positionIdStr}|success={result?.IsSuccessful}|net={netProfit:F2}");
                 if (result?.IsSuccessful == true) PublishAccount();
                 return MakeExecResult(clientOrderId.ToString(), "close", pos.Id,
                     result?.IsSuccessful == true ? "Filled" : "Rejected",
                     pos.CurrentPrice > 0 ? pos.CurrentPrice : 0d, pos.VolumeInUnits / (Symbols.GetSymbol(pos.SymbolName)?.LotSize ?? 100000.0), null,
-                    grossProfit, netProfit);
+                    grossProfit, netProfit, commission, swap);
             }
         }
         Print($"CBOT|CLOSE_NOT_FOUND|positionId={positionIdStr}");
@@ -367,6 +397,8 @@ public class TradingEngineCBot : Robot
                 var fraction = pos.VolumeInUnits > 0 ? Math.Min(1.0, volumeInUnits / (double)pos.VolumeInUnits) : 1.0;
                 var grossProfit = pos.GrossProfit * fraction;
                 var netProfit = pos.NetProfit * fraction;
+                var commission = pos.Commissions * fraction;
+                var swap = pos.Swap * fraction;
                 var result = ClosePosition(pos, volumeInUnits);
                 Diag($"CLOSE_PARTIAL|{positionIdStr}|lots={closeLots}|units={volumeInUnits}|success={result?.IsSuccessful}|net={netProfit:F2}");
                 if (result?.IsSuccessful == true) PublishAccount();
@@ -374,7 +406,7 @@ public class TradingEngineCBot : Robot
                 return MakeExecResult(clientOrderId.ToString(), "partial_close", pos.Id,
                     result?.IsSuccessful == true ? "Filled" : "Rejected",
                     pos.CurrentPrice > 0 ? pos.CurrentPrice : 0d, (double)closeLots, null,
-                    grossProfit, netProfit);
+                    grossProfit, netProfit, commission, swap);
             }
         }
         Print($"CBOT|CLOSE_PARTIAL_NOT_FOUND|positionId={positionIdStr}");
@@ -483,7 +515,8 @@ public class TradingEngineCBot : Robot
 
     private static object MakeExecResult(string clientOrderId, string kind, long positionId,
         string state, double fillPrice, double filledLots, string? reason,
-        double grossProfit = 0.0, double netProfit = 0.0)
+        double grossProfit = 0.0, double netProfit = 0.0,
+        double commission = 0.0, double swap = 0.0)
     {
         return new
         {
@@ -496,7 +529,9 @@ public class TradingEngineCBot : Robot
             reason,
             simTime = DateTime.UtcNow.ToString("o"),
             grossProfit,
-            netProfit
+            netProfit,
+            commission,
+            swap
         };
     }
 
@@ -537,6 +572,18 @@ public class TradingEngineCBot : Robot
             var lots = sym is not null ? pos.VolumeInUnits / sym.LotSize : pos.VolumeInUnits / 100_000.0;
             var closePrice = pos.CurrentPrice > 0 ? pos.CurrentPrice : pos.EntryPrice;
 
+            // Log EVERY close (command- and venue-initiated) to our own ledger with cTrader's realized
+            // values. This is the single source of truth for the report.json/events.json we write.
+            var closeEventName = args.Reason switch
+            {
+                PositionCloseReason.StopLoss => "Stop Loss Hit",
+                PositionCloseReason.TakeProfit => "Take Profit Hit",
+                _ => "Closed",
+            };
+            _tradeLog.RecordClose(pos.Id, clientOrderId.ToString(), closeEventName, closePrice,
+                pos.GrossProfit, pos.NetProfit, pos.Commissions, pos.Swap, pos.Pips,
+                EpochMs(Server.TimeInUtc), Account.Balance, Account.Equity);
+
             if (_commandCloses.Remove(pos.Id))
             {
                 // Command-initiated close: exec already reported via bar_result.execs[]
@@ -562,7 +609,9 @@ public class TradingEngineCBot : Robot
                 closeReason,
                 simTime = Server.TimeInUtc.ToString("o"),
                 grossProfit = pos.GrossProfit,
-                netProfit = pos.NetProfit
+                netProfit = pos.NetProfit,
+                commission = pos.Commissions,
+                swap = pos.Swap
             });
             try { _dealer?.SendFrame(execJson); } catch { }
             _execsSent++;
@@ -580,8 +629,19 @@ public class TradingEngineCBot : Robot
         _ => "CLOSED",
     };
 
+    private void TryWriteReport()
+    {
+        if (string.IsNullOrWhiteSpace(ReportPath)) return;
+        try { _tradeLog.Write(ReportPath, Account.Balance, Account.Equity); }
+        catch (Exception ex) { Print($"CBOT|REPORT_WRITE_ERR|{ex.Message}"); }
+    }
+
     protected override void OnStop()
     {
+        // Flush our ledger FIRST — before any NetMQ teardown and before cTrader's own (crash-prone)
+        // report-saving runs — so report.json/events.json are always written even if cTrader dies after.
+        TryWriteReport();
+
         Diag($"STOP|ticks={_tickCounter}|barEvents={_barEventCount}|dup={_duplicateCount}");
         Print($"CBOT|STOP|ticks={_tickCounter}|barEvents={_barEventCount}|dup={_duplicateCount}");
 

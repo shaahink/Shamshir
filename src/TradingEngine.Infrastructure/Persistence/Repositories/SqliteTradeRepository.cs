@@ -8,6 +8,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
         {
             Id = trade.Id,
             PositionId = trade.PositionId,
+            OrderId = trade.OrderId,
             Symbol = trade.Symbol.ToString(),
             Direction = trade.Direction.ToString(),
             Lots = trade.Lots,

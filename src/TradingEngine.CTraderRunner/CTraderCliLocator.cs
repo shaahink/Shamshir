@@ -8,6 +8,14 @@ public static class CTraderCliLocator
         if (!string.IsNullOrEmpty(configured) && File.Exists(configured))
             return configured;
 
+        // Env-var override — lets the harness/orchestrator pin a specific cTrader CLI binary even
+        // when no IConfiguration is threaded through (BacktestCli builds an empty config). The
+        // "prefer root" heuristic below is fragile (different installed binaries behave differently
+        // for handshake vs report-saving), so an explicit override is the reliable escape hatch.
+        var envPath = Environment.GetEnvironmentVariable("CTRADER_CLI_PATH");
+        if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath))
+            return envPath;
+
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var spotwarePath = Path.Combine(localAppData, "Spotware", "cTrader");
         if (!Directory.Exists(spotwarePath))

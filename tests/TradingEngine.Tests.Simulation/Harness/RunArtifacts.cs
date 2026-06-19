@@ -7,8 +7,11 @@ public sealed class RunArtifacts : IAsyncDisposable
     public string EngineLogPath { get; }
     public string CtraderLogPath { get; }
     public string ReportJsonPath { get; }
+    public string ReportHtmlPath { get; }
     public string EventsJsonPath { get; }
     public string DbPath { get; }
+    /// <summary>Directory the cBot writes its own report.json + events.json into (--ReportPath).</summary>
+    public string CbotReportDir { get; }
 
     public static bool KeepOnFailure { get; set; } = true;
 
@@ -19,8 +22,10 @@ public sealed class RunArtifacts : IAsyncDisposable
         EngineLogPath = Path.Combine(resultsDir, $"{runId}-engine.log");
         CtraderLogPath = Path.Combine(resultsDir, $"{runId}-ctrader.log");
         ReportJsonPath = Path.Combine(resultsDir, $"{runId}-report.json");
+        ReportHtmlPath = Path.Combine(resultsDir, $"{runId}-report.html");
         EventsJsonPath = Path.Combine(resultsDir, $"{runId}-events.json");
         DbPath = Path.Combine(resultsDir, $"{runId}.db");
+        CbotReportDir = Path.Combine(resultsDir, "cbot");
     }
 
     public static RunArtifacts Create(string testName)

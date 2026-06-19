@@ -5,7 +5,15 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Shamshir</AssemblyName>
-    <_AlgoFileName>Shamshir.algo</_AlgoFileName>
+    <!-- Don't glob/validate **/*.cbotset. The SDK otherwise validates every parameter-set file under
+         the project (incl. the hundreds cTrader writes into bin/.../data/.../Backtesting/ per run)
+         against the cBot's current parameters, so adding a new [Parameter] (e.g. ReportPath) fails the
+         build with CT0301 on stale sets. We pass parameters via the CLI, not .cbotset files. -->
+    <EnableDefaultAlgoSetItems>false</EnableDefaultAlgoSetItems>
+    <!-- NOTE: the cTrader.Automate SDK names the .algo bundle after the project's PARENT
+         directory ("src"), so the output is always "src.algo" regardless of AssemblyName.
+         The bot's identity/version come from the [Robot] class + runtime version print, not
+         this filename. Do not set _AlgoFileName here — the SDK targets override it. -->
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="cTrader.Automate" Version="*" />
@@ -14,9 +22,9 @@
 
   <Target Name="AutoDeployAlgo" AfterTargets="Build"
           Condition="'$(AutoDeploy)' == 'true' AND '$(CTraderSourcesPath)' != ''">
-    <Copy SourceFiles="$(OutputPath)Shamshir.algo"
+    <Copy SourceFiles="$(OutputPath)src.algo"
           DestinationFolder="$(CTraderSourcesPath)"
           OverwriteReadOnlyFiles="true" />
-    <Message Text="[Shamshir] Deployed Shamshir.algo → $(CTraderSourcesPath)" Importance="high" />
+    <Message Text="[Shamshir] Deployed src.algo → $(CTraderSourcesPath)" Importance="high" />
   </Target>
 </Project>

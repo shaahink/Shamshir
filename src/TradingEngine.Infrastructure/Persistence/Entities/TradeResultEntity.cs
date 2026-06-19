@@ -4,6 +4,9 @@ public sealed class TradeResultEntity
 {
     public Guid Id { get; set; }
     public Guid PositionId { get; set; }
+    // Venue-facing clientOrderId (originating order). Equals the cBot ledger's clientOrderId — the
+    // exact per-trade reconciliation join key. Distinct from the engine-internal PositionId.
+    public Guid OrderId { get; set; }
     public string Symbol { get; set; } = "";
     public string Direction { get; set; } = "";
     public decimal Lots { get; set; }

@@ -146,7 +146,8 @@ public sealed class EffectExecutor : IEffectExecutor
             effect.Lots, effect.EntryPrice, effect.ExitPrice, effect.StopLoss, effect.TakeProfit,
             effect.OpenedAtUtc, effect.ClosedAtUtc, gross, commission, swap,
             net, pnlPips, rMultiple, maePips, mfePips,
-            effect.ExitReason, effect.StrategyId, effect.RiskProfileId ?? "standard");
+            effect.ExitReason, effect.StrategyId, effect.RiskProfileId ?? "standard",
+            OrderId: effect.OrderId);
 
         foreach (var s in _strategies.Where(s => s.Id == effect.StrategyId))
         {

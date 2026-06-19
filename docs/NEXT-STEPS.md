@@ -4,6 +4,12 @@
 This is a *roadmap*, not the bug log — correctness bugs live in `docs/OPEN-ISSUES.md`.
 Items grouped by theme with rough priority (P1 = do soon, P3 = later).
 
+> **Most of this backlog is now sequenced into the iter-33 redesign program** —
+> `docs/iterations/iter-33-redesign/MASTER_PLAN.md` (full Angular SPA + backend vertical-slice reorg +
+> data-correctness backbone + verification gates). The items below map onto its tracks (see
+> `TRACK-C-features.md`). Read the master plan before picking up roadmap items so they land on the new
+> architecture, not the old one.
+
 ---
 
 ## A. Reporting & journal (highest near-term value)

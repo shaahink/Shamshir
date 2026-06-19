@@ -20,7 +20,10 @@ public record RecordDecisionEvent(DecisionRecord Decision) : EngineEffect;
 // they stay null for the simulated venue, where EffectExecutor recomputes gross from prices.
 // HighWater/LowWater are the most-favorable/most-adverse prices reached over the position's
 // life (from PositionState's per-bar tracking); EffectExecutor derives MAE/MFE from them.
-public record PublishTradeClosed(Guid PositionId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price ExitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, string ExitReason, DateTime ClosedAtUtc, DateTime OpenedAtUtc, string? RiskProfileId = null, decimal? GrossProfit = null, decimal? NetProfit = null, decimal? Commission = null, decimal? Swap = null, decimal HighWater = 0, decimal LowWater = 0) : EngineEffect;
+// OrderId is the venue-facing clientOrderId (the position's originating order), carried through to the
+// persisted trade so the venue ledger (cBot report.json) joins to DB trades exactly. PositionId remains
+// the engine-internal position identity.
+public record PublishTradeClosed(Guid PositionId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price ExitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, string ExitReason, DateTime ClosedAtUtc, DateTime OpenedAtUtc, Guid OrderId = default, string? RiskProfileId = null, decimal? GrossProfit = null, decimal? NetProfit = null, decimal? Commission = null, decimal? Swap = null, decimal HighWater = 0, decimal LowWater = 0) : EngineEffect;
 
 public record RegisterRisk(Guid PositionId, string StrategyId, decimal RiskAmount) : EngineEffect;
 

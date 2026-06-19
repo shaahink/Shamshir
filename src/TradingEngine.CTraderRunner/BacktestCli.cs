@@ -13,6 +13,8 @@ public static class BacktestCli
         var cliPath = CTraderCliLocator.Locate(
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build());
 
+        Console.WriteLine($"[BacktestCli] Path={cliPath}");
+
         var argString = BuildArgs(request);
 
         using var process = Process.Start(new ProcessStartInfo(cliPath, argString)
@@ -47,6 +49,7 @@ public static class BacktestCli
             IsKnownCrash = isKnownCrash,
             ReportJsonPath = request.ReportJsonPath,
             CbotLines = cbotLines,
+            CliPath = cliPath,
         };
     }
 
@@ -74,8 +77,15 @@ public static class BacktestCli
             sb.Append($" --Periods={string.Join(",", r.Periods)}");
         if (r.FullAccess)
             sb.Append(" --full-access");
-        if (r.ReportJsonPath is not null)
-            sb.Append($" --report-json=\"{r.ReportJsonPath}\"");
+        // cBot parameter: where the cBot writes its OWN report.json + events.json (ShamshirTradeLogger).
+        if (!string.IsNullOrWhiteSpace(r.ReportDir))
+            sb.Append($" --ReportPath=\"{r.ReportDir}\"");
+        // NOTE: do NOT pass --report-json. The flag crashes cTrader-cli's
+        // BacktestReportSavingStateStrategy ("Message expected" → NotImplementedException),
+        // which ALSO suppresses the report.html + events.json that cTrader writes to its
+        // Backtesting dir by default. We harvest those instead (report.html embeds the full
+        // summary JSON; events.json carries the per-event ledger). r.ReportJsonPath is now the
+        // artifact path we COPY the harvested summary to, not a CLI flag.
         if (r.DataDir is not null)
             sb.Append($" --data-dir=\"{r.DataDir}\"");
         if (r.DataFile is not null)

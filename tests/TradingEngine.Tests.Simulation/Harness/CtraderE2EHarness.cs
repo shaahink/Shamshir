@@ -35,6 +35,7 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
     private readonly string _dataMode = "m1";
     private IReadOnlyList<string> _symbols = new[] { "EURUSD" };
     private IReadOnlyList<string> _periods = new[] { "H1" };
+    private IReadOnlyList<string> _activeStrategyIds = [];
 
     private int _dataPort;
     private int _commandPort;
@@ -43,6 +44,7 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
     private NetMqMessageTransport? _transport;
     private string? _snapshotPath;
     private SnapshotRecorderSession? _recorder;
+    private DateTime _ctraderStartUtc;
 
     public string RunId => Artifacts.RunId;
     public ITransportStatusSource? TransportStatus => _transport;
@@ -90,6 +92,12 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
         return this;
     }
 
+    public CtraderE2EHarness WithStrategyIds(params string[] ids)
+    {
+        _activeStrategyIds = ids;
+        return this;
+    }
+
     // ── Phased execution ─────────────────────────────────────────────
 
     public Task StartEngineAsync(CancellationToken ct = default)
@@ -122,6 +130,7 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
             DbPath = Artifacts.DbPath,
             SolutionRoot = solutionRoot,
             SymbolNames = _symbols,
+            ActiveStrategyIds = _activeStrategyIds,
             MinLogLevel = LogLevel.Warning,
             PreloadedConfig = preloadedConfig,
         });
@@ -182,15 +191,23 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
             Symbols = _symbols,
             Periods = _periods,
             FullAccess = true,
+            ReportDir = Artifacts.CbotReportDir,
         };
 
+        _ctraderStartUtc = DateTime.UtcNow;
         _cliResult = await BacktestCli.InvokeAsync(request, ct);
 
-        // Capture events.json from Backtesting dir if not at our path
-        if (!File.Exists(Artifacts.EventsJsonPath))
-        {
-            CopyEventsFromBacktestingDir(algoPath);
-        }
+        // Primary: the cBot's OWN report.json + events.json (ShamshirTradeLogger) — always written on
+        // stop, independent of cTrader-cli's crash-prone report-saving.
+        CollectCbotReports();
+
+        // Secondary (best-effort): harvest cTrader's native report.html for human viewing, and fall
+        // back to its events.json/embedded summary if the cBot logger produced nothing.
+        CtraderReportHarvester.Harvest(
+            algoPath, _ctraderStartUtc,
+            Artifacts.ReportHtmlPath,
+            File.Exists(Artifacts.EventsJsonPath) ? Artifacts.EventsJsonPath + ".ctrader" : Artifacts.EventsJsonPath,
+            File.Exists(Artifacts.ReportJsonPath) ? Artifacts.ReportJsonPath + ".ctrader" : Artifacts.ReportJsonPath);
 
         // Write CLI stdout/stderr to artifact files
         await File.WriteAllTextAsync(Artifacts.CtraderLogPath,
@@ -322,7 +339,8 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
                 ts.LastMessageAtUtc, ts.BarsReceived, ts.CommandsSent, ts.ExecutionsReceived, ts.LastError);
         }
 
-        var reportPath = File.Exists(Artifacts.EventsJsonPath) ? Artifacts.EventsJsonPath : null;
+        var reportPath = File.Exists(Artifacts.ReportJsonPath) ? Artifacts.ReportJsonPath
+            : File.Exists(Artifacts.EventsJsonPath) ? Artifacts.EventsJsonPath : null;
 
         return new E2EResult(Artifacts.RunId, trades, barEvals, signals, orders, execs,
             _cliResult?.ExitCode ?? -1, _cliResult?.StdErr ?? "",
@@ -341,27 +359,20 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
         a.Stop(); b.Stop();
     }
 
-    private void CopyEventsFromBacktestingDir(string algoPath)
+    // Copy the cBot's own report.json + events.json (written by ShamshirTradeLogger into CbotReportDir)
+    // to the canonical artifact paths. These are the primary, crash-resilient venue ledger.
+    private void CollectCbotReports()
     {
         try
         {
-            var algoDir = Path.GetDirectoryName(algoPath)!;
-            var dataSrcDir = Path.Combine(algoDir, "data", "src");
-            if (!Directory.Exists(dataSrcDir)) return;
-
-            var backtestDirs = Directory.GetDirectories(dataSrcDir, "Backtesting", SearchOption.AllDirectories)
-                .OrderByDescending(Directory.GetLastWriteTimeUtc)
-                .ToList();
-
-            foreach (var dir in backtestDirs)
-            {
-                var jsonFile = Path.Combine(dir, "events.json");
-                if (!File.Exists(jsonFile)) continue;
-                File.Copy(jsonFile, Artifacts.EventsJsonPath, overwrite: true);
-                break;
-            }
+            var cbotReport = Path.Combine(Artifacts.CbotReportDir, CtraderReportHarvester.CbotReportFileName);
+            var cbotEvents = Path.Combine(Artifacts.CbotReportDir, CtraderReportHarvester.CbotEventsFileName);
+            if (File.Exists(cbotReport) && new FileInfo(cbotReport).Length > 0)
+                File.Copy(cbotReport, Artifacts.ReportJsonPath, overwrite: true);
+            if (File.Exists(cbotEvents) && new FileInfo(cbotEvents).Length > 0)
+                File.Copy(cbotEvents, Artifacts.EventsJsonPath, overwrite: true);
         }
-        catch { }
+        catch { /* best-effort */ }
     }
 
     private static LoadedConfig BuildConfig(string symbol, string period)

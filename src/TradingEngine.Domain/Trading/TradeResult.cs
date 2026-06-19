@@ -23,7 +23,8 @@ public record TradeResult(
     string ExitReason,
     string StrategyId,
     string RiskProfileId,
-    EngineMode Mode = EngineMode.Backtest)
+    EngineMode Mode = EngineMode.Backtest,
+    Guid OrderId = default)
 {
     public double DurationSeconds => (ClosedAtUtc - OpenedAtUtc).TotalSeconds;
 }

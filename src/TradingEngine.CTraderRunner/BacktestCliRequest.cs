@@ -25,4 +25,8 @@ public sealed record BacktestCliRequest
     public string? ReportJsonPath { get; init; }
     public string? DataDir { get; init; }
     public string? DataFile { get; init; }
+
+    /// <summary>Directory the cBot writes its own report.json + events.json into (passed as the
+    /// cBot --ReportPath parameter). Our resilient venue ledger, replacing cTrader's --report-json.</summary>
+    public string? ReportDir { get; init; }
 }
