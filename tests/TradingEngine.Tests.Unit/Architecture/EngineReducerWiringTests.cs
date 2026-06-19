@@ -39,6 +39,8 @@ public sealed class EngineReducerWiringTests
             nameof(CloseRequested),
             // Force-close — wired via PositionTracker.RequestForceCloseAllAsync
             "ForceCloseAllRequested",
+            // iter-35 (A2): now wired in reducer (drawdown + account fold). Breach is layered in Kernel.
+            nameof(EquityObserved),
         };
 
         var unwiredTypes = new HashSet<string>(StringComparer.Ordinal)
@@ -46,7 +48,6 @@ public sealed class EngineReducerWiringTests
             // UNWIRED — RiskManager is authoritative; see EngineReducer.cs banners
             nameof(BarClosed),
             nameof(TickReceived),
-            nameof(EquityObserved),
             nameof(DayRolled),
             nameof(WeekRolled),
             nameof(MonthRolled),
@@ -63,6 +64,8 @@ public sealed class EngineReducerWiringTests
             "MonthlyEquitySnapshotTaken",
             "WeeklyEquitySnapshotTaken",
             "PositionPartiallyClosed",
+            // iter-35 (A2): kernel-only event — handled by Kernel.Decide, not the reducer directly
+            "OrderProposed",
         };
 
         // Every EngineEvent type must be in exactly one of these two sets.
