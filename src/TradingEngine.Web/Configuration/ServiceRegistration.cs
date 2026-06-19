@@ -132,6 +132,7 @@ public static class ServiceRegistration
         services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
             sp.GetRequiredService<StrategyRegistry>(), null, null,
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
+        services.AddSingleton(new GovernorOptions());
         services.AddSingleton<ITradingGovernor>(sp => new GovernorMachine(sp.GetRequiredService<GovernorOptions>()));
         services.AddSingleton(new RegimeOptions());
         services.AddSingleton<ProtectionLedgerWriter>();
