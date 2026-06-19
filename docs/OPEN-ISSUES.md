@@ -44,9 +44,8 @@ new AccountUpdate(_currentBalance, 0m, _currentBalance, now)
 Passes `Equity = 0m, FloatingPnL = _currentBalance` instead of `Equity = balance + floatingPnl, FloatingPnL = actual floating PnL`. Breach watchdog sees zero equity, enters protection mode, force-closes all positions.
 
 ### C6 — SimulatedBrokerAdapter `ClosePartialPositionAsync` missing costs/balance update
-**Severity**: Critical — partial close silently corrupts balance
-**File**: `src/TradingEngine.Infrastructure/Venues/Simulated/SimulatedBrokerAdapter.cs:171-189`
-No cost computation, no `_currentBalance` update, no `AccountUpdate` emitted, no cost fields stamped on `ExecutionEvent`. Balance drifts from reality.
+**Severity**: Critical — ✅ **FIXED iter-35 (cont.)** — `ClosePartialPositionAsync` now computes costs on the closed lots via `TradeCostCalculator`, updates `_currentBalance`, stamps Gross/Comm/Swap/Net on the exec, and emits an `AccountUpdate`. (`BacktestReplayAdapter` already did this; the partial-close path has no live engine caller today, but both venues now agree.)
+**File**: `src/TradingEngine.Infrastructure/Venues/Simulated/SimulatedBrokerAdapter.cs:171-208`
 
 ### C7 — SimulatedBrokerAdapter limit expiry decrements per tick, not per bar
 **Severity**: Critical — ✅ **FIXED iter-35** (moved to `OnBarObserved` per-bar decrement)
@@ -150,8 +149,7 @@ Engine injects `ExecutionEvent` with `Price(0m)` when cBot disconnects. PnL comp
 `_barsReceived` counts all sub messages (ticks, acct, diag). `_commandsSent` counts all outgoing messages. `_executionsReceived` counts all router messages. Reconciliation telemetry permanently mismatched.
 
 ### H14 — BacktestReplayAdapter `FilledLots = 0` on full close
-**File**: `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs:267-268`
-All `CloseAtAsync` emits `ExecutionEvent` with `FilledLots = 0`. Should be trade's lot size.
+**File**: `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs:267-274` — ✅ **FIXED iter-35 (cont.)** — close exec now reports `trade.Lots`. `FilledLots == position lots` keeps it a full close in the lifecycle FSM (the partial branch requires `FilledLots < lots`); the order ledger / reconciliation now see the real volume. Golden + unit suites unchanged.
 
 ### H15 — BacktestReplayAdapter timestamp/price mismatch on fills
 **File**: `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs:177-178,227-228`

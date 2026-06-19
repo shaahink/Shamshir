@@ -264,8 +264,11 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
 
             // Stamp the itemised economics on the close fill so the engine ledger (and the DB/report)
             // match the account — net of commission/swap, not a cost-free recompute downstream.
+            // H14 (iter-35 B2): report the closed lot size (was 0). FilledLots == position lots keeps
+            // this a FULL close in the lifecycle FSM (the partial branch needs FilledLots < lots), while
+            // the order ledger / reconciliation now see the real volume instead of zero.
             _executionChannel.Writer.TryWrite(new ExecutionEvent(
-                positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc)
+                positionId, OrderState.Filled, fillPrice, trade.Lots, null, BrokerTimeUtc)
             {
                 GrossProfit = costs.GrossProfit,
                 Commission = costs.Commission,

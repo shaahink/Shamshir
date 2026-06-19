@@ -103,3 +103,9 @@ trail — items are never deleted, only added.
 - Journal table + `SqliteStepRecordSink` + `KernelJournalController` (paged + NDJSON export)
 - `ReplayRunner` + determinism test + 7 scenario invariant tests
 - Golden replay oracle with committed `golden-snapshot.json` baseline
+
+### Iter-35 (cont.) — owner-driven A/B finishing (verified green, golden unchanged)
+- **C6** — `SimulatedBrokerAdapter.ClosePartialPositionAsync` now realizes the closed portion: costs via `TradeCostCalculator`, `_currentBalance` update, cost-stamped exec, `AccountUpdate` (mirrors the full-close path; both venues now agree)
+- **H14** — `BacktestReplayAdapter` close exec now reports `trade.Lots` instead of `0` (stays a full close in the lifecycle FSM; ledger/reconciliation see real volume)
+- **C8 (residual)** — `SessionBreakoutStrategy` session range now filters to **today's** date AND the time-of-day window (was time-of-day across the whole buffer → cross-day contamination)
+- **A3 lossless journal** — added `JournalLosslessTests`: no-drop-under-burst (500 records into capacity-8 Wait channel all persist) + retry-failed-batch-no-loss (sink throws once → batch retried, `DroppedBatches==0`). Closes the untested A3 guarantee.

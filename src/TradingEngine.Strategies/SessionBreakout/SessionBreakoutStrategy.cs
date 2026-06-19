@@ -52,10 +52,14 @@ public sealed class SessionBreakoutStrategy : IStrategy
 
             if (now >= p.RangeStartUtc && now < p.RangeEndUtc)
             {
-                // C8 (iter-35 B2): range = session window only, not full buffer.
+                // C8 (iter-35 B2): range = TODAY's session window only. Filter to the current session
+                // day AND the [RangeStartUtc, RangeEndUtc) time-of-day window — keying on time-of-day
+                // alone contaminated the range with every prior day's session bars in the buffer.
+                var sessionDay = context.EngineTimeUtc.Date;
                 var sessionBars = h1Bars
                     .Where(b =>
                     {
+                        if (b.OpenTimeUtc.Date != sessionDay) return false;
                         var barTime = TimeOnly.FromDateTime(b.OpenTimeUtc);
                         return barTime >= p.RangeStartUtc && barTime < p.RangeEndUtc;
                     })

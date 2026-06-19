@@ -174,6 +174,18 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         {
             if (_openPositions.TryGetValue(positionId, out var pos))
             {
+                // C6 (iter-35 B2): realize the closed portion's economics. Previously this only wrote a
+                // cost-free fill — no cost computation, no balance update, no AccountUpdate — so the
+                // simulated balance silently drifted from reality. Mirror the full-close path for the
+                // closed `lots` only.
+                var exitPrice = pos.Direction == TradeDirection.Long ? _lastBid : _lastAsk;
+                var now = BrokerTimeUtc;
+                var costs = TradeCostCalculator.Compute(
+                    pos.Direction, pos.EntryPrice, new Price(exitPrice), lots,
+                    pos.SymbolInfo, _crossRateProvider, pos.OpenedAtUtc, now, _dailyResetTimeUtc);
+
+                _currentBalance += costs.NetProfit;
+
                 var remaining = pos.Lots - lots;
                 if (remaining <= 0)
                     _openPositions.Remove(positionId);
@@ -181,9 +193,17 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                     pos.Lots = remaining;
 
                 _executionChannel.Writer.TryWrite(new ExecutionEvent(
-                    positionId, OrderState.Filled,
-                    new Price(pos.Direction == TradeDirection.Long ? _lastBid : _lastAsk),
-                    lots, null, BrokerTimeUtc));
+                    positionId, OrderState.Filled, new Price(exitPrice), lots, null, now)
+                {
+                    GrossProfit = costs.GrossProfit,
+                    NetProfit = costs.NetProfit,
+                    Commission = costs.Commission,
+                    Swap = costs.Swap,
+                    CloseReason = "PARTIAL",
+                });
+
+                _accountChannel.Writer.TryWrite(new AccountUpdate(
+                    _currentBalance, _currentBalance, 0m, now));
             }
         }
         return Task.CompletedTask;
