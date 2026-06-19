@@ -271,6 +271,7 @@ public class TradingEngineCBot : Robot
                             }
                         }
 
+                        _execsSent += execs.Count;
                         var barResult = Serialize("bar_result", new
                         {
                             v = 1,

@@ -101,7 +101,7 @@ public sealed class TradingLoop(
                     runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
                     strategy.Id, new Dictionary<string, double>(strategyIndicators),
                     false, null, $"not enough bars (have {totalBars}, need {strategy.RequiredBarCount})",
-                    clock.UtcNow), CancellationToken.None);
+                    clock.UtcNow), CancellationToken.None).ContinueWith(t => logger.LogWarning(t.Exception, "BarEvaluated publish failed"), TaskContinuationOptions.OnlyOnFaulted);
                 continue;
             }
 

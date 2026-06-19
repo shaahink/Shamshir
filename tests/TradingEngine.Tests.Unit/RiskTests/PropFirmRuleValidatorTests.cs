@@ -8,7 +8,7 @@ public sealed class PropFirmRuleValidatorTests
     {
         var validator = new PropFirmRuleValidator();
         var result = validator.IsProfitTargetMet(
-            currentBalance: 110_000,
+            currentEquity: 110_000,
             initialBalance: 100_000,
             profitTargetPercent: 0.10);
 
@@ -20,7 +20,7 @@ public sealed class PropFirmRuleValidatorTests
     {
         var validator = new PropFirmRuleValidator();
         var result = validator.IsProfitTargetMet(
-            currentBalance: 105_000,
+            currentEquity: 105_000,
             initialBalance: 100_000,
             profitTargetPercent: 0.10);
 

@@ -24,9 +24,9 @@ public sealed class PropFirmRuleValidator
         return violations;
     }
 
-    public bool IsProfitTargetMet(decimal currentBalance, decimal initialBalance, double profitTargetPercent)
+    public bool IsProfitTargetMet(decimal currentEquity, decimal initialBalance, double profitTargetPercent)
     {
         var target = initialBalance * (1 + (decimal)profitTargetPercent);
-        return currentBalance >= target;
+        return currentEquity >= target;
     }
 }

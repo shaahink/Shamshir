@@ -29,6 +29,7 @@ public sealed class IndicatorSnapshotService
 
     public Task RecomputeIndicatorsAsync(Symbol symbol, Timeframe tf, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         if (!Bars.TryGetValue(symbol, out var byTf)) return Task.CompletedTask;
         if (!byTf.TryGetValue(tf, out var list)) return Task.CompletedTask;
 
