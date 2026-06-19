@@ -5,7 +5,7 @@ namespace TradingEngine.Engine;
 /// <summary>
 /// The single, PURE pre-trade risk gate (iter-35 A2). Replaces — and lets us DELETE — the three
 /// scattered, partly-divergent implementations: <c>OrderDispatcher</c>'s validate+size, the
-/// <c>RiskManager.Validate/ValidateOrder/ValidateBudgetEntry/CalculateLotSize</c> family, and the dead
+/// <c>RiskManager.Validate/ValidateOrder/ValidateBudgetEntry/CalculateLotSize</c> family, and the now-deleted
 /// <c>RiskGate.ProjectWorstCase</c>.
 ///
 /// PURE: no I/O, no wall-clock, no Guid.NewGuid. All time-varying inputs come from
