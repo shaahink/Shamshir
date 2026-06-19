@@ -14,5 +14,13 @@ export const routes: Routes = [
     path: 'strategies',
     loadChildren: () => import('./features/strategies/strategies.routes').then((m) => m.STRATEGIES_ROUTES),
   },
+  {
+    path: 'compliance',
+    loadComponent: () => import('./features/compliance/compliance.component').then((m) => m.ComplianceComponent),
+  },
+  {
+    path: 'events',
+    loadComponent: () => import('./features/events/events.component').then((m) => m.EventsComponent),
+  },
   { path: '**', redirectTo: 'runs' },
 ];

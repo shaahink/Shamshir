@@ -33,6 +33,20 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
               Strategies
             </a>
             <a
+              routerLink="/compliance"
+              routerLinkActive="bg-gray-800 text-white"
+              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
+            >
+              Compliance
+            </a>
+            <a
+              routerLink="/events"
+              routerLinkActive="bg-gray-800 text-white"
+              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
+            >
+              Events
+            </a>
+            <a
               href="/runs/new"
               class="ml-4 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500"
             >

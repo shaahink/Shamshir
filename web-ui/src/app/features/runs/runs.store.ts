@@ -1,5 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { RunsApiService, type RunSummary, type RunDetail, type StartRunRequest } from './runs.service';
+import { RunsApiService } from './runs.service';
+import type { RunSummary, RunDetail, StartRunRequest } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
 export class RunsStore {
@@ -12,14 +13,14 @@ export class RunsStore {
 
   readonly activeRuns = computed(() => this.runs().filter((r) => r.status === 'running'));
   readonly completedRuns = computed(() => this.runs().filter((r) => r.status !== 'running'));
+  readonly totalNetProfit = computed(() => this.runs().reduce((s, r) => s + r.netProfit, 0));
 
   async loadRuns(): Promise<void> {
     this.isLoading.set(true);
     this.error.set(null);
     try {
-      const data = await this.api.getRuns();
-      this.runs.set(data);
-    } catch (e) {
+      this.runs.set(await this.api.getRuns());
+    } catch {
       this.error.set('Failed to load runs');
     } finally {
       this.isLoading.set(false);
@@ -29,9 +30,8 @@ export class RunsStore {
   async loadRun(runId: string): Promise<void> {
     this.isLoading.set(true);
     try {
-      const data = await this.api.getRun(runId);
-      this.selectedRun.set(data);
-    } catch (e) {
+      this.selectedRun.set(await this.api.getRun(runId));
+    } catch {
       this.error.set('Failed to load run detail');
     } finally {
       this.isLoading.set(false);

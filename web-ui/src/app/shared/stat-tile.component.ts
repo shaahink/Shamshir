@@ -12,7 +12,7 @@ import { Component, input } from '@angular/core';
         [class.text-red-400]="negative()"
         [class.text-gray-100]="!positive() && !negative()"
       >
-        {{ value() }}
+        {{ value() ?? '-' }}
       </div>
       @if (subtitle()) {
         <div class="mt-0.5 text-xs text-gray-500">{{ subtitle() }}</div>
@@ -22,7 +22,7 @@ import { Component, input } from '@angular/core';
 })
 export class StatTileComponent {
   readonly label = input.required<string>();
-  readonly value = input.required<string | number>();
+  readonly value = input.required<string | number | null>();
   readonly subtitle = input<string>();
   readonly positive = input(false);
   readonly negative = input(false);

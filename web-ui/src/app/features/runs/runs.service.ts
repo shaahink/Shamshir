@@ -1,105 +1,10 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-
-export interface RunSummary {
-  runId: string;
-  status: string;
-  symbol: string;
-  period: string;
-  startedAtUtc: string;
-  completedAtUtc: string | null;
-  netProfit: number;
-  maxDrawdownPct: number;
-  totalTrades: number;
-  winningTrades: number;
-  winRatePct: number;
-  errorMessage: string | null;
-}
-
-export interface RunDetail {
-  runId: string;
-  status: string;
-  symbol: string;
-  period: string;
-  startedAtUtc: string;
-  completedAtUtc: string | null;
-  backtestFrom: string;
-  backtestTo: string;
-  initialBalance: number;
-  netProfit: number;
-  maxDrawdownPct: number;
-  totalTrades: number;
-  winningTrades: number;
-  winRatePct: number;
-  errorMessage: string | null;
-  exitCode: number;
-  effectiveConfigJson: string | null;
-  reportJsonPath: string | null;
-}
-
-export interface TradeSummary {
-  id: string;
-  positionId: string;
-  orderId: string;
-  symbol: string;
-  direction: string;
-  lots: number;
-  entryPrice: number;
-  exitPrice: number;
-  openedAtUtc: string;
-  closedAtUtc: string;
-  grossPnLAmount: number;
-  commissionAmount: number;
-  swapAmount: number;
-  netPnLAmount: number;
-  pnLPips: number;
-  rMultiple: number;
-  maxAdverseExcursion: number;
-  maxFavorableExcursion: number;
-  exitReason: string;
-  strategyId: string;
-  durationSeconds: number;
-}
-
-export interface JournalEntry {
-  seq: number;
-  simTimeUtc: string;
-  kind: string;
-  symbol: string | null;
-  strategyId: string | null;
-  reason: string | null;
-  detail: string | null;
-}
-
-export interface EquityPoint {
-  timestampUtc: string;
-  equity: number;
-  balance: number;
-}
-
-export interface DailyPnl {
-  date: string;
-  pnl: number;
-}
-
-export interface StartRunRequest {
-  symbol: string;
-  period: string;
-  start: string;
-  end: string;
-  balance: number;
-  commissionPerMillion: number;
-  spreadPips: number;
-  symbols?: string;
-  periods?: string;
-  strategyIds?: string;
-}
-
-export interface StartRunResponse {
-  runId: string;
-  status: string;
-}
+import type {
+  RunSummary, RunDetail, TradeSummary, JournalEntry, EquityPoint,
+  DailyPnl, RunAnalytics, StartRunRequest, StartRunResponse,
+} from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
 export class RunsApiService {
@@ -114,11 +19,23 @@ export class RunsApiService {
   }
 
   startRun(req: StartRunRequest): Promise<StartRunResponse> {
-    return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', req));
+    const payload = {
+      symbol: req.symbol,
+      period: req.period,
+      start: req.start,
+      end: req.end,
+      balance: req.balance,
+      commissionPerMillion: req.commissionPerMillion,
+      spreadPips: req.spreadPips,
+      symbols: req.symbols.join(','),
+      periods: req.periods.join(','),
+      strategyIds: req.strategyIds.join(','),
+    };
+    return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }
 
-  cancelRun(runId: string): Promise<void> {
-    return firstValueFrom(this.http.delete<void>(`/api/runs/${runId}`));
+  cancelRun(runId: string): Promise<{ cancelled: boolean }> {
+    return firstValueFrom(this.http.delete<{ cancelled: boolean }>(`/api/runs/${runId}`));
   }
 
   getRunTrades(runId: string): Promise<TradeSummary[]> {
@@ -138,5 +55,9 @@ export class RunsApiService {
 
   getRunDailyPnl(runId: string): Promise<DailyPnl[]> {
     return firstValueFrom(this.http.get<DailyPnl[]>(`/api/runs/${runId}/daily-pnl`));
+  }
+
+  getRunAnalytics(runId: string): Promise<RunAnalytics> {
+    return firstValueFrom(this.http.get<RunAnalytics>(`/api/runs/${runId}/analytics`));
   }
 }

@@ -10,7 +10,6 @@ using TradingEngine.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddRazorPages();
 builder.Services.AddControllers();
 
 builder.Services.AddSignalR()
@@ -18,8 +17,18 @@ builder.Services.AddSignalR()
         System.Text.Json.JsonNamingPolicy.CamelCase);
 builder.Services.AddSingleton<RunProgressBroadcaster>();
 
-// OpenAPI + Scalar
 builder.Services.AddOpenApi();
+
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins("http://localhost:4200")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
 
 var dbPath = builder.Configuration.GetValue<string>("Persistence:DbPath")
     ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));
@@ -49,12 +58,10 @@ builder.Services.AddSingleton<BacktestOrchestrator>();
 builder.Services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
 builder.Services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
 
-// Query services — no DbContext in controllers
 builder.Services.AddScoped<IRunQueryService, RunQueryService>();
 builder.Services.AddScoped<IProtectionQueryService, ProtectionQueryService>();
 builder.Services.AddScoped<IBarQueryService, BarQueryService>();
 
-// Register strategy bank infrastructure for APIs + Razor Pages
 builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
 builder.Services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
 builder.Services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
@@ -92,14 +99,20 @@ using (var scope = app.Services.CreateScope())
     await seeder.SeedAsync();
 }
 
+app.UseCors();
+app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseRouting();
-app.MapRazorPages();
 app.MapControllers();
 app.MapHub<TradingEngine.Web.Hubs.RunHub>("/hubs/run");
 
 app.MapOpenApi();
 app.MapScalarApiReference();
+
+if (!System.IO.File.Exists(Path.Combine(app.Environment.WebRootPath, "index.html")))
+{
+    app.MapFallbackToFile("index.html");
+}
 
 app.Run();
 
