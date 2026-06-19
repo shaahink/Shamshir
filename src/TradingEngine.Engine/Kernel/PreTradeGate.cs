@@ -30,6 +30,19 @@ public static class PreTradeGate
         public static GateResult Accept(decimal lots, decimal riskAmount) => new(true, lots, riskAmount, null);
     }
 
+    /// <summary>
+    /// Impure gate verdicts the pure kernel cannot compute itself — they depend on wall-clock / external
+    /// services (news calendar, session clock, prop-firm compliance, the legacy governor). The caller
+    /// (e.g. <c>KernelOrderGate</c>) computes them — already folding in the rule-set conditions
+    /// (AllowTradesDuringNews / AllowWeekendHolding) — and passes them in, so the gate itself stays a
+    /// deterministic function of <c>(state, proposal, config, verdicts)</c>. Default = nothing blocks.
+    /// </summary>
+    public readonly record struct ExternalVerdicts(
+        bool NewsActive = false,
+        bool WeekendRestricted = false,
+        string? ComplianceBlockReason = null,
+        string? GovernorBlockReason = null);
+
     public static GateResult Evaluate(
         EngineState state,
         OrderProposed p,
@@ -37,7 +50,8 @@ public static class PreTradeGate
         RiskProfile profile,
         SizingPolicyOptions sizing,
         SymbolInfo symbol,
-        IReadOnlyList<ProjectedPosition> openPositions)
+        IReadOnlyList<ProjectedPosition> openPositions,
+        ExternalVerdicts external = default)
     {
         var equity = state.Account.Equity;
 
@@ -47,9 +61,15 @@ public static class PreTradeGate
             return GateResult.Reject("PROTECTION_MODE_ACTIVE");
         }
 
-        // B1: governor toggle — skip governor check when disabled.
+        // B1: governor toggle — skip governor check when disabled. Honors BOTH the external (legacy
+        // ITradingGovernor) verdict the caller supplies AND the kernel GovernorState (the latter is the
+        // end-state once TradingGovernorService is retired in AF6).
         if (c.GovernorEnabled)
         {
+            if (external.GovernorBlockReason is { } gr)
+            {
+                return GateResult.Reject($"GOVERNOR:{gr}");
+            }
             var g = state.Governor;
             if (g.State is GovernorTradingState.HardStop or GovernorTradingState.SoftStop
                     or GovernorTradingState.CoolingOff or GovernorTradingState.ProfitLocked
@@ -89,6 +109,22 @@ public static class PreTradeGate
         if ((totalOpenRisk + newPositionRiskNotional) / equity > c.MaxExposure)
         {
             return GateResult.Reject("MAX_EXPOSURE");
+        }
+
+        // 4b. External (impure) gate verdicts — news window / weekend close / prop-firm compliance.
+        // The caller already folded in the rule-set conditions (AllowTradesDuringNews/AllowWeekendHolding),
+        // so a set flag here means "block". Mirrors the tail of RiskManager.Validate.
+        if (external.NewsActive)
+        {
+            return GateResult.Reject("NEWS_WINDOW");
+        }
+        if (external.WeekendRestricted)
+        {
+            return GateResult.Reject("WEEKEND_RESTRICTION");
+        }
+        if (external.ComplianceBlockReason is { } complianceReason)
+        {
+            return GateResult.Reject($"COMPLIANCE_BLOCK:{complianceReason}");
         }
 
         // 5. Sizing (H5/H6).

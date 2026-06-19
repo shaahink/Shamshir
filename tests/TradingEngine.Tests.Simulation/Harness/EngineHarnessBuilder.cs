@@ -17,10 +17,13 @@ public sealed class EngineHarnessBuilder
     private readonly List<IStrategy> _strategies = [];
     private decimal _flattenAtFraction = 0.9m;
     private bool _enableBreachWatchdog = true;
+    private bool _useKernelGate;
     private readonly List<(Symbol Symbol, TradeDirection Direction, decimal EntryPrice, decimal Lots, decimal SlPrice, decimal? TpPrice)> _seedPositions = [];
 
     public EngineHarnessBuilder WithFlattenAtFraction(decimal fraction) { _flattenAtFraction = fraction; return this; }
     public EngineHarnessBuilder WithoutBreachWatchdog() { _enableBreachWatchdog = false; return this; }
+    /// <summary>Route the order gate through the kernel (KernelOrderGate) instead of the legacy OrderDispatcher (iter-35 AF2).</summary>
+    public EngineHarnessBuilder WithKernelGate() { _useKernelGate = true; return this; }
 
     public EngineHarnessBuilder WithSymbol(Symbol symbol) { _symbol = symbol; return this; }
     public EngineHarnessBuilder WithInitialBalance(decimal balance) { _initialBalance = balance; return this; }
@@ -139,6 +142,14 @@ public sealed class EngineHarnessBuilder
             riskManager, riskProfileResolver, symbolRegistry, crossRate,
             decisionJournal, runContext, NullLogger<OrderDispatcher>.Instance);
 
+        // AF2: the same harness can drive either gate so an equivalence test can prove they match.
+        IOrderGate orderGate = _useKernelGate
+            ? new KernelOrderGate(
+                riskManager, riskProfileResolver, symbolRegistry, crossRate,
+                decisionJournal, runContext, sizingPolicy, newsFilter, sessionFilter, clock,
+                NullLogger<KernelOrderGate>.Instance)
+            : dispatcher;
+
         var indicatorSnapshot = new IndicatorSnapshotService(indicators, strategies);
 
         var strategyBank = Substitute.For<IStrategyBank>();
@@ -150,7 +161,7 @@ public sealed class EngineHarnessBuilder
             .ReturnsForAnyArgs(MarketRegime.Trending);
 
         var tradingLoop = new TradingLoop(
-            fakeVenue, indicatorSnapshot, dispatcher, positionTracker,
+            fakeVenue, indicatorSnapshot, orderGate, positionTracker,
             strategyBank, regimeDetector, signalGate: null, governor: null, symbolRegistry,
             eventBus, clock, runContext,
             getCrossRate: crossRate,

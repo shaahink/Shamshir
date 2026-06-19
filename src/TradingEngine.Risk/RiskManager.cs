@@ -71,6 +71,16 @@ public sealed class RiskManager(
         CurrentState = CurrentState with { InProtectionMode = true, ProtectionReason = reason, TradingAllowed = false };
     }
 
+    public string? CheckComplianceBlock(TradeIntent intent, RiskProfile profile)
+    {
+        if (_complianceService is null)
+        {
+            return null;
+        }
+        var result = _complianceService.ValidateSignal(intent, CurrentState, profile);
+        return result.Severity == ComplianceSeverity.Block ? string.Join("; ", result.Violations) : null;
+    }
+
     public void RegisterPosition(Guid positionId, string strategyId, decimal openRiskAmount)
         => _openPositionRisk[positionId] = (strategyId, openRiskAmount);
 

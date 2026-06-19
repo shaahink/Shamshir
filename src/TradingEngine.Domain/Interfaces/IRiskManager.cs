@@ -21,4 +21,12 @@ public interface IRiskManager
     void DeregisterPosition(Guid positionId);
     void EnterProtectionMode(string reason, ProtectionCause cause);
     bool ValidateBudgetEntry(decimal newRiskAmount, EquitySnapshot equity, decimal perTradeRiskAmount);
+
+    /// <summary>
+    /// The prop-firm compliance verdict for a candidate signal, or null if not blocked. Exposed so the
+    /// kernel order gate (iter-35 AF2) can fold this impure, service-dependent check into the pure
+    /// <c>PreTradeGate</c> without re-implementing the compliance service. Mirrors the COMPLIANCE_BLOCK
+    /// branch in <c>Validate</c>.
+    /// </summary>
+    string? CheckComplianceBlock(TradeIntent intent, RiskProfile profile);
 }
