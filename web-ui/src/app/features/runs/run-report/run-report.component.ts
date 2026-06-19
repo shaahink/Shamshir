@@ -65,7 +65,7 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
               <div class="flex h-16 items-end gap-0.5">
                 @for (dp of dailyPnl(); track dp.date) {
                   <div class="flex-1 rounded-t" [class.bg-emerald-600]="dp.pnl >= 0" [class.bg-red-600]="dp.pnl < 0"
-                    [style.height]="barHeight(dp.pnl) + '%'" [title]="dp.date + ': ' + dp.pnl.toFixed(2)"></div>
+                    [style.height]="barHeight(dp.pnl) + '%'" [title]="dp.date + ': ' + (dp.pnl ?? 0).toFixed(2)"></div>
                 }
               </div>
             </div>
@@ -126,13 +126,13 @@ export class RunReportComponent implements OnInit {
   grossTotal = computed(() => this.trades().reduce((s, t) => s + t.grossPnLAmount, 0));
   commTotal = computed(() => this.trades().reduce((s, t) => s + t.commissionAmount, 0));
   swapTotal = computed(() => this.trades().reduce((s, t) => s + t.swapAmount, 0));
-  grossDisplay = computed(() => { const d = this.store.selectedRun(); return d ? ((d.grossPnL ?? this.trades().reduce((s, t) => s + t.grossPnLAmount, 0))).toFixed(2) : '0.00'; });
-  commDisplay = computed(() => { const d = this.store.selectedRun(); return d ? ((d.commissionTotal ?? this.trades().reduce((s, t) => s + t.commissionAmount, 0))).toFixed(2) : '0.00'; });
-  swapDisplay = computed(() => { const d = this.store.selectedRun(); return d ? ((d.swapTotal ?? this.trades().reduce((s, t) => s + t.swapAmount, 0))).toFixed(2) : '0.00'; });
-  avgR = computed(() => { const t = this.trades(); return t.length ? t.reduce((s, x) => s + x.rMultiple, 0) / t.length : 0; });
+  grossDisplay = computed(() => { const d = this.store.selectedRun(); return d ? ((d.grossPnL ?? this.trades().reduce((s, t) => s + (t.grossPnLAmount ?? 0), 0))).toFixed(2) : '0.00'; });
+  commDisplay = computed(() => { const d = this.store.selectedRun(); return d ? ((d.commissionTotal ?? this.trades().reduce((s, t) => s + (t.commissionAmount ?? 0), 0))).toFixed(2) : '0.00'; });
+  swapDisplay = computed(() => { const d = this.store.selectedRun(); return d ? ((d.swapTotal ?? this.trades().reduce((s, t) => s + (t.swapAmount ?? 0), 0))).toFixed(2) : '0.00'; });
+  avgR = computed(() => { const t = this.trades(); return t.length ? t.reduce((s, x) => s + (x.rMultiple ?? 0), 0) / t.length : 0; });
   profitFactor = computed(() => {
-    const t = this.trades(); const g = t.filter(x => x.grossPnLAmount > 0).reduce((s, x) => s + x.grossPnLAmount, 0);
-    const l = Math.abs(t.filter(x => x.grossPnLAmount < 0).reduce((s, x) => s + x.grossPnLAmount, 0));
+    const t = this.trades(); const g = t.filter(x => (x.grossPnLAmount ?? 0) > 0).reduce((s, x) => s + (x.grossPnLAmount ?? 0), 0);
+    const l = Math.abs(t.filter(x => (x.grossPnLAmount ?? 0) < 0).reduce((s, x) => s + (x.grossPnLAmount ?? 0), 0));
     return l === 0 ? (g > 0 ? Number.MAX_VALUE : 0) : g / l;
   });
   pfDisplay = computed(() => this.profitFactor() >= Number.MAX_VALUE - 1 ? '∞' : this.profitFactor().toFixed(2));
@@ -140,7 +140,7 @@ export class RunReportComponent implements OnInit {
   recClosesOk = computed(() => { const d = this.store.selectedRun(); return d ? d.totalTrades === this.trades().length : false; });
   recCostOk = computed(() => Math.abs(this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01);
 
-  barHeight(pnl: number): number { const arr = this.dailyPnl(); const m = arr.length > 0 ? Math.max(...arr.map(d => Math.abs(d.pnl)), 1) : 1; return Math.min(100, (Math.abs(pnl) / m) * 100); }
+  barHeight(pnl: number): number { const arr = this.dailyPnl(); const m = arr.length > 0 ? Math.max(...arr.map(d => Math.abs(d.pnl ?? 0)), 1) : 1; return Math.min(100, (Math.abs(pnl ?? 0) / m) * 100); }
 
   symbolsDisplay(): string { const d = this.store.selectedRun(); if (!d) return ''; try { const s = typeof d.symbols === 'string' ? JSON.parse(d.symbols) : d.symbols; if (Array.isArray(s) && s.length > 1) return s.join(', '); } catch {} return d.symbol; }
 

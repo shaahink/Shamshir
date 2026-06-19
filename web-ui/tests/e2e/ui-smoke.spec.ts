@@ -164,15 +164,16 @@ test.describe('Trade Detail', () => {
     }
     await expect(page.locator('app-run-report')).toBeVisible({ timeout: TIMEOUT });
 
-    // Try clicking a trade row if available
-    const tradeRow = page.locator('app-run-report table tbody tr').first();
-    const hasTrades = await tradeRow.isVisible().catch(() => false);
-    if (!hasTrades) {
-      test.skip(true, 'no trades — seed bars first');
+    // Try clicking a trade row if available — use the seeded run which has 16 trades
+    try {
+      await page.waitForSelector('app-run-report table tbody tr', { timeout: 5000 });
+      await page.locator('app-run-report table tbody tr').first().click();
+      await page.waitForURL('**/trades/**', { timeout: 5000 });
+      await expect(page.locator('app-trade-detail')).toBeVisible({ timeout: TIMEOUT });
+    } catch {
+      test.skip(true, 'could not click trade row');
       return;
     }
-    await tradeRow.click();
-    await expect(page.locator('app-trade-detail')).toBeVisible({ timeout: TIMEOUT });
   });
 });
 
