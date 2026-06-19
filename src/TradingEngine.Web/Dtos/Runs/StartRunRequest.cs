@@ -9,8 +9,8 @@ public sealed record StartRunRequest
     public decimal Balance { get; init; } = 100_000;
     public double CommissionPerMillion { get; init; } = 30;
     public double SpreadPips { get; init; } = 1;
-    public string? Symbols { get; init; }
-    public string? Periods { get; init; }
+    public List<string>? Symbols { get; init; }
+    public List<string>? Periods { get; init; }
     public string? StrategyIds { get; init; }
 
     /// <summary>Risk profile id chosen for this run (applied to every strategy; overrides the stored

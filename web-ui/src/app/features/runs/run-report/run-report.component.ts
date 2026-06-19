@@ -21,7 +21,7 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
           <div class="flex items-center justify-between">
             <div>
               <h1 class="text-xl font-semibold">Run {{ d.runId.slice(0, 8) }}</h1>
-              <p class="text-sm text-gray-500">{{ d.symbol }} {{ d.period }} {{ d.backtestFrom | date }} - {{ d.backtestTo | date }} · Balance {{ d.initialBalance | number }}</p>
+              <p class="text-sm text-gray-500">{{ symbolsDisplay() }} {{ d.period }} {{ d.backtestFrom | date }} - {{ d.backtestTo | date }} · Balance {{ d.initialBalance | number }}</p>
             </div>
             <div class="flex gap-2">
               <a [routerLink]="['/runs', d.runId, 'monitor']" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Monitor</a>
@@ -136,6 +136,8 @@ export class RunReportComponent implements OnInit {
   recCostOk = computed(() => Math.abs(this.grossTotal() - Math.abs(this.commTotal()) - Math.abs(this.swapTotal()) - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01);
 
   barHeight(pnl: number): number { const arr = this.dailyPnl(); const m = arr.length > 0 ? Math.max(...arr.map(d => Math.abs(d.pnl)), 1) : 1; return Math.min(100, (Math.abs(pnl) / m) * 100); }
+
+  symbolsDisplay(): string { const d = this.store.selectedRun(); if (!d) return ''; try { const s = typeof d.symbols === 'string' ? JSON.parse(d.symbols) : d.symbols; if (Array.isArray(s) && s.length > 1) return s.join(', '); } catch {} return d.symbol; }
 
   tradeColumns: ColumnDef[] = [
     { key: 'symbol', label: 'Sym' }, { key: 'direction', label: 'Dir' }, { key: 'lots', label: 'Lots', format: 'number' },

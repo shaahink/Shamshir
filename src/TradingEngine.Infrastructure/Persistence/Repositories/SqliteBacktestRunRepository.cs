@@ -13,6 +13,8 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             CompletedAtUtc = run.CompletedAtUtc,
             Symbol = run.Symbol,
             Period = run.Period,
+            Symbols = run.Symbols,
+            Periods = run.Periods,
             BacktestFrom = run.BacktestFrom,
             BacktestTo = run.BacktestTo,
             InitialBalance = run.InitialBalance,
@@ -132,7 +134,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
 
         return new BacktestRunSummary(
             e.RunId, e.StartedAtUtc, completedAt,
-            e.Symbol, e.Period, e.BacktestFrom, e.BacktestTo,
+            e.Symbol, e.Period, e.Symbols, e.Periods, e.BacktestFrom, e.BacktestTo,
             e.InitialBalance, e.AlgoHash, e.StrategyParamsJson, e.EffectiveConfigJson,
             net, grossPnL, commissionTotal, swapTotal, maxDd, total, wins, winRate,
             exitCode, e.ErrorMessage, e.ReportJsonPath);

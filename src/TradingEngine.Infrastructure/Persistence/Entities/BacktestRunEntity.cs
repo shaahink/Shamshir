@@ -7,6 +7,8 @@ public sealed class BacktestRunEntity
     public DateTime CompletedAtUtc { get; set; }
     public string Symbol { get; set; } = "";
     public string Period { get; set; } = "";
+    public string Symbols { get; set; } = "[]";
+    public string Periods { get; set; } = "[]";
     public DateTime BacktestFrom { get; set; }
     public DateTime BacktestTo { get; set; }
     public decimal InitialBalance { get; set; }

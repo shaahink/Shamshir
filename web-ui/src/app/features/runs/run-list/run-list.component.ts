@@ -50,7 +50,7 @@ import { BadgeComponent } from '../../../shared/badge.component';
               <td class="px-4 py-2"><input type="checkbox" [checked]="isSelected(run.runId)" (click)="toggleSelect($event, run.runId)" class="h-3.5 w-3.5 rounded border-gray-600 bg-gray-800 text-emerald-500 focus:ring-emerald-500" /></td>
               <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-400">{{ run.runId.slice(0, 8) }}</td>
               <td class="whitespace-nowrap px-4 py-2"><app-badge [label]="run.status" [variant]="run.status === 'completed' ? 'success' : run.status === 'failed' ? 'error' : 'warning'" /></td>
-              <td class="whitespace-nowrap px-4 py-2 font-mono text-xs">{{ run.symbol }}</td>
+              <td class="whitespace-nowrap px-4 py-2 font-mono text-xs">{{ symbolsDisplay(run) }}</td>
               <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums" [class.text-emerald-400]="run.netProfit>0" [class.text-red-400]="run.netProfit<0">{{ run.netProfit.toFixed(2) }}</td>
               <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums text-red-400">{{ (run.maxDrawdownPct * 100).toFixed(2) }}%</td>
               <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums">{{ run.totalTrades }}</td>
@@ -66,6 +66,7 @@ export class RunListComponent implements OnInit {
   readonly store = inject(RunsStore);
   selectedRuns = signal<string[]>([]);
   compareOpen = signal(false);
+  symbolsDisplay(run: any): string { try { const s = typeof run.symbols === 'string' ? JSON.parse(run.symbols) : run.symbols; if (Array.isArray(s) && s.length > 1) return s.join(', '); } catch {} return run.symbol; }
 
   ngOnInit(): void { this.store.loadRuns(); }
 

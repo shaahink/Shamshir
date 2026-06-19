@@ -358,7 +358,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var repo = scope.ServiceProvider.GetRequiredService<IBacktestRunRepository>();
             var summary = new BacktestRunSummary(
                 runId, startedAt, DateTime.MinValue,
-                cfg.Symbol, cfg.Period, cfg.Start, cfg.End,
+                cfg.Symbol, cfg.Period, SymbolsJson(cfg.Symbols), PeriodsJson(cfg.Periods), cfg.Start, cfg.End,
                 cfg.Balance, "", "{}", effectiveConfigJson,
                 0, 0, 0, 0, 0, 0, 0, 0, -1, null);
             await repo.SaveAsync(summary, CancellationToken.None);
@@ -379,7 +379,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var repo = scope.ServiceProvider.GetRequiredService<IBacktestRunRepository>();
             var summary = new BacktestRunSummary(
                 runId, startedAt, DateTime.UtcNow,
-                cfg.Symbol, cfg.Period, cfg.Start, cfg.End,
+                cfg.Symbol, cfg.Period, SymbolsJson(cfg.Symbols), PeriodsJson(cfg.Periods), cfg.Start, cfg.End,
                 cfg.Balance, result.AlgoHash, "{}", effectiveConfigJson,
                 stats.NetProfit, stats.GrossPnL, stats.CommissionTotal, stats.SwapTotal, stats.MaxDrawdownPct,
                 stats.TotalTrades, stats.WinningTrades, stats.WinRatePct,
@@ -978,4 +978,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             return [];
         }
     }
+
+    private static string SymbolsJson(IReadOnlyList<string> symbols) =>
+        JsonSerializer.Serialize(symbols ?? []);
+
+    private static string PeriodsJson(IReadOnlyList<string> periods) =>
+        JsonSerializer.Serialize(periods ?? []);
 }

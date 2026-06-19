@@ -6,6 +6,8 @@ public sealed record RunDetailResponse
     public required string Status { get; init; }
     public required string Symbol { get; init; }
     public required string Period { get; init; }
+    public string Symbols { get; init; } = "[]";
+    public string Periods { get; init; } = "[]";
     public DateTime StartedAtUtc { get; init; }
     public DateTime? CompletedAtUtc { get; init; }
     public DateTime BacktestFrom { get; init; }

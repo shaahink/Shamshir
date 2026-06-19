@@ -46,14 +46,12 @@ public sealed class RunsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Start([FromBody] StartRunRequest req, CancellationToken ct)
     {
-        var symList = !string.IsNullOrWhiteSpace(req.Symbols)
-            ? req.Symbols.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-                .Select(s => s.ToUpperInvariant()).ToArray()
+        var symList = req.Symbols is { Count: > 0 }
+            ? req.Symbols.Select(s => s.ToUpperInvariant()).ToArray()
             : new[] { req.Symbol.ToUpperInvariant() };
 
-        var perList = !string.IsNullOrWhiteSpace(req.Periods)
-            ? req.Periods.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-                .Select(p => p.ToUpperInvariant()).ToArray()
+        var perList = req.Periods is { Count: > 0 }
+            ? req.Periods.Select(p => p.ToUpperInvariant()).ToArray()
             : new[] { req.Period.ToUpperInvariant() };
 
         var stratList = !string.IsNullOrWhiteSpace(req.StrategyIds)

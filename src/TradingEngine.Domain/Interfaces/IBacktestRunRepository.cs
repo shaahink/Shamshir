@@ -6,6 +6,8 @@ public sealed record BacktestRunSummary(
     DateTime CompletedAtUtc,
     string Symbol,
     string Period,
+    string Symbols,
+    string Periods,
     DateTime BacktestFrom,
     DateTime BacktestTo,
     decimal InitialBalance,

@@ -3,6 +3,8 @@ export interface RunSummary {
   status: string;
   symbol: string;
   period: string;
+  symbols: string;
+  periods: string;
   startedAtUtc: string;
   completedAtUtc: string | null;
   netProfit: number;
@@ -18,6 +20,8 @@ export interface RunDetail {
   status: string;
   symbol: string;
   period: string;
+  symbols: string;
+  periods: string;
   startedAtUtc: string;
   completedAtUtc: string | null;
   backtestFrom: string;
