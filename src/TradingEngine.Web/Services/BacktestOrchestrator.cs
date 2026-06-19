@@ -44,9 +44,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public CancellationTokenSource? CancellationSource { get; set; }
         public Task? RunTask { get; set; }
         public IHost? EngineHost { get; set; }
-    public int BarCount { get; set; }
-    public int BarsTotal { get; set; }
-    public string SimTime { get; set; } = "";
+        public int BarCount { get; set; }
+        public int BarsTotal { get; set; }
+        public string SimTime { get; set; } = "";
         public IReadOnlyList<string> GetLogs() => LogLines.ToArray();
 
         // iter-21 U1 — live funnel counters + a small ring of recent journal lines for the
@@ -190,14 +190,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     private static Timeframe ParseTimeframe(string period) => period.ToUpperInvariant() switch
     {
-        "M1"  => Timeframe.M1,
-        "M5"  => Timeframe.M5,
+        "M1" => Timeframe.M1,
+        "M5" => Timeframe.M5,
         "M15" => Timeframe.M15,
         "M30" => Timeframe.M30,
-        "H1"  => Timeframe.H1,
-        "H4"  => Timeframe.H4,
-        "D1"  => Timeframe.D1,
-        _     => Timeframe.H1,
+        "H1" => Timeframe.H1,
+        "H4" => Timeframe.H4,
+        "D1" => Timeframe.D1,
+        _ => Timeframe.H1,
     };
 
     public BacktestRunState Start(BacktestConfig cfg)
@@ -226,8 +226,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var duration = end - start;
         var minutes = period.ToUpperInvariant() switch
         {
-            "M1" => 1.0, "M5" => 5.0, "M15" => 15.0, "M30" => 30.0,
-            "H1" => 60.0, "H4" => 240.0, "D1" => 1440.0,
+            "M1" => 1.0,
+            "M5" => 5.0,
+            "M15" => 15.0,
+            "M30" => 30.0,
+            "H1" => 60.0,
+            "H4" => 240.0,
+            "D1" => 1440.0,
             _ => 60.0,
         };
         return (int)(duration.TotalMinutes / minutes);
@@ -308,11 +313,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             result = result with
             {
-                NetProfit      = tradeStats.NetProfit,
+                NetProfit = tradeStats.NetProfit,
                 MaxDrawdownPct = tradeStats.MaxDrawdownPct,
-                TotalTrades    = tradeStats.TotalTrades,
-                WinningTrades  = tradeStats.WinningTrades,
-                WinRatePct     = tradeStats.WinRatePct,
+                TotalTrades = tradeStats.TotalTrades,
+                WinningTrades = tradeStats.WinningTrades,
+                WinRatePct = tradeStats.WinRatePct,
             };
 
             state.Result = result;
@@ -446,10 +451,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private async Task<BacktestResult> RunEngineReplayAsync(
         string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines)
     {
-        var symbol    = Symbol.Parse(cfg.Symbol);
+        var symbol = Symbol.Parse(cfg.Symbol);
         var timeframe = ParseTimeframe(cfg.Period);
-        var from      = cfg.Start;
-        var to        = cfg.End;
+        var from = cfg.Start;
+        var to = cfg.End;
 
         var dbPath = _configuration.GetValue<string>("Persistence:DbPath")
             ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
@@ -505,13 +510,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         EngineHostFactory.WireEventHandlers(innerHost);
         EngineHostFactory.WireRiskRules(innerHost);
 
-    await innerHost.StartAsync(cts.Token);
-    EnqueueLog(runId, logLines,
-        $"[{DateTime.UtcNow:HH:mm:ss}] Engine started. Replaying bars...");
+        await innerHost.StartAsync(cts.Token);
+        EnqueueLog(runId, logLines,
+            $"[{DateTime.UtcNow:HH:mm:ss}] Engine started. Replaying bars...");
 
-    var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
-    _ = StartEquityPollingAsync(innerHost, state, runId, cts.Token);
-    await adapter.BarStream.Completion;
+        var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
+        _ = StartEquityPollingAsync(innerHost, state, runId, cts.Token);
+        await adapter.BarStream.Completion;
 
         var barCount = (adapter as BacktestReplayAdapter)?.BarCount ?? 0;
         state.BarsTotal = barCount;
@@ -521,18 +526,23 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 $"[{DateTime.UtcNow:HH:mm:ss}] No bars found for {cfg.Symbol}/{cfg.Period} in {cfg.Start:yyyy-MM-dd}–{cfg.End:yyyy-MM-dd}. Run scripts/seed-bars.ps1 to seed data.");
             await innerHost.StopAsync(CancellationToken.None);
             await DisposeHostAsync(innerHost);
-            return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = "",
-                ErrorMessage = $"No bars found for {cfg.Symbol}/{cfg.Period}." };
+            return new BacktestResult
+            {
+                RunId = runId,
+                ExitCode = 1,
+                AlgoHash = "",
+                ErrorMessage = $"No bars found for {cfg.Symbol}/{cfg.Period}."
+            };
         }
 
         await Task.Delay(5_000, cts.Token);
 
-    EnqueueLog(runId, logLines,
-        $"[{DateTime.UtcNow:HH:mm:ss}] Engine replay complete.");
-    await FlushRunPersistenceAsync(innerHost);
-    CaptureFinalEquity(state, innerHost, runId);
-    await innerHost.StopAsync(CancellationToken.None);
-    await DisposeHostAsync(innerHost);
+        EnqueueLog(runId, logLines,
+            $"[{DateTime.UtcNow:HH:mm:ss}] Engine replay complete.");
+        await FlushRunPersistenceAsync(innerHost);
+        CaptureFinalEquity(state, innerHost, runId);
+        await innerHost.StopAsync(CancellationToken.None);
+        await DisposeHostAsync(innerHost);
 
         return new BacktestResult { RunId = runId, ExitCode = 0, AlgoHash = "" };
     }
@@ -546,14 +556,19 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         if (string.IsNullOrWhiteSpace(ctid) || string.IsNullOrWhiteSpace(pwdFile) || string.IsNullOrWhiteSpace(account))
         {
             EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] CTrader credentials not configured");
-            return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = "",
-                ErrorMessage = "CTrader credentials not configured." };
+            return new BacktestResult
+            {
+                RunId = runId,
+                ExitCode = 1,
+                AlgoHash = "",
+                ErrorMessage = "CTrader credentials not configured."
+            };
         }
 
         var algoPath = ResolveAlgoPath();
         var algoHash = ComputeAlgoHash(algoPath);
 
-        var symbol    = Symbol.Parse(cfg.Symbol);
+        var symbol = Symbol.Parse(cfg.Symbol);
         var timeframe = ParseTimeframe(cfg.Period);
 
         var (dataPort, commandPort) = AllocatePorts();
@@ -635,8 +650,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             await DisposeHostAsync(innerHost);
             EnqueueLog(runId, logLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] Engine start failed: {ex.Message}");
-            return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = algoHash,
-                ErrorMessage = $"Engine start failed: {ex.Message}" };
+            return new BacktestResult
+            {
+                RunId = runId,
+                ExitCode = 1,
+                AlgoHash = algoHash,
+                ErrorMessage = $"Engine start failed: {ex.Message}"
+            };
         }
 
         EnqueueLog(runId, logLines,
@@ -674,13 +694,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         {
             cliResult = await cli.BacktestAsync(algoPath, args, cts.Token);
         }
-    finally
-    {
-        await FlushRunPersistenceAsync(innerHost);
-        CaptureFinalEquity(_runs[runId], innerHost, runId);
-        await innerHost.StopAsync(CancellationToken.None);
-        await DisposeHostAsync(innerHost);
-    }
+        finally
+        {
+            await FlushRunPersistenceAsync(innerHost);
+            CaptureFinalEquity(_runs[runId], innerHost, runId);
+            await innerHost.StopAsync(CancellationToken.None);
+            await DisposeHostAsync(innerHost);
+        }
 
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] CLI exit code: {cliResult.ExitCode}");
@@ -761,9 +781,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         return new BacktestResult
         {
-            RunId      = runId,
-            ExitCode   = isKnownCrash ? 0 : cliResult.ExitCode,
-            AlgoHash   = algoHash,
+            RunId = runId,
+            ExitCode = isKnownCrash ? 0 : cliResult.ExitCode,
+            AlgoHash = algoHash,
             ErrorMessage = isKnownCrash ? null : (cliResult.ExitCode != 0
                 ? cliResult.StandardError.Trim() ?? $"CLI exited with code {cliResult.ExitCode}"
                 : null),
@@ -822,12 +842,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             if (trades.Count == 0) return new(0, 0, 0, 0, 0, 0, 0, 0);
 
-            var netPnL    = trades.Sum(t => t.NetPnLAmount);
-            var grossPnL  = trades.Sum(t => t.GrossPnLAmount);
+            var netPnL = trades.Sum(t => t.NetPnLAmount);
+            var grossPnL = trades.Sum(t => t.GrossPnLAmount);
             var commissionTotal = trades.Sum(t => t.CommissionAmount);
             var swapTotal = trades.Sum(t => t.SwapAmount);
-            var wins      = trades.Count(t => t.NetPnLAmount > 0);
-            var winRate   = (double)wins / trades.Count;
+            var wins = trades.Count(t => t.NetPnLAmount > 0);
+            var winRate = (double)wins / trades.Count;
 
             // Max drawdown from the engine's per-bar equity snapshots (these include floating PnL, so
             // they capture intra-trade drawdown the trade-close balance series misses — the latter
@@ -839,7 +859,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 .MaxAsync();
 
             var equity = initialBalance;
-            var peak   = initialBalance;
+            var peak = initialBalance;
             var tradeDd = 0m;
             foreach (var t in trades)
             {

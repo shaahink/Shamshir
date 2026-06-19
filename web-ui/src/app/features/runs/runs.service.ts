@@ -27,9 +27,9 @@ export class RunsApiService {
       balance: req.balance,
       commissionPerMillion: req.commissionPerMillion,
       spreadPips: req.spreadPips,
-      symbols: req.symbols.join(','),
-      periods: req.periods.join(','),
-      strategyIds: req.strategyIds.join(','),
+      symbols: req.symbols,
+      periods: req.periods,
+      strategyIds: req.strategyIds,
       riskProfileId: req.riskProfileId ?? '',
       venue: req.venue ?? '',
     };
