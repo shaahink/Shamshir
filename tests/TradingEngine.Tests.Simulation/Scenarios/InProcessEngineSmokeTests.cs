@@ -128,6 +128,8 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                             CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
                             Governor = sp.GetRequiredService<ITradingGovernor>(),
                             SizingPolicy = new SizingPolicyOptions(),
+                            NewsFilter = sp.GetRequiredService<INewsFilter>(),
+                            SessionFilter = sp.GetRequiredService<SessionFilter>(),
                         },
                         Strategies = new StrategyServices
                         {

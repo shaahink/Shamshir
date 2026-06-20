@@ -249,6 +249,8 @@ public static class EngineServiceCollectionExtensions
                 CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
                 Governor = sp.GetRequiredService<ITradingGovernor>(),
                 SizingPolicy = sp.GetRequiredService<SizingPolicyOptions>(),
+                NewsFilter = sp.GetRequiredService<INewsFilter>(),
+                SessionFilter = sp.GetRequiredService<SessionFilter>(),
             },
             Strategies = new StrategyServices
             {
@@ -402,6 +404,8 @@ public static class EngineServiceCollectionExtensions
                 CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
                 Governor = sp.GetRequiredService<ITradingGovernor>(),
                 SizingPolicy = sp.GetRequiredService<SizingPolicyOptions>(),
+                NewsFilter = sp.GetRequiredService<INewsFilter>(),
+                SessionFilter = sp.GetRequiredService<SessionFilter>(),
             },
             Strategies = new StrategyServices
             {

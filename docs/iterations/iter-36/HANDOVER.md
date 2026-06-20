@@ -101,6 +101,28 @@ Validation model: deliver with fast tests, then verify via the existing cTrader 
   there, so one kernel engine serves live + backtest (refactored the per-bar body into a shared
   `ProcessBarAsync`). Test `KernelLoop_DrivenFromBrokerStream_ReproducesGolden` proves it reproduces golden.
 
+**THE FLIP landed (2nd commit):**
+- **`EngineRunner` rewritten** — production `RunAsync` now builds `KernelConfig` (from the run's active
+  profile + `RiskManager.Constraints`/ruleset) + `BarEvaluator` from `EngineWorkerDependencies`, then drives
+  `KernelBacktestLoop.RunFromBrokerAsync` off the broker stream for **both** modes. Mark-to-market equity
+  via the venue `AccountStream`; a per-bar `onBarProcessed` hook reports "BAR" progress (count + sim clock).
+- **Imperative production engine removed:** `RunBacktestLoopAsync`, `SimulateBarExitsAsync`, the
+  `ProcessTicks/Bars/Account/Execution` processors, `MarketEventSource`, `IEnginePacer`, `EnginePacers` —
+  all deleted from `src`. `EngineRunner` no longer constructs `TradingLoop`/`AccountProcessor`.
+- **`INewsFilter`/`SessionFilter` wired into `EngineWorkerDependencies.Risk`** (gap 2 closed) so the
+  production evaluator computes external verdicts.
+- **Test oracle preserved:** `TradingLoop`/`OrderDispatcher`/`KernelOrderGate`/`AccountProcessor` remain in
+  `src` ONLY as the `EngineHarnessBuilder` regression oracle (golden-snapshot.json) + a handful of unit
+  tests; they are no longer in the production engine path. (DI still registers them — harmless, unused by
+  the engine — to avoid churn; can be trimmed later.)
+- **Status:** full solution compiles; Unit 209/4-skip, fast Simulation 28/0, Architecture 4/4, kernel
+  category 16/0 all green. The in-process IHost integration tests (which now run the kernel engine end-to-
+  end) + the cTrader e2e are the production validation.
+- **Deferred (documented):** gap 1 (per-strategy profile — uses the run's single active profile, which is
+  how the imperative engine already resolved constraints); gap 3 (trailing/breakeven not yet in the kernel
+  loop); gap 4 (equity-snapshot persistence for the Monitor — DD is trade-derived meanwhile); the
+  StepRecord journal is a no-op (`NullJournalWriter`) until K5.
+
 **Production-readiness gaps found during recon (must be closed for a *correct* flip — a blind flip is
 subtly wrong, not just unfinished):**
 1. **Per-strategy risk profile.** `KernelConfig.Profile` is a single run-constant profile; `KernelOrderGate`

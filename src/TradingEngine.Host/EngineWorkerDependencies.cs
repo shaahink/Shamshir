@@ -26,6 +26,10 @@ public sealed record RiskServices
     public required Func<string, string, decimal> CrossRateProvider { get; init; }
     public ITradingGovernor? Governor { get; init; }
     public SizingPolicyOptions SizingPolicy { get; init; } = new();
+    // iter-36 K4: the kernel evaluator computes the news/weekend external verdicts at sim-time, so the
+    // production engine needs these wired through (they were only reachable via KernelOrderGate's own DI).
+    public required TradingEngine.Risk.Filters.INewsFilter NewsFilter { get; init; }
+    public required TradingEngine.Risk.Filters.SessionFilter SessionFilter { get; init; }
 }
 
 public sealed record StrategyServices

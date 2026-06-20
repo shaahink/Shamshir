@@ -31,6 +31,7 @@ public sealed class KernelBacktestLoop
     private readonly Func<EngineState, RiskSnapshot> _captureRisk;
     private readonly Action<Bar> _advanceVenue;
     private readonly Func<decimal>? _realizedEquity;
+    private readonly Action<Bar, EngineState>? _onBarProcessed;
     private readonly decimal _initialBalance;
     private readonly string _runId;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
@@ -54,7 +55,8 @@ public sealed class KernelBacktestLoop
         string runId,
         Microsoft.Extensions.Logging.ILogger logger,
         Func<EngineState, RiskSnapshot>? captureRisk = null,
-        Func<decimal>? realizedEquity = null)
+        Func<decimal>? realizedEquity = null,
+        Action<Bar, EngineState>? onBarProcessed = null)
     {
         _kernel = kernel;
         _evaluator = evaluator;
@@ -68,6 +70,7 @@ public sealed class KernelBacktestLoop
         _logger = logger;
         _captureRisk = captureRisk ?? RiskSnapshots.Capture;
         _realizedEquity = realizedEquity;
+        _onBarProcessed = onBarProcessed;
     }
 
     /// <summary>Drive a recorded tape (tests / deterministic replay) to completion.</summary>
@@ -143,6 +146,10 @@ public sealed class KernelBacktestLoop
         }
 
         await _venue.CompleteBarAsync(ct);
+
+        // Production hook: report bar progress (count + sim clock) and persist equity/snapshots from the
+        // authoritative EngineState. Null in tests.
+        _onBarProcessed?.Invoke(barModel, state);
         return state;
     }
 
