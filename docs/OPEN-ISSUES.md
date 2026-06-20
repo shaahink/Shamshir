@@ -236,11 +236,20 @@ flatten), so positions are force-closed. **Tags**: F5 (live monitor), OBS-02/03,
 **Root cause = M18** (GovernorOptions registered as a stale `new GovernorOptions()` singleton — `ServiceRegistration.cs:136` —
 never updated from the DB the UI writes to). The kernel gate also reads `ConstraintSet.Toggles.GovernorEnabled` from the
 **ruleset**, a separate enable from the governor-options store → two sources of truth. **Tags**: **M18** (confirmed), F7.
+**⚠ CONFIRMED dual-source — needs a design decision, NOT a quick patch:** (1) the engine host registers `GovernorOptions` from
+**JSON** (`EngineServiceCollectionExtensions.cs:101 AddSingleton(loadedConfig.Governor)` via `LoadBase()`), ignoring the DB options
+the orchestrator loads into `PreloadedConfig` — so the Governor page's `Enabled` never reaches the run's `GovernorMachine`;
+(2) the kernel `PreTradeGate:54` gates on `ConstraintSet.GovernorEnabled` = `PropFirmRuleSet.Toggles.GovernorEnabled` (prop-firm
+ruleset), which the Governor page doesn't touch; (3) the kernel `GovernorState` is evolved in the reducer (`EvaluateStatic`)
+regardless of `Enabled`. **Decision needed**: which switch is authoritative — make the engine host use the DB `GovernorOptions`
+**and** have `ConstraintSet.GovernorEnabled` honor it (`ruleset.Toggles && options.Enabled`)?
 
-### T9 — Backtest throws a cancellation error on/near finish (but still saves) 🟡
-**Root cause (likely)**: run completion / cTrader stream end raises `OperationCanceledException` from the linked CTS
-(`BacktestOrchestrator.cs:518/611`, 30-min timeout + userCt) that's logged as an error though the run persisted. Cosmetic but
-alarming. **Action**: swallow/categorise the expected cancellation at normal completion. **Tags**: H22.
+### T9 — Backtest throws a cancellation error on/near finish (but still saves) 🟡 ✅ FIXED
+**Root cause**: a completion/teardown `OperationCanceledException` (user Cancel, the 30-min linked CTS timeout, or host/stream
+teardown) was caught by the general `catch (Exception)` → run marked **failed** + `LogError`, despite trades being persisted.
+**Fixed** (`BacktestOrchestrator.cs` — dedicated `catch (OperationCanceledException)`): finalize with trades-so-far,
+status = `cancelled` (user) / `completed` (teardown), ExitCode 0, info log, end record written. (Compiles clean; full test run
+pending the dev Web app being stopped — it currently locks the build output.) **Tags**: H22.
 
 ### T10 — "Duplicate" is pointless (re-runs via cTrader, ignores saved bars, no options to tweak) 🟠
 **Root cause**: `RunsController.Duplicate` (`:119`) re-runs the config **through the engine** (cTrader when
