@@ -200,6 +200,13 @@ public sealed class EngineRunner
         // kernel owns drawdown/equity, so the snapshot is read straight off state (sim-time stamped).
         _equitySink?.Observe(KernelEquitySnapshot.From(state, bar.OpenTimeUtc, _runContext.RunId));
 
+        // iter-37 K-GAP-3: persist the per-run bar so the chart renders for LIVE + non-catalog runs (a
+        // backtest over catalog data already has bars; BarQueryService dedups by timestamp, so the extra
+        // per-run copy is harmless). BarPersistenceHandler (wired via WireEventHandlers) enqueues to the
+        // BufferedBarWriter → IBarRepository. The old imperative TradingLoop published this; the kernel
+        // path didn't, leaving live charts blank.
+        _ = _eventBus.PublishAsync(new BarIngested(_runContext.RunId, bar), CancellationToken.None);
+
         // iter-36 K5: the per-strategy verdicts are folded onto the BarClosed StepRecord (the single
         // journal) by KernelBacktestLoop.BuildStepRecord — the old BarEvaluated → BarEvaluationHandler →
         // BarEvaluations path is gone. iter-37 F2's per-bar "why" funnel reads the StepRecord journal.
