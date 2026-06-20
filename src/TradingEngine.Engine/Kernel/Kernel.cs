@@ -33,7 +33,10 @@ public sealed class Kernel(KernelConfig config) : IKernel
     {
         var symbol = _config.ResolveSymbol(p.Symbol);
         var open = _config.ProjectOpenPositions(state);
-        var gate = PreTradeGate.Evaluate(state, p, _config.Constraints, _config.Profile, _config.Sizing, symbol, open);
+        // The impure verdicts (news/weekend/compliance/governor) were computed by the evaluator at
+        // sim-time and carried on the proposal (iter-36 K1) — applying them here keeps the gate pure and
+        // replay-deterministic, while ensuring no external protection is silently dropped.
+        var gate = PreTradeGate.Evaluate(state, p, _config.Constraints, _config.Profile, _config.Sizing, symbol, open, p.External);
 
         if (!gate.Accepted)
         {

@@ -21,7 +21,8 @@ public record TickReceived(Symbol Symbol, decimal Bid, decimal Ask, DateTime Occ
 /// </summary>
 /// <param name="SlPips">Stop distance in pips, computed by the evaluator (market context lives there, not in the kernel).</param>
 /// <param name="PipValuePerLot">Cross-rate-aware pip value per lot, computed by the evaluator. The gate needs both to size + project worst case purely.</param>
-public record OrderProposed(Guid OrderId, Symbol Symbol, TradeDirection Direction, OrderType OrderType, Price? LimitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, decimal SignalPriceMid, decimal SlPips, decimal PipValuePerLot, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+/// <param name="External">Impure gate verdicts (news/weekend/compliance/governor) the evaluator froze at sim-time so the pure kernel gate can apply them deterministically — no protection silently dropped (iter-36 K1). Default = nothing blocks.</param>
+public record OrderProposed(Guid OrderId, Symbol Symbol, TradeDirection Direction, OrderType OrderType, Price? LimitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, decimal SignalPriceMid, decimal SlPips, decimal PipValuePerLot, DateTime OccurredAtUtc, ExternalVerdicts External = default) : EngineEvent(OccurredAtUtc);
 
 public record OrderSubmitted(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price? LimitPrice, string StrategyId, DateTime OccurredAtUtc, Price StopLoss = default, Price? TakeProfit = null) : EngineEvent(OccurredAtUtc);
 

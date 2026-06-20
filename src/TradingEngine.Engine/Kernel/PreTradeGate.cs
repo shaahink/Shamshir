@@ -30,19 +30,6 @@ public static class PreTradeGate
         public static GateResult Accept(decimal lots, decimal riskAmount) => new(true, lots, riskAmount, null);
     }
 
-    /// <summary>
-    /// Impure gate verdicts the pure kernel cannot compute itself — they depend on wall-clock / external
-    /// services (news calendar, session clock, prop-firm compliance, the legacy governor). The caller
-    /// (e.g. <c>KernelOrderGate</c>) computes them — already folding in the rule-set conditions
-    /// (AllowTradesDuringNews / AllowWeekendHolding) — and passes them in, so the gate itself stays a
-    /// deterministic function of <c>(state, proposal, config, verdicts)</c>. Default = nothing blocks.
-    /// </summary>
-    public readonly record struct ExternalVerdicts(
-        bool NewsActive = false,
-        bool WeekendRestricted = false,
-        string? ComplianceBlockReason = null,
-        string? GovernorBlockReason = null);
-
     public static GateResult Evaluate(
         EngineState state,
         OrderProposed p,

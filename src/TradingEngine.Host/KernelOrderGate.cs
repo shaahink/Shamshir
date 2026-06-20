@@ -109,7 +109,7 @@ public sealed class KernelOrderGate(
         return new EngineState(positions, governorState, dd, openPositions.Count, protection, account);
     }
 
-    private PreTradeGate.ExternalVerdicts ComputeVerdicts(TradeIntent intent, EquitySnapshot equity, RiskProfile profile)
+    private ExternalVerdicts ComputeVerdicts(TradeIntent intent, EquitySnapshot equity, RiskProfile profile)
     {
         var ruleSet = riskManager.ActiveRuleSet;
         var newsActive = ruleSet?.AllowTradesDuringNews == false && newsFilter.IsNewsWindowActive(intent.Symbol, clock.UtcNow);
@@ -129,7 +129,7 @@ public sealed class KernelOrderGate(
             }
         }
 
-        return new PreTradeGate.ExternalVerdicts(newsActive, weekend, compliance, governorReason);
+        return new ExternalVerdicts(newsActive, weekend, compliance, governorReason);
     }
 
     private static PropFirmRuleSet DefaultRuleSet() => new(
