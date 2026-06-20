@@ -271,6 +271,7 @@ public static class EngineServiceCollectionExtensions
                 Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
                 Journal = sp.GetRequiredService<IPipelineJournal>(),
                 StepJournal = sp.GetRequiredService<IJournalWriter>(),
+                ScopeFactory = sp.GetRequiredService<IServiceScopeFactory>(),
             },
         });
 
@@ -425,6 +426,7 @@ public static class EngineServiceCollectionExtensions
                 Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
                 Journal = sp.GetRequiredService<IPipelineJournal>(),
                 StepJournal = sp.GetRequiredService<IJournalWriter>(),
+                ScopeFactory = sp.GetRequiredService<IServiceScopeFactory>(),
             },
         });
 

@@ -55,4 +55,7 @@ public sealed record PersistenceServices
     public IPipelineJournal? Journal { get; init; }
     // iter-36 K5: the single lossless StepRecord journal the kernel engine appends to.
     public IJournalWriter? StepJournal { get; init; }
+    // iter-37 K-GAP-2: scope factory used to resolve the (scoped) IEquityRepository for the on-completion
+    // backtest equity flush (BufferedEquitySink → EquitySnapshots).
+    public Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? ScopeFactory { get; init; }
 }

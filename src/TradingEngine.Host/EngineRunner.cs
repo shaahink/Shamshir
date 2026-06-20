@@ -1,4 +1,6 @@
 using TradingEngine.Engine;
+using Microsoft.Extensions.DependencyInjection;
+using TradingEngine.Infrastructure.Adapters;
 using TradingEngine.Risk.Filters;
 using TradingEngine.Services;
 using TradingEngine.Services.Helpers;
@@ -36,6 +38,7 @@ public sealed class EngineRunner
     private readonly IEventBus _eventBus;
     private readonly IProgress<BacktestProgressEvent>? _progress;
     private readonly IEquitySink? _equitySink;
+    private readonly IServiceScopeFactory? _scopeFactory;
     private readonly IJournalWriter _journal;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
 
@@ -67,6 +70,7 @@ public sealed class EngineRunner
         _eventBus = deps.Persistence.EventBus;
         _progress = deps.Persistence.Progress;
         _equitySink = deps.Persistence.EquitySink;
+        _scopeFactory = deps.Persistence.ScopeFactory;
         _journal = deps.Persistence.StepJournal ?? new NullJournalWriter();
         _logger = logger;
 
@@ -125,8 +129,34 @@ public sealed class EngineRunner
 
         var finalState = await loop.RunFromBrokerAsync(initialState, ct);
 
+        await FlushBacktestEquityAsync(ct);
+
         _logger.LogInformation("Kernel engine stopped. Bars={Bars} OpenPositions={Open}",
             Interlocked.Read(ref _barCount), finalState.Positions.Count);
+    }
+
+    // iter-37 K-GAP-2: at the end of a backtest, flush the in-memory BufferedEquitySink to the
+    // EquitySnapshots table in one batched write so GET /api/runs/{id}/equity (which reads the table) is no
+    // longer empty for a finished backtest. Live runs use PersistentEquitySink (per-bar), so this is a no-op.
+    private async Task FlushBacktestEquityAsync(CancellationToken ct)
+    {
+        if (_engineMode != EngineMode.Backtest || _scopeFactory is null) return;
+        if (_equitySink is not BufferedEquitySink buffered) return;
+
+        var snapshots = buffered.GetSnapshots();
+        if (snapshots.Count == 0) return;
+
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IEquityRepository>();
+            await EquitySnapshotFlush.FlushAsync(snapshots, repo, _engineMode, _runContext.RunId, ct);
+            _logger.LogInformation("Flushed {Count} backtest equity snapshots to EquitySnapshots", snapshots.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to flush backtest equity snapshots");
+        }
     }
 
     private KernelBacktestLoop BuildKernelLoop(decimal initialBalance)
