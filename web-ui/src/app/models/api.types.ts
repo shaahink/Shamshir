@@ -16,6 +16,9 @@ export interface RunSummary {
   commissionTotal: number;
   swapTotal: number;
   errorMessage: string | null;
+  parentRunId?: string | null;
+  datasetId?: string | null;
+  configSetId?: string | null;
 }
 
 export interface RunDetail {
@@ -42,6 +45,9 @@ export interface RunDetail {
   exitCode: number;
   effectiveConfigJson: string | null;
   reportJsonPath: string | null;
+  parentRunId?: string | null;
+  datasetId?: string | null;
+  configSetId?: string | null;
 }
 
 export interface TradeSummary {
@@ -74,11 +80,38 @@ export interface TradeSummary {
 // iter-36 K5: the journal is now the lossless StepRecord stream (GET /api/runs/{id}/journal). eventKind
 // is the StepRecord event type; decisionReason is the gate accept/reject reason. Legacy fields kept
 // optional so older views compile during the iter-37 journal-surface migration.
+export interface RiskSnapshot {
+  balance: number;
+  equity: number;
+  floatingPnL: number;
+  dailyDrawdown: number;
+  maxDrawdown: number;
+  weeklyDrawdown: number;
+  monthlyDrawdown: number;
+  inProtectionMode: boolean;
+  protectionCause: string | null;
+  governorState: string;
+  openPositions: number;
+}
+
+export interface StrategyVerdict {
+  strategyId: string;
+  hadEnoughBars: boolean;
+  signalFired: boolean;
+  direction: string | null;
+  reason: string;
+  indicators: Record<string, number> | null;
+}
+
 export interface JournalEntry {
   seq: number;
   simTimeUtc: string;
   eventKind?: string | null;
+  eventJson?: string | null;
   effectKinds?: string[] | null;
+  effectsJson?: string | null;
+  risk?: RiskSnapshot | null;
+  strategyVerdicts?: StrategyVerdict[] | null;
   decisionReason?: string | null;
   regime?: string | null;
   kind?: string | null;
@@ -86,6 +119,19 @@ export interface JournalEntry {
   strategyId?: string | null;
   reason?: string | null;
   detail?: string | null;
+}
+
+// iter-37 F2 — per-strategy decision funnel (GET /api/runs/{id}/analytics/strategies), built from the
+// StepRecord journal's per-bar verdicts.
+export interface StrategyPerformance {
+  strategyId: string;
+  totalBarsEvaluated: number;
+  signalsFired: number;
+  tradesOpened: number;
+  wins: number;
+  losses: number;
+  winRatePct: number;
+  topRejections: { reason: string; count: number }[];
 }
 
 export interface EquityPoint {
@@ -120,6 +166,7 @@ export interface StartRunRequest {
   strategyIds: string[];
   riskProfileId?: string;
   venue?: string;
+  strategyOverrides?: Record<string, Record<string, unknown>>;
 }
 
 export interface RiskProfile {

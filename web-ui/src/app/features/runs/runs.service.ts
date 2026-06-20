@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import type {
   RunSummary, RunDetail, TradeSummary, JournalEntry, EquityPoint,
-  DailyPnl, RunAnalytics, StartRunRequest, StartRunResponse,
+  DailyPnl, RunAnalytics, StartRunRequest, StartRunResponse, StrategyPerformance,
 } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
@@ -61,6 +61,11 @@ export class RunsApiService {
 
   getRunAnalytics(runId: string): Promise<RunAnalytics> {
     return firstValueFrom(this.http.get<RunAnalytics>(`/api/runs/${runId}/analytics`));
+  }
+
+  // iter-37 F2 — per-strategy decision funnel (signals fired / top no-signal reasons), off the journal.
+  getStrategyBreakdown(runId: string): Promise<StrategyPerformance[]> {
+    return firstValueFrom(this.http.get<StrategyPerformance[]>(`/api/runs/${runId}/analytics/strategies`));
   }
 
   // iter-36 K6 / iter-37 F3 — "duplicate with changes": re-run the source over the SAME dataset with an

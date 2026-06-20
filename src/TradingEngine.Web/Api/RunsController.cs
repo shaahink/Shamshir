@@ -207,6 +207,12 @@ public sealed class RunsController : ControllerBase
         return Ok(analytics);
     }
 
+    // iter-37 F2: per-strategy decision funnel (signals fired / top no-signal reasons / win-rate), built
+    // from the StepRecord journal's per-bar verdicts (A3 / K-GAP-4) — the per-bar "why" the report surfaces.
+    [HttpGet("{runId}/analytics/strategies")]
+    public async Task<IActionResult> GetStrategyBreakdown(string runId, CancellationToken ct)
+        => Ok(await _legacyQuery.GetStrategyBreakdownAsync(runId, ct));
+
     [HttpGet("/api/equity")]
     public async Task<IActionResult> GetEquity([FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
     {
