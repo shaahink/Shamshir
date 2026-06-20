@@ -71,10 +71,10 @@ public sealed class StrategyBreakdownFromJournalTests : IDisposable
         var a = breakdown.Single(s => s.StrategyId == "A");
         a.TotalBarsEvaluated.Should().Be(3);
         a.SignalsFired.Should().Be(1, "strategy A fired on one bar");
-        a.TopRejections.Should().ContainEquivalentOf(("RSI_NEUTRAL", 2), "its no-signal reason + count");
+        a.TopRejections.Should().ContainEquivalentOf(new NoSignalReason("RSI_NEUTRAL", 2), "its no-signal reason + count");
 
         var b = breakdown.Single(s => s.StrategyId == "B");
         b.SignalsFired.Should().Be(0, "strategy B never fired");
-        b.TopRejections.Should().ContainEquivalentOf(("NO_REGIME", 3));
+        b.TopRejections.Should().ContainEquivalentOf(new NoSignalReason("NO_REGIME", 3));
     }
 }

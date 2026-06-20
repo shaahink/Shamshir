@@ -105,7 +105,7 @@ public sealed class BacktestQueryService : IBacktestQueryService
             var topRejections = noSignal
                 .OrderByDescending(x => x.Value)
                 .Take(5)
-                .Select(x => (x.Key, x.Value))
+                .Select(x => new NoSignalReason(x.Key, x.Value))
                 .ToList();
 
             var t = tradeIndex.GetValueOrDefault(kv.Key);

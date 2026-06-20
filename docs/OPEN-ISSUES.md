@@ -189,6 +189,9 @@ reads the frame `simTime` (`… : DateTime.UtcNow`). In a backtest the entry `Or
 **Fix (designed, approved "all three", not yet applied)**: cBot helpers → instance + `Server.TimeInUtc`; `CTraderBrokerAdapter`
 authoritative on sim-time in backtest (+ `?? BrokerTimeUtc`); `trade-detail` order-safe window. **Tags**: F6 (per-trade chart),
 31-A2, K-GAP-5.
+**⏳ PARTIAL FIX**: cBot source (`MakeExecResult`/`MakeModifyResult` → instance + `Server.TimeInUtc`) ✅ + `trade-detail` order-safe
+window ✅ (chart renders for existing/future trades; SPA build green). **Still pending**: rebuild the cBot `.algo` in cTrader for
+the source fix to take effect on live runs, and the `CTraderBrokerAdapter` backtest-authoritative override.
 
 ### T2 — Journal shows wall-clock `EquityObserved` interleaved + out-of-order 🟠
 **Observed**: journal rows jump e.g. `05-20 21:00 EquityObserved` … `06-20 22:16 EquityObserved` … `05-20 20:00 DayRolled`.
@@ -203,6 +206,7 @@ filtering/colouring `EquityObserved` noise.
 (`IBacktestQueryService.cs:31`). System.Text.Json does NOT preserve tuple element names → JSON is `{"item1":…,"item2":…}`,
 but the SPA reads `r.reason`/`r.count` (`run-report.topReasons`) → undefined.
 **Fix**: replace the tuple with a named record `NoSignalReason(string Reason, int Count)` so JSON has `reason`/`count`.
+**✅ FIXED** — `NoSignalReason` record (`IBacktestQueryService.cs`) + `GetStrategyBreakdownAsync` mapping; `StrategyBreakdownFromJournalTests` green.
 **Tags**: F2 (funnel).
 
 ### T4 — Per-bar "why" only shows warmup rows ("not enough bars, have 1..24 need 55") 🟠
