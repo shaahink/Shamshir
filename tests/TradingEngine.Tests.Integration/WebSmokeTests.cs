@@ -58,13 +58,6 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     }
 
     [Fact]
-    public async Task EventsPage_Returns200()
-    {
-        var response = await _client.GetAsync("/events");
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-    }
-
-    [Fact]
     public async Task BacktestsPage_Returns200()
     {
         var response = await _client.GetAsync("/backtests");
@@ -131,7 +124,7 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     [Fact]
     public async Task AllNavLinks_Return200()
     {
-        var navLinks = new[] { "/", "/trades", "/performance", "/runs", "/events", "/strategies", "/compliance", "/backtests/new" };
+        var navLinks = new[] { "/", "/trades", "/runs", "/strategies", "/risk-profiles", "/prop-firm-rules", "/governor-options", "/settings" };
         foreach (var link in navLinks)
         {
             var linkResponse = await _client.GetAsync(link);
@@ -173,12 +166,5 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
         body.Should().StartWith("[");
-    }
-
-    [Fact]
-    public async Task ApiEvents_Returns200()
-    {
-        var response = await _client.GetAsync("/api/events?runId=nonexistent");
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }
