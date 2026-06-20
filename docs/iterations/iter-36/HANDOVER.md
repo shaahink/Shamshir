@@ -198,6 +198,39 @@ subtly wrong, not just unfinished):**
 
 ---
 
+## VALIDATION — kernel engine proven end-to-end (2026-06-20)
+
+The flipped kernel engine was validated against **real cTrader** (env creds) + the credential-free
+in-host replay path. All green:
+
+- **cTrader e2e (16 tests, `[Collection("CtraderSerial")]`):**
+  - `CtraderE2EHarnessSmokeTests` 3/3 — incl. `TradeLedger_ClientOrderIdReconciliation_NoMissingTrades`
+    (kernel order ids reconcile to the cTrader ledger — K2 ClientOrderId end-to-end).
+  - `CtraderScenarioE2ETests` 3/3 — ledger integrity, weekend edge, no orphan processes.
+  - `PipelineE2ETests` 8/8 — EURUSD/GBPUSD, H1/M15, 3-day→3-month, + in-process engine with cTrader CLI.
+  - `DiffE2ETests` 2/2 — cTrader-vs-DB comparison + per-trade cost-integrity reconciliation.
+- **In-host replay (credential-free):** `BacktestReplayTests.ReplayBacktest_FullPipeline_ProducesBarEvaluations`
+  — the kernel engine over the REAL `BacktestReplayAdapter` produces BarEvaluations + valid closed trades
+  (entry/exit/reason; all positions closed).
+- **Fast suites:** Unit 209/4-skip · fast Simulation 28/0 · Architecture/purity 4/4 · kernel+journal 18/0.
+
+**Fixes the e2e surfaced (committed):**
+- `CTraderBrokerAdapter.SubmitOrderAsync` now honors `request.ClientOrderId` (was minting its own) — the
+  K2 cTrader follow-up; required for fills to map back + ledger reconciliation.
+- `EngineRunner` emits `BarEvaluated` events per verdict (the imperative `TradingLoop` used to) so the
+  `BarEvaluations` table / UI / e2e completion-poll work.
+- `ReplayTestHarness` updated for the kernel path (register `INewsFilter`/`SessionFilter`/`EntryPlanner`/
+  `EffectExecutor`; configure the substitute `RiskManager` for the kernel reads — `ActiveRuleSet`/
+  `Drawdown`/`CheckComplianceBlock`; idempotent host teardown). The substitute was wired for the deleted
+  imperative path.
+
+## K7 — Remaining-the-kernel-was-meant-to-fix (doc reconciliation OUTSTANDING)
+The kernel is now authoritative + validated, so the shadowed imperative DD/protection/governor code no
+longer executes in production (it survives only in the test oracle). Still to do: reconcile
+`docs/OPEN-ISSUES.md` (C3/C4 etc. "RiskManager still has the bug but kernel authoritative" → "removed from
+the production path"), `SYSTEM-AUDIT.md`/`CODE-MAP.md`/`SYSTEM-MODEL.md §3.2`, and confirm the named
+backtest-venue items (H13/H14/H15/H16, C6) against the kernel path. Lightweight; not yet done.
+
 ## cTrader live-verification follow-ups (accumulating; resolved in K7)
 - None new from K1 (backtest-path only). The sim-time verdict change also benefits live (weekend/news no
   longer wall-clock-dependent) but live e2e is out of sandbox scope — owner to confirm in K7.
