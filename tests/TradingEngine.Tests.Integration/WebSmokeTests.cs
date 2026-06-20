@@ -142,7 +142,7 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     [Fact]
     public async Task ApiRuns_Returns200AndJson()
     {
-        var response = await _client.GetAsync("/api/backtest/runs");
+        var response = await _client.GetAsync("/api/runs");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
         body.Should().StartWith("[");
@@ -169,7 +169,7 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     [Fact]
     public async Task ApiCompare_Returns200AndJson()
     {
-        var response = await _client.GetAsync("/api/backtest/compare?runIds=test1,test2");
+        var response = await _client.GetAsync("/api/backtest/analytics/compare?runIds=test1,test2");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
         body.Should().StartWith("[");

@@ -1,8 +1,14 @@
 # Shamshir — Open Issues
 
-**Updated**: 2026-06-20 (iter-36 kernel cutover COMPLETE — K0–K6 + journal cutover + twin relocation)
-**Branch**: `iter/36-kernel-cutover`
-**Total open**: ~12 remaining (60+ resolved across iter-35 + iter-36)
+**Updated**: 2026-06-20 (iter-37 frontend-finish + pressure/reality tests DELIVERED on branch `iter/37-frontend-finish`)
+**Branch**: `iter/37-frontend-finish` (cut from `iter/36-kernel-cutover`)
+**Total open**: see the iter-37 closure block below for K-GAP statuses + deferrals
+
+> **iter-37 status (this branch).** The iter-36 cutover follow-ups (K-GAP-1..6) + the frontend finish (F1–F8)
+> + the pressure/reality test spine (G/F/J/E/B/C/D) are delivered. See **"## iter-37 closure"** below for the
+> per-gap resolution + the two documented deferrals (D-drop physical table delete; per-trade Timeframe column).
+> Verified: build 0 err · Unit 237/0/5-skip · Simulation non-cTrader 97/0 · Integration 41/41 · SPA build green.
+> cTrader-E2E + NetMQ + InProcessEngineSmoke remain out of scope (cTrader/environmental, owner-verified).
 
 > **iter-36 complete.** The kernel is now the **SOLE production engine** — the imperative twins
 > (`OrderDispatcher`, `KernelOrderGate`, `AccountProcessor`) are removed from `src` (relocated to the
@@ -101,6 +107,51 @@ Add `Timeframe` on close (it's on the position/bar). → iter-37 F6 / test plan 
 **Severity**: Low. When an execution event's order isn't in `state.Positions`, it returns the first open
 position's symbol, else `EURUSD`. Correct for single-symbol golden; can mis-attribute a feedback event on a
 multi-symbol run. Carry the symbol on the venue execution event instead. → test plan D-suite (multi-symbol).
+
+---
+
+## iter-37 closure (delivered on `iter/37-frontend-finish`)
+
+**K-GAP code fixes**
+- **K-GAP-1 (day/week/month roll) — ✅ RESOLVED.** `ResetClock` emits the rolls in `KernelBacktestLoop`;
+  `EngineRunner` wires `ResetConfig` from the active ruleset; reducer re-bases DD to current equity. Guarded by
+  `ResetClockTests`/`ResetReducerTests` + `KernelResetMultiDayTests` (incl. `DailyDrawdownRebasesEachDay`). The
+  G/F suites prove C4 + H7 are now *provably* closed in the multi-day production path.
+- **K-GAP-2 (backtest equity not persisted) — ✅ RESOLVED.** `EngineRunner.FlushBacktestEquityAsync` batch-flushes
+  `BufferedEquitySink → EquitySnapshots` on completion; `PersistentEquitySink` mode no longer hard-coded Live.
+  Tests: `BacktestEquityFlushTests` + `KernelEquitySnapshotTests`.
+- **K-GAP-4 (readers on empty tables) — ✅ RESOLVED (functional).** `RunProjection` (timeline→journal, equity→
+  persisted snapshots) + `BacktestQueryService.GetStrategyBreakdownAsync` (→ journal verdicts) repointed onto the
+  StepRecord journal. Test: `StrategyBreakdownFromJournalTests`. *(Physical table delete = D-drop, deferred below.)*
+- **K-GAP-6 (multi-symbol mis-attribution) — ✅ RESOLVED.** `ExecutionEvent` carries `Symbol`; the pump prefers it;
+  `FakeVenue` + `BacktestReplayAdapter` stamp it. Test: `MultiSymbolAttributionTests`.
+- **K-GAP-3 (chart bars) — PARTIAL.** Backtest-over-catalog charts work + dedup-by-timestamp guarded
+  (`ChartDataTests.Bars_DedupByTimestamp`). **Live-run bar persistence still open** (blank chart for live; out of
+  iter-37 scope).
+- **K-GAP-5 (Trade.Timeframe) — PARTIAL.** Trade-detail exposes the run's timeframe (chart fetches correctly, SPA
+  `|| 'H1'` no longer needed); test `ChartDataTests.TradeDetail_ExposesRunTimeframe`. **Deferred:** a per-trade
+  `TradeResultEntity.Timeframe` column for multi-timeframe runs (needs `PublishTradeClosed`/reducer threading + an
+  EF migration; Low severity).
+
+**Test spine (TEST-PLAN G/F/J/E/B/C/D)** — all delivered & green: governor/drawdown/protection (G1–G3), FTMO
+pressure (F1–F3; F4 skip-breadcrumb), journal source-of-truth (J1–J4), equity persistence (E), bars/chart (B),
+per-strategy characterization (C), multi-symbol + replay/duplicate (D; D2 via J3 determinism + `DuplicateRunE2ETests`).
+**M6** confirmed correct (profit target keys off equity).
+
+**Frontend (PLAN F1–F8)** — delivered: F1 unified journal (order/fill join, full kind filter, per-kind badges,
+named-violation renderer — no `[object Object]`); F2 per-strategy funnel (`GET /api/runs/{id}/analytics/strategies`);
+F3 NDJSON download + Duplicate + lineage (parent/dataset/config hashes); F4 report stats (H29 formula confirmed);
+F5 live-monitor stick-to-bottom + balance-null fix (L1/L2/L3/NEW-7); F6 trade TF column + SL/TP chart; F7 risk-profile
+validate-before-save; F8 dashboard placeholder hygiene (no fabricated zeros). Also fixed 2 stale `WebSmokeTests`
+pointing at dead `/api/backtest/runs` + `/api/backtest/compare` routes.
+
+**Deferred (documented carry-forward):**
+- **D-drop — physical deletion of the empty `PipelineEvents`/`BarEvaluations` tables + `SqlitePipelineEventRepository`
+  /`IPipelineEventRepository`/entities/DbSets/DI + an EF table-drop migration.** The *functional* one-journal cutover
+  is complete (writers deleted in iter-36; active readers on the journal via K-GAP-4). Remaining consumers of the
+  empty tables: `EventsController`, `BacktestController`, `RunQueryService` (+ the `events` SPA page). Deferred to a
+  dedicated, fully-re-verified pass — the empty tables co-exist harmlessly meanwhile.
+- **K-GAP-5 per-trade Timeframe column** (above).
 
 ---
 
