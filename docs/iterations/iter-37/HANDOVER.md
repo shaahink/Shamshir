@@ -41,11 +41,26 @@ Companion plans: `PLAN.md` (frontend F1–F8) + `TEST-PLAN.md` (G/F/J/E/B/C/D). 
 - **Phase Z** — full-suite gate green; fixed 2 stale `WebSmokeTests` (dead `/api/backtest/runs` + `/api/backtest/compare`
   → live `/api/runs` + `/api/backtest/analytics/compare`); docs reconciled.
 
+## Sign-off pass (dead-code removal + finish — one go)
+
+- **D-drop (✅ DONE)** — removed all kernel-upgrade dead code: `PipelineEvents`/`BarEvaluations` (entities,
+  mapping, repo, interface, DTO, `JournalNormalizer`), dead consumers (`EventsController` + events SPA page,
+  `BacktestController.Journal`, `RunQueryService.GetRunJournalAsync`), and the never-fired protection-ledger path
+  (handlers, `ProtectionQueryService`, `ProtectionController`, ledger entities/tables, `compliance` SPA page —
+  `GovernorStateChanged` is never published). **EF reset:** fresh `InitialCreate` regenerated (no dead tables), dev
+  DB recreated on boot. Kept (not dead): `IDecisionJournal`/`InMemoryDecisionJournal` (oracle), `GovernorStateChanged`.
+- **K-GAP-3 (✅ DONE)** — `EngineRunner.ReportBar` publishes `BarIngested` → per-run bars persist (live/non-catalog
+  charts). `PerRunBarPersistenceTests`.
+- **Empty/invalid backtest guard (✅)** — API 400 on no-symbol / inverted range / non-positive balance
+  (`BacktestStartGuardTests`); SPA blocks client-side.
+- **F8 (✅)** new-backtest per-strategy overrides + resolved-config preview + CSV export · **F4 (✅)** MAE/MFE scatter
+  + JSON/Markdown report export · **F2 (✅)** per-bar "why" verdict table.
+- **Gate:** build 0 err · Unit 228/0/5-skip · Simulation non-cTrader 97/0 · Integration 43/43 · SPA build green ·
+  `grep PipelineEvent|BarEvaluationEntity|ProtectionLedger src → 0`.
+
 ## Carry-forward (documented in OPEN-ISSUES → "iter-37 closure")
 
-- **D-drop** — physical deletion of the empty `PipelineEvents`/`BarEvaluations` tables + their query
-  repo/interface/entities/DbSets/DI + an EF table-drop migration. Functional cutover complete; the empty tables
-  co-exist harmlessly. Remaining consumers: `EventsController`, `BacktestController`, `RunQueryService`, `events` SPA page.
-- **K-GAP-3 live-run bar persistence** (blank chart for live runs; backtest charts work).
-- **K-GAP-5 per-trade `TradeResultEntity.Timeframe` column** (multi-timeframe runs; needs reducer threading + migration).
-- Owner live-verification: cTrader-E2E ledger reconciliation (the env has creds; 4 cTrader tests + NetMQ are out of scope here).
+- **K-GAP-5 per-trade `TradeResultEntity.Timeframe` column** (multi-timeframe runs only; chart already works via the
+  run timeframe; needs `PublishTradeClosed`/reducer threading + an EF migration; Low severity).
+- F7 server-side validation framework (the UI + empty/invalid guard cover the practical case).
+- Owner live-verification: cTrader-E2E ledger reconciliation (the env has creds; the 4 cTrader tests + NetMQ are out of scope here).

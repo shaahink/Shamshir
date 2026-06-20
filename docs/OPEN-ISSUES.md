@@ -2,12 +2,12 @@
 
 **Updated**: 2026-06-20 (iter-37 frontend-finish + pressure/reality tests DELIVERED on branch `iter/37-frontend-finish`)
 **Branch**: `iter/37-frontend-finish` (cut from `iter/36-kernel-cutover`)
-**Total open**: see the iter-37 closure block below for K-GAP statuses + deferrals
+**Total open**: see the iter-37 closure block below — K-GAP-1/2/3/4/6 resolved, dead code removed; K-GAP-5 deferred
 
-> **iter-37 status (this branch).** The iter-36 cutover follow-ups (K-GAP-1..6) + the frontend finish (F1–F8)
-> + the pressure/reality test spine (G/F/J/E/B/C/D) are delivered. See **"## iter-37 closure"** below for the
-> per-gap resolution + the two documented deferrals (D-drop physical table delete; per-trade Timeframe column).
-> Verified: build 0 err · Unit 237/0/5-skip · Simulation non-cTrader 97/0 · Integration 41/41 · SPA build green.
+> **iter-37 SIGNED OFF (this branch).** The iter-36 cutover follow-ups (K-GAP-1..6, K-GAP-5 excepted) + the
+> frontend finish (F1–F8) + the pressure/reality test spine (G/F/J/E/B/C/D) + the **D-drop dead-code removal
+> (PipelineEvents/BarEvaluations + protection-ledger) with an EF reset** are delivered. See **"## iter-37 closure"**.
+> Verified: build 0 err · Unit 228/0/5-skip · Simulation non-cTrader 97/0 · Integration 43/43 · SPA build green.
 > cTrader-E2E + NetMQ + InProcessEngineSmoke remain out of scope (cTrader/environmental, owner-verified).
 
 > **iter-36 complete.** The kernel is now the **SOLE production engine** — the imperative twins
@@ -122,12 +122,12 @@ multi-symbol run. Carry the symbol on the venue execution event instead. → tes
   Tests: `BacktestEquityFlushTests` + `KernelEquitySnapshotTests`.
 - **K-GAP-4 (readers on empty tables) — ✅ RESOLVED (functional).** `RunProjection` (timeline→journal, equity→
   persisted snapshots) + `BacktestQueryService.GetStrategyBreakdownAsync` (→ journal verdicts) repointed onto the
-  StepRecord journal. Test: `StrategyBreakdownFromJournalTests`. *(Physical table delete = D-drop, deferred below.)*
+  StepRecord journal. Test: `StrategyBreakdownFromJournalTests`. *(Physical tables dropped in the sign-off D-drop.)*
 - **K-GAP-6 (multi-symbol mis-attribution) — ✅ RESOLVED.** `ExecutionEvent` carries `Symbol`; the pump prefers it;
   `FakeVenue` + `BacktestReplayAdapter` stamp it. Test: `MultiSymbolAttributionTests`.
-- **K-GAP-3 (chart bars) — PARTIAL.** Backtest-over-catalog charts work + dedup-by-timestamp guarded
-  (`ChartDataTests.Bars_DedupByTimestamp`). **Live-run bar persistence still open** (blank chart for live; out of
-  iter-37 scope).
+- **K-GAP-3 (chart bars) — ✅ RESOLVED.** `EngineRunner.ReportBar` publishes `BarIngested` per bar so the kernel
+  path persists per-run bars (live + non-catalog runs now render; backtest-over-catalog already did, dedup'd by
+  `BarQueryService`). Tests: `PerRunBarPersistenceTests` + `ChartDataTests.Bars_DedupByTimestamp`.
 - **K-GAP-5 (Trade.Timeframe) — PARTIAL.** Trade-detail exposes the run's timeframe (chart fetches correctly, SPA
   `|| 'H1'` no longer needed); test `ChartDataTests.TradeDetail_ExposesRunTimeframe`. **Deferred:** a per-trade
   `TradeResultEntity.Timeframe` column for multi-timeframe runs (needs `PublishTradeClosed`/reducer threading + an
@@ -145,13 +145,24 @@ F5 live-monitor stick-to-bottom + balance-null fix (L1/L2/L3/NEW-7); F6 trade TF
 validate-before-save; F8 dashboard placeholder hygiene (no fabricated zeros). Also fixed 2 stale `WebSmokeTests`
 pointing at dead `/api/backtest/runs` + `/api/backtest/compare` routes.
 
-**Deferred (documented carry-forward):**
-- **D-drop — physical deletion of the empty `PipelineEvents`/`BarEvaluations` tables + `SqlitePipelineEventRepository`
-  /`IPipelineEventRepository`/entities/DbSets/DI + an EF table-drop migration.** The *functional* one-journal cutover
-  is complete (writers deleted in iter-36; active readers on the journal via K-GAP-4). Remaining consumers of the
-  empty tables: `EventsController`, `BacktestController`, `RunQueryService` (+ the `events` SPA page). Deferred to a
-  dedicated, fully-re-verified pass — the empty tables co-exist harmlessly meanwhile.
-- **K-GAP-5 per-trade Timeframe column** (above).
+**Sign-off additions (dead-code removal + finish)**
+- **✅ D-drop DONE — no kernel-upgrade dead code remains.** Deleted `PipelineEvents`/`BarEvaluations` (entities,
+  `PipelineEventMapping`, `SqlitePipelineEventRepository`, `IPipelineEventRepository`, `PipelineEventResponse`,
+  `JournalNormalizer`), the dead consumers (`EventsController` + events SPA page, `BacktestController.Journal`,
+  `RunQueryService.GetRunJournalAsync`), and the never-fired protection-ledger path
+  (`ProtectionLedgerPersistenceHandler`/`ProtectionLedgerWriter`/`ProtectionQueryService`/`ProtectionController` +
+  `DailyProtectionLedger`/`ProtectionLedgerEntry` tables + the `compliance` SPA page — `GovernorStateChanged` is
+  never published). **EF reset:** old `InitialCreate` + snapshot deleted, fresh `InitialCreate` regenerated with no
+  dead tables; dev DB recreated on boot. `grep PipelineEvent|BarEvaluationEntity|ProtectionLedger src → 0`. *Kept
+  (not dead): `IDecisionJournal`/`InMemoryDecisionJournal` (golden-oracle contract), `GovernorStateChanged` (oracle).*
+- **✅ Empty/invalid backtest guard** — `RunsController`/`BacktestController` Start return 400 on no-symbol /
+  inverted date range / non-positive balance (`BacktestStartGuardTests`); SPA blocks client-side.
+- **✅ F4** MAE/MFE scatter + JSON/Markdown report export · **✅ F8** new-backtest per-strategy overrides +
+  resolved-config preview + CSV export · **✅ F2** per-bar "why" verdict table.
+
+**Still deferred (documented carry-forward):**
+- **K-GAP-5 per-trade Timeframe column** (above; Low — multi-timeframe runs only; chart already works via run TF).
+- F7 server-side validation framework (UI + the empty/invalid guard cover the practical case).
 
 ---
 
