@@ -26,8 +26,6 @@ public static class EngineHostFactory
             host.Services.GetRequiredService<EquityPersistenceHandler>());
         eventBus.Subscribe<TradeClosed>(
             host.Services.GetRequiredService<TradePersistenceHandler>());
-        eventBus.Subscribe<GovernorStateChanged>(
-            host.Services.GetRequiredService<ProtectionLedgerPersistenceHandler>());
         eventBus.Subscribe<BarIngested>(
             host.Services.GetRequiredService<BarPersistenceHandler>());
     }

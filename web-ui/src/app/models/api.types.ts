@@ -194,38 +194,6 @@ export interface GovernorState {
   reason: string | null;
 }
 
-export interface ProtectionDay {
-  id: string;
-  date: string;
-  startEquity: number;
-  minEquity: number;
-  endEquity: number;
-  maxDailyDdUsedFraction: number;
-  finalGovernorState: string | null;
-  breachOccurred: boolean;
-  tradesOpened: number;
-  tradesClosed: number;
-  signalsBlocked: number;
-}
-
-export interface ProtectionEntry {
-  atUtc: string;
-  category: string;
-  reason: string;
-  equityAtTime: number;
-  dailyDdUsedFraction: number;
-}
-
-export interface PipelineEvent {
-  seq: number;
-  simTimeUtc: string;
-  kind: string | null;
-  symbol: string | null;
-  strategyId: string | null;
-  reason: string | null;
-  detail: string | null;
-}
-
 export interface StrategySummary {
   id: string;
   displayName: string;

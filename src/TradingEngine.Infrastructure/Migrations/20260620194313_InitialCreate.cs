@@ -50,27 +50,6 @@ namespace TradingEngine.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "BarEvaluations",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    RunId = table.Column<string>(type: "TEXT", nullable: false),
-                    Symbol = table.Column<string>(type: "TEXT", nullable: false),
-                    Timeframe = table.Column<string>(type: "TEXT", nullable: false),
-                    BarOpenTimeUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    StrategyId = table.Column<string>(type: "TEXT", nullable: false),
-                    IndicatorValuesJson = table.Column<string>(type: "TEXT", nullable: false),
-                    SignalFired = table.Column<bool>(type: "INTEGER", nullable: false),
-                    SignalDirection = table.Column<string>(type: "TEXT", nullable: true),
-                    Reason = table.Column<string>(type: "TEXT", nullable: false),
-                    OccurredAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_BarEvaluations", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "Bars",
                 columns: table => new
                 {
@@ -102,28 +81,6 @@ namespace TradingEngine.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ConfigSets", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "DailyProtectionLedgers",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    RunId = table.Column<string>(type: "TEXT", nullable: true),
-                    Date = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    StartEquity = table.Column<decimal>(type: "TEXT", nullable: false),
-                    MinEquity = table.Column<decimal>(type: "TEXT", nullable: false),
-                    EndEquity = table.Column<decimal>(type: "TEXT", nullable: false),
-                    MaxDailyDdUsedFraction = table.Column<double>(type: "REAL", nullable: false),
-                    FinalGovernorState = table.Column<string>(type: "TEXT", nullable: false),
-                    BreachOccurred = table.Column<bool>(type: "INTEGER", nullable: false),
-                    TradesOpened = table.Column<int>(type: "INTEGER", nullable: false),
-                    TradesClosed = table.Column<int>(type: "INTEGER", nullable: false),
-                    SignalsBlocked = table.Column<int>(type: "INTEGER", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_DailyProtectionLedgers", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -260,30 +217,6 @@ namespace TradingEngine.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "PipelineEvents",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    RunId = table.Column<string>(type: "TEXT", nullable: false),
-                    Seq = table.Column<long>(type: "INTEGER", nullable: false),
-                    Stage = table.Column<string>(type: "TEXT", maxLength: 32, nullable: false),
-                    CorrelationId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    SimTimeUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    WallTimeUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    DetailJson = table.Column<string>(type: "TEXT", maxLength: 4096, nullable: false),
-                    PhaseBefore = table.Column<string>(type: "TEXT", maxLength: 32, nullable: true),
-                    PhaseAfter = table.Column<string>(type: "TEXT", maxLength: 32, nullable: true),
-                    GuardResult = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    Reason = table.Column<string>(type: "TEXT", maxLength: 512, nullable: true),
-                    StrategyId = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    NormalizedKind = table.Column<string>(type: "TEXT", maxLength: 32, nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_PipelineEvents", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "Positions",
                 columns: table => new
                 {
@@ -396,29 +329,6 @@ namespace TradingEngine.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "ProtectionLedgerEntries",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    LedgerId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    AtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    Category = table.Column<string>(type: "TEXT", nullable: false),
-                    Reason = table.Column<string>(type: "TEXT", nullable: false),
-                    EquityAtTime = table.Column<decimal>(type: "TEXT", nullable: false),
-                    DailyDdUsedFraction = table.Column<double>(type: "REAL", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ProtectionLedgerEntries", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_ProtectionLedgerEntries_DailyProtectionLedgers_LedgerId",
-                        column: x => x.LedgerId,
-                        principalTable: "DailyProtectionLedgers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "ExperimentRuns",
                 columns: table => new
                 {
@@ -442,16 +352,6 @@ namespace TradingEngine.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_BarEvaluations_RunId",
-                table: "BarEvaluations",
-                column: "RunId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_BarEvaluations_RunId_StrategyId_BarOpenTimeUtc",
-                table: "BarEvaluations",
-                columns: new[] { "RunId", "StrategyId", "BarOpenTimeUtc" });
-
-            migrationBuilder.CreateIndex(
                 name: "IX_Bars_RunId_Symbol_Timeframe_OpenTimeUtc",
                 table: "Bars",
                 columns: new[] { "RunId", "Symbol", "Timeframe", "OpenTimeUtc" });
@@ -460,16 +360,6 @@ namespace TradingEngine.Infrastructure.Migrations
                 name: "IX_ConfigSets_ContentHash",
                 table: "ConfigSets",
                 column: "ContentHash");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_DailyProtectionLedgers_Date",
-                table: "DailyProtectionLedgers",
-                column: "Date");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_DailyProtectionLedgers_RunId",
-                table: "DailyProtectionLedgers",
-                column: "RunId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Datasets_ContentHash",
@@ -517,21 +407,6 @@ namespace TradingEngine.Infrastructure.Migrations
                 column: "State");
 
             migrationBuilder.CreateIndex(
-                name: "IX_PipelineEvents_RunId_Seq",
-                table: "PipelineEvents",
-                columns: new[] { "RunId", "Seq" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ProtectionLedgerEntries_AtUtc",
-                table: "ProtectionLedgerEntries",
-                column: "AtUtc");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ProtectionLedgerEntries_LedgerId",
-                table: "ProtectionLedgerEntries",
-                column: "LedgerId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_TradeResults_ClosedAtUtc",
                 table: "TradeResults",
                 column: "ClosedAtUtc");
@@ -547,9 +422,6 @@ namespace TradingEngine.Infrastructure.Migrations
         {
             migrationBuilder.DropTable(
                 name: "BacktestRuns");
-
-            migrationBuilder.DropTable(
-                name: "BarEvaluations");
 
             migrationBuilder.DropTable(
                 name: "Bars");
@@ -579,16 +451,10 @@ namespace TradingEngine.Infrastructure.Migrations
                 name: "Orders");
 
             migrationBuilder.DropTable(
-                name: "PipelineEvents");
-
-            migrationBuilder.DropTable(
                 name: "Positions");
 
             migrationBuilder.DropTable(
                 name: "PropFirmRuleSets");
-
-            migrationBuilder.DropTable(
-                name: "ProtectionLedgerEntries");
 
             migrationBuilder.DropTable(
                 name: "RiskProfiles");
@@ -601,9 +467,6 @@ namespace TradingEngine.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "Experiments");
-
-            migrationBuilder.DropTable(
-                name: "DailyProtectionLedgers");
         }
     }
 }

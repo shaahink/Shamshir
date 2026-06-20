@@ -125,7 +125,6 @@ public static class EngineServiceCollectionExtensions
             o.UseSqlite($"Data Source={dbPath}"));
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
-        services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
         services.AddScoped<IDatasetRepository, SqliteDatasetRepository>();
         services.AddScoped<IConfigSetRepository, SqliteConfigSetRepository>();
@@ -146,7 +145,6 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton<IEventBus, TypedEventBus>();
         services.AddSingleton<EquityPersistenceHandler>();
         services.AddSingleton<TradePersistenceHandler>();
-        services.AddSingleton<ProtectionLedgerPersistenceHandler>();
         services.AddSingleton<BarPersistenceHandler>();
         services.AddSingleton<BufferedBarWriter>();
 
