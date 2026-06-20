@@ -131,6 +131,10 @@ public static class EngineServiceCollectionExtensions
         services.AddScoped<IConfigSetRepository, SqliteConfigSetRepository>();
         services.AddScoped<IStepRecordSink, SqliteStepRecordSink>();
         services.AddScoped<IJournalQueryRepository, SqliteJournalQueryRepository>();
+        // iter-36 K5: the single, lossless StepRecord journal the kernel engine writes to. Singleton per
+        // (inner) host = per run; drains on host dispose. Scope-per-flush bridge to the scoped SQLite sink.
+        services.AddSingleton<IJournalWriter>(sp => new ChannelJournalWriter(
+            new ScopedStepRecordSink(sp.GetRequiredService<IServiceScopeFactory>())));
         services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
         services.AddSingleton<PersistenceService>();
         services.AddSingleton<PipelineEventWriter>(sp => new PipelineEventWriter(
@@ -270,6 +274,7 @@ public static class EngineServiceCollectionExtensions
                 EquitySink = sp.GetService<IEquitySink>(),
                 Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
                 Journal = sp.GetRequiredService<IPipelineJournal>(),
+                StepJournal = sp.GetRequiredService<IJournalWriter>(),
             },
         });
 
@@ -425,6 +430,7 @@ public static class EngineServiceCollectionExtensions
                 EquitySink = sp.GetService<IEquitySink>(),
                 Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
                 Journal = sp.GetRequiredService<IPipelineJournal>(),
+                StepJournal = sp.GetRequiredService<IJournalWriter>(),
             },
         });
 

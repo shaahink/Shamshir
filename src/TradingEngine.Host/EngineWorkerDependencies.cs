@@ -51,4 +51,6 @@ public sealed record PersistenceServices
     public IEquitySink? EquitySink { get; init; }
     public IProgress<BacktestProgressEvent>? Progress { get; init; }
     public IPipelineJournal? Journal { get; init; }
+    // iter-36 K5: the single lossless StepRecord journal the kernel engine appends to.
+    public IJournalWriter? StepJournal { get; init; }
 }

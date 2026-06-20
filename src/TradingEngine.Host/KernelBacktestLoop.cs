@@ -222,9 +222,17 @@ public sealed class KernelBacktestLoop
     private StepRecord BuildStepRecord(long seq, EngineEvent evt, EngineDecision decision, EngineState state)
     {
         var effectKinds = new string[decision.Effects.Count];
+        string? decisionReason = null;
         for (var i = 0; i < decision.Effects.Count; i++)
         {
-            effectKinds[i] = decision.Effects[i].GetType().Name;
+            var eff = decision.Effects[i];
+            effectKinds[i] = eff.GetType().Name;
+            // Surface the gate verdict (accept/reject + why) onto the StepRecord — the PreTradeGate reason
+            // travels on the RecordDecisionEvent effect (iter-36 K5; was hard-coded null).
+            if (decisionReason is null && eff is RecordDecisionEvent rde)
+            {
+                decisionReason = rde.Decision.Reason;
+            }
         }
 
         // Fold the per-bar evaluator verdicts/regime onto the BarClosed record (the per-bar "why"). The
@@ -244,7 +252,7 @@ public sealed class KernelBacktestLoop
             EffectsJson: JsonSerializer.Serialize(decision.Effects, Json),
             Risk: _captureRisk(state),
             Regime: regime,
-            DecisionReason: null,
+            DecisionReason: decisionReason,
             StrategyVerdicts: verdicts);
     }
 }

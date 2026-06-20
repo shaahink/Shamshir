@@ -34,6 +34,7 @@ public sealed class EngineRunner
     private readonly ISignalGate? _signalGate;
     private readonly IEffectExecutor _effects;
     private readonly IProgress<BacktestProgressEvent>? _progress;
+    private readonly IJournalWriter _journal;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
 
     private readonly IndicatorSnapshotService _indicatorSnapshot;
@@ -61,6 +62,7 @@ public sealed class EngineRunner
         _effects = deps.Persistence.EffectExecutor
             ?? throw new InvalidOperationException("EffectExecutor is required for the kernel engine (iter-36 K4).");
         _progress = deps.Persistence.Progress;
+        _journal = deps.Persistence.StepJournal ?? new NullJournalWriter();
         _logger = logger;
 
         _indicatorSnapshot = new IndicatorSnapshotService(deps.Market.Indicators, _strategies);
@@ -134,10 +136,9 @@ public sealed class EngineRunner
 
         var kernel = new Kernel(config);
         var queue = new InMemoryEngineEventQueue();
-        var journal = new NullJournalWriter(); // K5: swap for the lossless SqliteStepRecordSink
 
         return new KernelBacktestLoop(
-            kernel, _evaluator, _effects, _broker, queue, journal,
+            kernel, _evaluator, _effects, _broker, queue, _journal,
             advanceVenue: bar => { UpdateCrossRates(bar); _broker.OnBarObserved(bar); },
             initialBalance, _runContext.RunId, _logger,
             captureRisk: RiskSnapshots.Capture,

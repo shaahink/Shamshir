@@ -153,6 +153,35 @@ subtly wrong, not just unfinished):**
 - D. Wire trailing into the kernel loop (gap 3).
 - E. Verify via cTrader e2e; reconcile.
 
+## K5 — One journal (PARTIAL: production wiring landed; deletions deferred)
+
+**Landed (committed, green):**
+- The kernel engine now **journals losslessly to SQLite**: `EngineRunner` writes through the singleton
+  `ChannelJournalWriter` (Wait-mode, retry, drain-on-dispose) → `ScopedStepRecordSink` (scope-per-flush) →
+  `SqliteStepRecordSink` → `JournalEntries`. Registered in DI + threaded via
+  `EngineWorkerDependencies.Persistence.StepJournal`. (Was `NullJournalWriter`.)
+- **`DecisionReason` threaded** onto every `StepRecord` (the `PreTradeGate` accept/reject reason, off the
+  `RecordDecisionEvent` effect — was hard-coded null) + per-strategy **verdicts/regime folded** onto the
+  `BarClosed` record (from K1's `BarEvaluator.Latest`).
+- The lossless infrastructure + tests already existed and stay green: `JournalLosslessTests` (burst:
+  500 into capacity-8 → 0 dropped; retry: failed batch retried, 0 lost); `SqliteJournalQueryRepository`
+  reads `StepRecord`s SQL-paged by `seq`.
+
+**Deferred (the K5 *deletion* gate — a large cascade, lower-risk to defer since the journal is now written):**
+- Delete `PipelineEventWriter` + `BarEvaluationHandler` (+ their `DropOldest` channels) and repoint
+  `EffectExecutor.RecordDecisionEvent` off `IDecisionJournal` — blocked by the **test oracle**
+  (`EngineHarnessBuilder`/golden tests assert on `IDecisionJournal`) + `BacktestOrchestrator`'s flush +
+  `WireEventHandlers(BarEvaluated)`. Do alongside trimming the oracle.
+- Repoint `GET /api/runs/{id}/journal` to `SqliteJournalQueryRepository` (StepRecords) — coordinate with
+  the iter-37 frontend that consumes the journal shape.
+- ⇒ "exactly one journal writer / `DropOldest`→0" is NOT yet met; the StepRecord journal is now the
+  primary, written-by-production journal, but `PipelineEvents` still co-exists for the oracle + current API.
+
+## K6 — Real replay + duplicate (NOT STARTED)
+Rewrite `ReplayRunner` to drive the kernel loop through the real `EffectExecutor` + `BacktestReplayAdapter`;
+delete `ReplayEffectExecutor` + `ReplaySinkRead`; wire `Run=(DatasetId, ConfigSetId, Seed)` +
+`POST /api/runs/{id}/duplicate`. The kernel loop + `RunFromBrokerAsync` (K4) are the engine it reuses.
+
 ---
 
 ## cTrader live-verification follow-ups (accumulating; resolved in K7)
