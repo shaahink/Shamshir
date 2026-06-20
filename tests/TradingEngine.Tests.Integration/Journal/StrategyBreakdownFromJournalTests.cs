@@ -5,6 +5,7 @@ using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
 using TradingEngine.Web.Services;
+using TradingEngine.Tests.Integration.Support;
 
 namespace TradingEngine.Tests.Integration.Journal;
 
@@ -17,19 +18,17 @@ namespace TradingEngine.Tests.Integration.Journal;
 public sealed class StrategyBreakdownFromJournalTests : IDisposable
 {
     private const string Run = "run-fnl";
-    private readonly string _dbPath;
+    private readonly SqliteInMemory _db = new();
     private readonly ServiceProvider _sp;
 
     public StrategyBreakdownFromJournalTests()
     {
-        _dbPath = Path.Combine(Path.GetTempPath(), $"shamshir-fnl-{Guid.NewGuid():N}.db");
         var services = new ServiceCollection();
-        services.AddDbContext<TradingDbContext>(o => o.UseSqlite($"Data Source={_dbPath}"));
+        services.AddDbContext<TradingDbContext>(o => o.UseSqlite(_db.Connection));
         _sp = services.BuildServiceProvider();
 
         using var scope = _sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-        db.Database.EnsureCreated();
 
         var opts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         // 3 bars. Strategy A fires once then is RSI_NEUTRAL twice; strategy B never fires (NO_REGIME ×3).
@@ -59,7 +58,7 @@ public sealed class StrategyBreakdownFromJournalTests : IDisposable
     public void Dispose()
     {
         _sp.Dispose();
-        try { File.Delete(_dbPath); } catch { /* best-effort */ }
+        _db.Dispose();
     }
 
     [Fact]

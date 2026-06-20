@@ -5,6 +5,7 @@ using TradingEngine.Infrastructure.Persistence.Entities;
 using TradingEngine.Web.Api;
 using TradingEngine.Web.Dtos.Trades;
 using TradingEngine.Web.Services;
+using TradingEngine.Tests.Integration.Support;
 
 namespace TradingEngine.Tests.Integration.Bars;
 
@@ -17,19 +18,11 @@ namespace TradingEngine.Tests.Integration.Bars;
 [Trait("Category", "Infrastructure")]
 public sealed class ChartDataTests : IDisposable
 {
-    private readonly string _dbPath;
+    private readonly SqliteInMemory _db = new();
 
-    public ChartDataTests()
-    {
-        _dbPath = Path.Combine(Path.GetTempPath(), $"shamshir-chart-{Guid.NewGuid():N}.db");
-        using var db = NewContext();
-        db.Database.EnsureCreated();
-    }
+    private TradingDbContext NewContext() => _db.NewContext();
 
-    private TradingDbContext NewContext() =>
-        new(new DbContextOptionsBuilder<TradingDbContext>().UseSqlite($"Data Source={_dbPath}").Options);
-
-    public void Dispose() { try { File.Delete(_dbPath); } catch { /* best-effort */ } }
+    public void Dispose() => _db.Dispose();
 
     [Fact]
     public async Task Bars_DedupByTimestamp()

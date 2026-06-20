@@ -4,6 +4,7 @@ using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Caching;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Repositories;
+using TradingEngine.Tests.Integration.Support;
 
 namespace TradingEngine.Tests.Integration.Bars;
 
@@ -16,21 +17,18 @@ namespace TradingEngine.Tests.Integration.Bars;
 [Trait("Category", "Infrastructure")]
 public sealed class PerRunBarPersistenceTests : IDisposable
 {
-    private readonly string _dbPath;
+    private readonly SqliteInMemory _db = new();
     private readonly ServiceProvider _sp;
 
     public PerRunBarPersistenceTests()
     {
-        _dbPath = Path.Combine(Path.GetTempPath(), $"shamshir-bars-{Guid.NewGuid():N}.db");
         var services = new ServiceCollection();
-        services.AddDbContext<TradingDbContext>(o => o.UseSqlite($"Data Source={_dbPath}"));
+        services.AddDbContext<TradingDbContext>(o => o.UseSqlite(_db.Connection));
         services.AddScoped<IBarRepository, SqliteBarRepository>();
         _sp = services.BuildServiceProvider();
-        using var scope = _sp.CreateScope();
-        scope.ServiceProvider.GetRequiredService<TradingDbContext>().Database.EnsureCreated();
     }
 
-    public void Dispose() { _sp.Dispose(); try { File.Delete(_dbPath); } catch { /* best-effort */ } }
+    public void Dispose() { _sp.Dispose(); _db.Dispose(); }
 
     [Fact]
     public async Task BarIngested_PersistsPerRunBars()

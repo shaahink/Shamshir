@@ -1,30 +1,28 @@
 using System.Text;
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
 using TradingEngine.Infrastructure.Persistence.Repositories;
+using TradingEngine.Tests.Integration.Support;
 
 namespace TradingEngine.Tests.Integration.Journal;
 
 /// <summary>
 /// iter-37 Phase J (J4) — the journal read-path that the consolidated download + paged journal view use.
-/// Seeds a temp SQLite DB with a known StepRecord stream and proves SQL paging by <c>Seq</c> is stable
-/// (no overlap/gap) and the NDJSON export round-trips (one valid JSON object per line, in seq order).
+/// Seeds an in-memory SQLite DB with a known StepRecord stream and proves SQL paging by <c>Seq</c> is
+/// stable (no overlap/gap) and the NDJSON export round-trips (one valid JSON object per line, in seq order).
 /// </summary>
 [Trait("Category", "Infrastructure")]
 public sealed class JournalReadPathTests : IDisposable
 {
     private const string Run = "run-jrnl";
     private const int N = 25;
-    private readonly string _dbPath;
+    private readonly SqliteInMemory _db = new();
 
     public JournalReadPathTests()
     {
-        _dbPath = Path.Combine(Path.GetTempPath(), $"shamshir-jrnl-{Guid.NewGuid():N}.db");
         using var db = NewContext();
-        db.Database.EnsureCreated();
         var risk = JsonSerializer.Serialize(new RiskSnapshot(10_000m, 10_000m, 0m, 0m, 0m, 0m, 0m, false, null, "Normal", 0));
         for (var i = 1; i <= N; i++)
         {
@@ -45,13 +43,9 @@ public sealed class JournalReadPathTests : IDisposable
         db.SaveChanges();
     }
 
-    private TradingDbContext NewContext() =>
-        new(new DbContextOptionsBuilder<TradingDbContext>().UseSqlite($"Data Source={_dbPath}").Options);
+    private TradingDbContext NewContext() => _db.NewContext();
 
-    public void Dispose()
-    {
-        try { File.Delete(_dbPath); } catch { /* best-effort temp cleanup */ }
-    }
+    public void Dispose() => _db.Dispose();
 
     [Fact]
     public async Task Journal_Query_Paged_StableAcrossPages()
