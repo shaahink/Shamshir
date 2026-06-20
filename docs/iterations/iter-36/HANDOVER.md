@@ -177,10 +177,24 @@ subtly wrong, not just unfinished):**
 - ⇒ "exactly one journal writer / `DropOldest`→0" is NOT yet met; the StepRecord journal is now the
   primary, written-by-production journal, but `PipelineEvents` still co-exists for the oracle + current API.
 
-## K6 — Real replay + duplicate (NOT STARTED)
-Rewrite `ReplayRunner` to drive the kernel loop through the real `EffectExecutor` + `BacktestReplayAdapter`;
-delete `ReplayEffectExecutor` + `ReplaySinkRead`; wire `Run=(DatasetId, ConfigSetId, Seed)` +
-`POST /api/runs/{id}/duplicate`. The kernel loop + `RunFromBrokerAsync` (K4) are the engine it reuses.
+## K6 — Real replay + duplicate (PARTIAL: fake deleted; duplicate endpoint deferred)
+
+**Landed (committed):**
+- **Deleted the fake replay path** — `ReplayRunner` + `ReplayEffectExecutor` (price-0/`EURUSD`/`MinValue`
+  fabrication) + `ReplaySinkRead`. They were dead iter-35 skeleton code (no callers / DI / tests), so the
+  K6 grep gate (`ReplayEffectExecutor|ReplaySinkRead` → 0 in `src`) is met cleanly.
+- **Real replay is now the K4 kernel loop's determinism:** re-running a backtest `(dataset, config, seed)`
+  reproduces the prior run **bit-identically** — proven by `KernelBacktestLoopGoldenTests`'
+  `KernelLoop_IsDeterministic_AcrossRuns` (full StepRecord journal byte-identical across two runs) +
+  `DeterminismTests`. The fake CSV/price-0 shortcut the plan warned about is gone; replay runs the same
+  `EffectExecutor` + venue as production.
+
+**Deferred (the duplicate *feature*):**
+- `Run = (DatasetId=content-hash(bars), ConfigSetId=hash(effective config), Seed)` populated on the
+  production run (the `IDatasetRepository`/`IConfigSetRepository` entities exist) + `ParentRunId`.
+- `POST /api/runs/{id}/duplicate` (optional `StrategyIds`/`RiskProfileId`/`StrategyOverrides`) → a new run
+  over the same `DatasetId`, new `ConfigSetId`, executed via the same kernel loop. The engine to reuse is
+  in place (`BacktestOrchestrator.Start` + the K4 kernel loop); this is API + identity-hashing plumbing.
 
 ---
 
