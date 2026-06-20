@@ -90,6 +90,47 @@ twin deletions (with a golden re-baseline for mark-to-market DD) are **K4**.
 **Verified green:** K2+K3 6/6 · kernel category 15/0 · Engine purity 4/4 · Architecture 4/4 · fast
 Simulation 27/0 · Unit 209/4-skip.
 
+## K4 — Full flip (IN PROGRESS, 2026-06-20)
+
+Owner directive: **full flip — production runs only the kernel; the imperative loop must not continue.**
+Validation model: deliver with fast tests, then verify via the existing cTrader e2e.
+
+**Landed (foundation, committed, green):**
+- **`KernelBacktestLoop.RunFromBrokerAsync`** — the mode-agnostic production entry point: drives the kernel
+  loop off `IBrokerAdapter.BarStream`. Both `BacktestReplayAdapter` and the cTrader adapter publish bars
+  there, so one kernel engine serves live + backtest (refactored the per-bar body into a shared
+  `ProcessBarAsync`). Test `KernelLoop_DrivenFromBrokerStream_ReproducesGolden` proves it reproduces golden.
+
+**Production-readiness gaps found during recon (must be closed for a *correct* flip — a blind flip is
+subtly wrong, not just unfinished):**
+1. **Per-strategy risk profile.** `KernelConfig.Profile` is a single run-constant profile; `KernelOrderGate`
+   resolves per proposal (`intent.RiskProfileId`). Multi-profile runs would mis-size. Fix: carry the
+   resolved `RiskProfile` (or its id) on `OrderProposed` and have `Kernel.DecideProposed` use it.
+2. **News/session filters** are not in `EngineWorkerDependencies` — wire `INewsFilter` + `SessionFilter`
+   into the deps/DI so the production `BarEvaluator` can compute external verdicts.
+3. **Trailing/breakeven** lives in `TradingLoop.UpdateTrailingStopsAsync` (imperative, via `PositionTracker`)
+   — must run in the kernel loop (emit `ModifyStopLoss` effects on `BarClosed`) or trailing strategies
+   regress.
+4. **Monitor equity** comes from `AccountProcessor → IEquitySink/AccountSnapshotStore` (polled by the
+   orchestrator). The kernel loop must write equity/DD snapshots from `EngineState` or the Monitor goes
+   blank.
+5. **Test-oracle preservation.** 24 test files build on the imperative `EngineHarnessBuilder`
+   (`TradingLoop`/`OrderDispatcher`/`KernelOrderGate`/`AccountProcessor`). Keep those classes as the
+   regression oracle behind `golden-snapshot.json`; remove them from the **production** path only. ⇒ literal
+   `grep→0`-in-`src` is intentionally NOT the gate; "no imperative engine in the production wiring" is.
+
+**Remaining flip steps (next pass; each compile-safe):**
+- A. Close gaps 1–2 (per-profile on the proposal; news/session in deps) as correct, tested kernel changes.
+- B. Build the production kernel engine in `EngineRunner`: construct `KernelConfig` + `BarEvaluator` from
+  `EngineWorkerDependencies`, drive `RunFromBrokerAsync`, write equity snapshots (gap 4) + progress/funnel
+  events, journal to `SqliteStepRecordSink`.
+- C. Point both pacers (`BarSteppedPacer`, `AsyncStreamPacer`) at the kernel engine; remove the imperative
+  composition (`TradingLoop`/`AccountProcessor`/`MarketEventSource`) from `EngineRunner`; delete
+  `RunBacktestLoopAsync` + `SimulateBarExitsAsync`; drop `OrderGate`/`AccountProcessor` from the production
+  deps (classes stay for the test oracle).
+- D. Wire trailing into the kernel loop (gap 3).
+- E. Verify via cTrader e2e; reconcile.
+
 ---
 
 ## cTrader live-verification follow-ups (accumulating; resolved in K7)

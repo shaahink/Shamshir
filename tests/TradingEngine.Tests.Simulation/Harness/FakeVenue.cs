@@ -156,6 +156,7 @@ public sealed class FakeVenue : IBrokerAdapter
     public Task CompleteBarAsync(CancellationToken ct) => Task.CompletedTask;
 
     public void PostBar(Bar bar) => _barChannel.Writer.TryWrite(bar);
+    public void CompleteBars() => _barChannel.Writer.TryComplete();
     public void PostAccount(AccountUpdate update) => _accountChannel.Writer.TryWrite(update);
 
     public IReadOnlyList<ExecutionEvent> DrainExecutions()

@@ -62,6 +62,21 @@ public sealed class KernelBacktestLoopGoldenTests
         run1.JournalJson.Should().Be(run2.JournalJson,
             "the kernel backtest loop must be bit-identical across two runs of the same tape");
     }
+
+    [Fact]
+    public async Task KernelLoop_DrivenFromBrokerStream_ReproducesGolden()
+    {
+        // The production entry point (RunFromBrokerAsync) drives off the venue's BarStream — the
+        // mode-agnostic path live + backtest share (iter-36 K4). It must produce the same result as the
+        // tape driver.
+        var run = await KernelLoopHarness.RunGoldenAsync(viaBrokerStream: true);
+        var golden = GoldenSnapshotLoader.Load();
+
+        run.ClosedTrades.Should().HaveCount(golden.Trades.Count);
+        run.ClosedTrades[0].Result.ExitReason.Should().Be(golden.Trades[0].ExitReason);
+        run.ClosedTrades[0].Result.Lots.Should().Be(golden.Trades[0].Lots);
+        run.Final.Drawdown.CurrentMaxDrawdown.Should().Be(golden.FinalRisk.CurrentMaxDrawdown);
+    }
 }
 
 /// <summary>
@@ -92,7 +107,7 @@ internal static class KernelLoopHarness
         EngineState Final,
         string JournalJson);
 
-    public static async Task<Result> RunGoldenAsync()
+    public static async Task<Result> RunGoldenAsync(bool viaBrokerStream = false)
     {
         var bars = GoldenBarFixture.Create();
         const decimal initialBalance = 10_000m;
@@ -195,7 +210,18 @@ internal static class KernelLoopHarness
             DrawdownReducer.CreateInitial(initialBalance, "Fixed"),
             0, ProtectionState.None, AccountView.Flat);
 
-        var finalState = await loop.RunAsync(tape, initialState, CancellationToken.None);
+        EngineState finalState;
+        if (viaBrokerStream)
+        {
+            // Production path: bars arrive on the venue's BarStream; drive via RunFromBrokerAsync.
+            foreach (var b in bars) venue.PostBar(b);
+            venue.CompleteBars();
+            finalState = await loop.RunFromBrokerAsync(initialState, CancellationToken.None);
+        }
+        else
+        {
+            finalState = await loop.RunAsync(tape, initialState, CancellationToken.None);
+        }
 
         return new Result(eventBus.OfType<TradeClosed>(), finalState, journal.Serialize());
     }

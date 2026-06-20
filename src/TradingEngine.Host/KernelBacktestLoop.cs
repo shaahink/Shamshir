@@ -70,48 +70,79 @@ public sealed class KernelBacktestLoop
         _realizedEquity = realizedEquity;
     }
 
+    /// <summary>Drive a recorded tape (tests / deterministic replay) to completion.</summary>
     public async Task<EngineState> RunAsync(IEventTape tape, EngineState initial, CancellationToken ct)
     {
         var state = initial;
 
         await foreach (var tapeEvent in tape.ReadAsync(ct))
         {
-            if (tapeEvent is not BarClosed bar)
+            if (tapeEvent is BarClosed bar)
+            {
+                state = await ProcessBarAsync(bar, state, ct);
+            }
+            else
             {
                 // Non-bar tape events (future: ticks) just go through the pump.
                 _queue.Enqueue(tapeEvent);
                 state = await PumpAsync(state, ct);
-                continue;
             }
-
-            var barModel = new Bar(bar.Symbol, bar.Timeframe, bar.BarOpenTimeUtc, bar.Open, bar.High, bar.Low, bar.Close, 0);
-            _advanceVenue(barModel);
-
-            // Drain any venue feedback the bar-advance produced (resting-limit fills/expiries, the
-            // per-bar mark-to-market account update) before evaluating this bar.
-            state = await PumpAsync(state, ct);
-
-            var eval = await _evaluator.EvaluateAsync(bar, state, ct);
-            foreach (var proposal in eval.Proposals)
-            {
-                _queue.Enqueue(proposal);
-            }
-            _queue.Enqueue(bar);
-
-            state = await PumpAsync(state, ct);
-
-            // Equity → drawdown + breach. Realized model (initial + closed net PnL) for golden parity;
-            // production uses the venue's mark-to-market account stream (drained inside the pump).
-            if (_realizedEquity is not null)
-            {
-                _queue.Enqueue(new EquityObserved(_initialBalance, _realizedEquity(), 0m, bar.BarOpenTimeUtc));
-                state = await PumpAsync(state, ct);
-            }
-
-            await _venue.CompleteBarAsync(ct);
         }
 
         await _journal.FlushAsync(ct);
+        return state;
+    }
+
+    /// <summary>
+    /// Drive the <b>live or backtest</b> engine off the venue's <see cref="IBrokerAdapter.BarStream"/> —
+    /// the mode-agnostic production entry point (iter-36 K4). Both <c>BacktestReplayAdapter</c> and the
+    /// cTrader adapter publish bars on that stream, so the same kernel loop serves both; the only
+    /// difference is the adapter. Runs until the bar stream completes.
+    /// </summary>
+    public async Task<EngineState> RunFromBrokerAsync(EngineState initial, CancellationToken ct)
+    {
+        var state = initial;
+
+        await foreach (var bar in _venue.BarStream.ReadAllAsync(ct))
+        {
+            var barClosed = new BarClosed(bar.Symbol, bar.Timeframe, bar.Open, bar.High, bar.Low, bar.Close, bar.OpenTimeUtc);
+            state = await ProcessBarAsync(barClosed, state, ct);
+        }
+
+        await _journal.FlushAsync(ct);
+        return state;
+    }
+
+    /// <summary>One bar through the kernel: advance the venue, drain prior feedback, evaluate → proposals,
+    /// pump to quiescence, observe equity, pump again. The single per-bar unit shared by the tape driver
+    /// and the broker-stream driver.</summary>
+    private async Task<EngineState> ProcessBarAsync(BarClosed bar, EngineState state, CancellationToken ct)
+    {
+        var barModel = new Bar(bar.Symbol, bar.Timeframe, bar.BarOpenTimeUtc, bar.Open, bar.High, bar.Low, bar.Close, 0);
+        _advanceVenue(barModel);
+
+        // Drain any venue feedback the bar-advance produced (resting-limit fills/expiries, the per-bar
+        // mark-to-market account update) before evaluating this bar.
+        state = await PumpAsync(state, ct);
+
+        var eval = await _evaluator.EvaluateAsync(bar, state, ct);
+        foreach (var proposal in eval.Proposals)
+        {
+            _queue.Enqueue(proposal);
+        }
+        _queue.Enqueue(bar);
+
+        state = await PumpAsync(state, ct);
+
+        // Equity → drawdown + breach. Realized model (initial + closed net PnL) for golden parity;
+        // production uses the venue's mark-to-market account stream (drained inside the pump).
+        if (_realizedEquity is not null)
+        {
+            _queue.Enqueue(new EquityObserved(_initialBalance, _realizedEquity(), 0m, bar.BarOpenTimeUtc));
+            state = await PumpAsync(state, ct);
+        }
+
+        await _venue.CompleteBarAsync(ct);
         return state;
     }
 
