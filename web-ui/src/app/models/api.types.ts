@@ -71,14 +71,21 @@ export interface TradeSummary {
   tpPrice?: number;
 }
 
+// iter-36 K5: the journal is now the lossless StepRecord stream (GET /api/runs/{id}/journal). eventKind
+// is the StepRecord event type; decisionReason is the gate accept/reject reason. Legacy fields kept
+// optional so older views compile during the iter-37 journal-surface migration.
 export interface JournalEntry {
   seq: number;
   simTimeUtc: string;
-  kind: string | null;
-  symbol: string | null;
-  strategyId: string | null;
-  reason: string | null;
-  detail: string | null;
+  eventKind?: string | null;
+  effectKinds?: string[] | null;
+  decisionReason?: string | null;
+  regime?: string | null;
+  kind?: string | null;
+  symbol?: string | null;
+  strategyId?: string | null;
+  reason?: string | null;
+  detail?: string | null;
 }
 
 export interface EquityPoint {

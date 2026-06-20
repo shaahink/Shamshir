@@ -204,6 +204,67 @@ public sealed class KernelEvaluatorEquivalenceTests
     }
 
     [Fact]
+    public void Kernel_SizesWithPerProposalProfile_NotRunConstantProfile()
+    {
+        // K4 gap-1: a multi-profile run must size each proposal with ITS strategy's resolved profile, not
+        // the run-constant KernelConfig.Profile. The config here carries the PercentRisk StandardProfile
+        // (→ 0.20 lots on this fixture); a proposal carrying a FixedLots(0.05) profile must size to 0.05.
+        var kernel = new Kernel(BuildConfig());
+        var state = InitialState() with { Account = new AccountView(10_000m, 10_000m, 0m) };
+        var simTime = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc); // Monday — no weekend block.
+
+        OrderProposed Propose(RiskProfile? profile) => new(
+            new Guid("22222222-2222-2222-2222-222222222222"), Eurusd, TradeDirection.Long, OrderType.Market,
+            null, new Price(1.0920m), new Price(1.1100m), "always-signal", 1.0970m, 50m, 10m, simTime, default, profile);
+
+        // Control: Profile == null ⇒ falls back to the run-constant StandardProfile (PercentRisk → 0.20).
+        var fallback = kernel.Decide(state, Propose(null));
+        fallback.Effects.OfType<SubmitOrder>().Should().ContainSingle().Subject
+            .Lots.Should().Be(0.20m, "with no per-proposal profile the kernel sizes with the run profile (PercentRisk)");
+
+        // The proposal carries a FixedLots(0.05) profile ⇒ the kernel sizes 0.05, proving it used p.Profile.
+        var perProposalProfile = StandardProfile with { LotSizingMethod = LotSizingMethod.FixedLots, FixedLots = 0.05m };
+        var perProposal = kernel.Decide(state, Propose(perProposalProfile));
+        perProposal.Effects.OfType<SubmitOrder>().Should().ContainSingle().Subject
+            .Lots.Should().Be(0.05m, "the kernel must size with the profile carried on the proposal, not KernelConfig.Profile");
+    }
+
+    [Fact]
+    public void Kernel_AppliesTrailingStopMove_UpdatesStateAndEmitsModifyEffect()
+    {
+        // K4 gap-3: a StopLossModifyRequested (the trailing/breakeven decision, computed outside the kernel)
+        // must purely update the authoritative stop on EngineState AND emit a ModifyStopLoss effect carrying
+        // the position's TP, so a trailed stop reaches the venue + the next bar's exit detection uses it.
+        var kernel = new Kernel(BuildConfig());
+        var state = InitialState() with { Account = new AccountView(10_000m, 10_000m, 0m) };
+        var simTime = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var orderId = new Guid("33333333-3333-3333-3333-333333333333");
+        var entry = new Price(1.0970m);
+        var tp = new Price(1.1100m);
+
+        // Open a position: propose → submit, then a fill moves it to Open.
+        var proposal = new OrderProposed(orderId, Eurusd, TradeDirection.Long, OrderType.Market,
+            null, new Price(1.0920m), tp, "always-signal", entry.Value, 50m, 10m, simTime, default, StandardProfile);
+        state = kernel.Decide(state, proposal).State;
+        state = kernel.Decide(state, new OrderFilled(orderId, Eurusd, 0.20m, entry, simTime.AddSeconds(1))).State;
+        state.Positions[orderId].Phase.Should().Be(PositionPhase.Open, "the fill opens the position");
+
+        // Trail the stop up to 1.0950 (favourable for a long).
+        var newSl = new Price(1.0950m);
+        var decision = kernel.Decide(state, new StopLossModifyRequested(orderId, newSl, simTime.AddHours(1)));
+
+        decision.State.Positions[orderId].CurrentStopLoss.Should().Be(newSl,
+            "the reducer updates the authoritative stop so the NEXT bar's SL detection uses the trailed value");
+        var modify = decision.Effects.OfType<ModifyStopLoss>().Should().ContainSingle().Subject;
+        modify.NewStopLoss.Should().Be(newSl);
+        modify.TakeProfit.Should().Be(tp, "the modify must preserve the position's TP on the venue (not clear it)");
+
+        // A move for an unknown / non-open position is a no-op (no effect).
+        var noop = kernel.Decide(decision.State, new StopLossModifyRequested(Guid.NewGuid(), newSl, simTime.AddHours(2)));
+        noop.Effects.Should().BeEmpty("trailing a position the kernel doesn't hold open must not emit an effect");
+    }
+
+    [Fact]
     public async Task Evaluator_FreezesWeekendVerdict_AtBarSimTime()
     {
         // Six H1 bars on a Saturday (2024-01-06). AlwaysSignalStrategy fires on bar 6; the evaluator must

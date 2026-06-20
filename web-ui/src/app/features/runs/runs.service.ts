@@ -62,4 +62,18 @@ export class RunsApiService {
   getRunAnalytics(runId: string): Promise<RunAnalytics> {
     return firstValueFrom(this.http.get<RunAnalytics>(`/api/runs/${runId}/analytics`));
   }
+
+  // iter-36 K6 / iter-37 F3 — "duplicate with changes": re-run the source over the SAME dataset with an
+  // optionally-changed strategy set / risk profile / overrides. Returns the new run id (parent linked).
+  duplicateRun(
+    sourceRunId: string,
+    body?: { strategyIds?: string[]; riskProfileId?: string; venue?: string; strategyOverrides?: Record<string, Record<string, unknown>> },
+  ): Promise<StartRunResponse> {
+    return firstValueFrom(this.http.post<StartRunResponse>(`/api/runs/${sourceRunId}/duplicate`, body ?? {}));
+  }
+
+  // iter-37 F3 — NDJSON download of the lossless StepRecord journal.
+  journalExportUrl(runId: string): string {
+    return `/api/runs/${runId}/journal/export`;
+  }
 }

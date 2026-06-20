@@ -109,11 +109,16 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                     o.UseSqlite($"Data Source={dbPath}"));
                 services.AddScoped<ITradeRepository, SqliteTradeRepository>();
                 services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+                // iter-36 K5: wire the single lossless StepRecord journal so the in-host replay produces
+                // JournalEntries (the per-bar "why" + decisions now live here, not the deleted BarEvaluations).
+                services.AddScoped<IStepRecordSink, SqliteStepRecordSink>();
+                services.AddSingleton<TradingEngine.Domain.IJournalWriter>(sp =>
+                    new TradingEngine.Engine.ChannelJournalWriter(
+                        new ScopedStepRecordSink(sp.GetRequiredService<Microsoft.Extensions.DependencyInjection.IServiceScopeFactory>())));
                 services.AddSingleton<PersistenceService>();
 
                 services.AddSingleton<IEventBus, TypedEventBus>();
                 services.AddSingleton<TradePersistenceHandler>();
-                services.AddSingleton<BarEvaluationHandler>();
                 services.AddSingleton<EquityPersistenceHandler>();
 
                 services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
@@ -170,9 +175,9 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                         Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
                         StrategyBank = sp.GetRequiredService<IStrategyBank>(),
                         RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
-                        OrderGate = sp.GetRequiredService<OrderDispatcher>(),
                         PositionTracker = sp.GetRequiredService<PositionTracker>(),
                         EntryPlanner = sp.GetRequiredService<TradingEngine.Services.EntryPlanner>(),
+                        PositionManager = sp.GetRequiredService<IPositionManager>(),
                         SignalGate = sp.GetRequiredService<ISignalGate>(),
                     },
                     Persistence = new PersistenceServices
@@ -182,6 +187,7 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                         EffectExecutor = sp.GetRequiredService<EffectExecutor>(),
                         Progress = null,
                         Journal = null,
+                        StepJournal = sp.GetRequiredService<TradingEngine.Domain.IJournalWriter>(),
                     },
                 });
                 services.AddSingleton<EngineWorker>();
@@ -200,8 +206,6 @@ public sealed class ReplayTestHarness : IAsyncDisposable
             host.Services.GetRequiredService<EquityPersistenceHandler>());
         eventBus.Subscribe<TradeClosed>(
             host.Services.GetRequiredService<TradePersistenceHandler>());
-        eventBus.Subscribe<BarEvaluated>(
-            host.Services.GetRequiredService<BarEvaluationHandler>());
 
         return new ReplayTestHarness(host, dbPath);
     }

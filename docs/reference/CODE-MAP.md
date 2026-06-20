@@ -3,6 +3,24 @@
 **For**: Any agent needing to find "where is X implemented" without grepping the codebase.
 **Updated**: 2026-06-18 (iter/31-costs-journal)
 
+> ## ⚠ iter-36 UPDATE (2026-06-20) — kernel cutover; some entries below are pre-cutover
+> - **Engine (production):** `Host/EngineRunner` → `Host/KernelBacktestLoop.RunFromBrokerAsync` →
+>   `Host/BarEvaluator` (signals→`OrderProposed`) → `Engine/Kernel/Kernel` (`PreTradeGate`+`KernelSizing`) →
+>   `Host/EffectExecutor` → venue + `Host/KernelFeedback`. Trailing: `Host/KernelTrailingEvaluator` →
+>   `StopLossModifyRequested` (reducer). Equity snapshot: `Host/KernelEquitySnapshot`.
+> - **Imperative twins are TEST-ONLY now:** `OrderDispatcher`/`KernelOrderGate`/`AccountProcessor` live in
+>   `tests/TradingEngine.Tests.Support` (golden oracle, D81), NOT `src`. `TradingLoop`/`PositionTracker`
+>   remain in `src` (oracle shell + tracker) but are not in the production engine path.
+> - **Journal:** single lossless StepRecord stream — `Engine/Kernel/ChannelJournalWriter` →
+>   `Host/ScopedStepRecordSink` → `Infrastructure/.../SqliteStepRecordSink` (`JournalEntries`). Query:
+>   `Infrastructure/.../SqliteJournalQueryRepository`; API: `Web/Api/RunsController` `/journal` + `/journal/export`.
+>   `PipelineEventWriter`/`BarEvaluationHandler` are **deleted** (D83); `NullDecisionJournal`/`NullPipelineJournal`
+>   (`Infrastructure/NullJournals.cs`) bind legacy consumers.
+> - **Duplicate/identity:** `Web/Api/RunsController` `POST /api/runs/{id}/duplicate`; identity hashing
+>   `Infrastructure/ConfigSetHash`; `ParentRunId`/`DatasetId`/`ConfigSetId` on `BacktestRunEntity`.
+>
+> See `docs/iterations/iter-36/HANDOVER.md` (ROUND 2) + `DECISIONS.md` D81–D84.
+
 ---
 
 ## Part 1 — Feature Index

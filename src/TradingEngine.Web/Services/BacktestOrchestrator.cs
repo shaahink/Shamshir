@@ -365,11 +365,30 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         {
             using var scope = _scopeFactory.CreateScope();
             var repo = scope.ServiceProvider.GetRequiredService<IBacktestRunRepository>();
+            // iter-36 K6: content-address the run. DatasetId = hash of the data window spec (symbols/periods/
+            // range); ConfigSetId = hash of the resolved effective config. Identical (DatasetId, ConfigSetId,
+            // Seed) ⇒ a deterministic re-run; a duplicate keeps DatasetId, gets a new ConfigSetId + ParentRunId.
+            var datasetSpec = $"{SymbolsJson(cfg.Symbols)}|{PeriodsJson(cfg.Periods)}|{cfg.Start:O}|{cfg.End:O}";
+            var datasetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(datasetSpec);
+            // ConfigSetId = hash of EVERYTHING that determines behavior (ReplayModel): the resolved strategy
+            // effective config PLUS the run's risk profile / strategy selection / per-strategy overrides — so
+            // a duplicate that changes the risk profile gets a genuinely different ConfigSetId (K6).
+            var configIdentity = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                effective = effectiveConfigJson ?? "{}",
+                riskProfileId = cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
+                strategyIds = cfg.CustomParams.GetValueOrDefault("StrategyIds"),
+                overrides = cfg.CustomParams.GetValueOrDefault("StrategyOverrides"),
+            });
+            var configSetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(configIdentity);
+            var parentRunId = cfg.CustomParams.GetValueOrDefault("ParentRunId");
             var summary = new BacktestRunSummary(
                 runId, startedAt, DateTime.MinValue,
                 cfg.Symbol, cfg.Period, SymbolsJson(cfg.Symbols), PeriodsJson(cfg.Periods), cfg.Start, cfg.End,
                 cfg.Balance, "", "{}", effectiveConfigJson,
-                0, 0, 0, 0, 0, 0, 0, 0, -1, null);
+                0, 0, 0, 0, 0, 0, 0, 0, -1, null,
+                ReportJsonPath: null, DatasetId: datasetId, ConfigSetId: configSetId, Seed: 42,
+                ParentRunId: string.IsNullOrWhiteSpace(parentRunId) ? null : parentRunId);
             await repo.SaveAsync(summary, CancellationToken.None);
         }
         catch (Exception ex)
@@ -933,10 +952,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         catch { /* best effort */ }
         try { await host.Services.GetRequiredService<BufferedBarWriter>().FlushAsync(); }
         catch { /* best effort */ }
-        try { await host.Services.GetRequiredService<PipelineEventWriter>().FlushRemainingAsync(); }
-        catch { /* best effort */ }
-        try { await host.Services.GetRequiredService<BarEvaluationHandler>().FlushRemainingAsync(); }
-        catch { /* best effort */ }
+        // iter-36 K5: the StepRecord journal drains via ChannelJournalWriter.FlushAsync on engine dispose
+        // (Wait-mode, lossless) — the old PipelineEventWriter/BarEvaluationHandler force-drains are gone.
     }
 
     private static async Task DisposeHostAsync(IHost host)

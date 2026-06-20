@@ -433,3 +433,8 @@ Quick reference:
  | D78 | bar.OpenTime must be UTC | ✅ Final — `DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc)` before serialization. |
  | D79 | diag PUB topic for observability | ✅ Final — cBot publishes trace lines on `diag` topic; engine logs as `CBOT|…`. |
  | D80 | Multi-symbol via cBot parameters | ✅ Final — Comma-separated `SymbolString` parameter. `SubscribeAll()` for `(symbol, tf, barClosed)`. Dedup via `HashSet<(symbol, tf, openTime)>`. |
+
+ | D81 | K4 twins relocated to a test-support assembly, not deleted | Final - OrderDispatcher/KernelOrderGate/AccountProcessor moved to tests/TradingEngine.Tests.Support (golden oracle home); grep->0 in src is the gate, "absent from production wiring" is the intent. TradingLoop/PositionTracker stay (not gated). |
+ | D82 | Golden oracle stays realized-equity; no MtM re-baseline | Final - KernelLoopHarness/golden use FakeVenue realized equity (the oracle). Production uses mark-to-market; its floating-DD is validated by in-host BacktestReplayTests + cTrader e2e, not the golden snapshot. No re-baseline. |
+ | D83 | One journal = StepRecord; legacy writers deleted | Final - PipelineEventWriter + BarEvaluationHandler (DropOldest) deleted; ChannelJournalWriter (Wait) is the single journal. Legacy IDecisionJournal/IPipelineJournal consumers bind to NullDecisionJournal/NullPipelineJournal. |
+ | D84 | EF migrations regenerated from scratch for ParentRunId | Final - recreate/regen-init (delete migrations + single fresh InitialCreate); dev DB recreated, app migrates + re-seeds from JSON on boot. Pre-release: no data to preserve. |

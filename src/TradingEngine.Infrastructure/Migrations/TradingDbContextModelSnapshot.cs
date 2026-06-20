@@ -65,6 +65,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<decimal>("NetProfit")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ParentRunId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Period")
                         .IsRequired()
                         .HasColumnType("TEXT");

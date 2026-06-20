@@ -3,8 +3,6 @@ using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Services;
 
-public sealed record OrderContext(Guid OrderId, decimal Lots, decimal RiskAmount, RiskProfile Profile);
-
 public sealed class OrderDispatcher(
     IRiskManager riskManager,
     IRiskProfileResolver riskProfileResolver,

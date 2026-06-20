@@ -32,11 +32,14 @@ public sealed class KernelBacktestLoop
     private readonly Action<Bar> _advanceVenue;
     private readonly Func<decimal>? _realizedEquity;
     private readonly Action<Bar, EngineState>? _onBarProcessed;
+    private readonly Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, Price NewStopLoss)>>? _evaluateTrailing;
+    private readonly ResetConfig? _resetConfig;
     private readonly decimal _initialBalance;
     private readonly string _runId;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
 
     private long _seq;
+    private DateTime? _prevBarSimUtc;
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -56,7 +59,9 @@ public sealed class KernelBacktestLoop
         Microsoft.Extensions.Logging.ILogger logger,
         Func<EngineState, RiskSnapshot>? captureRisk = null,
         Func<decimal>? realizedEquity = null,
-        Action<Bar, EngineState>? onBarProcessed = null)
+        Action<Bar, EngineState>? onBarProcessed = null,
+        Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, Price NewStopLoss)>>? evaluateTrailing = null,
+        ResetConfig? resetConfig = null)
     {
         _kernel = kernel;
         _evaluator = evaluator;
@@ -71,6 +76,8 @@ public sealed class KernelBacktestLoop
         _captureRisk = captureRisk ?? RiskSnapshots.Capture;
         _realizedEquity = realizedEquity;
         _onBarProcessed = onBarProcessed;
+        _evaluateTrailing = evaluateTrailing;
+        _resetConfig = resetConfig;
     }
 
     /// <summary>Drive a recorded tape (tests / deterministic replay) to completion.</summary>
@@ -128,6 +135,24 @@ public sealed class KernelBacktestLoop
         // mark-to-market account update) before evaluating this bar.
         state = await PumpAsync(state, ct);
 
+        // iter-36 NEW-1 / K-GAP-1: emit the prop-firm day/week/month roll BEFORE evaluating this bar, when
+        // its sim-time crosses the reset boundary. The reducer re-bases drawdown to the new period's opening
+        // equity (state.Account.Equity — just refreshed by the drain above) and resets the governor + clears
+        // boundary-scoped protection (Kernel.DecideReset), fixing C4/H7 for multi-day runs. No-op when no
+        // reset clock is configured (the golden/unit harnesses), so single-day runs stay byte-identical.
+        if (_resetConfig is { } resetCfg)
+        {
+            var rolls = ResetClock.Crossed(_prevBarSimUtc, bar.BarOpenTimeUtc, resetCfg);
+            if (rolls.Any)
+            {
+                if (rolls.Month) _queue.Enqueue(new MonthRolled(bar.BarOpenTimeUtc));
+                if (rolls.Week) _queue.Enqueue(new WeekRolled(bar.BarOpenTimeUtc));
+                if (rolls.Day) _queue.Enqueue(new DayRolled(bar.BarOpenTimeUtc));
+                state = await PumpAsync(state, ct);
+            }
+        }
+        _prevBarSimUtc = bar.BarOpenTimeUtc;
+
         var eval = await _evaluator.EvaluateAsync(bar, state, ct);
         foreach (var proposal in eval.Proposals)
         {
@@ -143,6 +168,23 @@ public sealed class KernelBacktestLoop
         {
             _queue.Enqueue(new EquityObserved(_initialBalance, _realizedEquity(), 0m, bar.BarOpenTimeUtc));
             state = await PumpAsync(state, ct);
+        }
+
+        // Trailing / breakeven (iter-36 K4 gap-3). Runs at the END of the bar — after entries + exit
+        // detection — so a trailed stop only takes effect on the NEXT bar (no intrabar look-ahead), exactly
+        // as the imperative TradingLoop.UpdateTrailingStopsAsync did. The decision is impure (recent bars +
+        // per-position config); the reducer applies it purely (update the stop + emit ModifyStopLoss).
+        if (_evaluateTrailing is not null)
+        {
+            var moves = _evaluateTrailing(barModel, state);
+            if (moves.Count > 0)
+            {
+                for (var i = 0; i < moves.Count; i++)
+                {
+                    _queue.Enqueue(new StopLossModifyRequested(moves[i].PositionId, moves[i].NewStopLoss, bar.BarOpenTimeUtc));
+                }
+                state = await PumpAsync(state, ct);
+            }
         }
 
         await _venue.CompleteBarAsync(ct);

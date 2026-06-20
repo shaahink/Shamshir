@@ -70,6 +70,7 @@ public static class ServiceRegistration
         initConn.Close();
 
         services.AddScoped<IBacktestRunRepository, SqliteBacktestRunRepository>();
+        services.AddScoped<IJournalQueryRepository, SqliteJournalQueryRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
         services.AddScoped(_ => new TradeReportQueries(new SqliteConnection(cs)));
         services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();

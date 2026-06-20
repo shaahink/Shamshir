@@ -37,9 +37,11 @@ public sealed record StrategyServices
     public required IEnumerable<IStrategy> Strategies { get; init; }
     public required IStrategyBank StrategyBank { get; init; }
     public required IRegimeDetector RegimeDetector { get; init; }
-    public required IOrderGate OrderGate { get; init; }
     public required PositionTracker PositionTracker { get; init; }
     public required TradingEngine.Services.EntryPlanner EntryPlanner { get; init; }
+    // iter-36 K4 gap-3: the kernel loop evaluates trailing/breakeven per bar via this manager and emits
+    // ModifyStopLoss effects (the imperative TradingLoop.UpdateTrailingStopsAsync used it the same way).
+    public required IPositionManager PositionManager { get; init; }
     public ISignalGate? SignalGate { get; init; }
 }
 

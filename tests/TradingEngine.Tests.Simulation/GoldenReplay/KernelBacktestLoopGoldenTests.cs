@@ -105,11 +105,15 @@ internal static class KernelLoopHarness
     public sealed record Result(
         IReadOnlyList<TradeClosed> ClosedTrades,
         EngineState Final,
-        string JournalJson);
+        string JournalJson,
+        IReadOnlyList<StepRecord> Records);
 
-    public static async Task<Result> RunGoldenAsync(bool viaBrokerStream = false)
+    public static async Task<Result> RunGoldenAsync(
+        bool viaBrokerStream = false,
+        IReadOnlyList<Bar>? bars = null,
+        ResetConfig? resetConfig = null)
     {
-        var bars = GoldenBarFixture.Create();
+        var barsList = bars ?? GoldenBarFixture.Create();
         const decimal initialBalance = 10_000m;
 
         var ruleSet = FtmoRuleSet();
@@ -176,7 +180,7 @@ internal static class KernelLoopHarness
         var eventBus = new CollectingEventBus();
         var decisionJournal = new InMemoryDecisionJournal();
         var positionManager = Substitute.For<IPositionManager>();
-        var clock = new ManualClock { UtcNow = bars[0].OpenTimeUtc };
+        var clock = new ManualClock { UtcNow = barsList[0].OpenTimeUtc };
         var venue = new FakeVenue(symbolRegistry, crossRate);
 
         var effects = new EffectExecutor(
@@ -196,12 +200,13 @@ internal static class KernelLoopHarness
             advanceVenue: bar => { venue.CurrentMarketPrice = bar.Close; venue.BrokerTimeUtc = bar.OpenTimeUtc; },
             initialBalance, runId: "kernel-loop", NullLogger.Instance,
             captureRisk: RiskSnapshots.Capture,
-            realizedEquity: () => initialBalance + eventBus.OfType<TradeClosed>().Sum(tc => tc.Result.NetPnL.Amount));
+            realizedEquity: () => initialBalance + eventBus.OfType<TradeClosed>().Sum(tc => tc.Result.NetPnL.Amount),
+            resetConfig: resetConfig);
 
         var dataset = new DatasetRef("golden", "hash", ["EURUSD"], ["H1"],
-            bars[0].OpenTimeUtc, bars[^1].OpenTimeUtc, DatasetGranularity.Bar, bars.Count);
+            barsList[0].OpenTimeUtc, barsList[^1].OpenTimeUtc, DatasetGranularity.Bar, barsList.Count);
         var tape = new ListEventTape(dataset,
-            bars.Select(b => (EngineEvent)new BarClosed(b.Symbol, b.Timeframe, b.Open, b.High, b.Low, b.Close, b.OpenTimeUtc)).ToList());
+            barsList.Select(b => (EngineEvent)new BarClosed(b.Symbol, b.Timeframe, b.Open, b.High, b.Low, b.Close, b.OpenTimeUtc)).ToList());
 
         await venue.ConnectAsync(CancellationToken.None);
         var initialState = new EngineState(
@@ -214,7 +219,7 @@ internal static class KernelLoopHarness
         if (viaBrokerStream)
         {
             // Production path: bars arrive on the venue's BarStream; drive via RunFromBrokerAsync.
-            foreach (var b in bars) venue.PostBar(b);
+            foreach (var b in barsList) venue.PostBar(b);
             venue.CompleteBars();
             finalState = await loop.RunFromBrokerAsync(initialState, CancellationToken.None);
         }
@@ -223,7 +228,7 @@ internal static class KernelLoopHarness
             finalState = await loop.RunAsync(tape, initialState, CancellationToken.None);
         }
 
-        return new Result(eventBus.OfType<TradeClosed>(), finalState, journal.Serialize());
+        return new Result(eventBus.OfType<TradeClosed>(), finalState, journal.Serialize(), journal.Records);
     }
 
     private sealed class ListJournalWriter : IJournalWriter
@@ -232,6 +237,8 @@ internal static class KernelLoopHarness
         public void Append(StepRecord record) => _records.Add(record);
         public Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public IReadOnlyList<StepRecord> Records => _records;
 
         // Compare effect payloads + risk across runs (the determinism contract); the run-constant RunId
         // and the sim-time are stable, the order ids are the evaluator's deterministic counter.

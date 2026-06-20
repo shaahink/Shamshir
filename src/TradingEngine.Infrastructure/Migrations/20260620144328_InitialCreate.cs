@@ -38,7 +38,11 @@ namespace TradingEngine.Infrastructure.Migrations
                     WinRatePct = table.Column<double>(type: "REAL", nullable: false),
                     ExitCode = table.Column<int>(type: "INTEGER", nullable: false),
                     ErrorMessage = table.Column<string>(type: "TEXT", nullable: true),
-                    ReportJsonPath = table.Column<string>(type: "TEXT", nullable: true)
+                    ReportJsonPath = table.Column<string>(type: "TEXT", nullable: true),
+                    DatasetId = table.Column<string>(type: "TEXT", nullable: true),
+                    ConfigSetId = table.Column<string>(type: "TEXT", nullable: true),
+                    Seed = table.Column<int>(type: "INTEGER", nullable: false),
+                    ParentRunId = table.Column<string>(type: "TEXT", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -87,6 +91,20 @@ namespace TradingEngine.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "ConfigSets",
+                columns: table => new
+                {
+                    Id = table.Column<string>(type: "TEXT", nullable: false),
+                    ContentHash = table.Column<string>(type: "TEXT", nullable: false),
+                    Json = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ConfigSets", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "DailyProtectionLedgers",
                 columns: table => new
                 {
@@ -106,6 +124,25 @@ namespace TradingEngine.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_DailyProtectionLedgers", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Datasets",
+                columns: table => new
+                {
+                    Id = table.Column<string>(type: "TEXT", nullable: false),
+                    ContentHash = table.Column<string>(type: "TEXT", nullable: false),
+                    Symbols = table.Column<string>(type: "TEXT", nullable: false),
+                    Timeframes = table.Column<string>(type: "TEXT", nullable: false),
+                    FromUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    ToUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    Granularity = table.Column<string>(type: "TEXT", nullable: false),
+                    RowCount = table.Column<long>(type: "INTEGER", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Datasets", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -172,6 +209,27 @@ namespace TradingEngine.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_GovernorOptions", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Journal",
+                columns: table => new
+                {
+                    RunId = table.Column<string>(type: "TEXT", nullable: false),
+                    Seq = table.Column<long>(type: "INTEGER", nullable: false),
+                    SimTimeUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    EventKind = table.Column<string>(type: "TEXT", nullable: false),
+                    EventJson = table.Column<string>(type: "TEXT", nullable: false),
+                    EffectKinds = table.Column<string>(type: "TEXT", nullable: false),
+                    EffectsJson = table.Column<string>(type: "TEXT", nullable: false),
+                    RiskJson = table.Column<string>(type: "TEXT", nullable: false),
+                    Regime = table.Column<string>(type: "TEXT", nullable: true),
+                    DecisionReason = table.Column<string>(type: "TEXT", nullable: true),
+                    VerdictsJson = table.Column<string>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Journal", x => new { x.RunId, x.Seq });
                 });
 
             migrationBuilder.CreateTable(
@@ -399,6 +457,11 @@ namespace TradingEngine.Infrastructure.Migrations
                 columns: new[] { "RunId", "Symbol", "Timeframe", "OpenTimeUtc" });
 
             migrationBuilder.CreateIndex(
+                name: "IX_ConfigSets_ContentHash",
+                table: "ConfigSets",
+                column: "ContentHash");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_DailyProtectionLedgers_Date",
                 table: "DailyProtectionLedgers",
                 column: "Date");
@@ -407,6 +470,11 @@ namespace TradingEngine.Infrastructure.Migrations
                 name: "IX_DailyProtectionLedgers_RunId",
                 table: "DailyProtectionLedgers",
                 column: "RunId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Datasets_ContentHash",
+                table: "Datasets",
+                column: "ContentHash");
 
             migrationBuilder.CreateIndex(
                 name: "IX_EngineEvents_EventType",
@@ -437,6 +505,11 @@ namespace TradingEngine.Infrastructure.Migrations
                 name: "IX_ExperimentRuns_ExperimentId",
                 table: "ExperimentRuns",
                 column: "ExperimentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Journal_RunId_SimTimeUtc",
+                table: "Journal",
+                columns: new[] { "RunId", "SimTimeUtc" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Orders_State",
@@ -482,6 +555,12 @@ namespace TradingEngine.Infrastructure.Migrations
                 name: "Bars");
 
             migrationBuilder.DropTable(
+                name: "ConfigSets");
+
+            migrationBuilder.DropTable(
+                name: "Datasets");
+
+            migrationBuilder.DropTable(
                 name: "EngineEvents");
 
             migrationBuilder.DropTable(
@@ -492,6 +571,9 @@ namespace TradingEngine.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "GovernorOptions");
+
+            migrationBuilder.DropTable(
+                name: "Journal");
 
             migrationBuilder.DropTable(
                 name: "Orders");

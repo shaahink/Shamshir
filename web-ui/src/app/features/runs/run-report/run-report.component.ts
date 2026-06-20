@@ -92,9 +92,9 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
                 @for (entry of filteredJournal(); track entry.seq) {
                   <div class="border-b border-gray-800 px-4 py-1.5 text-xs last:border-0 hover:bg-gray-800/20">
                     <span class="text-gray-500">{{ entry.simTimeUtc | date:'MM-dd HH:mm' }}</span>
-                    <app-badge [label]="entry.kind ?? '?'" [variant]="entry.kind === 'SIGNAL' ? 'warning' : entry.kind === 'CLOSE' ? 'success' : entry.kind === 'REJECTED' ? 'error' : 'neutral'" />
+                    <app-badge [label]="(entry.eventKind ?? entry.kind) ?? '?'" [variant]="(entry.eventKind ?? entry.kind) === 'SIGNAL' ? 'warning' : (entry.eventKind ?? entry.kind) === 'CLOSE' ? 'success' : (entry.eventKind ?? entry.kind) === 'REJECTED' ? 'error' : 'neutral'" />
                     @if (entry.symbol) { <span class="ml-1 text-gray-500">{{ entry.symbol }}</span> }
-                    @if (entry.reason) { <span class="ml-2 text-gray-600">- {{ fmtReason(entry.reason) }}</span> }
+                    @if (entry.decisionReason ?? entry.reason) { <span class="ml-2 text-gray-600">- {{ fmtReason((entry.decisionReason ?? entry.reason)!) }}</span> }
                   </div>
                 }
               </div>
@@ -122,7 +122,7 @@ export class RunReportComponent implements OnInit {
   journalKind = signal<string | null>(null);
   journalKinds = ['ALL', 'SIGNAL', 'ORDER', 'FILL', 'CLOSE', 'REJECTED', 'BREACH', 'GOVERNOR', 'ENTRY_EXPIRED', 'CANCELLED'];
 
-  filteredJournal = computed(() => { const k = this.journalKind(); return k ? this.journal().filter(e => e.kind === k) : this.journal(); });
+  filteredJournal = computed(() => { const k = this.journalKind(); return k && k !== 'ALL' ? this.journal().filter(e => (e.eventKind ?? e.kind) === k) : this.journal(); });
   grossTotal = computed(() => this.trades().reduce((s, t) => s + t.grossPnLAmount, 0));
   commTotal = computed(() => this.trades().reduce((s, t) => s + t.commissionAmount, 0));
   swapTotal = computed(() => this.trades().reduce((s, t) => s + t.swapAmount, 0));
