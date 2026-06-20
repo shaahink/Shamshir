@@ -100,4 +100,9 @@ public record OrderRequest(
     Symbol Symbol,
     TradeDirection Direction,
     OrderType Type,
-    Price? LimitPrice);
+    Price? LimitPrice,
+    // The engine's own order id (= kernel PositionId). When set, a venue uses it as the order/position id
+    // instead of minting its own, so the kernel's SubmitOrder/CloseOpenPosition/feedback all key off ONE id
+    // (iter-36 K2 — the kernel is the authority for position identity; PositionId == OrderId). Null = the
+    // venue mints its own id (the legacy imperative path, which captures the returned id).
+    Guid? ClientOrderId = null);

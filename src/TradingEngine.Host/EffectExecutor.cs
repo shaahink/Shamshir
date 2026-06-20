@@ -65,7 +65,10 @@ public sealed class EffectExecutor : IEffectExecutor
                     submit.LimitPrice, submit.StopLoss, submit.TakeProfit,
                     submit.StrategyId, "standard", "", _clock.UtcNow);
                 var orderReq = new OrderRequest(intent, submit.Lots, submit.Symbol, submit.Direction,
-                    submit.LimitPrice is not null ? OrderType.Limit : OrderType.Market, submit.LimitPrice);
+                    submit.LimitPrice is not null ? OrderType.Limit : OrderType.Market, submit.LimitPrice,
+                    // Submit under the kernel's order id (= PositionId) so the venue fill/close + the
+                    // feedback bridge all key off ONE id — no venue-id↔kernel-id translation (K2).
+                    ClientOrderId: submit.OrderId);
                 await _broker.SubmitOrderAsync(orderReq, ct);
                 break;
 
@@ -81,7 +84,12 @@ public sealed class EffectExecutor : IEffectExecutor
                 // A close REQUEST — not a completed close. The funnel "Closes" counter is incremented
                 // on PublishTradeClosed (the actual fill), so we don't emit a "CLOSE" progress here
                 // (doing so double-counted force-closes, which emit both this and PublishTradeClosed).
-                await _broker.ClosePositionAsync(closePos.OrderId, ct);
+                // An engine-detected SL/TP carries the stop/target price so the close fills there (K2);
+                // a force-close (no price) routes to the normal market close.
+                if (closePos.ExitPrice is { } exitPx)
+                    await _broker.ClosePositionAtAsync(closePos.OrderId, exitPx, ct);
+                else
+                    await _broker.ClosePositionAsync(closePos.OrderId, ct);
                 break;
 
             case RecordDecisionEvent record:

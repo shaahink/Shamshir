@@ -210,16 +210,28 @@ public sealed class KernelAcceptanceTests
     }
 
     /// <summary>
-    /// K0 → K3 breadcrumb: the FULL-run equivalence gate. The kernel, driven over the golden fixture
-    /// through the production backtest loop (evaluator → KernelDriver → EffectExecutor →
-    /// BacktestReplayAdapter), must reproduce golden-snapshot.json's ENTIRE trade sequence + final risk
-    /// — not just the first order's sizing (asserted above). This can only be asserted once that loop
-    /// exists; wire it and un-skip in K3. Until then the partial gate above holds.
+    /// K0 → K3 breadcrumb, NOW LIVE (iter-36 K3): the FULL-run equivalence gate. The kernel, driven over
+    /// the golden fixture through the real kernel backtest loop (BarEvaluator → Kernel → EffectExecutor →
+    /// venue + feedback bridge), reproduces golden-snapshot.json's ENTIRE trade sequence + final risk —
+    /// not just the first order's sizing (asserted above). The loop wiring lives in
+    /// <see cref="KernelLoopHarness"/> (shared with KernelBacktestLoopGoldenTests).
     /// </summary>
-    [Fact(Skip = "K3: un-skip once the kernel backtest loop (evaluator + real fills) exists — see docs/iterations/iter-36/PLAN.md")]
-    public void KernelFullRun_MatchesGolden_TradesAndRisk()
+    [Fact]
+    public async Task KernelFullRun_MatchesGolden_TradesAndRisk()
     {
-        // K3: drive GoldenBarFixture through the real kernel backtest loop, capture trades + final
-        // EngineState risk, and assert equality against GoldenSnapshotLoader.Load() (Trades + FinalRisk).
+        var run = await KernelLoopHarness.RunGoldenAsync();
+        var golden = GoldenSnapshotLoader.Load();
+
+        run.ClosedTrades.Should().HaveCount(golden.Trades.Count);
+        var first = run.ClosedTrades[0].Result;
+        first.Direction.ToString().Should().Be(golden.Trades[0].Direction);
+        first.Lots.Should().Be(golden.Trades[0].Lots);
+        first.EntryPrice.Value.Should().Be(golden.Trades[0].EntryPrice);
+        first.ExitPrice.Value.Should().Be(golden.Trades[0].ExitPrice);
+        first.ExitReason.Should().Be(golden.Trades[0].ExitReason);
+
+        run.Final.Drawdown.PeakEquity.Should().Be(golden.FinalRisk.PeakEquity);
+        run.Final.Drawdown.CurrentMaxDrawdown.Should().Be(golden.FinalRisk.CurrentMaxDrawdown);
+        run.Final.Protection.InProtectionMode.Should().Be(golden.FinalRisk.InProtectionMode);
     }
 }

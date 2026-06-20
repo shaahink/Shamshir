@@ -146,7 +146,10 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
 
     public Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
-        var orderId = Guid.NewGuid();
+        // Use the engine's order id (= kernel PositionId) when supplied, so the venue's open-trade book,
+        // execution events and close all key off the SAME id the kernel uses (iter-36 K2). Falls back to a
+        // fresh id for the legacy imperative path (which captures the returned id).
+        var orderId = request.ClientOrderId ?? Guid.NewGuid();
 
         // Resting limit order: hold it until a later bar's range reaches the limit price, or until it
         // expires. Market orders (and limits with no price) fill instantly at the last close.

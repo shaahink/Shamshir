@@ -12,7 +12,11 @@ public record ModifyTakeProfit(Guid PositionId, Price NewTakeProfit) : EngineEff
 // Venues (simulated/replay/cTrader) own open positions by the order/client id returned from
 // SubmitOrderAsync, so every venue-bound close must carry OrderId. Passing the internal
 // PositionId here made RequestForceCloseAll/CloseRequested a silent no-op against the venue.
-public record CloseOpenPosition(Guid OrderId, string Reason) : EngineEffect;
+// ExitPrice (iter-36 K2): the price an engine-detected SL/TP exit should fill at (the stop/target price),
+// so a backtest close fills there instead of the bar close (F2/D3). The reducer sets it from the position's
+// SL/TP; the EffectExecutor routes it to ClosePositionAtAsync. Null = market close (force-close / live, where
+// the venue fills server-side).
+public record CloseOpenPosition(Guid OrderId, string Reason, Price? ExitPrice = null) : EngineEffect;
 
 public record RecordDecisionEvent(DecisionRecord Decision) : EngineEffect;
 

@@ -54,7 +54,9 @@ public sealed class FakeVenue : IBrokerAdapter
 
     public async Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
-        var orderId = Guid.NewGuid();
+        // Honor the engine's order id (= kernel PositionId) so the kernel path's fill/close + feedback
+        // bridge all key off one id (iter-36 K2); mint our own for the legacy path.
+        var orderId = request.ClientOrderId ?? Guid.NewGuid();
         _submittedOrders.Add(request);
         IncrementBarsConsumed();
 
@@ -83,6 +85,15 @@ public sealed class FakeVenue : IBrokerAdapter
     {
         _closeRequests.Add((positionId, BrokerTimeUtc));
         await WriteCloseFill(positionId, ct);
+    }
+
+    // Close at the caller-supplied exit price (an engine-detected SL/TP fills at the stop/target, not the
+    // bar close). The harness sets it via SetExitPrice before ClosePositionAsync; the kernel path routes
+    // here from the CloseOpenPosition effect's ExitPrice (iter-36 K2).
+    public async Task ClosePositionAtAsync(Guid positionId, Price exitPrice, CancellationToken ct)
+    {
+        SetExitPrice(positionId, exitPrice);
+        await ClosePositionAsync(positionId, ct);
     }
 
     public async Task ClosePartialPositionAsync(Guid positionId, decimal lots, CancellationToken ct)

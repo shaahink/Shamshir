@@ -201,7 +201,6 @@ public static class EngineReducer
         {
             if (posState.Symbol != evt.Symbol) continue;
             var (nextPos, posEffects) = PositionLifecycle.Apply(posState, evt);
-            newPositions[id] = nextPos;
             effects.AddRange(posEffects);
 
             if (nextPos.Phase is PositionPhase.Open or PositionPhase.Reducing)
@@ -209,9 +208,18 @@ public static class EngineReducer
                 var exit = DetectSlTpExit(nextPos, evt);
                 if (exit is not null)
                 {
-                    effects.Add(new CloseOpenPosition(nextPos.OrderId, exit));
+                    // Carry the exit reason on the position so the venue close fill (an OrderFilled on an
+                    // Open position) records "SL"/"TP" instead of "FORCE", and carry the stop/target price
+                    // so the close fills there — matching the imperative SimulateBarExitsAsync (K2).
+                    var exitPrice = exit == "TP" && nextPos.TakeProfit is { } tp
+                        ? tp
+                        : nextPos.CurrentStopLoss;
+                    nextPos = nextPos with { CloseReason = exit };
+                    effects.Add(new CloseOpenPosition(nextPos.OrderId, exit, exitPrice));
                 }
             }
+
+            newPositions[id] = nextPos;
         }
 
         var newGovernor = GovernorMachine.ApplyBar(state.Governor);
