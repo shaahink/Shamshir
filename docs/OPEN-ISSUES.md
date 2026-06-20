@@ -9,6 +9,10 @@
 > (PipelineEvents/BarEvaluations + protection-ledger) with an EF reset** are delivered. See **"## iter-37 closure"**.
 > Verified: build 0 err · Unit 228/0/5-skip · Simulation non-cTrader 97/0 · Integration 43/43 · SPA build green.
 > cTrader-E2E + NetMQ + InProcessEngineSmoke remain out of scope (cTrader/environmental, owner-verified).
+>
+> **Owner manual-testing pass surfaced new issues — see "## iter-37 testing-found issues" (T1–T12).** Common thread:
+> default-venue backtests run through the in-process cTrader engine (`CTrader:UseForBacktest=true`), which has
+> wall-clock-timestamp + progress/equity-wiring gaps the kernel/replay path doesn't.
 
 > **iter-36 complete.** The kernel is now the **SOLE production engine** — the imperative twins
 > (`OrderDispatcher`, `KernelOrderGate`, `AccountProcessor`) are removed from `src` (relocated to the
@@ -163,6 +167,99 @@ pointing at dead `/api/backtest/runs` + `/api/backtest/compare` routes.
 **Still deferred (documented carry-forward):**
 - **K-GAP-5 per-trade Timeframe column** (above; Low — multi-timeframe runs only; chart already works via run TF).
 - F7 server-side validation framework (UI + the empty/invalid guard cover the practical case).
+
+---
+
+## iter-37 testing-found issues (owner manual testing, 2026-06-20)
+
+> **Framing — the common thread.** `appsettings.Development.json` has `CTrader:UseForBacktest = "true"`, so a
+> New-Backtest with the default (empty) venue runs through the **in-process cTrader engine + cBot**, NOT the
+> credential-free `BacktestReplayAdapter`. Most of T1/T2/T6/T7/T12 are cTrader-path data-fidelity gaps the
+> kernel/replay path doesn't have. (`BacktestOrchestrator.cs:296-300` venue→engine selection.)
+
+### T1 — Trade ENTRY timestamp is wall-clock, not sim-time (breaks the per-trade chart) 🔴
+**Observed**: clicking a trade → chart calls `/api/bars?...&from=2026-11-30…&to=2025-10-19…` (from > to) → "No price data".
+**Root cause** (traced via DB + Journal): the cBot stamps exec frames inconsistently — `MakeExecResult`/`MakeModifyResult`
+were `private static` so they couldn't reach `Server` and used `DateTime.UtcNow` (wall-clock) for `simTime`
+(`TradingEngineCBot.cs:508,572`), while `OnPositionClosed` uses `Server.TimeInUtc` (sim, `:652`). `CTraderBrokerAdapter.cs:371`
+reads the frame `simTime` (`… : DateTime.UtcNow`). In a backtest the entry `OrderFilled.OccurredAtUtc` becomes wall-clock →
+`PositionLifecycle.cs:89 OpenedAtUtc` → `TradeResult.OpenedAtUtc` wall-clock → **negative `DurationSeconds`**; the SPA window
+`trade-detail.component.ts:63-65` assumes `opened<closed` → inverted `/api/bars` range → empty.
+**DB evidence**: all 16 trades `OpenedAtUtc=2026-06-20 21:03:xx` (run wall-clock), `ClosedAtUtc`=sim.
+**Fix (designed, approved "all three", not yet applied)**: cBot helpers → instance + `Server.TimeInUtc`; `CTraderBrokerAdapter`
+authoritative on sim-time in backtest (+ `?? BrokerTimeUtc`); `trade-detail` order-safe window. **Tags**: F6 (per-trade chart),
+31-A2, K-GAP-5.
+
+### T2 — Journal shows wall-clock `EquityObserved` interleaved + out-of-order 🟠
+**Observed**: journal rows jump e.g. `05-20 21:00 EquityObserved` … `06-20 22:16 EquityObserved` … `05-20 20:00 DayRolled`.
+**Root cause**: same wall-clock leak as T1 on the cTrader **account/equity** frames → some `EquityObserved` carry wall-clock
+(`06-20 22:16`) while bar-derived ones are sim; the journal is `Seq`-ordered so displayed times jump. Also the journal is
+swamped by `EquityObserved` (12,251 of them vs 1,559 BarClosed). **Tags**: T1 (same root), F1 (journal view) — consider
+filtering/colouring `EquityObserved` noise.
+
+### T3 — Per-strategy funnel "Top no-signal reasons" = `undefined (undefined)` 🟠
+**Observed**: `trend-breakout … undefined (undefined), undefined (undefined), …`.
+**Root cause**: `StrategyPerformance.TopRejections` is a C# **ValueTuple** `(string Reason, int Count)`
+(`IBacktestQueryService.cs:31`). System.Text.Json does NOT preserve tuple element names → JSON is `{"item1":…,"item2":…}`,
+but the SPA reads `r.reason`/`r.count` (`run-report.topReasons`) → undefined.
+**Fix**: replace the tuple with a named record `NoSignalReason(string Reason, int Count)` so JSON has `reason`/`count`.
+**Tags**: F2 (funnel).
+
+### T4 — Per-bar "why" only shows warmup rows ("not enough bars, have 1..24 need 55") 🟠
+**Root cause**: `run-report` fetches the journal client-side with `limit=200` (`ngOnInit getRunJournal(…,200)`) and computes
+`perBarVerdicts` from it; the first 200 events are dominated by `EquityObserved` + the earliest `BarClosed`, so only the
+warmup bars surface. Needs a **server-side per-bar/funnel endpoint** (paged over `BarClosed` verdicts) instead of a 200-row
+client slice. **Tags**: F2, T2 (journal noise).
+
+### T5 — Per-bar "why" appears in the Trades section / section labels confusing 🟡
+**Observed**: the "Per-bar why (24)" table seemed to render where "Trades (5)" was expected.
+**Action**: verify `run-report` section ordering/conditionals (funnel vs why vs trades) — likely a layout/`@if` issue or the
+Trades table not rendering when the why-table does. **Tags**: F2/F4.
+
+### T6 — Trades show no commission / swap 🟠
+**Root cause**: cTrader close exec frames (or the FORCE-close path, T7) report 0/absent `commission`/`swap` → trades persist
+cost-free. **Tags**: 31-A2 (cBot cost itemization), M1, T7. Refs: `TradingEngineCBot.MakeExecResult` cost fields →
+`EffectExecutor` cost mapping.
+
+### T7 — Live journal only shows `CLOSE … reason=FORCE` (no SIGNAL/ORDER/FILL; everything force-closed) 🟠
+**Root cause (two parts)**: (a) the live-monitor journal/counters come from orchestrator progress events, but the kernel path
+only emits `"BAR"` (`EngineRunner.ReportBar`) and `"CLOSE"` (`EffectExecutor`) — the old `SIGNAL`/`ORDER`/`EXEC`/`REJECTED`/
+`BREACH` producers were deleted in the cutover (`BacktestOrchestrator.cs:139-141`), so Signals/Fills/Rejections stay 0 and only
+CLOSE rows appear; (b) **every close reason=FORCE** → SL/TP exits aren't being detected on the cTrader path (or an end-of-run
+flatten), so positions are force-closed. **Tags**: F5 (live monitor), OBS-02/03, T1 (cTrader path).
+
+### T8 — Governor "disable" via UI saves but doesn't take effect 🟠
+**Root cause = M18** (GovernorOptions registered as a stale `new GovernorOptions()` singleton — `ServiceRegistration.cs:136` —
+never updated from the DB the UI writes to). The kernel gate also reads `ConstraintSet.Toggles.GovernorEnabled` from the
+**ruleset**, a separate enable from the governor-options store → two sources of truth. **Tags**: **M18** (confirmed), F7.
+
+### T9 — Backtest throws a cancellation error on/near finish (but still saves) 🟡
+**Root cause (likely)**: run completion / cTrader stream end raises `OperationCanceledException` from the linked CTS
+(`BacktestOrchestrator.cs:518/611`, 30-min timeout + userCt) that's logged as an error though the run persisted. Cosmetic but
+alarming. **Action**: swallow/categorise the expected cancellation at normal completion. **Tags**: H22.
+
+### T10 — "Duplicate" is pointless (re-runs via cTrader, ignores saved bars, no options to tweak) 🟠
+**Root cause**: `RunsController.Duplicate` (`:119`) re-runs the config **through the engine** (cTrader when
+`UseForBacktest=true`), NOT a deterministic replay of the saved `DatasetId` bars; the F3 SPA button posts no changes and there's
+no edit UI for strategy/risk/overrides before launch. So a duplicate is just a fresh non-deterministic re-run.
+**Fix**: duplicate should replay the saved dataset bars (K6 real-replay) + open `new-backtest` prefilled with editable
+strategy/risk/overrides. **Tags**: **F3**, **K6** (real replay + duplicate).
+
+### T11 — Live equity: no DD line + vertical/horizontal axes show wrong/no values 🟠
+**Root cause (likely)**: the live `equity-chart` DD series isn't drawn and the time/price axes are mis-scaled — the wall-clock
+`EquityObserved` points (T2) mixed with sim-time points corrupt the time axis; the DD series may not be fed. **Tags**: L1
+(equity chart), T2. Refs: `shared/equity-chart.component.ts` + `run-monitor` `equityData`/DD feed.
+
+### T12 — No DD timeline on the run report 🟠
+**Root cause (likely)**: the report "DD Timeline" (daily-PnL bars) is empty — `getRunDailyPnl`/`RunQueryService.GetRunDailyPnLAsync`
+groups trades by `ClosedAtUtc.Date`, and/or the equity/DD curve isn't persisted for the **cTrader in-process** path (K-GAP-2's
+equity flush is on the kernel-backtest path; the cTrader path may not flush `EquitySnapshots` the same way). **Tags**: **K-GAP-2**,
+T1 (cTrader path).
+
+> **Net:** T1/T2/T6/T7/T11/T12 share the **cTrader-in-process backtest path** root (wall-clock frames + missing progress/equity
+> wiring vs the kernel/replay path). T3/T4/T5 are SPA/serialization gaps in the new F2 surfaces. T8=M18, T10=F3/K6, T9=H22.
+> Highest-value single lever: make the cTrader path stamp sim-time (T1) + reconsider whether default-venue backtests should use
+> the credential-free replay path instead of cTrader.
 
 ---
 
