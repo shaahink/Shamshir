@@ -6,6 +6,7 @@ import { RunsApiService } from '../runs.service';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { DataTableComponent, type ColumnDef } from '../../../shared/data-table.component';
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
+import { ScatterChartComponent } from '../../../shared/scatter-chart.component';
 import { BadgeComponent } from '../../../shared/badge.component';
 import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance } from '../../../models/api.types';
 
@@ -14,7 +15,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
 @Component({
   selector: 'app-run-report',
   standalone: true,
-  imports: [RouterLink, DatePipe, NgClass, DecimalPipe, StatTileComponent, DataTableComponent, EquityChartComponent, BadgeComponent],
+  imports: [RouterLink, DatePipe, NgClass, DecimalPipe, StatTileComponent, DataTableComponent, EquityChartComponent, ScatterChartComponent, BadgeComponent],
   template: `
     @if (store.isLoading()) { <div class="py-12 text-center text-sm text-gray-500">Loading...</div> }
     @else {
@@ -39,6 +40,8 @@ type JournalRow = JournalEntry & { outcome?: string | null };
               </button>
               <a [href]="journalExportUrl(d.runId)" download class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Download journal (NDJSON)</a>
               <a [href]="tradesCsvUrl(d.runId)" download class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Export CSV</a>
+              <button (click)="exportReport('json')" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Report JSON</button>
+              <button (click)="exportReport('md')" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Report MD</button>
               <a [routerLink]="['/runs', d.runId, 'monitor']" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Monitor</a>
               <a [routerLink]="['/runs', d.runId, 'analyzer']" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Analyzer</a>
               <a routerLink="/runs" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">All Runs</a>
@@ -105,6 +108,34 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                         <td class="px-3 py-1.5 text-right text-gray-400">{{ s.tradesOpened }}</td>
                         <td class="px-3 py-1.5 text-right text-gray-400">{{ (s.winRatePct * 100).toFixed(0) }}%</td>
                         <td class="px-3 py-1.5 text-gray-500">{{ topReasons(s) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
+
+          @if (scatterData().length > 0) {
+            <app-scatter-chart title="MAE (orange) vs MFE (green) — pips per trade" [data]="scatterData()" />
+          }
+
+          @if (perBarVerdicts().length > 0) {
+            <div>
+              <h2 class="mb-3 text-sm font-medium text-gray-400">Per-bar "why" ({{ perBarVerdicts().length }})</h2>
+              <div class="max-h-72 overflow-y-auto rounded-lg border border-gray-800">
+                <table class="w-full text-xs">
+                  <thead class="text-gray-500"><tr class="border-b border-gray-800">
+                    <th class="px-3 py-1.5 text-left">Sim time</th><th class="px-3 py-1.5 text-left">Strategy</th>
+                    <th class="px-3 py-1.5 text-left">Signal</th><th class="px-3 py-1.5 text-left">Reason</th>
+                  </tr></thead>
+                  <tbody>
+                    @for (v of perBarVerdicts(); track $index) {
+                      <tr class="border-b border-gray-800 last:border-0">
+                        <td class="px-3 py-1 text-gray-500">{{ v.simTimeUtc | date:'MM-dd HH:mm' }}</td>
+                        <td class="px-3 py-1 text-gray-300">{{ v.strategyId }}</td>
+                        <td class="px-3 py-1" [class.text-emerald-400]="v.signalFired" [class.text-gray-500]="!v.signalFired">{{ v.signalFired ? (v.direction || 'FIRED') : '—' }}</td>
+                        <td class="px-3 py-1 text-gray-500">{{ v.reason }}</td>
                       </tr>
                     }
                   </tbody>
@@ -232,6 +263,60 @@ export class RunReportComponent implements OnInit {
 
   topReasons(s: StrategyPerformance): string {
     return (s.topRejections ?? []).map(r => `${r.reason} (${r.count})`).join(', ') || '—';
+  }
+
+  // F4 — MAE/MFE scatter from the run's trades (x = MAE as negative pips, y = MFE).
+  scatterData = computed(() => this.trades().map(t => ({ x: -(t.maxAdverseExcursion ?? 0), y: t.maxFavorableExcursion ?? 0 })));
+
+  // F2 — flatten the journal's per-bar StrategyVerdicts into a "why" table.
+  perBarVerdicts = computed(() =>
+    this.journal()
+      .filter(e => (e.eventKind ?? e.kind) === 'BarClosed' && (e.strategyVerdicts?.length ?? 0) > 0)
+      .flatMap(e => (e.strategyVerdicts ?? []).map(v => ({
+        simTimeUtc: e.simTimeUtc, strategyId: v.strategyId, signalFired: v.signalFired,
+        direction: v.direction, reason: v.reason,
+      }))));
+
+  // F4 — client-side report export (JSON / Markdown) off the data the report already has.
+  exportReport(fmt: 'json' | 'md'): void {
+    const d = this.store.selectedRun();
+    if (!d) return;
+    const stats = {
+      runId: d.runId, symbols: this.symbolsDisplay(), period: d.period,
+      from: d.backtestFrom, to: d.backtestTo, initialBalance: d.initialBalance,
+      netProfit: d.netProfit, grossPnL: d.grossPnL, commissionTotal: d.commissionTotal, swapTotal: d.swapTotal,
+      maxDrawdownPct: d.maxDrawdownPct, winRatePct: d.winRatePct, profitFactor: this.profitFactor(),
+      avgR: this.avgR(), totalTrades: d.totalTrades,
+      perStrategy: this.breakdown(),
+    };
+    let content: string; let mime: string; let ext: string;
+    if (fmt === 'json') {
+      content = JSON.stringify({ ...stats, trades: this.trades() }, null, 2);
+      mime = 'application/json'; ext = 'json';
+    } else {
+      content = [
+        `# Run ${d.runId.slice(0, 8)}`,
+        ``,
+        `- Symbols: ${stats.symbols} ${d.period}`,
+        `- Period: ${d.backtestFrom} → ${d.backtestTo}`,
+        `- Balance: ${d.initialBalance}`,
+        `- Net P/L: ${d.netProfit.toFixed(2)} (Gross ${(d.grossPnL ?? 0).toFixed(2)}, Comm ${(d.commissionTotal ?? 0).toFixed(2)}, Swap ${(d.swapTotal ?? 0).toFixed(2)})`,
+        `- Max DD: ${(d.maxDrawdownPct * 100).toFixed(2)}% · Win rate: ${(d.winRatePct * 100).toFixed(1)}% · Profit factor: ${this.pfDisplay()} · Avg R: ${this.avgR().toFixed(2)}`,
+        `- Trades: ${d.totalTrades}`,
+        ``,
+        `## Per-strategy`,
+        `| Strategy | Bars | Signals | Trades | Win% | Top no-signal |`,
+        `|---|---|---|---|---|---|`,
+        ...this.breakdown().map(s => `| ${s.strategyId} | ${s.totalBarsEvaluated} | ${s.signalsFired} | ${s.tradesOpened} | ${(s.winRatePct * 100).toFixed(0)}% | ${this.topReasons(s)} |`),
+      ].join('\n');
+      mime = 'text/markdown'; ext = 'md';
+    }
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `run-${d.runId.slice(0, 8)}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // F1 — render a violation/decision reason as a readable name, never raw JSON / [object Object].
