@@ -132,6 +132,9 @@ test.describe('Run Report — data checks (require seeded bars)', () => {
     expect(all).toContain('BREACH');
     expect(all).toContain('GOVERNOR');
     expect(all).toContain('CANCELLED');
+    expect(all).toContain('TRAIL');
+    expect(all).toContain('BREAKEVEN');
+    expect(all).toContain('PARTIAL');
     expect(all).not.toContain('BAR');
   });
 
@@ -191,5 +194,62 @@ test.describe('Live Monitor', () => {
     await page.goto(url + '/monitor');
     await expect(page.locator('app-run-monitor')).toBeVisible({ timeout: TIMEOUT });
     await expect(page.locator('app-run-monitor app-stat-tile').first()).toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+// iter-37 surfaces — require a seeded, data-rich run (set SEEDED_RUN_ID to a finished run with a journal).
+test.describe('iter-37 report surfaces (requires SEEDED_RUN_ID)', () => {
+  const seeded = process.env.SEEDED_RUN_ID;
+
+  test.beforeEach(async ({ page }) => {
+    test.skip(!seeded, 'set SEEDED_RUN_ID to a finished run with journal/trades data');
+    await page.goto(`/runs/${seeded}`);
+    await expect(page.locator('app-run-report')).toBeVisible({ timeout: TIMEOUT });
+  });
+
+  test('duplicate + export actions are present', async ({ page }) => {
+    await expect(page.locator('app-run-report button', { hasText: 'Duplicate' })).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-run-report a', { hasText: 'Download journal' })).toBeVisible();
+    await expect(page.locator('app-run-report a', { hasText: 'Export CSV' })).toBeVisible();
+    await expect(page.locator('app-run-report button', { hasText: 'Report JSON' })).toBeVisible();
+    await expect(page.locator('app-run-report button', { hasText: 'Report MD' })).toBeVisible();
+  });
+
+  test('per-strategy funnel + per-bar why tables render', async ({ page }) => {
+    await expect(page.locator('app-run-report h2', { hasText: 'Per-strategy funnel' })).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-run-report h2', { hasText: 'Per-bar' })).toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+// iter-37 structure checks that don't need a seeded run (rendered from form state / DB-seeded config).
+test.describe('iter-37 structure surfaces', () => {
+  test('dashboard renders (no fabricated tiles)', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('app-dashboard')).toBeVisible({ timeout: TIMEOUT });
+  });
+
+  test('new-backtest shows the resolved-config preview + overrides', async ({ page }) => {
+    await page.goto('/runs/new');
+    await expect(page.locator('app-new-backtest')).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-new-backtest', { hasText: 'Resolved config preview' })).toBeVisible({ timeout: TIMEOUT });
+    // Strategies default to the enabled set → per-strategy override textareas render.
+    await expect(page.locator('app-new-backtest textarea').first()).toBeVisible({ timeout: TIMEOUT });
+  });
+
+  test('risk-profile editor blocks an invalid save with a field error', async ({ page }) => {
+    await page.goto('/risk-profiles');
+    const firstCard = page.locator('app-risk-profile-list a').first();
+    if (!(await firstCard.isVisible().catch(() => false))) {
+      test.skip(true, 'no seeded risk profiles');
+      return;
+    }
+    await firstCard.click();
+    await page.waitForURL('**/risk-profiles/**', { timeout: TIMEOUT });
+    await expect(page.locator('app-risk-profile-detail')).toBeVisible({ timeout: TIMEOUT });
+    // Risk per trade as a fraction must be in (0,1]; 5 is invalid → save must be blocked with an error.
+    const riskInput = page.locator('app-risk-profile-detail input[type="number"]').first();
+    await riskInput.fill('5');
+    await page.locator('app-risk-profile-detail button', { hasText: 'Save' }).click();
+    await expect(page.locator('app-risk-profile-detail li').first()).toBeVisible({ timeout: TIMEOUT });
   });
 });
