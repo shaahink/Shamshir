@@ -32,6 +32,7 @@ export class RunsApiService {
       strategyIds: req.strategyIds,
       riskProfileId: req.riskProfileId ?? '',
       venue: req.venue ?? '',
+      strategyOverrides: req.strategyOverrides ?? {},
     };
     return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }
@@ -80,5 +81,10 @@ export class RunsApiService {
   // iter-37 F3 — NDJSON download of the lossless StepRecord journal.
   journalExportUrl(runId: string): string {
     return `/api/runs/${runId}/journal/export`;
+  }
+
+  // iter-37 F8 — CSV export of the run's trades (M20).
+  tradesCsvUrl(runId: string): string {
+    return `/api/export/trades.csv?runId=${runId}`;
   }
 }

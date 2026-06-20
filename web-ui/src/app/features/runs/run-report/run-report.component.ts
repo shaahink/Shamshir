@@ -38,6 +38,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                 {{ duplicating() ? 'Duplicating…' : 'Duplicate' }}
               </button>
               <a [href]="journalExportUrl(d.runId)" download class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Download journal (NDJSON)</a>
+              <a [href]="tradesCsvUrl(d.runId)" download class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Export CSV</a>
               <a [routerLink]="['/runs', d.runId, 'monitor']" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Monitor</a>
               <a [routerLink]="['/runs', d.runId, 'analyzer']" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Analyzer</a>
               <a routerLink="/runs" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">All Runs</a>
@@ -167,6 +168,7 @@ export class RunReportComponent implements OnInit {
   journalKinds = ['ALL', 'SIGNAL', 'ORDER', 'FILL', 'CLOSE', 'REJECTED', 'BREACH', 'GOVERNOR', 'ENTRY_EXPIRED', 'CANCELLED', 'TRAIL', 'BREAKEVEN', 'PARTIAL'];
 
   journalExportUrl(runId: string): string { return this.api.journalExportUrl(runId); }
+  tradesCsvUrl(runId: string): string { return this.api.tradesCsvUrl(runId); }
 
   // F1 — join an order's FILL / EXPIRY / REJECTION into its OrderProposed row by orderId, so the lifecycle
   // reads as one line instead of several. Applied to the full journal; the kind filter runs on the result.

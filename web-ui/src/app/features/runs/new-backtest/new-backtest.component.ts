@@ -64,6 +64,34 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
           @if (strategies().length === 0) { <p class="text-xs text-gray-500">Loading strategies...</p> }
         </div>
 
+        @if (selectedStrategyIds().size > 0) {
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-2">Per-strategy overrides (optional)</label>
+            @for (s of strategies(); track s.id) {
+              @if (selectedStrategyIds().has(s.id)) {
+                <div class="mb-1">
+                  <span class="text-xs text-gray-500">{{ s.displayName || s.id }}</span>
+                  <textarea [ngModel]="overrideFor(s.id)" (ngModelChange)="setOverride(s.id, $event)" placeholder="JSON overrides e.g. {&quot;Param1&quot;:42}" class="mt-0.5 w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 font-mono focus:border-emerald-500 focus:outline-none" rows="2"></textarea>
+                </div>
+              }
+            }
+          </div>
+        }
+
+        <div class="rounded-lg border border-gray-700 bg-gray-800/30 p-3">
+          <h4 class="text-xs font-medium text-gray-400 mb-2">Resolved config preview</h4>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+            <span class="text-gray-500">Symbols:</span><span class="text-gray-300">{{ symListStr() }}</span>
+            <span class="text-gray-500">Timeframes:</span><span class="text-gray-300">{{ perListStr() }}</span>
+            <span class="text-gray-500">Dates:</span><span class="text-gray-300">{{ startDate }} → {{ endDate }}</span>
+            <span class="text-gray-500">Balance:</span><span class="text-gray-300">{{ balance }}</span>
+            <span class="text-gray-500">Comm/Spread:</span><span class="text-gray-300">{{ commission }}/M · {{ spread }} pips</span>
+            <span class="text-gray-500">Risk Profile:</span><span class="text-gray-300">{{ riskProfile }}</span>
+            <span class="text-gray-500">Venue:</span><span class="text-gray-300">{{ venue || '(default)' }}</span>
+            <span class="text-gray-500">Strategies:</span><span class="text-gray-300">{{ stratListStr() }}</span>
+          </div>
+        </div>
+
         @if (error()) { <div class="rounded-md bg-red-900/20 p-3 text-sm text-red-400">{{ error() }}</div> }
 
         <button (click)="start()" [disabled]="loading()" class="w-full rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">{{ loading() ? 'Starting...' : 'Start Backtest' }}</button>
@@ -84,7 +112,14 @@ export class NewBacktestComponent implements OnInit {
   strategies = signal<any[]>([]);
   riskProfiles = signal<any[]>([{ id: 'standard', displayName: 'Standard', riskPerTradePercent: 0.005 }]);
   selectedStrategyIds = signal<Set<string>>(new Set());
+  overridesText = signal<Record<string, string>>({});
   loading = this.store.isLoading; error = this.store.error;
+
+  symListStr(): string { return [...this.selectedSymbols()].join(', ') || '(none)'; }
+  perListStr(): string { return [...this.selectedPeriods()].map(p => p.toUpperCase()).join(', ') || '(none)'; }
+  stratListStr(): string { return [...this.selectedStrategyIds()].join(', ') || '(enabled defaults)'; }
+  overrideFor(id: string): string { return this.overridesText()[id] ?? ''; }
+  setOverride(id: string, v: string): void { this.overridesText.update(o => ({ ...o, [id]: v })); }
 
   constructor() {
     const now = new Date();
@@ -136,10 +171,30 @@ export class NewBacktestComponent implements OnInit {
     if (new Date(this.startDate) >= new Date(this.endDate)) { this.error.set('Start date must be before end date'); return; }
     if (!this.balance || this.balance <= 0) { this.error.set('Balance must be greater than 0'); return; }
     this.error.set(null);
+
+    // F8: parse any per-strategy JSON overrides (skip empty / invalid).
+    let strategyOverrides: Record<string, Record<string, unknown>> | undefined;
+    const texts = this.overridesText();
+    for (const id of stratIds) {
+      const raw = (texts[id] ?? '').trim();
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          strategyOverrides ??= {};
+          strategyOverrides[id] = parsed;
+        }
+      } catch {
+        this.error.set(`Invalid JSON override for strategy "${id}"`);
+        return;
+      }
+    }
+
     const req: StartRunRequest = {
       symbol: symList[0] || 'EURUSD', period: perList[0] || 'h1', start: this.startDate, end: this.endDate,
       balance: this.balance, commissionPerMillion: this.commission, spreadPips: this.spread,
       symbols: symList, periods: perList, strategyIds: stratIds, riskProfileId: this.riskProfile, venue: this.venue,
+      strategyOverrides,
     };
     const runId = await this.store.startBacktest(req);
     this.router.navigate(['/runs', runId, 'monitor']);
