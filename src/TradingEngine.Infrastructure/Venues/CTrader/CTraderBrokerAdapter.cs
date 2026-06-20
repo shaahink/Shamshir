@@ -401,7 +401,9 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     public Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
-        var clientOrderId = Guid.NewGuid();
+        // Use the engine's order id (= kernel PositionId) as the venue clientOrderId so cBot fills/closes
+        // and the trade-ledger reconciliation all key off the SAME id the kernel uses (iter-36 K2/K4).
+        var clientOrderId = request.ClientOrderId ?? Guid.NewGuid();
         var connected = IsConnected;
         _logger.LogInformation("CTRADER|SUBMIT_ORDER|id={Id}|symbol={Symbol}|dir={Dir}|lots={Lots}|connected={Connected}",
             clientOrderId, request.Symbol, request.Direction, request.Lots, connected);

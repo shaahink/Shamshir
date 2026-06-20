@@ -33,6 +33,7 @@ public sealed class EngineRunner
     private readonly SizingPolicyOptions _sizingPolicy;
     private readonly ISignalGate? _signalGate;
     private readonly IEffectExecutor _effects;
+    private readonly IEventBus _eventBus;
     private readonly IProgress<BacktestProgressEvent>? _progress;
     private readonly IJournalWriter _journal;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
@@ -61,6 +62,7 @@ public sealed class EngineRunner
         _signalGate = deps.Strategies.SignalGate;
         _effects = deps.Persistence.EffectExecutor
             ?? throw new InvalidOperationException("EffectExecutor is required for the kernel engine (iter-36 K4).");
+        _eventBus = deps.Persistence.EventBus;
         _progress = deps.Persistence.Progress;
         _journal = deps.Persistence.StepJournal ?? new NullJournalWriter();
         _logger = logger;
@@ -153,6 +155,19 @@ public sealed class EngineRunner
             _runContext.RunId, "BAR",
             $"Bar {bar.OpenTimeUtc:yyyy-MM-dd HH:mm} | close={bar.Close:F5} | total={Interlocked.Read(ref _barCount)}",
             _clock.UtcNow));
+
+        // Surface the evaluator's per-strategy verdicts as BarEvaluated events — the BarEvaluationHandler
+        // persists them (the BarEvaluations table the UI + e2e completion-poll read). The StepRecord
+        // journal also carries them (K1/K5); this keeps the legacy table populated until it's subsumed.
+        var verdicts = _evaluator.Latest.Verdicts;
+        for (var i = 0; i < verdicts.Count; i++)
+        {
+            var v = verdicts[i];
+            _ = _eventBus.PublishAsync(new BarEvaluated(
+                _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
+                v.StrategyId, v.Indicators ?? new Dictionary<string, double>(),
+                v.SignalFired, v.Direction, v.Reason, _clock.UtcNow), CancellationToken.None);
+        }
     }
 
     private IReadOnlyList<ProjectedPosition> ProjectOpenPositions(EngineState state)
