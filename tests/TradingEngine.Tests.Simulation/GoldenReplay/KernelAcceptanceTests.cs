@@ -185,19 +185,41 @@ public sealed class KernelAcceptanceTests
         // no-op for the continuous-loop writer, so asserting straight after it raced the flush (flaky).
         await journal.DisposeAsync();
 
-        // --- Assert ---
+        // --- Assert: equivalence against the REAL golden baseline, not a magic constant (K0) ---
+        var golden = GoldenSnapshotLoader.Load();
+        var goldenFirstTrade = golden.Trades.Should().NotBeEmpty(
+            "the golden baseline must contain at least one trade to compare the kernel against").And.Subject.First();
+
         var submitEffects = effects.Effects.OfType<SubmitOrder>().ToList();
         submitEffects.Should().NotBeEmpty("the kernel must accept at least one order on a down-leg fixture");
 
         var firstSubmit = submitEffects[0];
-        firstSubmit.Lots.Should().Be(0.20m, "the kernel gate must size identically to the old gate (golden baseline)");
+        firstSubmit.Lots.Should().Be(goldenFirstTrade.Lots,
+            "the kernel gate must size the first order identically to the golden baseline (loaded from " +
+            "golden-snapshot.json, NOT a hardcoded 0.20 — that magic constant is exactly how the gate " +
+            "went hollow before)");
         firstSubmit.Symbol.Should().Be(Eurusd);
-        firstSubmit.Direction.Should().Be(TradeDirection.Long);
+        firstSubmit.Direction.ToString().Should().Be(goldenFirstTrade.Direction,
+            "the kernel must take the same direction as the golden baseline's first trade");
 
         // Verify the kernel wrote journal entries.
         sink.Records.Should().NotBeEmpty("the kernel must journal every decision step");
 
         // Verify final state has the position in Open phase.
         state.Positions.Should().NotBeEmpty("at least one position must be open at end of bars");
+    }
+
+    /// <summary>
+    /// K0 → K3 breadcrumb: the FULL-run equivalence gate. The kernel, driven over the golden fixture
+    /// through the production backtest loop (evaluator → KernelDriver → EffectExecutor →
+    /// BacktestReplayAdapter), must reproduce golden-snapshot.json's ENTIRE trade sequence + final risk
+    /// — not just the first order's sizing (asserted above). This can only be asserted once that loop
+    /// exists; wire it and un-skip in K3. Until then the partial gate above holds.
+    /// </summary>
+    [Fact(Skip = "K3: un-skip once the kernel backtest loop (evaluator + real fills) exists — see docs/iterations/iter-36/PLAN.md")]
+    public void KernelFullRun_MatchesGolden_TradesAndRisk()
+    {
+        // K3: drive GoldenBarFixture through the real kernel backtest loop, capture trades + final
+        // EngineState risk, and assert equality against GoldenSnapshotLoader.Load() (Trades + FinalRisk).
     }
 }

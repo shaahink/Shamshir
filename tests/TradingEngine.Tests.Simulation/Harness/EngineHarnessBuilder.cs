@@ -54,7 +54,14 @@ public sealed class EngineHarnessBuilder
 
         Func<string, string, decimal> crossRate = (_, _) => 1.0m;
         var clock = new ManualClock();
-        clock.UtcNow = DateTime.UtcNow;
+        // Sim-time, NOT wall-clock. The order gate's weekend/news filters read clock.UtcNow, so pinning
+        // it to the real current time made the golden oracle DATE-DEPENDENT: on a Saturday/Sunday every
+        // order is WEEKEND_RESTRICTION-rejected, so golden produces zero trades and the gate goes red —
+        // a flaky, hollow gate. Anchor to the fixture's first bar so the gate sees deterministic sim-time.
+        // (Per-bar clock advance is a follow-up; the cutover carries sim-time on each event — iter-36 K1.)
+        clock.UtcNow = _bars.Count > 0
+            ? _bars[0].OpenTimeUtc
+            : new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         var newsFilter = Substitute.For<INewsFilter>();
         var sessionFilter = new SessionFilter();

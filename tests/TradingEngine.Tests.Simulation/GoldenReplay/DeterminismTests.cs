@@ -115,7 +115,7 @@ public sealed class DeterminismTests
                 "det-test", ++seq, evt.OccurredAtUtc,
                 evt.GetType().Name, "{}",
                 decision.Effects.Select(e => e.GetType().Name).ToList(),
-                JsonSerializer.Serialize(decision.Effects.Select(e => new { kind = e.GetType().Name })),
+                SerializeEffects(decision.Effects),
                 RiskSnapshots.Capture(state),
                 null, null, []));
         }
@@ -146,7 +146,7 @@ public sealed class DeterminismTests
                 "det-test", ++seq, evt.OccurredAtUtc,
                 evt.GetType().Name, "{}",
                 decision.Effects.Select(e => e.GetType().Name).ToList(),
-                "[]",
+                SerializeEffects(decision.Effects),
                 RiskSnapshots.Capture(state),
                 null, null, []));
         }
@@ -161,14 +161,29 @@ public sealed class DeterminismTests
             1.1000m, -50, count).Build();
     }
 
+    private static readonly JsonSerializerOptions EnumJson = new()
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    // Serialize each effect by its RUNTIME type so subtype payloads (OrderId, prices, lots) are
+    // captured. The old version serialized only effect *kind names*, so a Guid/price nondeterminism
+    // in an effect would have slipped straight through — this is what makes the gate actually bite.
+    private static string SerializeEffects(System.Collections.IEnumerable effects) =>
+        JsonSerializer.Serialize(
+            effects.Cast<object>().Select(e => JsonSerializer.Serialize(e, e.GetType(), EnumJson)).ToList());
+
+    // Compare the FULL StepRecord across runs: seq, event kind, effect kinds, the real effect payloads
+    // (ids/prices/lots), and the risk snapshot — not just {seq, kind, count}.
     private static string SerializeJournalFull(IReadOnlyList<StepRecord> records)
     {
         return JsonSerializer.Serialize(records.Select(r => new
         {
             r.Seq,
             r.EventKind,
-            EffectCount = r.EffectKinds.Count,
+            r.EffectKinds,
             Effects = r.EffectsJson,
-        }), new JsonSerializerOptions { WriteIndented = true });
+            r.Risk,
+        }), new JsonSerializerOptions { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } });
     }
 }

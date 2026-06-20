@@ -228,8 +228,26 @@ public class EnginePurityTests
             ("DateTimeOffset.Now", "DateTimeOffset.Now"),
         };
 
+        // Guard against a HOLLOW gate: if the source dir can't be resolved (e.g. run from an
+        // unexpected working dir), GetFiles would otherwise throw or scan nothing and the determinism
+        // guarantee would silently lapse. Fail loudly instead.
+        Directory.Exists(engineSrcDir).Should().BeTrue(
+            $"the Engine source directory must be found for the purity scan to run (looked at '{engineSrcDir}')");
+
         var violations = new List<string>();
         var csFiles = Directory.GetFiles(engineSrcDir, "*.cs", SearchOption.AllDirectories);
+
+        // The scan must actually cover the kernel-core files — otherwise a green result is meaningless.
+        var scanned = csFiles.Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var required in new[]
+                 {
+                     "Kernel.cs", "EngineReducer.cs", "PreTradeGate.cs", "KernelSizing.cs",
+                     "PositionLifecycle.cs", "GovernorMachine.cs", "DrawdownReducer.cs",
+                 })
+        {
+            scanned.Should().Contain(required,
+                $"the determinism purity scan must cover the kernel-core file '{required}'");
+        }
 
         foreach (var file in csFiles)
         {
