@@ -491,7 +491,7 @@ public class TradingEngineCBot : Robot
         return MakeModifyResult(Guid.Empty.ToString(), 0, "Rejected", 0, 0);
     }
 
-    private static object MakeModifyResult(string clientOrderId, long positionId, string state,
+    private object MakeModifyResult(string clientOrderId, long positionId, string state,
         double slPrice, double tpPrice)
     {
         return new
@@ -505,7 +505,7 @@ public class TradingEngineCBot : Robot
             fillPrice = 0.0,
             filledLots = 0.0,
             reason = (string?)null,
-            simTime = DateTime.UtcNow.ToString("o")
+            simTime = Server.TimeInUtc.ToString("o")
         };
     }
 
@@ -555,7 +555,7 @@ public class TradingEngineCBot : Robot
         return list.ToArray();
     }
 
-    private static object MakeExecResult(string clientOrderId, string kind, long positionId,
+    private object MakeExecResult(string clientOrderId, string kind, long positionId,
         string state, double fillPrice, double filledLots, string? reason,
         double grossProfit = 0.0, double netProfit = 0.0,
         double commission = 0.0, double swap = 0.0)
@@ -569,7 +569,7 @@ public class TradingEngineCBot : Robot
             fillPrice,
             filledLots,
             reason,
-            simTime = DateTime.UtcNow.ToString("o"),
+            simTime = Server.TimeInUtc.ToString("o"),
             grossProfit,
             netProfit,
             commission,

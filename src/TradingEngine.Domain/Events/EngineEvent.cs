@@ -22,7 +22,8 @@ public record TickReceived(Symbol Symbol, decimal Bid, decimal Ask, DateTime Occ
 /// <param name="SlPips">Stop distance in pips, computed by the evaluator (market context lives there, not in the kernel).</param>
 /// <param name="PipValuePerLot">Cross-rate-aware pip value per lot, computed by the evaluator. The gate needs both to size + project worst case purely.</param>
 /// <param name="External">Impure gate verdicts (news/weekend/compliance/governor) the evaluator froze at sim-time so the pure kernel gate can apply them deterministically — no protection silently dropped (iter-36 K1). Default = nothing blocks.</param>
-public record OrderProposed(Guid OrderId, Symbol Symbol, TradeDirection Direction, OrderType OrderType, Price? LimitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, decimal SignalPriceMid, decimal SlPips, decimal PipValuePerLot, DateTime OccurredAtUtc, ExternalVerdicts External = default) : EngineEvent(OccurredAtUtc);
+/// <param name="Profile">The risk profile the evaluator resolved for this strategy (iter-36 K4 gap-1). The kernel sizes the order with THIS profile, not the run-constant <c>KernelConfig.Profile</c>, so a multi-profile run sizes each proposal correctly. Null = fall back to the run profile (e.g. tests that construct a proposal directly).</param>
+public record OrderProposed(Guid OrderId, Symbol Symbol, TradeDirection Direction, OrderType OrderType, Price? LimitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, decimal SignalPriceMid, decimal SlPips, decimal PipValuePerLot, DateTime OccurredAtUtc, ExternalVerdicts External = default, RiskProfile? Profile = null) : EngineEvent(OccurredAtUtc);
 
 public record OrderSubmitted(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price? LimitPrice, string StrategyId, DateTime OccurredAtUtc, Price StopLoss = default, Price? TakeProfit = null) : EngineEvent(OccurredAtUtc);
 
@@ -38,6 +39,15 @@ public record OrderRejected(Guid OrderId, Symbol Symbol, string Reason, DateTime
 public record OrderCancelled(Guid OrderId, Symbol Symbol, string Reason, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 
 public record CloseRequested(Guid PositionId, string Reason, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+
+/// <summary>
+/// A trailing/breakeven stop move computed by the position-management evaluator (impure — it reads recent
+/// bars + per-position config the pure kernel can't), carried into the kernel so the reducer updates the
+/// authoritative stop on <see cref="EngineState"/> AND emits a <see cref="ModifyStopLoss"/> effect to the
+/// venue (iter-36 K4 gap-3). The "what new stop" decision is made outside the kernel — exactly like
+/// <see cref="OrderProposed"/> — and applied purely inside it, so replay stays deterministic.
+/// </summary>
+public record StopLossModifyRequested(Guid PositionId, Price NewStopLoss, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 
 /// <summary>An account observation from the venue (was the imperative <c>AccountUpdate</c>). Carries the
 /// full account so the kernel can fold an authoritative <see cref="AccountView"/> + run the breach

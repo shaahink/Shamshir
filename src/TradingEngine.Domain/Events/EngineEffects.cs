@@ -4,7 +4,9 @@ public abstract record EngineEffect;
 
 public record SubmitOrder(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price? LimitPrice, Price StopLoss, Price? TakeProfit, string StrategyId) : EngineEffect;
 
-public record ModifyStopLoss(Guid PositionId, Price NewStopLoss) : EngineEffect;
+// TakeProfit (iter-36 K4 gap-3): carries the position's current TP so a trailing modify preserves it on
+// the venue (the simulated venue clears TP if null is passed). The reducer sets it from the position.
+public record ModifyStopLoss(Guid PositionId, Price NewStopLoss, Price? TakeProfit = null) : EngineEffect;
 
 public record ModifyTakeProfit(Guid PositionId, Price NewTakeProfit) : EngineEffect;
 

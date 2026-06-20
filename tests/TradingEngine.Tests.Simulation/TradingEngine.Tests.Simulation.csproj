@@ -37,6 +37,7 @@
     <ProjectReference Include="..\..\src\TradingEngine.Strategies\TradingEngine.Strategies.csproj" />
     <ProjectReference Include="..\..\src\TradingEngine.CTraderRunner\TradingEngine.CTraderRunner.csproj" />
     <ProjectReference Include="..\..\src\TradingEngine.Host\TradingEngine.Host.csproj" />
+    <ProjectReference Include="..\TradingEngine.Tests.Support\TradingEngine.Tests.Support.csproj" />
   </ItemGroup>
 
 </Project>

@@ -47,6 +47,8 @@ public sealed class EngineReducerWiringTests
             nameof(DayRolled),
             nameof(WeekRolled),
             nameof(MonthRolled),
+            // iter-36 (K4 gap-3): trailing/breakeven stop move — wired in the reducer (update stop + emit ModifyStopLoss).
+            nameof(StopLossModifyRequested),
         };
 
         var unwiredTypes = new HashSet<string>(StringComparer.Ordinal)

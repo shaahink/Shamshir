@@ -96,7 +96,6 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                 services.AddSingleton<IEquitySink>(_ => Substitute.For<IEquitySink>());
                 services.AddSingleton<EquityPersistenceHandler>();
                 services.AddSingleton<TradePersistenceHandler>();
-                services.AddSingleton<BarEvaluationHandler>();
                 services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
@@ -136,9 +135,9 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                             Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
                             StrategyBank = Substitute.For<IStrategyBank>(),
                             RegimeDetector = Substitute.For<IRegimeDetector>(),
-                            OrderGate = sp.GetRequiredService<OrderDispatcher>(),
                             PositionTracker = sp.GetRequiredService<PositionTracker>(),
                             EntryPlanner = sp.GetRequiredService<TradingEngine.Services.EntryPlanner>(),
+                            PositionManager = sp.GetRequiredService<IPositionManager>(),
                             SignalGate = sp.GetRequiredService<ISignalGate>(),
                         },
                         Persistence = new PersistenceServices

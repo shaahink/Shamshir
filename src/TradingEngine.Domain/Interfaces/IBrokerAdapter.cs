@@ -88,6 +88,11 @@ public record ExecutionEvent(
     public decimal? Commission { get; init; }
     public decimal? Swap { get; init; }
 
+    /// <summary>The instrument this execution belongs to (iter-37 K-GAP-6). Carried by the venue so the
+    /// feedback bridge attributes fills/closes to the CORRECT symbol on a multi-symbol run instead of the
+    /// old first-open-position / EURUSD guess. Null = unknown (the kernel falls back to resolving by id).</summary>
+    public Symbol? Symbol { get; init; }
+
     /// <summary>Venue-authoritative reason a position was closed (SL / TP / STOPOUT / CLOSED),
     /// for venue-initiated (server-side SL/TP) closes the engine didn't request. Null for fills,
     /// rejections, and engine-requested closes (the engine already knows those reasons).</summary>

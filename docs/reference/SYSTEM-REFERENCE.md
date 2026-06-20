@@ -4,6 +4,28 @@
 **Branch**: `iter/31-costs-journal`
 **For**: Any implementing agent needing to understand the full system
 
+> ## ⚠ iter-36 UPDATE (2026-06-20) — read this first; sections below are pre-cutover history
+> The **kernel cutover is complete**. Several flows described below are now **historical** (the old
+> imperative architecture). What is true now:
+> - **One engine:** production (live + backtest) runs ONLY the pure kernel via
+>   `KernelBacktestLoop.RunFromBrokerAsync` (`BarTape/BrokerStream → BarEvaluator → Kernel → EffectExecutor
+>   → venue + feedback bridge`), `EngineState` the single authority. **`TradingLoop`/`OrderDispatcher`/
+>   `KernelOrderGate`/`AccountProcessor`/`SimulateBarExitsAsync` are NOT in the production path** — the gate
+>   is `PreTradeGate` (in-kernel), sizing is `KernelSizing`, SL/TP is `EngineReducer.HandleBarClosed`, breach
+>   is `Kernel.DecideEquity`, resets are `Kernel.DecideReset`, trailing is `KernelTrailingEvaluator` →
+>   `StopLossModifyRequested`. The four imperative classes live ONLY in `tests/TradingEngine.Tests.Support`
+>   as the golden regression oracle (D81). So §1's flow diagram, §2's `OrderDispatcher` sizing flow, §3's
+>   `RiskManager.Validate` gate, and the "kernel half-wired / `HandleBarClosed` Dead" note are **obsolete**.
+> - **One journal:** the lossless **StepRecord** stream (`ChannelJournalWriter`, Wait-mode) is the single
+>   journal. `PipelineEventWriter` + `BarEvaluationHandler` (and `PipelineEvents`/`BarEvaluations` as live
+>   sinks) are **deleted/unwritten** (D83). `GET /api/runs/{id}/journal` serves SQL-paged StepRecords +
+>   `/journal/export` NDJSON. (The funnel/report readers still point at the old tables → iter-37 F2/F4.)
+> - **Replay/duplicate:** `POST /api/runs/{id}/duplicate` (same dataset, new config, `ParentRunId`); run
+>   identity persisted (`DatasetId`/`ConfigSetId`/`Seed`). Replay = the kernel loop's determinism.
+> - Per-strategy risk profiles, trailing/breakeven, and Monitor equity snapshots all run in the kernel loop.
+>
+> See `docs/iterations/iter-36/{PLAN,HANDOVER}.md` + `DECISIONS.md` D81–D84 for specifics.
+
 ---
 
 ## 1. What Is This System?

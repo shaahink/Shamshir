@@ -330,6 +330,32 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson);
         }
+        catch (OperationCanceledException)
+        {
+            // T9: the run was cancelled (user Cancel, the 30-min linked timeout, or host/stream teardown
+            // at/near completion). Trades were persisted during the run, so this is NOT a failure — finalize
+            // with the trades-so-far and an info log instead of scaring the user with a "failed" + error.
+            var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
+            var userCancelled = state.Status == "cancelled";
+            state.Status = userCancelled ? "cancelled" : "completed";
+            state.Error = null;
+            var cancelResult = new BacktestResult
+            {
+                RunId = runId,
+                ExitCode = 0,
+                NetProfit = tradeStats.NetProfit,
+                MaxDrawdownPct = tradeStats.MaxDrawdownPct,
+                TotalTrades = tradeStats.TotalTrades,
+                WinningTrades = tradeStats.WinningTrades,
+                WinRatePct = tradeStats.WinRatePct,
+            };
+            state.Result = cancelResult;
+            EnqueueLog(runId, state.LogLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] Run {state.Status} ({tradeStats.TotalTrades} trades saved).");
+            _logger.LogInformation("Backtest {RunId} ended via cancellation; status={Status} trades={Trades}",
+                runId, state.Status, tradeStats.TotalTrades);
+            await WriteEndRecordAsync(runId, cfg, startedAt, cancelResult, tradeStats, effectiveConfigJson);
+        }
         catch (Exception ex)
         {
             state.Status = "failed";
@@ -365,11 +391,30 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         {
             using var scope = _scopeFactory.CreateScope();
             var repo = scope.ServiceProvider.GetRequiredService<IBacktestRunRepository>();
+            // iter-36 K6: content-address the run. DatasetId = hash of the data window spec (symbols/periods/
+            // range); ConfigSetId = hash of the resolved effective config. Identical (DatasetId, ConfigSetId,
+            // Seed) ⇒ a deterministic re-run; a duplicate keeps DatasetId, gets a new ConfigSetId + ParentRunId.
+            var datasetSpec = $"{SymbolsJson(cfg.Symbols)}|{PeriodsJson(cfg.Periods)}|{cfg.Start:O}|{cfg.End:O}";
+            var datasetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(datasetSpec);
+            // ConfigSetId = hash of EVERYTHING that determines behavior (ReplayModel): the resolved strategy
+            // effective config PLUS the run's risk profile / strategy selection / per-strategy overrides — so
+            // a duplicate that changes the risk profile gets a genuinely different ConfigSetId (K6).
+            var configIdentity = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                effective = effectiveConfigJson ?? "{}",
+                riskProfileId = cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
+                strategyIds = cfg.CustomParams.GetValueOrDefault("StrategyIds"),
+                overrides = cfg.CustomParams.GetValueOrDefault("StrategyOverrides"),
+            });
+            var configSetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(configIdentity);
+            var parentRunId = cfg.CustomParams.GetValueOrDefault("ParentRunId");
             var summary = new BacktestRunSummary(
                 runId, startedAt, DateTime.MinValue,
                 cfg.Symbol, cfg.Period, SymbolsJson(cfg.Symbols), PeriodsJson(cfg.Periods), cfg.Start, cfg.End,
                 cfg.Balance, "", "{}", effectiveConfigJson,
-                0, 0, 0, 0, 0, 0, 0, 0, -1, null);
+                0, 0, 0, 0, 0, 0, 0, 0, -1, null,
+                ReportJsonPath: null, DatasetId: datasetId, ConfigSetId: configSetId, Seed: 42,
+                ParentRunId: string.IsNullOrWhiteSpace(parentRunId) ? null : parentRunId);
             await repo.SaveAsync(summary, CancellationToken.None);
         }
         catch (Exception ex)
@@ -933,10 +978,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         catch { /* best effort */ }
         try { await host.Services.GetRequiredService<BufferedBarWriter>().FlushAsync(); }
         catch { /* best effort */ }
-        try { await host.Services.GetRequiredService<PipelineEventWriter>().FlushRemainingAsync(); }
-        catch { /* best effort */ }
-        try { await host.Services.GetRequiredService<BarEvaluationHandler>().FlushRemainingAsync(); }
-        catch { /* best effort */ }
+        // iter-36 K5: the StepRecord journal drains via ChannelJournalWriter.FlushAsync on engine dispose
+        // (Wait-mode, lossless) — the old PipelineEventWriter/BarEvaluationHandler force-drains are gone.
     }
 
     private static async Task DisposeHostAsync(IHost host)

@@ -1,16 +1,15 @@
 using Microsoft.EntityFrameworkCore;
+using TradingEngine.Tests.Integration.Support;
 
 namespace TradingEngine.Tests.Integration.InfrastructureTests;
 
-public sealed class TradeRepositoryTests
+public sealed class TradeRepositoryTests : IDisposable
 {
-    private static TradingDbContext CreateInMemoryDb()
-    {
-        var options = new DbContextOptionsBuilder<TradingDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-        return new TradingDbContext(options);
-    }
+    private readonly SqliteInMemory _mem = new();
+
+    public void Dispose() => _mem.Dispose();
+
+    private TradingDbContext CreateInMemoryDb() => _mem.NewContext();
 
     [Fact]
     public async Task SaveAndRetrieve_RoundTrips()

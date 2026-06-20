@@ -1,4 +1,4 @@
-import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, ElementRef, inject, OnDestroy, OnInit, signal, ViewChild } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { Subscription } from 'rxjs';
@@ -54,14 +54,17 @@ import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-ch
         <app-equity-chart title="Live Equity" [data]="equityData()" [showDrawdown]="false" [showBalance]="true" />
       }
 
-      <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+      <div class="relative rounded-lg border border-gray-800 bg-gray-900/50 p-4">
         <h2 class="mb-2 text-sm font-medium text-gray-400">Journal ({{ journalEntries().length }})</h2>
-        <div class="max-h-80 overflow-y-auto space-y-0.5">
+        <div #journalScroll (scroll)="onJournalScroll()" class="max-h-80 overflow-y-auto space-y-0.5">
           @for (entry of journalEntries(); track entry.seq) {
             <div class="border-b border-gray-800 py-1 text-xs last:border-0"><span class="text-gray-500">{{ entry.simTimeUtc | date:'HH:mm:ss' }}</span><span class="ml-2 font-medium text-gray-300">{{ entry.kind }}</span>@if (entry.symbol) { <span class="ml-1 text-gray-600">{{ entry.symbol }}</span> }@if (entry.reason) { <span class="ml-2 text-gray-600">- {{ entry.reason }}</span> }</div>
           }
           @if (journalEntries().length === 0) { <div class="py-4 text-center text-xs text-gray-500">Waiting...</div> }
         </div>
+        @if (!stick()) {
+          <button (click)="jumpToLatest()" class="absolute bottom-3 right-3 rounded-full bg-emerald-700 px-3 py-1 text-xs text-white shadow hover:bg-emerald-600">↓ jump to latest</button>
+        }
       </div>
     </div>
   `,
@@ -80,7 +83,26 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   journalEntries = signal<JournalEnvelope[]>([]);
   equityData = signal<ChartPoint[]>([]);
   cancelling = signal(false);
+  stick = signal(true);
+  @ViewChild('journalScroll') private journalScroll?: ElementRef<HTMLDivElement>;
   counterDefs = [{ key: 'signals', label: 'Signals' }, { key: 'orders', label: 'Orders' }, { key: 'fills', label: 'Fills' }, { key: 'closes', label: 'Closes' }, { key: 'rejections', label: 'Rejections' }, { key: 'breaches', label: 'Breaches' }];
+
+  // F5 — stick-to-bottom: auto-scroll only when the user is already near the bottom; otherwise hold
+  // position and show a "jump to latest" affordance (set via the scroll handler).
+  onJournalScroll(): void {
+    const el = this.journalScroll?.nativeElement;
+    if (!el) return;
+    this.stick.set(el.scrollTop + el.clientHeight >= el.scrollHeight - 40);
+  }
+
+  jumpToLatest(): void { this.stick.set(true); this.scrollJournalToBottom(); }
+
+  private scrollJournalToBottom(): void {
+    queueMicrotask(() => {
+      const el = this.journalScroll?.nativeElement;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+  }
 
   private subs = new Subscription();
   private startTime = 0;
@@ -101,7 +123,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       this.barsPerSec.set(e.barsPerSec ?? 0);
       if (e.etaSeconds > 0) { const m = Math.floor(e.etaSeconds / 60); this.eta.set(m > 60 ? `${Math.floor(m/60)}h ${m%60}m` : `${m}m`); }
       if (e.simTimeUtc) this.simTime.set(e.simTimeUtc);
-      if (e.equity != null) { this.equity.set(e.equity); const t = e.simTimeUtc ? new Date(e.simTimeUtc).getTime() : Date.now(); this.equityData.update(d => [...d.slice(-499), { time: t, value: e.equity, balance: e.balance ?? 0 }]); }
+      if (e.equity != null) { this.equity.set(e.equity); const t = e.simTimeUtc ? new Date(e.simTimeUtc).getTime() : Date.now(); this.equityData.update(d => [...d.slice(-499), { time: t, value: e.equity, balance: e.balance ?? e.equity }]); }
       if (e.balance != null) this.balance.set(e.balance);
       if (e.openPositions != null) this.openPositions.set(e.openPositions);
       if (e.dailyDdPct != null) this.dailyDdPct.set(e.dailyDdPct);
@@ -125,6 +147,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
         const fresh = mapped.filter(m => !existingSeqs.has(m.seq));
         if (fresh.length > 0) {
           this.journalEntries.set([...existing, ...fresh].slice(-500));
+          if (this.stick()) this.scrollJournalToBottom();
         }
       }
     }));

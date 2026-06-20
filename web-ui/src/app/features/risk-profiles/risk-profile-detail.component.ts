@@ -47,6 +47,11 @@ import { firstValueFrom } from 'rxjs';
             <div class="grid grid-cols-2 gap-3"><div><label class="block text-xs text-gray-500 mb-1">Multiplier</label><input type="number" [(ngModel)]="edit.antiMartingaleMultiplier" step="0.1" class="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" /></div><div><label class="block text-xs text-gray-500 mb-1">Max Steps</label><input type="number" [(ngModel)]="edit.antiMartingaleMaxSteps" class="w-full rounded-md border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" /></div></div>
           }
 
+          @if (errors().length > 0) {
+            <div class="rounded-md border border-red-800 bg-red-900/20 p-3 text-xs text-red-400">
+              <ul class="list-disc pl-4">@for (e of errors(); track e) { <li>{{ e }}</li> }</ul>
+            </div>
+          }
           @if (savedOk()) { <div class="rounded-md bg-emerald-900/20 p-3 text-xs text-emerald-400">Saved</div> }
           <div class="flex gap-2">
             <button (click)="save()" [disabled]="saving()" class="rounded-md bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50">{{ saving() ? 'Saving...' : 'Save' }}</button>
@@ -61,7 +66,20 @@ export class RiskProfileDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private http = inject(HttpClient);
   private router = inject(Router);
-  data = signal<any>(null); edit: any = {}; saving = signal(false); savedOk = signal(false);
+  data = signal<any>(null); edit: any = {}; saving = signal(false); savedOk = signal(false); errors = signal<string[]>([]);
+
+  // F7 — validate before save; block the PUT and surface field errors when invalid.
+  private validate(): string[] {
+    const e: string[] = [];
+    const frac = (v: any) => Number(v) > 0 && Number(v) <= 1;
+    if (!this.edit.displayName?.trim()) e.push('Display name is required.');
+    if (!frac(this.edit.riskPerTradePercent)) e.push('Risk per trade must be a fraction in (0, 1] (e.g. 0.01 = 1%).');
+    if (!frac(this.edit.maxDailyDrawdownPercent)) e.push('Max daily DD must be a fraction in (0, 1].');
+    if (!frac(this.edit.maxTotalDrawdownPercent)) e.push('Max total DD must be a fraction in (0, 1].');
+    if (Number(this.edit.maxTotalDrawdownPercent) < Number(this.edit.maxDailyDrawdownPercent)) e.push('Max total DD must be >= max daily DD.');
+    if (!(Number(this.edit.maxConcurrentPositions) >= 1)) e.push('Max positions must be at least 1.');
+    return e;
+  }
 
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id'); if (!id) return;
@@ -70,6 +88,9 @@ export class RiskProfileDetailComponent implements OnInit {
   }
 
   async save(): Promise<void> {
+    const errs = this.validate();
+    this.errors.set(errs);
+    if (errs.length > 0) return;
     this.saving.set(true); this.savedOk.set(false);
     await firstValueFrom(this.http.put(`/api/risk-profiles/${this.edit.id}`, this.edit));
     this.savedOk.set(true); this.saving.set(false);

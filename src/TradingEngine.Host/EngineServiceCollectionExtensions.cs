@@ -125,7 +125,6 @@ public static class EngineServiceCollectionExtensions
             o.UseSqlite($"Data Source={dbPath}"));
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
-        services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
         services.AddScoped<IDatasetRepository, SqliteDatasetRepository>();
         services.AddScoped<IConfigSetRepository, SqliteConfigSetRepository>();
@@ -137,18 +136,15 @@ public static class EngineServiceCollectionExtensions
             new ScopedStepRecordSink(sp.GetRequiredService<IServiceScopeFactory>())));
         services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
         services.AddSingleton<PersistenceService>();
-        services.AddSingleton<PipelineEventWriter>(sp => new PipelineEventWriter(
-            sp.GetRequiredService<EngineRunContext>().RunId,
-            sp.GetRequiredService<IServiceScopeFactory>(),
-            sp.GetRequiredService<ILogger<PipelineEventWriter>>()));
-        services.AddSingleton<IPipelineJournal>(sp => sp.GetRequiredService<PipelineEventWriter>());
-        services.AddSingleton<IDecisionJournal>(sp => sp.GetRequiredService<PipelineEventWriter>());
+        // iter-36 K5: the StepRecord journal (ScopedStepRecordSink + ChannelJournalWriter, above) is the
+        // single journal writer. The old PipelineEventWriter/BarEvaluationHandler (Wait/DropOldest channels)
+        // are deleted; the few legacy IDecisionJournal/IPipelineJournal consumers bind to no-ops.
+        services.AddSingleton<IPipelineJournal, NullPipelineJournal>();
+        services.AddSingleton<IDecisionJournal, NullDecisionJournal>();
         services.AddSingleton<IPositionManager, PositionManager>();
         services.AddSingleton<IEventBus, TypedEventBus>();
         services.AddSingleton<EquityPersistenceHandler>();
         services.AddSingleton<TradePersistenceHandler>();
-        services.AddSingleton<BarEvaluationHandler>();
-        services.AddSingleton<ProtectionLedgerPersistenceHandler>();
         services.AddSingleton<BarPersistenceHandler>();
         services.AddSingleton<BufferedBarWriter>();
 
@@ -170,8 +166,6 @@ public static class EngineServiceCollectionExtensions
             sp.GetRequiredService<LoadedConfig>().StrategyRotation,
             sp.GetService<RunPlan>(),
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
-        services.AddSingleton<OrderDispatcher>();
-        services.AddSingleton<KernelOrderGate>(); // iter-35 AF2: the kernel gate is now the production authority
         services.AddSingleton<PositionTracker>();
         services.AddSingleton<EntryPlanner>();
         services.AddSingleton<EffectExecutor>();
@@ -261,9 +255,9 @@ public static class EngineServiceCollectionExtensions
                 Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
                 StrategyBank = sp.GetRequiredService<IStrategyBank>(),
                 RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
-                OrderGate = sp.GetRequiredService<KernelOrderGate>(),
                 PositionTracker = sp.GetRequiredService<PositionTracker>(),
                 EntryPlanner = sp.GetRequiredService<EntryPlanner>(),
+                PositionManager = sp.GetRequiredService<IPositionManager>(),
                 SignalGate = sp.GetRequiredService<ISignalGate>(),
             },
             Persistence = new PersistenceServices
@@ -275,6 +269,7 @@ public static class EngineServiceCollectionExtensions
                 Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
                 Journal = sp.GetRequiredService<IPipelineJournal>(),
                 StepJournal = sp.GetRequiredService<IJournalWriter>(),
+                ScopeFactory = sp.GetRequiredService<IServiceScopeFactory>(),
             },
         });
 
@@ -341,8 +336,6 @@ public static class EngineServiceCollectionExtensions
             sp.GetRequiredService<LoadedConfig>().StrategyRotation,
             options.RunPlan,
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
-        services.AddSingleton<OrderDispatcher>();
-        services.AddSingleton<KernelOrderGate>(); // iter-35 AF2: the kernel gate is now the production authority
         services.AddSingleton<PositionTracker>();
         services.AddSingleton<EntryPlanner>();
         services.AddSingleton<EffectExecutor>();
@@ -417,9 +410,9 @@ public static class EngineServiceCollectionExtensions
                 Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
                 StrategyBank = sp.GetRequiredService<IStrategyBank>(),
                 RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
-                OrderGate = sp.GetRequiredService<KernelOrderGate>(),
                 PositionTracker = sp.GetRequiredService<PositionTracker>(),
                 EntryPlanner = sp.GetRequiredService<EntryPlanner>(),
+                PositionManager = sp.GetRequiredService<IPositionManager>(),
                 SignalGate = sp.GetRequiredService<ISignalGate>(),
             },
             Persistence = new PersistenceServices
@@ -431,6 +424,7 @@ public static class EngineServiceCollectionExtensions
                 Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
                 Journal = sp.GetRequiredService<IPipelineJournal>(),
                 StepJournal = sp.GetRequiredService<IJournalWriter>(),
+                ScopeFactory = sp.GetRequiredService<IServiceScopeFactory>(),
             },
         });
 
@@ -492,7 +486,6 @@ public static class EngineHostWireExtensions
         var eventBus = app.Services.GetRequiredService<IEventBus>();
         eventBus.Subscribe<EquityUpdated>(app.Services.GetRequiredService<EquityPersistenceHandler>());
         eventBus.Subscribe<TradeClosed>(app.Services.GetRequiredService<TradePersistenceHandler>());
-        eventBus.Subscribe<BarEvaluated>(app.Services.GetRequiredService<BarEvaluationHandler>());
         eventBus.Subscribe<BarIngested>(app.Services.GetRequiredService<BarPersistenceHandler>());
     }
 

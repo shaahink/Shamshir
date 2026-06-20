@@ -28,6 +28,9 @@ public static class EngineReducer
             case CloseRequested close:
                 return HandleCloseRequested(state, close);
 
+            case StopLossModifyRequested mod:
+                return HandleStopLossModify(state, mod);
+
             case BarClosed bar:
                 return HandleBarClosed(state, bar, effects);
 
@@ -191,7 +194,25 @@ public static class EngineReducer
         return new EngineDecision(state with { Positions = newPositions }, effects);
     }
 
-    // iter-35 (A2): WIRED via Kernel.Decide → KernelDriver. The kernel feeds BarClosed events
+    // iter-36 K4 gap-3: apply a trailing/breakeven stop move. The "what new stop" decision was computed
+    // outside the kernel (recent bars + per-position config) and carried on the event; here we PURELY update
+    // the authoritative stop on EngineState (so the next bar's SL detection + worst-case use the trailed
+    // stop) and emit a ModifyStopLoss effect carrying the position's current TP (preserved on the venue).
+    private static EngineDecision HandleStopLossModify(EngineState state, StopLossModifyRequested evt)
+    {
+        if (!state.Positions.TryGetValue(evt.PositionId, out var ps) || ps.Phase != PositionPhase.Open)
+        {
+            return new EngineDecision(state, []);
+        }
+
+        var newPositions = new Dictionary<Guid, PositionState>(state.Positions)
+        {
+            [ps.PositionId] = ps with { CurrentStopLoss = evt.NewStopLoss },
+        };
+
+        var effects = new List<EngineEffect> { new ModifyStopLoss(ps.OrderId, evt.NewStopLoss, ps.TakeProfit) };
+        return new EngineDecision(state with { Positions = newPositions }, effects);
+    }
     // from the tape, and this reducer branch owns SL/TP detection + GovernorMachine.ApplyBar.
     // Replaces EngineRunner.SimulateBarExitsAsync (Kill-List).
     private static EngineDecision HandleBarClosed(EngineState state, BarClosed evt, List<EngineEffect> effects)
@@ -285,27 +306,31 @@ public static class EngineReducer
 
     // iter-35 (A2): WIRED via Kernel.DecideReset. The reducer handles the pure state transition
     // (governor reset + drawdown daily re-base). Protection-exit policy is layered in the kernel.
+    // iter-36 (K-GAP-1): re-base to the AUTHORITATIVE current equity (state.Account.Equity — set by the last
+    // EquityObserved / venue account fold), NOT the stale previous DailyStartEquity. Re-basing to the old
+    // start left the daily DD measured against an outdated baseline, so a multi-day run's daily DD never
+    // actually reset. Account is non-null (EngineState coalesces to AccountView.Flat) and fresh at roll time.
     private static EngineDecision HandleDayRolled(EngineState state, DayRolled evt)
     {
         var newGovernor = GovernorMachine.ApplyDailyReset(state.Governor);
-        var newDrawdown = DrawdownReducer.ApplyDailyReset(state.Drawdown, state.Drawdown.DailyStartEquity);
+        var newDrawdown = DrawdownReducer.ApplyDailyReset(state.Drawdown, state.Account.Equity);
         return new EngineDecision(state with { Governor = newGovernor, Drawdown = newDrawdown }, []);
     }
 
-    // iter-35 (A2): WIRED via Kernel.DecideReset. Pure weekly drawdown re-base.
+    // iter-35 (A2): WIRED via Kernel.DecideReset. Pure weekly drawdown re-base to current equity (K-GAP-1).
     private static EngineDecision HandleWeekRolled(EngineState state, WeekRolled evt)
     {
-        var newDrawdown = DrawdownReducer.ApplyWeeklyReset(state.Drawdown, state.Drawdown.WeeklyStartEquity);
+        var newDrawdown = DrawdownReducer.ApplyWeeklyReset(state.Drawdown, state.Account.Equity);
         return new EngineDecision(state with { Drawdown = newDrawdown }, []);
     }
 
-    // iter-35 (A2): WIRED via Kernel.DecideReset. Pure monthly drawdown re-base.
+    // iter-35 (A2): WIRED via Kernel.DecideReset. Pure monthly drawdown re-base to current equity (K-GAP-1).
+    // iter-26 F10 deferred this ("the reducer has no current-equity input; authoritative reset is
+    // RiskManager.OnMonthlyReset") — that input now exists on EngineState.Account post-cutover, and the
+    // imperative RiskManager reset is dead, so the kernel re-bases monthly DD to current equity here.
     private static EngineDecision HandleMonthRolled(EngineState state, MonthRolled evt)
     {
-        // F10 (iter-26): mirror WeekRolled — zero the monthly DD against the existing monthly baseline.
-        // Passing DailyStartEquity here re-based the month to the day's start (wrong). The reducer has
-        // no current-equity input; the authoritative reset is RiskManager.OnMonthlyReset(currentEquity).
-        var newDrawdown = DrawdownReducer.ApplyMonthlyReset(state.Drawdown, state.Drawdown.MonthlyStartEquity);
+        var newDrawdown = DrawdownReducer.ApplyMonthlyReset(state.Drawdown, state.Account.Equity);
         return new EngineDecision(state with { Drawdown = newDrawdown }, []);
     }
 

@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\TradingEngine.Risk\TradingEngine.Risk.csproj" />
     <ProjectReference Include="..\..\src\TradingEngine.Infrastructure\TradingEngine.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\TradingEngine.Web\TradingEngine.Web.csproj" />
+    <ProjectReference Include="..\TradingEngine.Tests.Support\TradingEngine.Tests.Support.csproj" />
   </ItemGroup>
 
 </Project>
