@@ -330,6 +330,32 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson);
         }
+        catch (OperationCanceledException)
+        {
+            // T9: the run was cancelled (user Cancel, the 30-min linked timeout, or host/stream teardown
+            // at/near completion). Trades were persisted during the run, so this is NOT a failure — finalize
+            // with the trades-so-far and an info log instead of scaring the user with a "failed" + error.
+            var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
+            var userCancelled = state.Status == "cancelled";
+            state.Status = userCancelled ? "cancelled" : "completed";
+            state.Error = null;
+            var cancelResult = new BacktestResult
+            {
+                RunId = runId,
+                ExitCode = 0,
+                NetProfit = tradeStats.NetProfit,
+                MaxDrawdownPct = tradeStats.MaxDrawdownPct,
+                TotalTrades = tradeStats.TotalTrades,
+                WinningTrades = tradeStats.WinningTrades,
+                WinRatePct = tradeStats.WinRatePct,
+            };
+            state.Result = cancelResult;
+            EnqueueLog(runId, state.LogLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] Run {state.Status} ({tradeStats.TotalTrades} trades saved).");
+            _logger.LogInformation("Backtest {RunId} ended via cancellation; status={Status} trades={Trades}",
+                runId, state.Status, tradeStats.TotalTrades);
+            await WriteEndRecordAsync(runId, cfg, startedAt, cancelResult, tradeStats, effectiveConfigJson);
+        }
         catch (Exception ex)
         {
             state.Status = "failed";
