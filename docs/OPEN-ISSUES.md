@@ -243,6 +243,12 @@ the orchestrator loads into `PreloadedConfig` — so the Governor page's `Enable
 ruleset), which the Governor page doesn't touch; (3) the kernel `GovernorState` is evolved in the reducer (`EvaluateStatic`)
 regardless of `Enabled`. **Decision needed**: which switch is authoritative — make the engine host use the DB `GovernorOptions`
 **and** have `ConstraintSet.GovernorEnabled` honor it (`ruleset.Toggles && options.Enabled`)?
+**✅ FIXED (Governor page authoritative)**: the per-run host already wires the DB `GovernorOptions` into the `GovernorMachine`
+(`AddRiskFromOptions:318` via `PreloadedConfig`), so #1 was already correct; the gap was #2. `WireRiskRules`
+(`EngineHostFactory.cs`) now ANDs `GovernorOptions.Enabled` into the kernel gate switch:
+`constraints with { GovernorEnabled = constraints.GovernorEnabled && govOptions.Enabled }`. Disabling on the Governor page now
+turns the governor off at `PreTradeGate` (which gates ALL governor blocking on `c.GovernorEnabled`); the ruleset toggle still
+applies (AND). Compiles clean; full run-verify pending the dev Web app being stopped.
 
 ### T9 — Backtest throws a cancellation error on/near finish (but still saves) 🟡 ✅ FIXED
 **Root cause**: a completion/teardown `OperationCanceledException` (user Cancel, the 30-min linked CTS timeout, or host/stream
