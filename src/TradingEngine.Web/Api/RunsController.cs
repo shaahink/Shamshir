@@ -64,6 +64,19 @@ public sealed class RunsController : ControllerBase
             ? req.StrategyIds.Select(s => s.Trim()).ToArray()
             : Array.Empty<string>();
 
+        // iter-37 guard: reject a structurally-empty/invalid backtest at the API (the SPA also blocks this
+        // client-side). Strategies are NOT required here — an empty set means "use the enabled strategies"
+        // (the duplicate flow relies on that).
+        var validSymbols = symList.Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+        var validPeriods = perList.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
+        var errors = new List<string>();
+        if (validSymbols.Length == 0) errors.Add("At least one symbol is required.");
+        if (validPeriods.Length == 0) errors.Add("At least one timeframe is required.");
+        if (req.Start >= req.End) errors.Add("Start date must be before end date.");
+        if (req.Balance <= 0) errors.Add("Balance must be positive.");
+        if (errors.Count > 0)
+            return BadRequest(new { error = "Invalid backtest request.", details = errors });
+
         var cfg = new BacktestConfig
         {
             Symbol = req.Symbol.ToUpperInvariant(),

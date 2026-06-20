@@ -58,6 +58,15 @@ public sealed class BacktestController : ControllerBase
                 .Select(s => s.Trim()).ToArray()
             : Array.Empty<string>();
 
+        // iter-37 guard: reject a structurally-empty/invalid backtest (mirrors RunsController.Start).
+        var errors = new List<string>();
+        if (symList.Length == 0 || symList.All(string.IsNullOrWhiteSpace)) errors.Add("At least one symbol is required.");
+        if (perList.Length == 0 || perList.All(string.IsNullOrWhiteSpace)) errors.Add("At least one timeframe is required.");
+        if (req.Start >= req.End) errors.Add("Start date must be before end date.");
+        if (req.Balance <= 0) errors.Add("Balance must be positive.");
+        if (errors.Count > 0)
+            return BadRequest(new { error = "Invalid backtest request.", details = errors });
+
         var cfg = new BacktestConfig
         {
             Symbol = req.Symbol.ToUpperInvariant(),
