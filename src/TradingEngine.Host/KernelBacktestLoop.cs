@@ -227,7 +227,9 @@ public sealed class KernelBacktestLoop
             // Open positions → PublishTradeClosed; cancels/rejects terminate the position).
             while (_venue.ExecutionStream.TryRead(out var exec))
             {
-                var symbol = ResolveSymbol(state, exec.OrderId);
+                // iter-37 K-GAP-6: prefer the symbol the venue stamped on the execution (multi-symbol
+                // correct); only fall back to resolving by id when the venue didn't carry it.
+                var symbol = exec.Symbol ?? ResolveSymbol(state, exec.OrderId);
                 var evt = KernelFeedback.FromExecution(exec, symbol);
                 if (evt is not null)
                 {
