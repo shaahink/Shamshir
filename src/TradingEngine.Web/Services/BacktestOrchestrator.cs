@@ -413,6 +413,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 riskProfileId = cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
                 strategyIds = cfg.CustomParams.GetValueOrDefault("StrategyIds"),
                 overrides = cfg.CustomParams.GetValueOrDefault("StrategyOverrides"),
+                // iter-38 PK3/R1: a pack or the regime-master change the run's behaviour, so they participate
+                // in the ConfigSetId identity (different pack/regime ⇒ a genuinely different run, K6).
+                usePackId = cfg.CustomParams.GetValueOrDefault("UsePackId"),
+                perStrategyPacks = cfg.CustomParams.GetValueOrDefault("PerStrategyPackIds"),
+                disableRegime = cfg.CustomParams.GetValueOrDefault("DisableRegime"),
             });
             var configSetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(configIdentity);
             var parentRunId = cfg.CustomParams.GetValueOrDefault("ParentRunId");
@@ -474,9 +479,38 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var profileIsKnown = !string.IsNullOrWhiteSpace(chosenProfile)
             && baseConfig.RiskProfiles.Any(r => r.Id == chosenProfile);
 
-        var strategyConfigs = dbConfigs
-            .Select(c => profileIsKnown ? c with { RiskProfileId = chosenProfile! } : c)
-            .ToList();
+        var strategyConfigs = new List<StrategyConfigEntry>();
+        {
+            // iter-38 PK3 / D1: apply a named add-on pack over each strategy's own add-ons (per-strategy pack
+            // wins over the global UsePackId; the pack REPLACES enrichments, baseline SL/TP stays — D4).
+            var usePackId = cfg.CustomParams.GetValueOrDefault("UsePackId");
+            Dictionary<string, string>? perStrategyPacks = null;
+            if (cfg.CustomParams.TryGetValue("PerStrategyPackIds", out var ppJson) && !string.IsNullOrWhiteSpace(ppJson))
+            {
+                try { perStrategyPacks = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(ppJson); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Bad PerStrategyPackIds JSON — ignoring"); }
+            }
+
+            var packStore = scope.ServiceProvider.GetRequiredService<IAddOnPackStore>();
+            var packCache = new Dictionary<string, AddOnPack?>();
+
+            foreach (var c0 in dbConfigs)
+            {
+                var c = profileIsKnown ? c0 with { RiskProfileId = chosenProfile! } : c0;
+                var packId = perStrategyPacks?.GetValueOrDefault(c.Id) ?? usePackId;
+                if (!string.IsNullOrWhiteSpace(packId))
+                {
+                    if (!packCache.TryGetValue(packId, out var pack))
+                    {
+                        pack = await packStore.GetByIdAsync(packId, CancellationToken.None);
+                        packCache[packId] = pack;
+                    }
+                    if (pack is not null)
+                        c = c with { PositionManagement = _configResolver.ApplyPack(c.PositionManagement, pack) };
+                }
+                strategyConfigs.Add(c);
+            }
+        }
 
         var rpStore = scope.ServiceProvider.GetRequiredService<IRiskProfileStore>();
         var dbRiskProfiles = await rpStore.GetAllAsync(CancellationToken.None);

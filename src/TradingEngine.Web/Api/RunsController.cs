@@ -98,6 +98,12 @@ public sealed class RunsController : ControllerBase
             cfg.CustomParams["Venue"] = req.Venue.Trim().ToLowerInvariant();
         if (req.StrategyOverrides is { Count: > 0 })
             cfg.CustomParams["StrategyOverrides"] = System.Text.Json.JsonSerializer.Serialize(req.StrategyOverrides);
+        if (!string.IsNullOrWhiteSpace(req.UsePackId))
+            cfg.CustomParams["UsePackId"] = req.UsePackId.Trim();
+        if (req.PerStrategyPackIds is { Count: > 0 })
+            cfg.CustomParams["PerStrategyPackIds"] = System.Text.Json.JsonSerializer.Serialize(req.PerStrategyPackIds);
+        if (req.DisableRegime)
+            cfg.CustomParams["DisableRegime"] = "true";
 
         var runId = await _command.StartAsync(cfg, ct);
         var state = _orchestrator.GetState(runId);
@@ -145,6 +151,10 @@ public sealed class RunsController : ControllerBase
             cfg.CustomParams["Venue"] = req.Venue.Trim().ToLowerInvariant();
         if (req.StrategyOverrides is { Count: > 0 })
             cfg.CustomParams["StrategyOverrides"] = System.Text.Json.JsonSerializer.Serialize(req.StrategyOverrides);
+        if (!string.IsNullOrWhiteSpace(req.UsePackId))
+            cfg.CustomParams["UsePackId"] = req.UsePackId.Trim();
+        if (req.DisableRegime)
+            cfg.CustomParams["DisableRegime"] = "true";
         cfg.CustomParams["ParentRunId"] = runId;
 
         var newRunId = await _command.StartAsync(cfg, ct);
