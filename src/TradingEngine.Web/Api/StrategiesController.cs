@@ -39,6 +39,9 @@ public class StrategiesController : ControllerBase
     {
         var configs = await _store.GetAllAsync(ct);
         var stats = await ComputeStatsAsync(ct);
+        var createdMap = await _db.StrategyConfigs
+            .Select(x => new { x.Id, x.CreatedAtUtc })
+            .ToDictionaryAsync(x => x.Id, x => x.CreatedAtUtc, ct);
 
         var strategies = configs.Select(c => new
         {
@@ -48,6 +51,7 @@ public class StrategiesController : ControllerBase
             timeframe = c.Timeframe,
             symbols = c.Symbols,
             riskProfileId = c.RiskProfileId,
+            createdAtUtc = createdMap.GetValueOrDefault(c.Id),
             stats = stats.GetValueOrDefault(c.Id) ?? EmptyStats(),
         }).ToList();
 

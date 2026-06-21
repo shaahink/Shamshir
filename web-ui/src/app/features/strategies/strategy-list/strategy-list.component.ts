@@ -1,12 +1,13 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
+import { DatePipe } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-strategy-list',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, DatePipe],
   template: `
     <div class="space-y-6">
       <h1 class="text-xl font-semibold">Strategies</h1>
@@ -18,6 +19,7 @@ import { firstValueFrom } from 'rxjs';
               <button (click)="toggleEnabled(s)" [attr.class]="s.isEnabled ? 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium transition bg-emerald-900/50 text-emerald-400' : 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium transition bg-gray-800 text-gray-500'">{{ s.isEnabled ? 'Active' : 'Disabled' }}</button>
             </div>
             <p class="font-mono text-xs text-gray-500 mb-2">{{ s.id }}</p>
+            @if (s.createdAtUtc) { <p class="text-xs text-gray-600 mb-2">Created {{ s.createdAtUtc | date:'yyyy-MM-dd' }}</p> }
             @if (s.stats) {
               <div class="grid grid-cols-3 gap-2 text-xs text-gray-400">
                 <div><span class="text-gray-500">Trades</span><br>{{ s.stats.totalTrades }}</div>

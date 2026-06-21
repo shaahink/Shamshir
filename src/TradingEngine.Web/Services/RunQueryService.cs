@@ -23,9 +23,13 @@ public sealed class RunQueryService : IRunQueryService
     public async Task<IReadOnlyList<RunListResponse>> GetRunsAsync(CancellationToken ct)
     {
         var runs = await _runRepo.GetAllAsync(ct);
+        var createdMap = await _db.BacktestRuns
+            .Select(x => new { x.RunId, x.CreatedAtUtc })
+            .ToDictionaryAsync(x => x.RunId, x => x.CreatedAtUtc, ct);
         return runs.Take(50).Select(r => new RunListResponse
         {
             RunId = r.RunId,
+            CreatedAtUtc = createdMap.GetValueOrDefault(r.RunId),
             Status = r.CompletedAtUtc == default ? "running"
                 : r.ErrorMessage != null ? "failed"
                 : "completed",

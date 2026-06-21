@@ -1,12 +1,13 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { DatePipe } from '@angular/common';
 import { RunsStore } from '../runs.store';
 import { BadgeComponent } from '../../../shared/badge.component';
 
 @Component({
   selector: 'app-run-list',
   standalone: true,
-  imports: [RouterLink, BadgeComponent],
+  imports: [RouterLink, BadgeComponent, DatePipe],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">
@@ -44,6 +45,7 @@ import { BadgeComponent } from '../../../shared/badge.component';
           <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Max DD</th>
           <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Trades</th>
           <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Win Rate</th>
+          <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Created</th>
         </tr></thead><tbody class="divide-y divide-gray-800">
           @for (run of store.runs(); track run.runId) {
             <tr class="cursor-pointer transition hover:bg-gray-800/30" [routerLink]="['/runs', run.runId]">
@@ -55,6 +57,7 @@ import { BadgeComponent } from '../../../shared/badge.component';
               <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums text-red-400">{{ (run.maxDrawdownPct * 100).toFixed(2) }}%</td>
               <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums">{{ run.totalTrades }}</td>
               <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums text-gray-400">{{ (run.winRatePct * 100).toFixed(1) }}%</td>
+              <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums text-gray-500">{{ run.createdAtUtc ? (run.createdAtUtc | date:'MM-dd HH:mm') : '—' }}</td>
             </tr>
           }
         </tbody></table></div>

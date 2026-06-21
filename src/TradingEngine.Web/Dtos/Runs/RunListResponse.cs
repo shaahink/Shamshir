@@ -10,6 +10,7 @@ public sealed record RunListResponse
     public string Periods { get; init; } = "[]";
     public DateTime StartedAtUtc { get; init; }
     public DateTime? CompletedAtUtc { get; init; }
+    public DateTime CreatedAtUtc { get; init; }
     public decimal NetProfit { get; init; }
     public decimal GrossPnL { get; init; }
     public decimal CommissionTotal { get; init; }

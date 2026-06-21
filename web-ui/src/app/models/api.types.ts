@@ -1,5 +1,6 @@
 export interface RunSummary {
   runId: string;
+  createdAtUtc?: string;
   status: string;
   symbol: string;
   period: string;
