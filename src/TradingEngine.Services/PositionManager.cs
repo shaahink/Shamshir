@@ -91,6 +91,7 @@ public sealed class PositionManager(
         }
 
         Price? candidate = null;
+        var reason = "TRAIL";
         var breakevenTriggered = false;
 
         // Breakeven floor (once).
@@ -101,15 +102,20 @@ public sealed class PositionManager(
                 config.BreakevenTriggerR, config.BreakevenBufferPips, symbolInfo);
             if (beSl.HasValue)
             {
-                candidate = MoreFavorable(candidate, beSl.Value, position.Direction);
+                candidate = beSl.Value;
+                reason = "BREAKEVEN";
                 breakevenTriggered = true;
             }
         }
 
         // Trailing (every bar; independent of breakeven — the monotonic guard ratchets the stop up).
         var trail = ComputeTrail(config, ps, currentTick, recentBars, symbolInfo);
-        if (trail.HasValue)
-            candidate = MoreFavorable(candidate, trail.Value, position.Direction);
+        if (trail.HasValue && (candidate is null || Improves(trail.Value, candidate.Value, position.Direction)))
+        {
+            candidate = trail.Value;
+            // iter-38 A7c: tag RIDE when the relaxed ATR trail is active this bar, else TRAIL.
+            reason = RideActiveFor(config, recentBars) ? "RIDE" : "TRAIL";
+        }
 
         if (candidate is not null && Improves(candidate.Value, position.CurrentStopLoss, position.Direction))
         {
@@ -120,7 +126,7 @@ public sealed class PositionManager(
                 _tracked[position.Id] = (position, config, newState);
                 logger.LogInformation("Position state changed. Id={Id} From={From} To={To}", position.Id, state, newState);
             }
-            mods.Add(new MoveStopLoss(position.Id, candidate.Value));
+            mods.Add(new MoveStopLoss(position.Id, candidate.Value, reason));
         }
 
         return mods;
@@ -243,6 +249,15 @@ public sealed class PositionManager(
         if (!t.RideEnabled || recentBars.Count < 2) return t.AtrMultiple;
         var adx = indicatorService.Adx(recentBars, Math.Min(14, recentBars.Count));
         return adx > t.RideAdxFloor ? t.RideRelaxedAtrMultiple : t.AtrMultiple;
+    }
+
+    // iter-38 A7c: was the Ride relaxation in effect this bar? Used only to tag the journal kind (RIDE vs
+    // TRAIL); the stop value itself is computed by EffectiveAtrMultiple inside ComputeTrail.
+    private bool RideActiveFor(PositionManagementConfig config, IReadOnlyList<Bar> recentBars)
+    {
+        var t = config.TrailingStop;
+        if (!t.RideEnabled || recentBars.Count < 2) return false;
+        return indicatorService.Adx(recentBars, Math.Min(14, recentBars.Count)) > t.RideAdxFloor;
     }
 
     private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config, SymbolInfo symbolInfo)    {

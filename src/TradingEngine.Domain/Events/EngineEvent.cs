@@ -47,7 +47,7 @@ public record CloseRequested(Guid PositionId, string Reason, DateTime OccurredAt
 /// venue (iter-36 K4 gap-3). The "what new stop" decision is made outside the kernel — exactly like
 /// <see cref="OrderProposed"/> — and applied purely inside it, so replay stays deterministic.
 /// </summary>
-public record StopLossModifyRequested(Guid PositionId, Price NewStopLoss, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+public record StopLossModifyRequested(Guid PositionId, Price NewStopLoss, DateTime OccurredAtUtc, string Kind = "TRAIL") : EngineEvent(OccurredAtUtc);
 
 /// <summary>iter-38 A4 (PartialTp): a partial-close request for an open position. Decided outside the kernel
 /// (PositionManager → KernelTrailingEvaluator) exactly like <see cref="StopLossModifyRequested"/>; the reducer

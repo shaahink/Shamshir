@@ -7,7 +7,7 @@ namespace TradingEngine.Host;
 /// <summary>iter-38 A4: the per-bar management decisions the kernel loop applies — trailing/breakeven stop
 /// moves plus any PartialTp partial-close requests.</summary>
 public readonly record struct TrailingDecisions(
-    IReadOnlyList<(Guid PositionId, Price NewStopLoss)> Moves,
+    IReadOnlyList<(Guid PositionId, Price NewStopLoss, string Kind)> Moves,
     IReadOnlyList<(Guid PositionId, decimal CloseLots, string Reason)> Partials,
     IReadOnlyList<(Guid PositionId, string DetailJson)> Resolutions);
 
@@ -47,7 +47,7 @@ public sealed class KernelTrailingEvaluator(
         var tick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread, bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
         var recentBars = GetRecentBars(bar.Symbol, bar.Timeframe);
 
-        List<(Guid, Price)>? moves = null;
+        List<(Guid, Price, string)>? moves = null;
         List<(Guid, decimal, string)>? partials = null;
         List<(Guid, string)>? resolutions = null;
         foreach (var (id, ps) in state.Positions)
@@ -77,13 +77,13 @@ public sealed class KernelTrailingEvaluator(
 
             foreach (var mod in positionManager.Evaluate(position, tick, recentBars))
             {
-                if (mod is MoveStopLoss move) (moves ??= []).Add((id, move.NewStopLoss));
+                if (mod is MoveStopLoss move) (moves ??= []).Add((id, move.NewStopLoss, move.Reason));
                 else if (mod is PartialClose pc) (partials ??= []).Add((id, pc.CloseLots, pc.Reason));
             }
         }
 
         return new TrailingDecisions(
-            (IReadOnlyList<(Guid, Price)>?)moves ?? [],
+            (IReadOnlyList<(Guid, Price, string)>?)moves ?? [],
             (IReadOnlyList<(Guid, decimal, string)>?)partials ?? [],
             (IReadOnlyList<(Guid, string)>?)resolutions ?? []);
     }

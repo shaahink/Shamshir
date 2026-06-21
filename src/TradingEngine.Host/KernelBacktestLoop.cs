@@ -183,7 +183,7 @@ public sealed class KernelBacktestLoop
                 for (var i = 0; i < decisions.Resolutions.Count; i++)
                     _queue.Enqueue(new AddOnsResolved(decisions.Resolutions[i].PositionId, decisions.Resolutions[i].DetailJson, bar.BarOpenTimeUtc));
                 for (var i = 0; i < decisions.Moves.Count; i++)
-                    _queue.Enqueue(new StopLossModifyRequested(decisions.Moves[i].PositionId, decisions.Moves[i].NewStopLoss, bar.BarOpenTimeUtc));
+                    _queue.Enqueue(new StopLossModifyRequested(decisions.Moves[i].PositionId, decisions.Moves[i].NewStopLoss, bar.BarOpenTimeUtc, decisions.Moves[i].Kind));
                 // iter-38 A4b: PartialTp partial-close requests run after the stop moves (deterministic order).
                 for (var i = 0; i < decisions.Partials.Count; i++)
                     _queue.Enqueue(new PartialCloseRequested(decisions.Partials[i].PositionId, decisions.Partials[i].CloseLots, decisions.Partials[i].Reason, bar.BarOpenTimeUtc));
@@ -309,6 +309,7 @@ public sealed class KernelBacktestLoop
     // remapped (PartialTp etc. are add-on-gated), so the golden journal stays byte-identical.
     private static string EventKindFor(EngineEvent evt) => evt switch
     {
+        StopLossModifyRequested s => s.Kind,
         PartialCloseRequested => AddOnJournalKinds.Partial,
         AddOnsResolved => AddOnJournalKinds.AddOnsResolved,
         _ => evt.GetType().Name,
