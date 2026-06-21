@@ -17,6 +17,36 @@ namespace TradingEngine.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.9");
 
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.AddOnPackEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AddOnsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("RegimeDetectionEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AddOnPacks", (string)null);
+                });
+
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.BacktestRunEntity", b =>
                 {
                     b.Property<string>("RunId")
@@ -572,6 +602,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -591,6 +624,9 @@ namespace TradingEngine.Infrastructure.Migrations
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.StrategyConfigEntity", b =>
                 {
                     b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DefaultSymbols")

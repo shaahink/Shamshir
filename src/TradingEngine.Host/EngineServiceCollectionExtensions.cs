@@ -135,6 +135,7 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton<IJournalWriter>(sp => new ChannelJournalWriter(
             new ScopedStepRecordSink(sp.GetRequiredService<IServiceScopeFactory>())));
         services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
+        services.AddScoped<IAddOnPackStore, SqliteAddOnPackStore>();   // iter-38 PK1
         services.AddSingleton<PersistenceService>();
         // iter-36 K5: the StepRecord journal (ScopedStepRecordSink + ChannelJournalWriter, above) is the
         // single journal writer. The old PipelineEventWriter/BarEvaluationHandler (Wait/DropOldest channels)

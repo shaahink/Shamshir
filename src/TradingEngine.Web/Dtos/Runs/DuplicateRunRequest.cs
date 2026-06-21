@@ -12,4 +12,10 @@ public sealed record DuplicateRunRequest
     public string? RiskProfileId { get; init; }
     public string? Venue { get; init; }
     public Dictionary<string, Dictionary<string, object>>? StrategyOverrides { get; init; }
+
+    /// <summary>iter-38 (PK3 / D1). Apply a reusable add-on pack to the duplicated run.</summary>
+    public string? UsePackId { get; init; }
+
+    /// <summary>iter-38 (R1 / D3). Force regime detection off for the duplicated run.</summary>
+    public bool DisableRegime { get; init; }
 }

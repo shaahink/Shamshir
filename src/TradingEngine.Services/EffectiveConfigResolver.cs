@@ -92,6 +92,26 @@ public sealed class EffectiveConfigResolver
             Trailing = MergeTrailing(stored.Trailing, overrideOpts.Trailing),
             Ride = overrideOpts.Ride ?? stored.Ride,
             PartialTp = overrideOpts.PartialTp ?? stored.PartialTp,
+            DynamicSlTp = overrideOpts.DynamicSlTp ?? stored.DynamicSlTp,   // iter-38 A6
+        };
+    }
+
+    // iter-38 (Stream PK2 / owner decision D1). Apply a reusable add-on PACK over a strategy's own add-ons:
+    // the pack REPLACES the enrichments (breakeven/trailing/partial/ride/dynamic) but the mandatory baseline
+    // SL/TP stays from the strategy (D4). Pack null ⇒ the strategy's own add-ons stand; both null ⇒ baseline
+    // only. Call this in the run path (PK3, BacktestOrchestrator) BEFORE the per-run field override merge.
+    public PositionManagementOptions? ApplyPack(PositionManagementOptions? strategyAddOns, AddOnPack? pack)
+    {
+        if (pack is null) return strategyAddOns;
+        var baseline = strategyAddOns ?? new PositionManagementOptions();
+        return baseline with
+        {
+            Breakeven = pack.AddOns.Breakeven,
+            Trailing = pack.AddOns.Trailing,
+            PartialTp = pack.AddOns.PartialTp,
+            Ride = pack.AddOns.Ride,
+            DynamicSlTp = pack.AddOns.DynamicSlTp,
+            // StopLoss / TakeProfit (baseline) deliberately kept from the strategy.
         };
     }
 
@@ -122,6 +142,7 @@ public sealed class EffectiveConfigResolver
         return new BreakevenOptions
         {
             Enabled = OverrideBool(stored.Enabled, overrideOpts.Enabled, false),
+            Mode = OverrideMode(stored.Mode, overrideOpts.Mode),   // iter-38 A1
             TriggerRMultiple = OverrideDouble(stored.TriggerRMultiple, overrideOpts.TriggerRMultiple, 1.0),
             OffsetPips = OverrideDouble(stored.OffsetPips, overrideOpts.OffsetPips, 1.0),
         };
@@ -131,6 +152,8 @@ public sealed class EffectiveConfigResolver
     {
         return new TrailingOptions
         {
+            Enabled = OverrideBool(stored.Enabled, overrideOpts.Enabled, false),   // iter-38 A1
+            Mode = OverrideMode(stored.Mode, overrideOpts.Mode),
             Method = OverrideString(stored.Method, overrideOpts.Method, "None"),
             StepPips = OverrideDouble(stored.StepPips, overrideOpts.StepPips, 10),
             AtrMultiple = OverrideDouble(stored.AtrMultiple, overrideOpts.AtrMultiple, 1.0),
@@ -167,4 +190,8 @@ public sealed class EffectiveConfigResolver
 
     private static string OverrideString(string stored, string overrideVal, string defaultVal) =>
         overrideVal != defaultVal ? overrideVal : stored;
+
+    // iter-38 A1: add-on Mode defaults to Auto; an override of Custom wins, Auto leaves the stored value.
+    private static AddOnMode OverrideMode(AddOnMode stored, AddOnMode overrideVal) =>
+        overrideVal != AddOnMode.Auto ? overrideVal : stored;
 }

@@ -20,6 +20,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<DatasetEntity> Datasets => Set<DatasetEntity>();
     public DbSet<ConfigSetEntity> ConfigSets => Set<ConfigSetEntity>();
     public DbSet<JournalEntryEntity> JournalEntries => Set<JournalEntryEntity>();
+    public DbSet<AddOnPackEntity> AddOnPacks => Set<AddOnPackEntity>();   // iter-38 PK1
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -130,6 +131,19 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.Property(x => x.SimTimeUtc).HasColumnType("TEXT");
             e.Property(x => x.EventKind).HasColumnType("TEXT").IsRequired();
             e.HasIndex(x => new { x.RunId, x.SimTimeUtc });
+        });
+
+        // iter-38 PK1 — reusable add-on packs (owner decision D1).
+        modelBuilder.Entity<AddOnPackEntity>(e =>
+        {
+            e.ToTable("AddOnPacks");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.Name).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.Description).HasColumnType("TEXT");
+            e.Property(x => x.AddOnsJson).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.CreatedAtUtc).HasColumnType("TEXT");
+            e.Property(x => x.UpdatedAtUtc).HasColumnType("TEXT");
         });
     }
 }

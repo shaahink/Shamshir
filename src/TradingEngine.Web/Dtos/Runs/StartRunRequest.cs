@@ -24,4 +24,16 @@ public sealed record StartRunRequest
     /// <summary>Per-strategy parameter overrides keyed by strategy id (H24). Propagated through
     /// <c>EffectiveConfigResolver</c> into the run's ConfigSet.</summary>
     public Dictionary<string, Dictionary<string, object>>? StrategyOverrides { get; init; }
+
+    /// <summary>iter-38 (PK3 / D1). Reusable add-on pack applied to every strategy this run (the pack REPLACES
+    /// each strategy's own add-ons; baseline SL/TP stays). Absent ⇒ each strategy uses its own add-ons.</summary>
+    public string? UsePackId { get; init; }
+
+    /// <summary>iter-38 (PK3 / D1). Per-strategy pack override, keyed by strategy id. Takes precedence over
+    /// <see cref="UsePackId"/> for the named strategies.</summary>
+    public Dictionary<string, string>? PerStrategyPackIds { get; init; }
+
+    /// <summary>iter-38 (R1 / D3). Run-level master switch: when true, regime detection is forced OFF for every
+    /// strategy this run (overrides each strategy's own regime-detection flag).</summary>
+    public bool DisableRegime { get; init; }
 }

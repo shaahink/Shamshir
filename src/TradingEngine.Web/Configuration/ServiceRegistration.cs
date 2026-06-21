@@ -80,6 +80,7 @@ public static class ServiceRegistration
         services.AddScoped<IRiskProfileStore, SqliteRiskProfileStore>();
         services.AddScoped<IPropFirmRuleSetStore, SqlitePropFirmRuleSetStore>();
         services.AddScoped<IGovernorOptionsStore, SqliteGovernorOptionsStore>();
+        services.AddScoped<IAddOnPackStore, SqliteAddOnPackStore>();   // iter-38 PK1
         return services;
     }
 
