@@ -1,7 +1,6 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
+import { GovernorApiService } from './governor.service';
 
 @Component({
   selector: 'app-governor-edit',
@@ -107,14 +106,14 @@ import { firstValueFrom } from 'rxjs';
   `,
 })
 export class GovernorEditComponent implements OnInit {
-  private http = inject(HttpClient);
+  private api = inject(GovernorApiService);
   data = signal<any>(null);
   edit: any = {};
   saving = signal(false);
   savedOk = signal(false);
 
   async ngOnInit(): Promise<void> {
-    const g: any = await firstValueFrom(this.http.get('/api/governor-options'));
+    const g = await this.api.get();
     this.data.set(g);
     this.edit = {
       ...g,
@@ -133,7 +132,7 @@ export class GovernorEditComponent implements OnInit {
     try {
       body.lossBandMultipliers = JSON.parse(this.edit.lossBandMultipliers);
     } catch {}
-    await firstValueFrom(this.http.put('/api/governor-options', body));
+    await this.api.save(body);
     this.savedOk.set(true);
     this.saving.set(false);
   }
