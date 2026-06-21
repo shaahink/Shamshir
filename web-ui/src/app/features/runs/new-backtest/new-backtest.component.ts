@@ -51,7 +51,7 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
           <div><label class="block text-xs font-medium text-gray-400 mb-1">Commission (per M)</label><input type="number" [(ngModel)]="commission" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
           <div><label class="block text-xs font-medium text-gray-400 mb-1">Spread (pips)</label><input type="number" [(ngModel)]="spread" step="0.1" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
           <div><label class="block text-xs font-medium text-gray-400 mb-1">Risk Profile</label><select [(ngModel)]="riskProfile" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">@for (p of riskProfiles(); track p.id) {<option [value]="p.id">{{ p.displayName }} ({{ (p.riskPerTradePercent*100).toFixed(2) }}%/trade)</option>}</select></div>
-          <div><label class="block text-xs font-medium text-gray-400 mb-1">Data Venue</label><select [(ngModel)]="venue" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none"><option value="">Default</option><option value="ctrader">cTrader (live stream)</option><option value="replay">Replay (stored bars)</option></select></div>
+          <div><label class="block text-xs font-medium text-gray-400 mb-1">Data Venue</label><select [(ngModel)]="venue" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none"><option value="">Default (replay)</option><option value="replay">Replay (stored bars)</option><option value="ctrader">cTrader (live stream)</option></select></div>
         </div>
 
         <div>
@@ -87,7 +87,7 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
             <span class="text-gray-500">Balance:</span><span class="text-gray-300">{{ balance }}</span>
             <span class="text-gray-500">Comm/Spread:</span><span class="text-gray-300">{{ commission }}/M · {{ spread }} pips</span>
             <span class="text-gray-500">Risk Profile:</span><span class="text-gray-300">{{ riskProfile }}</span>
-            <span class="text-gray-500">Venue:</span><span class="text-gray-300">{{ venue || '(default)' }}</span>
+            <span class="text-gray-500">Venue:</span><span class="text-gray-300">{{ venue || '(default · replay)' }}</span>
             <span class="text-gray-500">Strategies:</span><span class="text-gray-300">{{ stratListStr() }}</span>
           </div>
         </div>

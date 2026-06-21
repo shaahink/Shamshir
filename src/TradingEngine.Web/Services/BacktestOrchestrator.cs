@@ -239,6 +239,18 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         return (int)(duration.TotalMinutes / minutes);
     }
 
+    /// <summary>
+    /// iter-38 D6 / P0-B1: resolve which venue a run uses from its optional "Venue" selection. cTrader is
+    /// EXPLICIT opt-in (<c>"ctrader"</c>); the default (no/empty selection) and any unknown value route to
+    /// the credential-free replay venue. Pure + config-free so venue routing is deterministically testable.
+    /// </summary>
+    public static bool ResolveUseCtrader(string? venue) => venue?.ToLowerInvariant() switch
+    {
+        "ctrader" => true,
+        "replay" or "sim" or "simulated" => false,
+        _ => false,
+    };
+
     public BacktestRunState? GetState(string runId) =>
         _runs.TryGetValue(runId, out var state) ? state : null;
 
@@ -290,15 +302,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             BacktestResult result;
 
-            // Venue is selectable per run (New-Backtest page). Absent selection falls back to the
-            // configured default (CTrader:UseForBacktest). "ctrader" = stream bars from cTrader via
-            // NetMQ; "replay" = credential-free replay from stored bars.
-            var useCtader = cfg.CustomParams.GetValueOrDefault("Venue")?.ToLowerInvariant() switch
-            {
-                "ctrader" => true,
-                "replay" or "sim" or "simulated" => false,
-                _ => _configuration.GetValue<bool>("CTrader:UseForBacktest"),
-            };
+            // Venue is selectable per run (New-Backtest page). iter-38 D6: the default (and any unknown
+            // selection) now routes to the credential-free REPLAY venue; cTrader is EXPLICIT opt-in only
+            // (venue == "ctrader"). This kills the symptom of T1/T2/T6/T7/T11/T12 for default dev runs,
+            // which previously fell through to the wall-clock-buggy in-process cTrader path.
+            var useCtader = ResolveUseCtrader(cfg.CustomParams.GetValueOrDefault("Venue"));
             if (useCtader)
             {
                 EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
