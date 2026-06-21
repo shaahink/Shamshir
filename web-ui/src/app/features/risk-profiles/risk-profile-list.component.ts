@@ -2,22 +2,39 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { FormsModule } from '@angular/forms';
 
 @Component({
   selector: 'app-risk-profile-list',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, FormsModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">
         <h1 class="text-xl font-semibold">Risk Profiles</h1>
         <button
-          (click)="create()"
+          (click)="openCreate()"
           class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
         >
           New Profile
         </button>
       </div>
+
+      @if (showCreate()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" (click)="cancelCreate()">
+          <div class="w-96 rounded-lg border border-gray-700 bg-gray-900 p-6 shadow-xl" (click)="$event.stopPropagation()">
+            <h2 class="mb-4 text-sm font-medium text-gray-200">New Risk Profile</h2>
+            <label class="mb-1 block text-xs text-gray-400">ID</label>
+            <input [(ngModel)]="newId" class="mb-3 w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-200" />
+            <label class="mb-1 block text-xs text-gray-400">Display Name</label>
+            <input [(ngModel)]="newName" class="mb-4 w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-200" />
+            <div class="flex justify-end gap-2">
+              <button (click)="cancelCreate()" class="rounded border border-gray-700 px-3 py-1 text-xs text-gray-400 hover:bg-gray-800">Cancel</button>
+              <button (click)="submitCreate()" class="rounded bg-emerald-600 px-3 py-1 text-xs text-white hover:bg-emerald-500">Create</button>
+            </div>
+          </div>
+        </div>
+      }
       <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         @for (p of profiles(); track p.id) {
           <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 transition hover:border-gray-600">
@@ -62,6 +79,10 @@ export class RiskProfileListComponent implements OnInit {
   private http = inject(HttpClient);
   private router = inject(Router);
   profiles = signal<any[]>([]);
+  // iter-38 S9 W-D2: replace prompt() with a real dialog.
+  showCreate = signal(false);
+  newId = '';
+  newName = '';
 
   async ngOnInit(): Promise<void> {
     const rp: any = await firstValueFrom(this.http.get('/api/risk-profiles'));
@@ -73,14 +94,10 @@ export class RiskProfileListComponent implements OnInit {
     this.router.navigate(['/risk-profiles', res.id]);
   }
 
-  async create(): Promise<void> {
-    const id = prompt('Enter new profile ID (e.g. my-profile):');
-    if (!id) return;
-    const displayName = prompt('Display name:', id);
-    if (!displayName) return;
+  async create(profileId: string, displayName: string): Promise<void> {
     await firstValueFrom(
       this.http.post('/api/risk-profiles', {
-        id,
+        id: profileId,
         displayName,
         riskPerTradePercent: 0.005,
         maxDailyDrawdownPercent: 0.04,
@@ -100,6 +117,22 @@ export class RiskProfileListComponent implements OnInit {
         antiMartingaleMaxSteps: 3,
       }),
     );
-    this.router.navigate(['/risk-profiles', id]);
+    this.router.navigate(['/risk-profiles', profileId]);
+  }
+
+  openCreate(): void {
+    this.newId = '';
+    this.newName = '';
+    this.showCreate.set(true);
+  }
+  cancelCreate(): void {
+    this.showCreate.set(false);
+  }
+  async submitCreate(): Promise<void> {
+    const id = this.newId.trim();
+    const name = this.newName.trim() || id;
+    if (!id) return;
+    this.showCreate.set(false);
+    await this.create(id, name);
   }
 }
