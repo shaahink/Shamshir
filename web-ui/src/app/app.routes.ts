@@ -18,6 +18,10 @@ export const routes: Routes = [
     loadChildren: () => import('./features/strategies/strategies.routes').then((m) => m.STRATEGIES_ROUTES),
   },
   {
+    path: 'addon-packs',
+    loadChildren: () => import('./features/addon-packs/addon-packs.routes').then((m) => m.addonPacksRoutes),
+  },
+  {
     path: 'risk-profiles',
     loadChildren: () => import('./features/risk-profiles/risk-profiles.routes').then((m) => m.RISK_PROFILES_ROUTES),
   },

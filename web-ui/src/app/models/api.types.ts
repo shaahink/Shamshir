@@ -266,3 +266,32 @@ export interface GovernorOptions {
   hardStopDailyDdFraction?: number;
   sizeMultiplier?: number;
 }
+
+// iter-38 S10 U1: add-on pack types matching the backend AddOnPack record + auto-tune preview.
+export interface AddOnPack {
+  id: string;
+  name: string;
+  description: string | null;
+  addOns: PositionManagementOptions;
+  regimeDetectionEnabled: boolean;
+  createdAtUtc?: string;
+}
+
+export interface PositionManagementOptions {
+  stopLoss?: { method: string; atrMultiple?: number };
+  takeProfit?: { method: string; rrMultiple?: number };
+  breakeven?: { enabled: boolean; triggerRMultiple?: number; offsetPips?: number };
+  trailing?: { method: string; atrMultiple?: number; stepPips?: number };
+  partialTp?: { enabled: boolean; fraction?: number; offsetPips?: number };
+  ride?: { enabled: boolean; adxFloor?: number; relaxedAtrMultiple?: number };
+  dynamicSlTp?: { enabled: boolean; atrMultiple?: number; rrMultiple?: number };
+}
+
+export interface AutoTunePreview {
+  atrMultiple?: number;
+  rrMultiple?: number;
+  triggerR?: number;
+  offsetPips?: number;
+  adxFloor?: number;
+  relaxedAtrMultiple?: number;
+}
