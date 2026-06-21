@@ -11,7 +11,10 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services, string connectionString)
     {
         services.AddDbContext<TradingDbContext>(options =>
-            options.UseSqlite(connectionString));
+        {
+            options.UseSqlite(connectionString);
+            options.AddInterceptors(new AuditStampInterceptor());
+        });
 
         services.AddDbContext<ReportingDbContext>(options =>
             options.UseSqlite(connectionString));

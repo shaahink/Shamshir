@@ -122,7 +122,10 @@ public static class EngineServiceCollectionExtensions
     public static IServiceCollection AddPersistence(this IServiceCollection services, string dbPath, string? basePath)
     {
         services.AddDbContext<TradingDbContext>(o =>
-            o.UseSqlite($"Data Source={dbPath}"));
+        {
+            o.UseSqlite($"Data Source={dbPath}");
+            o.AddInterceptors(new TradingEngine.Infrastructure.Persistence.AuditStampInterceptor());
+        });
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();

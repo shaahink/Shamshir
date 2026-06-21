@@ -33,6 +33,8 @@ namespace TradingEngine.Infrastructure.Migrations
                 columns: table => new
                 {
                     RunId = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     StartedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     CompletedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     Symbol = table.Column<string>(type: "TEXT", nullable: false),
@@ -71,6 +73,8 @@ namespace TradingEngine.Infrastructure.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     RunId = table.Column<string>(type: "TEXT", nullable: false),
                     Symbol = table.Column<string>(type: "TEXT", nullable: false),
                     Timeframe = table.Column<string>(type: "TEXT", nullable: false),
@@ -93,7 +97,8 @@ namespace TradingEngine.Infrastructure.Migrations
                     Id = table.Column<string>(type: "TEXT", nullable: false),
                     ContentHash = table.Column<string>(type: "TEXT", nullable: false),
                     Json = table.Column<string>(type: "TEXT", nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -112,7 +117,8 @@ namespace TradingEngine.Infrastructure.Migrations
                     ToUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     Granularity = table.Column<string>(type: "TEXT", nullable: false),
                     RowCount = table.Column<long>(type: "INTEGER", nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -124,6 +130,8 @@ namespace TradingEngine.Infrastructure.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     EventType = table.Column<string>(type: "TEXT", nullable: false),
                     Payload = table.Column<string>(type: "TEXT", nullable: false),
                     OccurredAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
@@ -138,6 +146,8 @@ namespace TradingEngine.Infrastructure.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     TimestampUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     Balance = table.Column<decimal>(type: "TEXT", nullable: false),
                     FloatingPnL = table.Column<decimal>(type: "TEXT", nullable: false),
@@ -160,6 +170,8 @@ namespace TradingEngine.Infrastructure.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", nullable: false),
                     Hypothesis = table.Column<string>(type: "TEXT", nullable: false),
                     SpecJson = table.Column<string>(type: "TEXT", nullable: false),
@@ -178,6 +190,7 @@ namespace TradingEngine.Infrastructure.Migrations
                 {
                     Id = table.Column<string>(type: "TEXT", nullable: false),
                     Json = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
@@ -191,6 +204,8 @@ namespace TradingEngine.Infrastructure.Migrations
                 {
                     RunId = table.Column<string>(type: "TEXT", nullable: false),
                     Seq = table.Column<long>(type: "INTEGER", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     SimTimeUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     EventKind = table.Column<string>(type: "TEXT", nullable: false),
                     EventJson = table.Column<string>(type: "TEXT", nullable: false),
@@ -226,7 +241,8 @@ namespace TradingEngine.Infrastructure.Migrations
                     TakeProfit = table.Column<decimal>(type: "TEXT", nullable: true),
                     StrategyId = table.Column<string>(type: "TEXT", nullable: false),
                     RiskProfileId = table.Column<string>(type: "TEXT", nullable: false),
-                    Reason = table.Column<string>(type: "TEXT", nullable: false)
+                    Reason = table.Column<string>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -238,6 +254,8 @@ namespace TradingEngine.Infrastructure.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     OrderId = table.Column<Guid>(type: "TEXT", nullable: false),
                     Symbol = table.Column<string>(type: "TEXT", nullable: false),
                     Direction = table.Column<string>(type: "TEXT", nullable: false),
@@ -262,6 +280,7 @@ namespace TradingEngine.Infrastructure.Migrations
                     Id = table.Column<string>(type: "TEXT", nullable: false),
                     DisplayName = table.Column<string>(type: "TEXT", nullable: false),
                     Json = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
@@ -312,6 +331,8 @@ namespace TradingEngine.Infrastructure.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     PositionId = table.Column<Guid>(type: "TEXT", nullable: false),
                     OrderId = table.Column<Guid>(type: "TEXT", nullable: false),
                     Symbol = table.Column<string>(type: "TEXT", nullable: false),
@@ -352,6 +373,8 @@ namespace TradingEngine.Infrastructure.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CreatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     ExperimentId = table.Column<Guid>(type: "TEXT", nullable: false),
                     BacktestRunId = table.Column<string>(type: "TEXT", nullable: false),
                     VariantLabel = table.Column<string>(type: "TEXT", nullable: false),

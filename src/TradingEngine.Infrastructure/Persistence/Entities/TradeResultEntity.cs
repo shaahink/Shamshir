@@ -1,7 +1,10 @@
 namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class TradeResultEntity
+public sealed class TradeResultEntity : IAuditableEntity
 {
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
+
     public Guid Id { get; set; }
     public Guid PositionId { get; set; }
     // Venue-facing clientOrderId (originating order). Equals the cBot ledger's clientOrderId — the

@@ -11,7 +11,7 @@ using TradingEngine.Infrastructure.Persistence;
 namespace TradingEngine.Infrastructure.Migrations
 {
     [DbContext(typeof(TradingDbContext))]
-    [Migration("20260621002934_InitialCreate")]
+    [Migration("20260621081744_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -72,6 +72,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ConfigSetId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DatasetId")
@@ -136,6 +139,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<int>("TotalTrades")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<double>("WinRatePct")
                         .HasColumnType("REAL");
 
@@ -154,6 +160,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("Close")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("High")
@@ -180,6 +189,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<double>("Volume")
                         .HasColumnType("REAL");
 
@@ -204,6 +216,9 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<string>("Json")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -246,6 +261,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<DateTime>("ToUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ContentHash");
@@ -259,6 +277,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("EventType")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -268,6 +289,9 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<string>("Payload")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -286,6 +310,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("Balance")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("CurrentDailyDrawdown")
@@ -320,6 +347,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("RunId");
@@ -336,6 +366,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("CompletedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedUtc")
@@ -357,6 +390,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("Experiments", (string)null);
@@ -372,6 +408,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("ExperimentId")
                         .HasColumnType("TEXT");
 
@@ -384,6 +423,9 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<string>("ScoreJson")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("VariantLabel")
@@ -402,6 +444,9 @@ namespace TradingEngine.Infrastructure.Migrations
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.GovernorOptionsEntity", b =>
                 {
                     b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Json")
@@ -423,6 +468,9 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<long>("Seq")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("DecisionReason")
                         .HasColumnType("TEXT");
@@ -451,6 +499,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("SimTimeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("VerdictsJson")
@@ -525,6 +576,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<decimal?>("TakeProfit")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("State");
@@ -539,6 +593,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("ClosedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<decimal>("CurrentStopLoss")
@@ -574,6 +631,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<decimal?>("TakeProfit")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("Positions", (string)null);
@@ -582,6 +642,9 @@ namespace TradingEngine.Infrastructure.Migrations
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.PropFirmRuleSetEntity", b =>
                 {
                     b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DisplayName")
@@ -691,6 +754,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Direction")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -776,6 +842,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<decimal?>("TakeProfit")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

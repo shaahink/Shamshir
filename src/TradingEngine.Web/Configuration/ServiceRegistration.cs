@@ -51,10 +51,11 @@ public static class ServiceRegistration
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
         var cs = $"Data Source={dbPath}";
 
-        services.AddDbContext<TradingDbContext>(o => o.UseSqlite(cs, sqlOpts =>
+        services.AddDbContext<TradingDbContext>(o =>
         {
-            sqlOpts.CommandTimeout(30);
-        }));
+            o.UseSqlite(cs, sqlOpts => sqlOpts.CommandTimeout(30));
+            o.AddInterceptors(new TradingEngine.Infrastructure.Persistence.AuditStampInterceptor());
+        });
         services.AddDbContext<ReportingDbContext>(o => o.UseSqlite(cs, sqlOpts =>
         {
             sqlOpts.CommandTimeout(30);

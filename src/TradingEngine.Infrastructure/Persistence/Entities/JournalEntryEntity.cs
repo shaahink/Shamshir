@@ -1,7 +1,10 @@
 namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class JournalEntryEntity
+public sealed class JournalEntryEntity : IAuditableEntity
 {
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
+
     public string RunId { get; set; } = "";
     public long Seq { get; set; }
     public DateTime SimTimeUtc { get; set; }

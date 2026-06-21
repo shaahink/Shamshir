@@ -1,7 +1,10 @@
 namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class BacktestRunEntity
+public sealed class BacktestRunEntity : IAuditableEntity
 {
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
+
     public string RunId { get; set; } = "";
     public DateTime StartedAtUtc { get; set; }
     public DateTime CompletedAtUtc { get; set; }
