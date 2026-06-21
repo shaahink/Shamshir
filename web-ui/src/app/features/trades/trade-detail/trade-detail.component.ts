@@ -5,7 +5,7 @@ import { DatePipe } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { CandleChartComponent, type OhlcBar, type PriceMarker } from '../../../shared/candle-chart.component';
-import type { TradeSummary } from '../../../models/api.types';
+import type { TradeSummary, BarData } from '../../../models/api.types';
 
 @Component({
   selector: 'app-trade-detail',
@@ -96,12 +96,12 @@ export class TradeDetailComponent implements OnInit {
     const tf = t.timeframe || 'H1';
     try {
       const bars = await firstValueFrom(
-        this.http.get<any[]>(
+        this.http.get<BarData[]>(
           `/api/bars?symbol=${t.symbol}&timeframe=${tf}&from=${from.toISOString()}&to=${to.toISOString()}`,
         ),
       );
       this.bars.set(
-        bars.map((b: any) => ({ time: b.time * 1000, open: b.open, high: b.high, low: b.low, close: b.close })),
+        bars.map((b: BarData) => ({ time: b.time * 1000, open: b.open, high: b.high, low: b.low, close: b.close })),
       );
     } catch {
       /* no bars */
