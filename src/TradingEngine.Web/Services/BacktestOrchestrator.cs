@@ -50,7 +50,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public IReadOnlyList<string> GetLogs() => LogLines.ToArray();
 
         // iter-21 U1 — live funnel counters + a small ring of recent journal lines for the
-        // RunProgress envelope. Mutated only from the single Progress callback thread.
+        // RunProgress envelope. A Progress<T> created on a thread with no captured SyncContext
+        // posts its callbacks to the thread pool, so these can fire concurrently.
         public int Signals;
         public int Orders;
         public int Fills;

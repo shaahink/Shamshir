@@ -88,6 +88,8 @@ export class RunsApiService {
       riskProfileId?: string;
       venue?: string;
       strategyOverrides?: Record<string, Record<string, unknown>>;
+      usePackId?: string;
+      disableRegime?: boolean;
     },
   ): Promise<StartRunResponse> {
     return firstValueFrom(this.http.post<StartRunResponse>(`/api/runs/${sourceRunId}/duplicate`, body ?? {}));

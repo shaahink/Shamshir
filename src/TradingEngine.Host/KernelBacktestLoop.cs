@@ -225,7 +225,8 @@ public sealed class KernelBacktestLoop
                 _journal.Append(BuildStepRecord(++_seq, evt, decision, state));
 
                 // iter-38 B1: feed per-event progress so the live-monitor counters aren't stuck at 0.
-                _onEvent?.Invoke(evt);
+                try { _onEvent?.Invoke(evt); }
+                catch { /* best-effort progress — never disrupt the kernel pump */ }
 
                 for (var i = 0; i < decision.Effects.Count; i++)
                 {
