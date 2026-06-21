@@ -200,7 +200,7 @@ import { StrategiesApiService } from '../strategies.service';
             </div>
 
             <div>
-              <h3 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Position Management</h3>
+              <h3 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Baseline & Add-ons</h3>
               @for (sec of pmSectionDefs; track sec.section) {
                 <div class="mb-2">
                   <button
@@ -445,7 +445,7 @@ export class StrategyDetailComponent implements OnInit {
     this.pmSectionDefs = [
       {
         section: 'stopLoss',
-        label: 'Stop Loss',
+        label: 'Stop Loss (Baseline)',
         fields: [
           {
             key: 'method',
@@ -459,7 +459,7 @@ export class StrategyDetailComponent implements OnInit {
       },
       {
         section: 'takeProfit',
-        label: 'Take Profit',
+        label: 'Take Profit (Baseline)',
         fields: [
           {
             key: 'method',
@@ -473,7 +473,7 @@ export class StrategyDetailComponent implements OnInit {
       },
       {
         section: 'breakeven',
-        label: 'Breakeven',
+        label: 'Breakeven (Add-on)',
         fields: [
           { key: 'enabled', label: 'Enabled', type: 'toggle' },
           { key: 'triggerRMultiple', label: 'Trigger R', type: 'number', step: '0.1' },
@@ -482,7 +482,7 @@ export class StrategyDetailComponent implements OnInit {
       },
       {
         section: 'trailing',
-        label: 'Trailing',
+        label: 'Trailing (Add-on)',
         fields: [
           { key: 'method', label: 'Method', type: 'select', options: ['AtrMultiple', 'Structure'] },
           { key: 'atrMultiple', label: 'ATR Multiple', type: 'number', step: '0.1' },
@@ -490,7 +490,7 @@ export class StrategyDetailComponent implements OnInit {
       },
       {
         section: 'ride',
-        label: 'Ride',
+        label: 'Ride (Add-on)',
         fields: [
           { key: 'enabled', label: 'Enabled', type: 'toggle' },
           { key: 'activationR', label: 'Activation R', type: 'number', step: '0.1' },
@@ -499,7 +499,7 @@ export class StrategyDetailComponent implements OnInit {
       },
       {
         section: 'partialTp',
-        label: 'Partial TP',
+        label: 'Partial TP (Add-on)',
         fields: [
           { key: 'enabled', label: 'Enabled', type: 'toggle' },
           { key: 'fraction', label: 'Fraction', type: 'number', step: '0.05' },
