@@ -51,10 +51,7 @@ export class RunHubService implements OnDestroy {
 
   async start(): Promise<void> {
     if (this.hub) return;
-    this.hub = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/run')
-      .withAutomaticReconnect()
-      .build();
+    this.hub = new signalR.HubConnectionBuilder().withUrl('/hubs/run').withAutomaticReconnect().build();
 
     this.hub.on('RunProgress', (e: RunProgressEnvelope) => this.progress$.next(e));
     this.hub.on('JournalAppend', (e: JournalEnvelope) => this.journal$.next(e));

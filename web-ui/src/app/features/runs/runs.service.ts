@@ -2,8 +2,16 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import type {
-  RunSummary, RunDetail, TradeSummary, JournalEntry, EquityPoint,
-  DailyPnl, RunAnalytics, StartRunRequest, StartRunResponse, StrategyPerformance,
+  RunSummary,
+  RunDetail,
+  TradeSummary,
+  JournalEntry,
+  EquityPoint,
+  DailyPnl,
+  RunAnalytics,
+  StartRunRequest,
+  StartRunResponse,
+  StrategyPerformance,
 } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
@@ -73,7 +81,12 @@ export class RunsApiService {
   // optionally-changed strategy set / risk profile / overrides. Returns the new run id (parent linked).
   duplicateRun(
     sourceRunId: string,
-    body?: { strategyIds?: string[]; riskProfileId?: string; venue?: string; strategyOverrides?: Record<string, Record<string, unknown>> },
+    body?: {
+      strategyIds?: string[];
+      riskProfileId?: string;
+      venue?: string;
+      strategyOverrides?: Record<string, Record<string, unknown>>;
+    },
   ): Promise<StartRunResponse> {
     return firstValueFrom(this.http.post<StartRunResponse>(`/api/runs/${sourceRunId}/duplicate`, body ?? {}));
   }

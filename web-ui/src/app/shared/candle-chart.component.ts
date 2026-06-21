@@ -1,9 +1,26 @@
 import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
-import { ColorType, createChart, CandlestickSeries, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
+import {
+  ColorType,
+  createChart,
+  CandlestickSeries,
+  LineSeries,
+  type IChartApi,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 
-export interface OhlcBar { time: number; open: number; high: number; low: number; close: number }
-export interface PriceMarker { price: number; label: string; color: string }
+export interface OhlcBar {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+export interface PriceMarker {
+  price: number;
+  label: string;
+  color: string;
+}
 
 @Component({
   selector: 'app-candle-chart',
@@ -46,8 +63,12 @@ export class CandleChartComponent {
     });
 
     this.candleSeries = this.chart.addSeries(CandlestickSeries, {
-      upColor: '#10b981', downColor: '#ef4444', borderUpColor: '#10b981', borderDownColor: '#ef4444',
-      wickUpColor: '#10b981', wickDownColor: '#ef4444',
+      upColor: '#10b981',
+      downColor: '#ef4444',
+      borderUpColor: '#10b981',
+      borderDownColor: '#ef4444',
+      wickUpColor: '#10b981',
+      wickDownColor: '#ef4444',
     });
   }
 
@@ -55,7 +76,11 @@ export class CandleChartComponent {
     if (!this.candleSeries) return;
 
     const candleData = this.bars().map((b) => ({
-      time: (b.time / 1000) as UTCTimestamp, open: b.open, high: b.high, low: b.low, close: b.close,
+      time: (b.time / 1000) as UTCTimestamp,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      close: b.close,
     }));
     this.candleSeries.setData(candleData.length > 0 ? candleData : []);
 
@@ -64,11 +89,18 @@ export class CandleChartComponent {
 
     for (const m of this.markers()) {
       const ls = this.chart!.addSeries(LineSeries, {
-        color: m.color, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false,
+        color: m.color,
+        lineWidth: 1,
+        lineStyle: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
       });
-      const t0 = candleData[0]?.time ?? (Date.now() / 1000) as UTCTimestamp;
+      const t0 = candleData[0]?.time ?? ((Date.now() / 1000) as UTCTimestamp);
       const t1 = candleData[candleData.length - 1]?.time ?? t0;
-      ls.setData([{ time: t0, value: m.price }, { time: t1, value: m.price }]);
+      ls.setData([
+        { time: t0, value: m.price },
+        { time: t1, value: m.price },
+      ]);
       this.markerLines.push(ls);
     }
   }

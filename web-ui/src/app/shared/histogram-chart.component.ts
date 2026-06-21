@@ -2,7 +2,10 @@ import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, eff
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, HistogramSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 
-export interface HistogramBin { time: number; value: number }
+export interface HistogramBin {
+  time: number;
+  value: number;
+}
 
 @Component({
   selector: 'app-histogram-chart',
@@ -34,7 +37,8 @@ export class HistogramChartComponent {
     const container = this.el.nativeElement.querySelector('.chart-host') as HTMLDivElement;
     if (!container || this.chart) return;
     this.chart = createChart(container, {
-      width: container.clientWidth, height: 256,
+      width: container.clientWidth,
+      height: 256,
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#9ca3af' },
       grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
       timeScale: { visible: false },

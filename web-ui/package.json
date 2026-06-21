@@ -8,6 +8,9 @@
     "build": "npm run css && ng build",
     "css": "tailwindcss -i src/styles.css -o src/styles.generated.css --content \"src/**/*.ts\"",
     "lint": "ng lint",
+    "format": "prettier --write \"src/**/*.{ts,html,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,html,json}\"",
+    "stylelint": "stylelint \"src/**/*.css\"",
     "test": "ng test",
     "e2e": "npx playwright test"
   },
@@ -45,6 +48,9 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.1.0",
     "playwright": "^1.61.0",
+    "prettier": "^3.8.4",
+    "stylelint": "^17.13.0",
+    "stylelint-config-standard": "^40.0.0",
     "tailwindcss": "^4.3.1",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.18.0"

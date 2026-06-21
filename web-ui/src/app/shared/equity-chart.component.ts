@@ -2,7 +2,11 @@ import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, eff
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 
-export interface ChartPoint { time: number; value: number; balance?: number; }
+export interface ChartPoint {
+  time: number;
+  value: number;
+  balance?: number;
+}
 
 @Component({
   selector: 'app-equity-chart',
@@ -31,7 +35,9 @@ export class EquityChartComponent {
       if (!isPlatformBrowser(this.platformId)) return;
       this.initChart();
     });
-    effect(() => { this.updateData(this.data(), this.showBalance(), this.showDrawdown()); });
+    effect(() => {
+      this.updateData(this.data(), this.showBalance(), this.showDrawdown());
+    });
   }
 
   private initChart(): void {
@@ -54,15 +60,20 @@ export class EquityChartComponent {
     if (!this.equitySeries || points.length === 0) return;
     const equityData = points.map((d) => ({ time: (d.time / 1000) as UTCTimestamp, value: d.value }));
 
-    const hasBalance = showBal && points.some(p => p.balance != null);
+    const hasBalance = showBal && points.some((p) => p.balance != null);
     if (hasBalance && !this.balanceSeries && this.chart) {
       this.balanceSeries = this.chart.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 1, lineStyle: 1 });
     }
     if (hasBalance && this.balanceSeries) {
-      this.balanceSeries.setData(points.filter(p => p.balance != null).map(p => ({ time: (p.time / 1000) as UTCTimestamp, value: p.balance! })));
+      this.balanceSeries.setData(
+        points
+          .filter((p) => p.balance != null)
+          .map((p) => ({ time: (p.time / 1000) as UTCTimestamp, value: p.balance! })),
+      );
     }
     if (!hasBalance && this.balanceSeries) {
-      this.chart?.removeSeries(this.balanceSeries); this.balanceSeries = null;
+      this.chart?.removeSeries(this.balanceSeries);
+      this.balanceSeries = null;
     }
 
     if (showDD && points.length > 1) {
@@ -74,13 +85,18 @@ export class EquityChartComponent {
       }
       if (!this.ddSeries) {
         this.ddSeries = this.chart!.addSeries(LineSeries, {
-          color: '#ef4444', lineWidth: 1, priceScaleId: 'dd',
+          color: '#ef4444',
+          lineWidth: 1,
+          priceScaleId: 'dd',
         });
         this.chart!.priceScale('dd').applyOptions({ mode: 2, invertScale: true, visible: false });
       }
       this.ddSeries.setData(ddPoints);
     } else {
-      if (this.ddSeries) { this.chart?.removeSeries(this.ddSeries); this.ddSeries = null; }
+      if (this.ddSeries) {
+        this.chart?.removeSeries(this.ddSeries);
+        this.ddSeries = null;
+      }
     }
     this.equitySeries.setData(equityData);
   }

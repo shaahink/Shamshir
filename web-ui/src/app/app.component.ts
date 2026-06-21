@@ -11,10 +11,18 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
         <div class="mx-auto flex max-w-7xl items-center gap-6 px-6 py-3">
           <a routerLink="/runs" class="text-lg font-bold tracking-tight text-emerald-400">Shamshir</a>
           <div class="flex gap-1">
-            <a routerLink="/" routerLinkActive="bg-gray-800 text-white"
-              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white">Live</a>
-            <a routerLink="/runs" routerLinkActive="bg-gray-800 text-white"
-              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white">Runs</a>
+            <a
+              routerLink="/"
+              routerLinkActive="bg-gray-800 text-white"
+              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
+              >Live</a
+            >
+            <a
+              routerLink="/runs"
+              routerLinkActive="bg-gray-800 text-white"
+              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
+              >Runs</a
+            >
             <a
               routerLink="/trades"
               routerLinkActive="bg-gray-800 text-white"
@@ -29,14 +37,30 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
             >
               Strategies
             </a>
-            <a routerLink="/risk-profiles" routerLinkActive="bg-gray-800 text-white"
-              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white">Risk</a>
-            <a routerLink="/prop-firm-rules" routerLinkActive="bg-gray-800 text-white"
-              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white">FTMO</a>
-            <a routerLink="/governor-options" routerLinkActive="bg-gray-800 text-white"
-              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white">Governor</a>
-            <a routerLink="/settings" routerLinkActive="bg-gray-800 text-white"
-              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white">Settings</a>
+            <a
+              routerLink="/risk-profiles"
+              routerLinkActive="bg-gray-800 text-white"
+              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
+              >Risk</a
+            >
+            <a
+              routerLink="/prop-firm-rules"
+              routerLinkActive="bg-gray-800 text-white"
+              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
+              >FTMO</a
+            >
+            <a
+              routerLink="/governor-options"
+              routerLinkActive="bg-gray-800 text-white"
+              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
+              >Governor</a
+            >
+            <a
+              routerLink="/settings"
+              routerLinkActive="bg-gray-800 text-white"
+              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
+              >Settings</a
+            >
             <a
               href="/runs/new"
               class="ml-4 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500"

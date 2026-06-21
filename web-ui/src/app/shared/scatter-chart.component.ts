@@ -2,7 +2,10 @@ import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, eff
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 
-export interface ScatterPoint { x: number; y: number }
+export interface ScatterPoint {
+  x: number;
+  y: number;
+}
 
 @Component({
   selector: 'app-scatter-chart',
@@ -37,17 +40,22 @@ export class ScatterChartComponent {
     const container = this.el.nativeElement.querySelector('.chart-host') as HTMLDivElement;
     if (!container || this.chart) return;
     this.chart = createChart(container, {
-      width: container.clientWidth, height: 288,
+      width: container.clientWidth,
+      height: 288,
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#9ca3af' },
       grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
       rightPriceScale: { borderColor: '#374151' },
     });
     this.seriesY = this.chart.addSeries(LineSeries, {
-      color: this.color(), lineVisible: false, pointMarkersVisible: true,
+      color: this.color(),
+      lineVisible: false,
+      pointMarkersVisible: true,
       lastValueVisible: false,
     } as any);
     this.seriesX = this.chart.addSeries(LineSeries, {
-      color: '#f59e0b', lineVisible: false, pointMarkersVisible: true,
+      color: '#f59e0b',
+      lineVisible: false,
+      pointMarkersVisible: true,
       lastValueVisible: false,
     } as any);
     this.updateData();

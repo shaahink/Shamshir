@@ -13,7 +13,11 @@ import type { RunAnalytics } from '../../../models/api.types';
     <div class="space-y-6">
       <div class="flex items-center justify-between">
         <h1 class="text-xl font-semibold">Analyzer</h1>
-        <a [routerLink]="['/runs', runId()]" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Back to Report</a>
+        <a
+          [routerLink]="['/runs', runId()]"
+          class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800"
+          >Back to Report</a
+        >
       </div>
 
       @if (analytics()) {
@@ -40,14 +44,19 @@ export class RunAnalyzerComponent implements OnInit {
   holdData = () => this.bucket(this.analytics()?.holdingTimes ?? [], 20, 0);
   hourData = () => (this.analytics()?.pnlByHour ?? []).map((d, i) => ({ time: i, value: d.value }));
   dayData = () => (this.analytics()?.pnlByDay ?? []).map((d, i) => ({ time: i, value: d.value }));
-  maeMfeData = () => (this.analytics()?.maeMfe ?? []).map(d => ({ x: d.x, y: d.y }));
+  maeMfeData = () => (this.analytics()?.maeMfe ?? []).map((d) => ({ x: d.x, y: d.y }));
 
   private bucket(values: number[], bins: number, _: number): HistogramBin[] {
     if (!values.length) return [];
-    const min = Math.min(...values); const max = Math.max(...values);
-    const range = max - min || 1; const width = range / bins;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+    const width = range / bins;
     const counts = new Array(bins).fill(0);
-    for (const v of values) { const i = Math.min(bins - 1, Math.floor((v - min) / width)); counts[i]++; }
+    for (const v of values) {
+      const i = Math.min(bins - 1, Math.floor((v - min) / width));
+      counts[i]++;
+    }
     return counts.map((c, i) => ({ time: i, value: c }));
   }
 
@@ -55,6 +64,10 @@ export class RunAnalyzerComponent implements OnInit {
     const runId = this.route.snapshot.paramMap.get('runId');
     if (!runId) return;
     this.runId.set(runId);
-    try { this.analytics.set(await this.api.getRunAnalytics(runId)); } catch { /* */ }
+    try {
+      this.analytics.set(await this.api.getRunAnalytics(runId));
+    } catch {
+      /* */
+    }
   }
 }
