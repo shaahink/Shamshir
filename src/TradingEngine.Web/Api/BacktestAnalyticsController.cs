@@ -9,12 +9,41 @@ public class BacktestAnalyticsController : ControllerBase
     private readonly TradingDbContext _db;
     private readonly IPassProbabilityEstimator _estimator;
     private readonly IBacktestRunRepository _runRepo;
+    private readonly IStrategyConfigStore _strategyConfigStore;
+    private readonly IRiskProfileStore _riskProfileStore;
+    private readonly IPropFirmRuleSetStore _propFirmStore;
 
-    public BacktestAnalyticsController(TradingDbContext db, IPassProbabilityEstimator estimator, IBacktestRunRepository runRepo)
+    public BacktestAnalyticsController(
+        TradingDbContext db,
+        IPassProbabilityEstimator estimator,
+        IBacktestRunRepository runRepo,
+        IStrategyConfigStore strategyConfigStore,
+        IRiskProfileStore riskProfileStore,
+        IPropFirmRuleSetStore propFirmStore)
     {
         _db = db;
         _estimator = estimator;
         _runRepo = runRepo;
+        _strategyConfigStore = strategyConfigStore;
+        _riskProfileStore = riskProfileStore;
+        _propFirmStore = propFirmStore;
+    }
+
+    // iter-38 W-B4: resolve the prop-firm ruleset the engine actually runs under, mirroring
+    // EngineHostFactory.WireRiskRules (active strategy's RiskProfileId → profile's PropFirmRuleSetId →
+    // ruleset). Pass-probability was hardcoding FTMO 10/5/10 and ignoring the configured ruleset.
+    private async Task<PropFirmRuleSet?> ResolveActiveRuleSetAsync(CancellationToken ct)
+    {
+        var configs = await _strategyConfigStore.GetAllAsync(ct);
+        var activeProfileId =
+            configs.Where(c => c.Enabled).Select(c => c.RiskProfileId).FirstOrDefault()
+            ?? configs.Select(c => c.RiskProfileId).FirstOrDefault()
+            ?? "standard";
+        var profiles = await _riskProfileStore.GetAllAsync(ct);
+        var activeRuleSetId = profiles.FirstOrDefault(p => p.Id == activeProfileId)?.PropFirmRuleSetId
+            ?? "ftmo-standard";
+        var ruleSets = await _propFirmStore.GetAllAsync(ct);
+        return ruleSets.FirstOrDefault(r => r.Id == activeRuleSetId);
     }
 
     [HttpGet("runs")]
@@ -51,13 +80,18 @@ public class BacktestAnalyticsController : ControllerBase
         var initialBalance = run?.InitialBalance ?? 100_000m;
         var currentEquity = initialBalance + dailyPnL.Sum();
 
+        // iter-38 W-B4: pull the targets/limits from the configured ruleset (FTMO-ish defaults only as a
+        // fallback when no ruleset resolves). DaysRemaining keeps the 30-day assumption — the ruleset has no
+        // total challenge-length field (MinTradingDays is a floor, not the window).
+        var ruleSet = await ResolveActiveRuleSetAsync(HttpContext.RequestAborted);
+
         var input = new PassProbabilityInput
         {
             CurrentEquity = currentEquity,
             InitialBalance = initialBalance,
-            ProfitTargetPercent = 0.10,
-            MaxDailyLossPercent = 0.05,
-            MaxTotalLossPercent = 0.10,
+            ProfitTargetPercent = ruleSet?.ProfitTargetPercent ?? 0.10,
+            MaxDailyLossPercent = ruleSet?.MaxDailyLossPercent ?? 0.05,
+            MaxTotalLossPercent = ruleSet?.MaxTotalLossPercent ?? 0.10,
             DaysRemaining = Math.Max(1, 30 - dailyPnL.Count),
             HistoricalDailyPnL = dailyPnL,
             MonteCarloRuns = 10_000,
