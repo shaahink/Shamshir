@@ -242,3 +242,27 @@ export interface BarData {
   low: number;
   close: number;
 }
+
+// iter-38 S7 NG-R4: interfaces previously missing, now added so typed services can drop 'any'.
+export interface PropFirmRule {
+  id: string;
+  displayName: string;
+  drawdownType: string;
+  maxDailyLossPercent: number;
+  maxTotalLossPercent: number;
+  profitTargetPercent: number;
+  minTradingDays: number;
+  forceCloseOnBreach: boolean;
+  allowTradesDuringNews: boolean;
+  allowWeekendHolding: boolean;
+}
+
+export interface GovernorOptions {
+  enabled: boolean;
+  coolingOffBars?: number;
+  coolingOffConsecutiveLosses?: number;
+  profitLockDayFraction?: number;
+  softStopDailyDdFraction?: number;
+  hardStopDailyDdFraction?: number;
+  sizeMultiplier?: number;
+}

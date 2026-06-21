@@ -1,5 +1,6 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import type { GovernorOptions } from '../../models/api.types';
 import { GovernorApiService } from './governor.service';
 
 @Component({
@@ -107,7 +108,7 @@ import { GovernorApiService } from './governor.service';
 })
 export class GovernorEditComponent implements OnInit {
   private api = inject(GovernorApiService);
-  data = signal<any>(null);
+  data = signal<GovernorOptions | null>(null);
   edit: any = {};
   saving = signal(false);
   savedOk = signal(false);

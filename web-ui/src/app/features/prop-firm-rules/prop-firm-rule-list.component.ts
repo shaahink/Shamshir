@@ -1,6 +1,7 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import type { PropFirmRule } from '../../models/api.types';
 import { PropFirmRulesApiService } from './prop-firm-rules.service';
 
 @Component({
@@ -74,7 +75,7 @@ import { PropFirmRulesApiService } from './prop-firm-rules.service';
 export class PropFirmRuleListComponent implements OnInit {
   private api = inject(PropFirmRulesApiService);
   private router = inject(Router);
-  rules = signal<any[]>([]);
+  rules = signal<PropFirmRule[]>([]);
   // iter-38 S9 W-D2: replace prompt() with a real dialog (native <dialog>-backdrop pattern).
   showCreate = signal(false);
   newId = '';
