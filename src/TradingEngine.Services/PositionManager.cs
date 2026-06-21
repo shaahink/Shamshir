@@ -113,12 +113,12 @@ public sealed class PositionManager(
                 return PositionLifecycle.TrailAtr(ps,
                     _highWaterBid.GetValueOrDefault(ps.PositionId, ps.EntryPrice.Value),
                     _lowWaterAsk.GetValueOrDefault(ps.PositionId, ps.EntryPrice.Value),
-                    ComputeAtr(recentBars, config, symbolInfo), t.AtrMultiple, symbolInfo);
+                    ComputeAtr(recentBars, config, symbolInfo), EffectiveAtrMultiple(t, recentBars), symbolInfo);
 
             case TrailingMethod.Structure:
                 return PositionLifecycle.TrailStructure(ps, recentBars,
                     t.StructureLookbackBars > 0 ? t.StructureLookbackBars : 10,
-                    ComputeAtr(recentBars, config, symbolInfo), t.AtrMultiple, symbolInfo);
+                    ComputeAtr(recentBars, config, symbolInfo), EffectiveAtrMultiple(t, recentBars), symbolInfo);
 
             case TrailingMethod.SteppedR:
             {
@@ -172,6 +172,11 @@ public sealed class PositionManager(
         {
             StructureLookbackBars = tr.StructureLookbackBars,
             SteppedRLevels = tr.SteppedRLevels,
+            // iter-38 A5: Ride relaxes the ATR trail while ADX is strong. opts.Ride is already add-on-resolved
+            // (Auto ⇒ tuner numbers) by the time BuildConfig runs at registration.
+            RideEnabled = opts.Ride?.Enabled ?? false,
+            RideAdxFloor = opts.Ride?.AdxFloor ?? 25,
+            RideRelaxedAtrMultiple = opts.Ride?.RelaxedAtrMultiple ?? tr.AtrMultiple,
         };
         return new PositionManagementConfig(
             strategyId, trailing,
@@ -197,8 +202,17 @@ public sealed class PositionManager(
             p.OpenedAtUtc, p.StrategyId, PositionPhase.Open, p.Lots);
     }
 
-    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config, SymbolInfo symbolInfo)
+    /// <summary>iter-38 A5 (Ride): while the add-on is enabled and ADX shows a strong trend, widen the ATR
+    /// trailing multiple to the relaxed value so a runner is given more room; otherwise the configured
+    /// multiple stands. Off (RideEnabled=false) ⇒ always the configured multiple ⇒ golden byte-identical.</summary>
+    private double EffectiveAtrMultiple(TrailingConfig t, IReadOnlyList<Bar> recentBars)
     {
+        if (!t.RideEnabled || recentBars.Count < 2) return t.AtrMultiple;
+        var adx = indicatorService.Adx(recentBars, Math.Min(14, recentBars.Count));
+        return adx > t.RideAdxFloor ? t.RideRelaxedAtrMultiple : t.AtrMultiple;
+    }
+
+    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config, SymbolInfo symbolInfo)    {
         var fallback = (double)symbolInfo.PipSize;
         if (recentBars.Count == 0) return config.TrailingStop.AtrMultiple * fallback;
         var atrValue = indicatorService.Atr(recentBars, Math.Min(14, recentBars.Count));
