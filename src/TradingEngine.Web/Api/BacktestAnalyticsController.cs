@@ -130,15 +130,6 @@ public class BacktestAnalyticsController : ControllerBase
         return Ok(new { symbols = symList, matrix });
     }
 
-    [HttpGet("analytics/regime-history")]
-    public async Task<IActionResult> GetRegimeHistory([FromQuery] string symbol, [FromQuery] int days = 30)
-    {
-        var from = DateTime.UtcNow.AddDays(-days);
-        var bars = await _db.Bars.Where(b => b.Symbol == symbol && b.OpenTimeUtc >= from).OrderBy(b => b.OpenTimeUtc).ToListAsync();
-        var result = bars.Select(b => new { date = b.OpenTimeUtc.ToString("yyyy-MM-dd"), regime = "Unknown" }).ToList();
-        return Ok(result);
-    }
-
     private static double PearsonR(List<decimal> a, List<decimal> b)
     {
         var n = Math.Min(a.Count, b.Count);
