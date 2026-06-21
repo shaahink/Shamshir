@@ -1,8 +1,7 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
+import { PropFirmRulesApiService } from './prop-firm-rules.service';
 
 @Component({
   selector: 'app-prop-firm-rule-detail',
@@ -238,7 +237,7 @@ import { firstValueFrom } from 'rxjs';
 })
 export class PropFirmRuleDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
-  private http = inject(HttpClient);
+  private api = inject(PropFirmRulesApiService);
   private router = inject(Router);
   data = signal<any>(null);
   edit: any = {};
@@ -248,7 +247,7 @@ export class PropFirmRuleDetailComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
-    const r: any = await firstValueFrom(this.http.get(`/api/prop-firm-rules/${id}`));
+      const r = await this.api.getById(id);
     this.data.set(r);
     this.edit = { ...r };
   }
@@ -256,19 +255,19 @@ export class PropFirmRuleDetailComponent implements OnInit {
   async save(): Promise<void> {
     this.saving.set(true);
     this.savedOk.set(false);
-    await firstValueFrom(this.http.put(`/api/prop-firm-rules/${this.edit.id}`, this.edit));
+      await this.api.save(this.edit.id, this.edit);
     this.savedOk.set(true);
     this.saving.set(false);
   }
 
   async duplicate(): Promise<void> {
-    const res: any = await firstValueFrom(this.http.post(`/api/prop-firm-rules/${this.data()!.id}/duplicate`, {}));
+      const res = await this.api.duplicate(this.data()!.id);
     this.router.navigate(['/prop-firm-rules', res.id]);
   }
 
   async del(): Promise<void> {
     if (!confirm('Delete this rule set?')) return;
-    await firstValueFrom(this.http.delete(`/api/prop-firm-rules/${this.data()!.id}`));
+      await this.api.delete(this.data()!.id);
     this.router.navigate(['/prop-firm-rules']);
   }
 }

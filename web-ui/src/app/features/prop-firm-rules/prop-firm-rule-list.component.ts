@@ -1,8 +1,7 @@
-import { Component, ElementRef, inject, OnInit, signal, ViewChild } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink, Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
 import { FormsModule } from '@angular/forms';
+import { PropFirmRulesApiService } from './prop-firm-rules.service';
 
 @Component({
   selector: 'app-prop-firm-rule-list',
@@ -73,7 +72,7 @@ import { FormsModule } from '@angular/forms';
   `,
 })
 export class PropFirmRuleListComponent implements OnInit {
-  private http = inject(HttpClient);
+  private api = inject(PropFirmRulesApiService);
   private router = inject(Router);
   rules = signal<any[]>([]);
   // iter-38 S9 W-D2: replace prompt() with a real dialog (native <dialog>-backdrop pattern).
@@ -82,18 +81,17 @@ export class PropFirmRuleListComponent implements OnInit {
   newName = '';
 
   async ngOnInit(): Promise<void> {
-    const res: any = await firstValueFrom(this.http.get('/api/prop-firm-rules'));
-    this.rules.set(Array.isArray(res) ? res : res.rules || []);
+    const res = await this.api.getAll();
+    this.rules.set(res);
   }
 
   async duplicate(r: any): Promise<void> {
-    const res: any = await firstValueFrom(this.http.post(`/api/prop-firm-rules/${r.id}/duplicate`, {}));
+    const res = await this.api.duplicate(r.id);
     this.router.navigate(['/prop-firm-rules', res.id]);
   }
 
   async create(ruleId: string, displayName: string): Promise<void> {
-    await firstValueFrom(
-      this.http.post('/api/prop-firm-rules', {
+    await this.api.create({
         id: ruleId,
         displayName,
         drawdownType: 'Fixed',
@@ -113,8 +111,7 @@ export class PropFirmRuleListComponent implements OnInit {
         weekendNoOpenUtc: '20:00:00',
         protectionResetPolicy: 'NextTradingDay',
         forceCloseOnBreach: false,
-      }),
-    );
+    });
     this.router.navigate(['/prop-firm-rules', ruleId]);
   }
 

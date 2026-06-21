@@ -1,0 +1,1 @@
+import"./chunk-AP4OEWII.js";var t=[{path:"",loadComponent:()=>import("./chunk-7SMUV7OW.js").then(o=>o.PropFirmRuleListComponent)},{path:":id",loadComponent:()=>import("./chunk-3KUQ2FEH.js").then(o=>o.PropFirmRuleDetailComponent)}];export{t as PROP_FIRM_ROUTES};
