@@ -182,6 +182,9 @@ export interface RiskProfile {
   maxConcurrentPositions: number;
   lotSizingMethod: string;
   propFirmRuleSetId: string;
+  allowHedging?: boolean;
+  maxSlPips?: number;
+  maxExposurePercent?: number;
 }
 
 export interface StartRunResponse {

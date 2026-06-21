@@ -1,8 +1,8 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { RouterLink, Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
 import { FormsModule } from '@angular/forms';
+import type { RiskProfile } from '../../models/api.types';
+import { RiskProfilesApiService } from './risk-profiles.service';
 
 @Component({
   selector: 'app-risk-profile-list',
@@ -76,27 +76,26 @@ import { FormsModule } from '@angular/forms';
   `,
 })
 export class RiskProfileListComponent implements OnInit {
-  private http = inject(HttpClient);
+  private api = inject(RiskProfilesApiService);
   private router = inject(Router);
-  profiles = signal<any[]>([]);
+  profiles = signal<RiskProfile[]>([]);
   // iter-38 S9 W-D2: replace prompt() with a real dialog.
   showCreate = signal(false);
   newId = '';
   newName = '';
 
   async ngOnInit(): Promise<void> {
-    const rp: any = await firstValueFrom(this.http.get('/api/risk-profiles'));
-    this.profiles.set(Array.isArray(rp) ? rp : rp.profiles || []);
+    const rp = await this.api.getAll();
+    this.profiles.set(rp);
   }
 
-  async duplicate(p: any): Promise<void> {
-    const res: any = await firstValueFrom(this.http.post(`/api/risk-profiles/${p.id}/duplicate`, {}));
+  async duplicate(p: RiskProfile): Promise<void> {
+    const res = await this.api.duplicate(p.id);
     this.router.navigate(['/risk-profiles', res.id]);
   }
 
   async create(profileId: string, displayName: string): Promise<void> {
-    await firstValueFrom(
-      this.http.post('/api/risk-profiles', {
+    await this.api.create({
         id: profileId,
         displayName,
         riskPerTradePercent: 0.005,
@@ -115,8 +114,7 @@ export class RiskProfileListComponent implements OnInit {
         kellyFraction: 0.25,
         antiMartingaleMultiplier: 1.5,
         antiMartingaleMaxSteps: 3,
-      }),
-    );
+    });
     this.router.navigate(['/risk-profiles', profileId]);
   }
 

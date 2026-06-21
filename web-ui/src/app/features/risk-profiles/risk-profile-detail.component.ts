@@ -1,8 +1,7 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
+import { RiskProfilesApiService } from './risk-profiles.service';
 
 @Component({
   selector: 'app-risk-profile-detail',
@@ -244,7 +243,7 @@ import { firstValueFrom } from 'rxjs';
 })
 export class RiskProfileDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
-  private http = inject(HttpClient);
+  private api = inject(RiskProfilesApiService);
   private router = inject(Router);
   data = signal<any>(null);
   edit: any = {};
@@ -269,7 +268,7 @@ export class RiskProfileDetailComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
-    const p: any = await firstValueFrom(this.http.get(`/api/risk-profiles/${id}`));
+      const p = await this.api.getById(id);
     this.data.set(p);
     this.edit = { ...p, lotSizingMethod: p.lotSizingMethod || 'PercentRisk' };
   }
@@ -280,19 +279,19 @@ export class RiskProfileDetailComponent implements OnInit {
     if (errs.length > 0) return;
     this.saving.set(true);
     this.savedOk.set(false);
-    await firstValueFrom(this.http.put(`/api/risk-profiles/${this.edit.id}`, this.edit));
+      await this.api.save(this.edit.id, this.edit);
     this.savedOk.set(true);
     this.saving.set(false);
   }
 
   async duplicate(): Promise<void> {
-    const res: any = await firstValueFrom(this.http.post(`/api/risk-profiles/${this.data()!.id}/duplicate`, {}));
+      const res = await this.api.duplicate(this.data()!.id);
     this.router.navigate(['/risk-profiles', res.id]);
   }
 
   async del(): Promise<void> {
     if (!confirm('Delete this risk profile?')) return;
-    await firstValueFrom(this.http.delete(`/api/risk-profiles/${this.data()!.id}`));
+      await this.api.delete(this.data()!.id);
     this.router.navigate(['/risk-profiles']);
   }
 }
