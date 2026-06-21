@@ -34,6 +34,12 @@ public static class MiddlewarePipeline
             scope.ServiceProvider.GetRequiredService<IGovernorOptionsStore>(), govLogger);
         await govSeeder.SeedAsync(solRoot, default);
 
+        // iter-38 PK1: seed the 3 reusable starter add-on packs (idempotent).
+        var packLogger = scope.ServiceProvider.GetRequiredService<ILogger<AddOnPackSeeder>>();
+        var packSeeder = new AddOnPackSeeder(
+            scope.ServiceProvider.GetRequiredService<IAddOnPackStore>(), packLogger);
+        await packSeeder.SeedAsync(default);
+
         // Single-origin hosting: ASP.NET serves the built Angular SPA (web-ui → wwwroot) alongside the
         // JSON API, the SignalR hub and the Scalar docs. One `dotnet run` gives the whole app — no
         // separate `ng serve`/proxy/port-4200 needed (that remains available for HMR via `npm start`).
