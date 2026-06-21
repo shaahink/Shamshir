@@ -1,7 +1,7 @@
 # Iter-38 — HANDOVER (for a cold session)
 
 **Branch:** `iter/38-addons` (cut from `iter/37-frontend-finish`; parent commit `e4d3684`)
-**State at handover:** working tree **clean**, **35 commits** landed (S5 complete, S6 half done), every commit gated green.
+**State at handover:** working tree **clean**, **36 commits** landed (S5 complete, S6 7/11 done), every commit gated green.
 **Companion docs:** `docs/iterations/iter-38/PLAN.md` (the full plan + the folded-in UI/API audit — **§9 = Stream W backend/UI findings (W-*), §10 = Stream NG Angular findings (NG-R*)**), `AGENTS.md` (standing rules), `docs/OPEN-ISSUES.md`.
 
 > **Read this whole file before touching code.** It tells you exactly what's done, what's left (with file:line + approach), the non-negotiable gates, the determinism rule, the repo footguns, and a security note about an active prompt-injection in the tool output.
@@ -75,6 +75,7 @@ cd web-ui ; npm run build    # "Application bundle generation complete"
 | `b7d52c5` | **B3** | WireRiskRules twins consolidated; T8 `&& govOptions.Enabled` on both paths | determinism 61/61 |
 | `9413ed6` | **B7/T9** | terminal frame broadcasts `"cancelled"`, not `"completed"` | Integ 61 |
 | `c199e5c` | **B7 doc** | OPEN-ISSUES header reconciled to current branch + gate counts | docs-only |
+| `457aad8` | **B1** | kernel engine feeds live-monitor counters via `onEvent` callback (457aad8) | determinism 61/61 |
 
 **Result:** S0–S5 are **complete**; S6 is **half done** (CT-1, InProcess DI, B3, B7 landed; B1/B2/B4/B5/B6 remain). (The golden-determinism subset count moved 60→**61** when W-A7 added `KernelEquitySnapshotTests.From_MapsGovernorBandReasonAndDistanceToDailyLimit`; the golden snapshot itself stayed byte-identical.)
 
@@ -119,18 +120,18 @@ Historical detail (now resolved except the S8-deferred paging):
 ### S6 — Stream B (observability/venue) — HALF DONE, see below
 
 **Landed this session:**
-- ✅ **CT-1** — `[SkippableFact]` conversion on RequiresCTrader/NetMQ E2E (4be2204). Skips in no-creds CI; here a `CtId` IS configured in `appsettings.Development.json` so the harness runs+fails (parked owner-verify).
-- ✅ **InProcessEngineSmokeTests** — DI fixed: `EntryPlanner`, `IReadOnlyList<IStrategy>`, and `EffectExecutor` registered (4677231). Now passes. The hardcoded ports (15557/15558) were fine.
-- ✅ **B3** — `WireRiskRules` twins consolidated + T8 `&& govOptions.Enabled` on both paths (b7d52c5). EngineHostFactory now delegates to the extension method.
-- ✅ **B7/T9** — terminal `RunProgress` envelope carries the actual status including `"cancelled"` (9413ed6).
-- ✅ **B7 doc drift** — OPEN-ISSUES header on current branch + correct gate counts (c199e5c).
+- ✅ **CT-1** — `[SkippableFact]` conversion on RequiresCTrader/NetMQ E2E (4be2204).
+- ✅ **InProcessEngineSmokeTests** — DI fixed (4677231).
+- ✅ **B3** — `WireRiskRules` twins consolidated + T8 on both paths (b7d52c5).
+- ✅ **B7/T9** — terminal `RunProgress` carries actual status incl. `"cancelled"` (9413ed6).
+- ✅ **B7 doc drift** — OPEN-ISSUES header updated (c199e5c).
+- ✅ **B1** — Kernel engine feeds live-monitor counters: `OrderProposed→SIGNAL`, `OrderSubmitted→ORDER`, `OrderFilled/OrderPartiallyFilled→EXEC`, `OrderRejected→REJECTED`, `DrawdownBreached→BREACH` (457aad8). Via `Action<EngineEvent>? onEvent` callback in KernelBacktestLoop.PumpAsync, golden-safe (determinism 61/61).
 
 **Still to do:**
-- **B1** — Kernel live counters (Signals/Orders/Fills/Rejections → always 0). Root cause: EngineRunner/EffectExecutor only fires BAR+CLOSE events. Fix needs IProgress threading through EffectExecutor (ORDER/EXEC/REJECTED seams) and BarEvaluator (SIGNAL). Golden-safe (progress is outside snapshot).
-- **B2** — Server-side paged per-bar "why" endpoint de-noising EquityObserved.
-- **B4** — cTrader equity-flush: ensure engine runner completes before the finally flush. The `finally` block already orders flush→stop→dispose; needs an engine-runner completion await (cTrader-specific lifecycle, parked-ish).
-- **B5** — Duplicate replay frontend pre-filling (backend is done: DatasetId preserved, ParentRunId recorded).
-- **B6** — cTrader-path impl + harness tests (parked for owner-verify, no platform run).
+- **B2** — Server-side paged per-bar "why" endpoint over BarClosed verdicts.
+- **B4** — cTrader equity-flush: await engine runner before StopAsync.
+- **B5** — Duplicate replay frontend pre-filling (backend is done).
+- **B6** — cTrader-path impl + harness tests (parked for owner-verify).
 
 - **Fix the pre-existing red tests** (§5) — handled (1 fixed + passes, 4 `[SkippableFact]`-gated + parked).
 
