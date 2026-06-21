@@ -1,10 +1,9 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
 import type { StrategyDetail, RiskProfile } from '../../../models/api.types';
 import { StrategiesApiService } from '../strategies.service';
+import { RiskProfilesApiService } from '../../risk-profiles/risk-profiles.service';
 
 @Component({
   selector: 'app-strategy-detail',
@@ -333,6 +332,7 @@ import { StrategiesApiService } from '../strategies.service';
 export class StrategyDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(StrategiesApiService);
+  private rpApi = inject(RiskProfilesApiService);
   private http = inject(HttpClient);
   private router = inject(Router);
 
@@ -398,8 +398,8 @@ export class StrategyDetailComponent implements OnInit {
       this.buildEdit(data);
     } catch {}
     try {
-      const rp = await firstValueFrom(this.http.get<any>('/api/risk-profiles'));
-      this.riskProfiles.set(Array.isArray(rp) ? rp : rp.profiles || []);
+      const rp = await this.rpApi.getAll();
+      this.riskProfiles.set(rp);
     } catch {}
   }
 
