@@ -1047,6 +1047,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         state.DailyDdPct = latest.DailyDrawdown;
         state.MaxDdPct = latest.MaxDrawdown;
         state.OpenPositions = latest.OpenPositions;
+        // iter-38 W-A7: the governor band/reason + distance-to-daily-limit are sourced from the
+        // authoritative kernel EngineState (via KernelEquitySnapshot.From), so the Monitor no longer
+        // shows a blank governor.
+        state.GovernorState = latest.GovernorState;
+        state.GovernorReason = latest.GovernorReason;
+        state.DistanceToDailyLimit = latest.DistanceToDailyLimit;
     }
 
     private async Task<string?> ResolveEffectiveConfigJsonAsync(BacktestConfig cfg)
