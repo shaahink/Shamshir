@@ -3,6 +3,8 @@ import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
+import type { StrategyDetail, RiskProfile } from '../../../models/api.types';
+import { StrategiesApiService } from '../strategies.service';
 
 @Component({
   selector: 'app-strategy-detail',
@@ -330,6 +332,7 @@ import { firstValueFrom } from 'rxjs';
 })
 export class StrategyDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
+  private api = inject(StrategiesApiService);
   private http = inject(HttpClient);
   private router = inject(Router);
 
@@ -390,12 +393,12 @@ export class StrategyDetailComponent implements OnInit {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
     try {
-      const data: any = await firstValueFrom(this.http.get(`/api/strategies/${id}`));
+      const data = await this.api.getById(id);
       this.data.set(data);
       this.buildEdit(data);
     } catch {}
     try {
-      const rp: any = await firstValueFrom(this.http.get('/api/risk-profiles'));
+      const rp = await firstValueFrom(this.http.get<any>('/api/risk-profiles'));
       this.riskProfiles.set(Array.isArray(rp) ? rp : rp.profiles || []);
     } catch {}
   }
@@ -533,7 +536,7 @@ export class StrategyDetailComponent implements OnInit {
     const s = this.data();
     if (!s) return;
     this.saving.set(true);
-    await firstValueFrom(this.http.put(`/api/strategies/${s.id}/${s.enabled ? 'disable' : 'enable'}`, {}));
+    await this.api.toggleEnabled(s.id, s.enabled);
     this.data.set({ ...s, enabled: !s.enabled });
     this.saving.set(false);
   }
@@ -552,7 +555,7 @@ export class StrategyDetailComponent implements OnInit {
     };
     this.saving.set(true);
     try {
-      await firstValueFrom(this.http.put(`/api/strategies/${this.data()!.id}/config`, JSON.stringify(body)));
+      await this.api.save(this.data()!.id, body);
       this.savedOk.set(true);
       this.editing.set(false);
     } catch (e: any) {
@@ -565,7 +568,7 @@ export class StrategyDetailComponent implements OnInit {
   async duplicate(): Promise<void> {
     this.saving.set(true);
     try {
-      const res: any = await firstValueFrom(this.http.post(`/api/strategies/${this.data()!.id}/duplicate`, {}));
+      const res = await this.api.duplicate(this.data()!.id);
       this.router.navigate(['/strategies', res.id]);
     } catch {
     } finally {

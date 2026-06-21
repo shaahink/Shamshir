@@ -1,8 +1,8 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
-import { firstValueFrom } from 'rxjs';
+import type { StrategySummary } from '../../../models/api.types';
+import { StrategiesApiService } from '../strategies.service';
 
 @Component({
   selector: 'app-strategy-list',
@@ -58,22 +58,20 @@ import { firstValueFrom } from 'rxjs';
   `,
 })
 export class StrategyListComponent implements OnInit {
-  private http = inject(HttpClient);
-  strategies = signal<any[]>([]);
+  private api = inject(StrategiesApiService);
+  strategies = signal<StrategySummary[]>([]);
 
   async ngOnInit(): Promise<void> {
     try {
-      const res = await firstValueFrom(this.http.get<any>('/api/strategies'));
-      const data = Array.isArray(res) ? res : res.strategies || res.configs || [];
+      const data = await this.api.getAll();
       this.strategies.set(data);
     } catch {
       /* */
     }
   }
 
-  async toggleEnabled(s: any): Promise<void> {
-    const ep = s.isEnabled ? 'disable' : 'enable';
-    await firstValueFrom(this.http.put(`/api/strategies/${s.id}/${ep}`, {}));
+  async toggleEnabled(s: StrategySummary): Promise<void> {
+    await this.api.toggleEnabled(s.id, !s.isEnabled);
     this.strategies.update((arr) => arr.map((x) => (x.id === s.id ? { ...x, isEnabled: !x.isEnabled } : x)));
   }
 }

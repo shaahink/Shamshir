@@ -202,6 +202,7 @@ export interface StrategySummary {
   id: string;
   displayName: string;
   isEnabled: boolean;
+  createdAtUtc?: string;
   stats: StrategyStats;
 }
 
