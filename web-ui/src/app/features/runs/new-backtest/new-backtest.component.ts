@@ -1,11 +1,10 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
-import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
 import { RunsStore } from '../runs.store';
 import type { StrategySummary, StartRunRequest } from '../../../models/api.types';
 import { StrategiesApiService } from '../../strategies/strategies.service';
+import { RiskProfilesApiService } from '../../risk-profiles/risk-profiles.service';
 import { AddOnPacksApiService } from '../../addon-packs/addon-packs.service';
 
 const ALL_SYMBOLS = [
@@ -248,7 +247,8 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
 export class NewBacktestComponent implements OnInit {
   private store = inject(RunsStore);
   private router = inject(Router);
-  private http = inject(HttpClient);
+  private strategiesApi = inject(StrategiesApiService);
+  private profilesApi = inject(RiskProfilesApiService);
   private packsApi = inject(AddOnPacksApiService);
 
   allSymbols = ALL_SYMBOLS;
@@ -301,11 +301,10 @@ export class NewBacktestComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     try {
-      const res = await firstValueFrom(this.http.get<any>('/api/strategies'));
-      const data: any[] = Array.isArray(res) ? res : res.strategies || res.configs || [];
+      const data = await this.strategiesApi.getAll();
       this.strategies.set(data);
       const s = new Set<string>();
-      data.filter((x: any) => x.isEnabled).forEach((x: any) => s.add(x.id));
+      data.filter((x: StrategySummary) => x.isEnabled).forEach((x) => s.add(x.id));
       if (s.size === 0 && data.length > 0) s.add(data[0].id);
       this.selectedStrategyIds.set(s);
     } catch {
@@ -313,7 +312,7 @@ export class NewBacktestComponent implements OnInit {
     }
 
     try {
-      const rp = await firstValueFrom(this.http.get<any>('/api/risk-profiles'));
+      const rp = await this.profilesApi.getAll();
       const profiles: any[] = Array.isArray(rp) ? rp : rp.profiles || [];
       if (profiles.length > 0) {
         this.riskProfiles.set(profiles);

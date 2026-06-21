@@ -31,6 +31,7 @@ export class EquityChartComponent implements OnDestroy {
   private equitySeries: any = null;
   private balanceSeries: any = null;
   private ddSeries: any = null;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor() {
     afterNextRender(() => {
@@ -56,6 +57,13 @@ export class EquityChartComponent implements OnDestroy {
     });
 
     this.equitySeries = this.chart.addSeries(LineSeries, { color: this.lineColor(), lineWidth: 2 });
+
+    // iter-38 W-A3: respond to viewport changes.
+    this.resizeObserver = new ResizeObserver(() => {
+      if (!this.chart || !container) return;
+      this.chart.resize(container.clientWidth, container.clientHeight);
+    });
+    this.resizeObserver.observe(container);
   }
 
   private updateData(points: ChartPoint[], showBal: boolean, showDD: boolean): void {
@@ -104,7 +112,7 @@ export class EquityChartComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    // iter-38 S8 W-A2 / NG-R7: prevent chart memory leak (chart instances never disposed before).
+    this.resizeObserver?.disconnect();
     this.chart?.remove();
   }
 }

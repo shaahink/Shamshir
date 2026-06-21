@@ -29,6 +29,7 @@ export class ScatterChartComponent implements OnDestroy {
   private chart: IChartApi | null = null;
   private seriesY: any = null;
   private seriesX: any = null;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor() {
     afterNextRender(() => {
@@ -61,6 +62,12 @@ export class ScatterChartComponent implements OnDestroy {
       lastValueVisible: false,
     } as any);
     this.updateData();
+
+    this.resizeObserver = new ResizeObserver(() => {
+      if (!this.chart || !container) return;
+      this.chart.resize(container.clientWidth, container.clientHeight);
+    });
+    this.resizeObserver.observe(container);
   }
 
   private updateData(): void {
@@ -72,7 +79,7 @@ export class ScatterChartComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    // iter-38 S8 W-A2 / NG-R7: prevent chart memory leak (chart instances never disposed before).
+    this.resizeObserver?.disconnect();
     this.chart?.remove();
   }
 }

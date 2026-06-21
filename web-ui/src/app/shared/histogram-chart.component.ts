@@ -26,6 +26,7 @@ export class HistogramChartComponent implements OnDestroy {
   private platformId = inject(PLATFORM_ID);
   private chart: IChartApi | null = null;
   private series: any = null;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor() {
     afterNextRender(() => {
@@ -48,6 +49,12 @@ export class HistogramChartComponent implements OnDestroy {
     });
     this.series = this.chart.addSeries(HistogramSeries, { color: this.color() });
     this.updateData();
+
+    this.resizeObserver = new ResizeObserver(() => {
+      if (!this.chart || !container) return;
+      this.chart.resize(container.clientWidth, container.clientHeight);
+    });
+    this.resizeObserver.observe(container);
   }
 
   private updateData(): void {
@@ -57,7 +64,7 @@ export class HistogramChartComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    // iter-38 S8 W-A2 / NG-R7: prevent chart memory leak (chart instances never disposed before).
+    this.resizeObserver?.disconnect();
     this.chart?.remove();
   }
 }

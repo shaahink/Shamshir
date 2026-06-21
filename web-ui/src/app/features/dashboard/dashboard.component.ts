@@ -1,9 +1,8 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
 import { StatTileComponent } from '../../shared/stat-tile.component';
 import { EquityChartComponent, type ChartPoint } from '../../shared/equity-chart.component';
 import type { GovernorState } from '../../models/api.types';
+import { DashboardApiService } from './dashboard.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -51,7 +50,7 @@ import type { GovernorState } from '../../models/api.types';
   `,
 })
 export class DashboardComponent implements OnInit {
-  private http = inject(HttpClient);
+  private api = inject(DashboardApiService);
 
   status = signal('--');
   dailyDdPct = signal(0);
@@ -70,8 +69,8 @@ export class DashboardComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     try {
       const [gov, equity] = await Promise.all([
-        firstValueFrom(this.http.get<GovernorState>('/api/governor/state')),
-        firstValueFrom(this.http.get<{ timestampUtc: string; equity: number }[]>('/api/equity')),
+        this.api.getGovernorState(),
+        this.api.getEquity(),
       ]);
       this.governor.set(gov);
       this.dailyDdPct.set(gov.dayNetPnLFraction < 0 ? Math.abs(gov.dayNetPnLFraction) : 0);

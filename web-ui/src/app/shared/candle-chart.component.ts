@@ -42,6 +42,7 @@ export class CandleChartComponent implements OnDestroy {
   private chart: IChartApi | null = null;
   private candleSeries: any = null;
   private markerLines: any[] = [];
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor() {
     afterNextRender(() => {
@@ -72,6 +73,13 @@ export class CandleChartComponent implements OnDestroy {
       wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
     });
+
+    // iter-38 W-A3: respond to viewport changes so charts don't clip/leave dead space on resize.
+    this.resizeObserver = new ResizeObserver(() => {
+      if (!this.chart || !container) return;
+      this.chart.resize(container.clientWidth, container.clientHeight);
+    });
+    this.resizeObserver.observe(container);
   }
 
   private updateData(): void {
@@ -107,7 +115,7 @@ export class CandleChartComponent implements OnDestroy {
     }
   }
   ngOnDestroy(): void {
-    // iter-38 S8 W-A2 / NG-R7: prevent chart memory leak (chart instances never disposed before).
+    this.resizeObserver?.disconnect();
     this.chart?.remove();
   }
 }

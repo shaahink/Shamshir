@@ -333,7 +333,6 @@ export class StrategyDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(StrategiesApiService);
   private rpApi = inject(RiskProfilesApiService);
-  private http = inject(HttpClient);
   private router = inject(Router);
 
   data = signal<any>(null);
