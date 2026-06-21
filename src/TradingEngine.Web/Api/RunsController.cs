@@ -201,6 +201,7 @@ public sealed class RunsController : ControllerBase
         Response.ContentType = "application/x-ndjson";
         Response.Headers.TryAdd("Content-Disposition", $"attachment; filename=\"{runId}-journal.ndjson\"");
         var opts = new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+        opts.Converters.Add(new TradingEngine.Web.Configuration.Json.UtcDateTimeConverter()); // iter-38 W-B8: UTC 'Z'
         await foreach (var entry in _journals.StreamByRunAsync(runId, afterSeq, ct))
         {
             await Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(entry, opts) + "\n", ct);

@@ -33,10 +33,16 @@ public static class ServiceRegistration
             {
                 o.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
                 o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                // iter-38 W-B8: emit every DateTime as UTC 'Z' so the browser doesn't reinterpret it as local.
+                o.JsonSerializerOptions.Converters.Add(new TradingEngine.Web.Configuration.Json.UtcDateTimeConverter());
             });
         services.AddSignalR()
-            .AddJsonProtocol(o => o.PayloadSerializerOptions.PropertyNamingPolicy =
-                System.Text.Json.JsonNamingPolicy.CamelCase);
+            .AddJsonProtocol(o =>
+            {
+                o.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+                // iter-38 W-B8: same UTC-'Z' DateTime contract on the live-monitor payloads.
+                o.PayloadSerializerOptions.Converters.Add(new TradingEngine.Web.Configuration.Json.UtcDateTimeConverter());
+            });
         services.AddSingleton<RunProgressBroadcaster>();
         services.AddOpenApi();
         services.AddCors(o => o.AddDefaultPolicy(p =>
