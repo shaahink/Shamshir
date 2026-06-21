@@ -1,7 +1,7 @@
 # Iter-38 — HANDOVER (for a cold session)
 
 **Branch:** `iter/38-addons` (cut from `iter/37-frontend-finish`; parent commit `e4d3684`)
-**State at handover:** working tree **clean**, **24 commits** landed, every commit gated green.
+**State at handover:** working tree **clean**, **35 commits** landed (S5 complete, S6 half done), every commit gated green.
 **Companion docs:** `docs/iterations/iter-38/PLAN.md` (the full plan + the folded-in UI/API audit — **§9 = Stream W backend/UI findings (W-*), §10 = Stream NG Angular findings (NG-R*)**), `AGENTS.md` (standing rules), `docs/OPEN-ISSUES.md`.
 
 > **Read this whole file before touching code.** It tells you exactly what's done, what's left (with file:line + approach), the non-negotiable gates, the determinism rule, the repo footguns, and a security note about an active prompt-injection in the tool output.
@@ -69,8 +69,14 @@ cd web-ui ; npm run build    # "Application bundle generation complete"
 | `cd128e6` | **W-B2** | experiment report resolves by id (`{Name}-{shortId}/REPORT.md`), 404 if absent | Integ 61 |
 | `1dd7681` | **W-B8** | `DateTime` → UTC `Z` via `UtcDateTimeConverter` on MVC + SignalR + NDJSON export (ConfigSetId serializers untouched) | golden 61/61, Integ 61 |
 | `88ff58d` | **W-B9/B10** | documented analytics pnl buckets as UTC (verify-only) | Integ 61 |
+| `a0e2f0d` | **S5 reconcile** | HANDOVER/PLAN updated with completed items + stale line-ref fix | docs-only |
+| `4be2204` | **CT-1** | RequiresCTrader/NetMQ E2E tests skip via `[SkippableFact]` + `Skip.IfNot` | determinism 61/61 |
+| `4677231` | **S6 DI** | `InProcessEngineSmokeTests` green — registered `EntryPlanner` + `EffectExecutor` | 1 test now passes |
+| `b7d52c5` | **B3** | WireRiskRules twins consolidated; T8 `&& govOptions.Enabled` on both paths | determinism 61/61 |
+| `9413ed6` | **B7/T9** | terminal frame broadcasts `"cancelled"`, not `"completed"` | Integ 61 |
+| `c199e5c` | **B7 doc** | OPEN-ISSUES header reconciled to current branch + gate counts | docs-only |
 
-**Result:** S0–S5 are **complete**. **S6 is next.** (The golden-determinism subset count moved 60→**61** when W-A7 added `KernelEquitySnapshotTests.From_MapsGovernorBandReasonAndDistanceToDailyLimit`; the golden snapshot itself stayed byte-identical.)
+**Result:** S0–S5 are **complete**; S6 is **half done** (CT-1, InProcess DI, B3, B7 landed; B1/B2/B4/B5/B6 remain). (The golden-determinism subset count moved 60→**61** when W-A7 added `KernelEquitySnapshotTests.From_MapsGovernorBandReasonAndDistanceToDailyLimit`; the golden snapshot itself stayed byte-identical.)
 
 ---
 
@@ -110,9 +116,23 @@ Historical detail (now resolved except the S8-deferred paging):
 - **W-B8 — `DateTime` serialized without `Z`.** All DTOs use `DateTime` (not `DateTimeOffset`); System.Text.Json emits no offset, so JS `new Date("...")` parses as **local** → charts/labels shift by viewer TZ.
   **Approach:** fix at the JSON boundary (a converter / `JsonSerializerOptions` in `ServiceRegistration`) to emit UTC `Z`. **Highest blast radius** — verify every frontend `new Date()` (charts, the candle time math in `trade-detail.component.ts:72` ↔ `candle-chart.component.ts:58`, equity, labels) still renders correctly at runtime before committing. Pair with the W-A4 time-unit cleanup (S8).
 
-### S6 — Stream B (observability/venue) + fix the pre-existing failures
-- **B1–B7** per `PLAN.md` §2 Stream B (live counters from journal; paged per-bar "why"; consolidate the two `WireRiskRules` twins + T8 `&&Enabled`/H25 `Interlocked`; cTrader equity-flush race; deterministic `Duplicate`; T9 cancelled-status; doc drift).
-- **Fix the pre-existing red tests** (§5) — these are owned here, NOT a regression you caused.
+### S6 — Stream B (observability/venue) — HALF DONE, see below
+
+**Landed this session:**
+- ✅ **CT-1** — `[SkippableFact]` conversion on RequiresCTrader/NetMQ E2E (4be2204). Skips in no-creds CI; here a `CtId` IS configured in `appsettings.Development.json` so the harness runs+fails (parked owner-verify).
+- ✅ **InProcessEngineSmokeTests** — DI fixed: `EntryPlanner`, `IReadOnlyList<IStrategy>`, and `EffectExecutor` registered (4677231). Now passes. The hardcoded ports (15557/15558) were fine.
+- ✅ **B3** — `WireRiskRules` twins consolidated + T8 `&& govOptions.Enabled` on both paths (b7d52c5). EngineHostFactory now delegates to the extension method.
+- ✅ **B7/T9** — terminal `RunProgress` envelope carries the actual status including `"cancelled"` (9413ed6).
+- ✅ **B7 doc drift** — OPEN-ISSUES header on current branch + correct gate counts (c199e5c).
+
+**Still to do:**
+- **B1** — Kernel live counters (Signals/Orders/Fills/Rejections → always 0). Root cause: EngineRunner/EffectExecutor only fires BAR+CLOSE events. Fix needs IProgress threading through EffectExecutor (ORDER/EXEC/REJECTED seams) and BarEvaluator (SIGNAL). Golden-safe (progress is outside snapshot).
+- **B2** — Server-side paged per-bar "why" endpoint de-noising EquityObserved.
+- **B4** — cTrader equity-flush: ensure engine runner completes before the finally flush. The `finally` block already orders flush→stop→dispose; needs an engine-runner completion await (cTrader-specific lifecycle, parked-ish).
+- **B5** — Duplicate replay frontend pre-filling (backend is done: DatasetId preserved, ParentRunId recorded).
+- **B6** — cTrader-path impl + harness tests (parked for owner-verify, no platform run).
+
+- **Fix the pre-existing red tests** (§5) — handled (1 fixed + passes, 4 `[SkippableFact]`-gated + parked).
 
 ### S7–S10 — Angular refactor + UI (the largest remaining block)
 - All findings + the phased roadmap are in `PLAN.md` **§10 (NG-R1…R14)** and **§9 (W-A1..D3)** with file:line. Order: **S7** foundation (flat ESLint+Prettier+Stylelint; environments + HTTP error interceptor; split `api.types.ts`; typed services to kill the ~15 `any` + the 12 components injecting `HttpClient`), **S8** reactivity/charts (OnPush; `takeUntilDestroyed`; **chart `ngOnDestroy` disposal + ResizeObserver** = W-A2/A3≡NG-R7; time-unit/axis W-A4/A5/A6; error surfacing W-D1≡NG-R3), **S9** func UI (**W-A1 SL/TP markers**: backend `TradeDetailResponse` emits `stopLoss/takeProfit` but FE reads `slPrice/tpPrice` → rename one side + real `TradeDetail` type; `prompt()`→dialogs), **S10** add-on UI (packs feature, strategy "Add-ons" re-skin, New-Backtest pack/regime selection — built on S7 typed services; `CreatedOn` display).
@@ -129,17 +149,13 @@ Re-audit everything delivered S0–S11 for bugs/leftovers, fix without deferring
 
 ---
 
-## 5. Pre-existing RED tests — DO NOT mistake for regressions
+## 5. Pre-existing RED tests — HANDLED (iter-38, this session)
 
-Proven pre-existing by running them at the parent commit `e4d3684` (they fail there too). They are NetMQ/cTrader in-process E2E + the **OPEN-ISSUES CT-1 broken-skip** (xUnit v2 has no `Assert.Skip`, so `[Trait("RequiresCTrader","true")]` tests `Console.WriteLine("skipping")` but actually **hard-fail** without cTrader credentials):
+The 5 pre-existing reds (confirmed at parent `e4d3684`) are now resolved:
+1. `InProcessEngineSmokeTests.NetMQEngine_InnerHost_StartsAndStopsCleanly` → **FIXED and passes** (registered EntryPlanner + IReadOnlyList<IStrategy> + EffectExecutor, commit 4677231).
+2–5. `NetMQBridgeTest`, `DiffE2ETests.CostIntegrity`, `CtraderE2EHarnessSmokeTests.TradeLedger`, `PipelineE2ETests.EurUsd` → **`[SkippableFact]`-gated** (skip in credential-free CI; here `CTrader:CtId` IS configured in `appsettings.Development.json` so the harness runs+fails against the absent platform — parked for owner-verify). See the `ctrader-e2e` skill (`.claude/skills/ctrader-e2e`).
 
-1. `Scenarios.InProcessEngineSmokeTests.NetMQEngine_InnerHost_StartsAndStopsCleanly` — DI resolution failure; fails in isolation; NetMQ in-process (not RequiresCTrader-tagged).
-2. `Pipeline.NetMQBridgeTest.EngineReceivesBarAndTickOverNetMQ` — RequiresCTrader.
-3. `E2E.DiffE2ETests.CostIntegrity_PerTradeCostsMatch_ClientOrderIdReconciliation` — RequiresCTrader, cTrader=17 vs DB=16.
-4. `E2E.CtraderE2EHarnessSmokeTests.TradeLedger_ClientOrderIdReconciliation_NoMissingTrades` — RequiresCTrader, 17 vs 16.
-5. `E2E.PipelineE2ETests.EurUsd_H1_30Days_MirrorsWebDefault_ProducesTrades` — flaky (real sockets/processes).
-
-**Fix (S6/S11):** add `Xunit.SkippableFact` (or a CI trait filter) so `RequiresCTrader` tests **skip** without credentials instead of failing; harden the NetMQ in-process DI/port handling; the 17-vs-16 reconciliation is cTrader-fidelity (PLAN B6). See the `ctrader-e2e` skill (`.claude/skills/ctrader-e2e`).
+**Credential-free CI gate** (`RequiresCTrader!=true & (FullyQualifiedName~…)`) remains green at 61/61; these tests are excluded by the trait filter or turned into skips when creds are absent.
 
 ---
 
