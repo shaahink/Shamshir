@@ -1,18 +1,17 @@
 # Shamshir — Open Issues
 
-**Updated**: 2026-06-20 (iter-37 frontend-finish + pressure/reality tests DELIVERED on branch `iter/37-frontend-finish`)
-**Branch**: `iter/37-frontend-finish` (cut from `iter/36-kernel-cutover`)
-**Total open**: see the iter-37 closure block below — K-GAP-1/2/3/4/6 resolved, dead code removed; K-GAP-5 deferred
+**Updated**: 2026-06-21 (iter-38 add-ons, in-progress on branch `iter/38-addons`)
+**Branch**: `iter/38-addons` (cut from `iter/37-frontend-finish`)
+**Current gate**: build 0 err · Unit 249/0/5-skip · Architecture 5/5 · Integration 61/61 · Simulation determinism 61/61 · SPA build green.
 
-> **iter-37 SIGNED OFF (this branch).** The iter-36 cutover follow-ups (K-GAP-1..6, K-GAP-5 excepted) + the
+> **S5 (Stream-W backend) is COMPLETE** — W-A7 (governor monitor), W-B4 (pass-prob ruleset), W-B2 (experiment-by-id), W-B8 (DateTime UTC-Z), W-B9/B10 (UTC buckets). **S6 is in-progress** — CT-1 SkippableFact conversion, InProcessEngineSmokeTests DI fix, B3 WireRiskRules consolidation+T8, B7/T9 cancelled status are landed; B1 (kernel counters), B2 (per-bar why), B4 (cTrader equity-flush), B5 (Duplicate replay), B6 (cTrader impl) remain.
+>
+> The **5 pre-existing cTrader/NetMQ reds** are handled (1 fixed + passes, 4 `[SkippableFact]`-gated + parked for owner-verify; a `CTrader:CtId` is configured on this machine so they run+fail against the absent platform).
+
+> **iter-37 SIGNED OFF.** The iter-36 cutover follow-ups (K-GAP-1..6, K-GAP-5 excepted) + the
 > frontend finish (F1–F8) + the pressure/reality test spine (G/F/J/E/B/C/D) + the **D-drop dead-code removal
 > (PipelineEvents/BarEvaluations + protection-ledger) with an EF reset** are delivered. See **"## iter-37 closure"**.
-> Verified: build 0 err · Unit 228/0/5-skip · Simulation non-cTrader 97/0 · Integration 43/43 · SPA build green.
-> cTrader-E2E + NetMQ + InProcessEngineSmoke remain out of scope (cTrader/environmental, owner-verified).
->
-> **Owner manual-testing pass surfaced new issues — see "## iter-37 testing-found issues" (T1–T12).** Common thread:
-> default-venue backtests run through the in-process cTrader engine (`CTrader:UseForBacktest=true`), which has
-> wall-clock-timestamp + progress/equity-wiring gaps the kernel/replay path doesn't.
+> Integ count at iter-37 sign-off was 43/43 (has since grown to 61 with EF regens + new tests).
 
 > **iter-36 complete.** The kernel is now the **SOLE production engine** — the imperative twins
 > (`OrderDispatcher`, `KernelOrderGate`, `AccountProcessor`) are removed from `src` (relocated to the
