@@ -1,4 +1,4 @@
-import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect } from '@angular/core';
+import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 
@@ -16,7 +16,7 @@ export interface ChartPoint {
     <div class="h-72 w-full chart-host"></div>
   </div>`,
 })
-export class EquityChartComponent {
+export class EquityChartComponent implements OnDestroy {
   readonly title = input('Equity Curve');
   readonly data = input<ChartPoint[]>([]);
   readonly lineColor = input('#10b981');
@@ -99,5 +99,10 @@ export class EquityChartComponent {
       }
     }
     this.equitySeries.setData(equityData);
+  }
+
+  ngOnDestroy(): void {
+    // iter-38 S8 W-A2 / NG-R7: prevent chart memory leak (chart instances never disposed before).
+    this.chart?.remove();
   }
 }

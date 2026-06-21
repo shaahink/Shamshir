@@ -1,4 +1,4 @@
-import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect } from '@angular/core';
+import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 
@@ -15,7 +15,7 @@ export interface ScatterPoint {
     <div class="h-72 w-full chart-host"></div>
   </div>`,
 })
-export class ScatterChartComponent {
+export class ScatterChartComponent implements OnDestroy {
   readonly title = input('Scatter');
   readonly data = input<ScatterPoint[]>([]);
   readonly color = input('#10b981');
@@ -67,5 +67,10 @@ export class ScatterChartComponent {
     const ptsX = this.data().map((d, i) => ({ time: i as UTCTimestamp, value: d.x }));
     this.seriesY.setData(ptsY);
     this.seriesX.setData(ptsX);
+  }
+
+  ngOnDestroy(): void {
+    // iter-38 S8 W-A2 / NG-R7: prevent chart memory leak (chart instances never disposed before).
+    this.chart?.remove();
   }
 }

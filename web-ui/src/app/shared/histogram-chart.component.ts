@@ -1,4 +1,4 @@
-import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect } from '@angular/core';
+import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, HistogramSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 
@@ -15,7 +15,7 @@ export interface HistogramBin {
     <div class="h-64 w-full chart-host"></div>
   </div>`,
 })
-export class HistogramChartComponent {
+export class HistogramChartComponent implements OnDestroy {
   readonly title = input('Distribution');
   readonly data = input<HistogramBin[]>([]);
   readonly color = input('#10b981');
@@ -52,5 +52,10 @@ export class HistogramChartComponent {
     if (!this.series || !this.chart) return;
     const pts = this.data().map((d) => ({ time: (d.time / 1000) as UTCTimestamp, value: d.value }));
     this.series.setData(pts);
+  }
+
+  ngOnDestroy(): void {
+    // iter-38 S8 W-A2 / NG-R7: prevent chart memory leak (chart instances never disposed before).
+    this.chart?.remove();
   }
 }

@@ -1,4 +1,4 @@
-import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect } from '@angular/core';
+import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import {
   ColorType,
@@ -30,7 +30,7 @@ export interface PriceMarker {
     <div class="h-96 w-full chart-host"></div>
   </div>`,
 })
-export class CandleChartComponent {
+export class CandleChartComponent implements OnDestroy {
   readonly title = input('Price Chart');
   readonly bars = input<OhlcBar[]>([]);
   readonly markers = input<PriceMarker[]>([]);
@@ -103,5 +103,9 @@ export class CandleChartComponent {
       ]);
       this.markerLines.push(ls);
     }
+  }
+  ngOnDestroy(): void {
+    // iter-38 S8 W-A2 / NG-R7: prevent chart memory leak (chart instances never disposed before).
+    this.chart?.remove();
   }
 }
