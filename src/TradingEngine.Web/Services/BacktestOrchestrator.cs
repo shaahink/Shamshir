@@ -804,6 +804,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
         finally
         {
+            // iter-38 B4: the CLI exiting doesn't guarantee the in-process engine runner has finished
+            // consuming all bars from the NetMQ feed. Give it time to drain the queue so the flush
+            // below captures the tail equity/bar data (replay path does the same at :646).
+            await Task.Delay(3_000, CancellationToken.None);
             await FlushRunPersistenceAsync(innerHost);
             CaptureFinalEquity(_runs[runId], innerHost, runId);
             await innerHost.StopAsync(CancellationToken.None);
