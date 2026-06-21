@@ -291,7 +291,7 @@ public sealed class KernelBacktestLoop
             RunId: _runId,
             Seq: seq,
             SimTimeUtc: evt.OccurredAtUtc,
-            EventKind: evt.GetType().Name,
+            EventKind: EventKindFor(evt),
             EventJson: JsonSerializer.Serialize(evt, evt.GetType(), Json),
             EffectKinds: effectKinds,
             EffectsJson: JsonSerializer.Serialize(decision.Effects, Json),
@@ -300,4 +300,13 @@ public sealed class KernelBacktestLoop
             DecisionReason: decisionReason,
             StrategyVerdicts: verdicts);
     }
+
+    // iter-38 A7: map add-on actions onto the canonical journal kinds the SPA's unified-journal (F1) and
+    // per-bar "why" (F2) views filter on. Only events that NEVER occur on the default/golden path are
+    // remapped (PartialTp etc. are add-on-gated), so the golden journal stays byte-identical.
+    private static string EventKindFor(EngineEvent evt) => evt switch
+    {
+        PartialCloseRequested => AddOnJournalKinds.Partial,
+        _ => evt.GetType().Name,
+    };
 }
