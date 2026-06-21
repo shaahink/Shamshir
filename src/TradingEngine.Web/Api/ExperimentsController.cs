@@ -80,19 +80,23 @@ public sealed class ExperimentsController : ControllerBase
     }
 
     [HttpGet("{id:guid}/report")]
-    public IActionResult GetReport(Guid id)
+    public async Task<IActionResult> GetReport(Guid id, CancellationToken ct)
     {
-        var dir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "experiments");
-        foreach (var subdir in Directory.GetDirectories(dir))
-        {
-            var reportPath = Path.Combine(subdir, "REPORT.md");
-            if (System.IO.File.Exists(reportPath))
-            {
-                var content = System.IO.File.ReadAllText(reportPath);
-                return Content(content, "text/markdown");
-            }
-        }
+        // iter-38 W-B2: resolve the report for THIS experiment instead of returning the first REPORT.md
+        // found. ExperimentReportWriter writes to docs/experiments/{Name}-{shortId}/REPORT.md where
+        // shortId = id.ToString("N")[..8]; mirror that naming exactly.
+        var experiment = await _repo.GetByIdAsync(id, ct);
+        if (experiment is null)
+            return NotFound(new { error = $"Experiment {id} not found" });
 
-        return NotFound(new { error = $"Report not found for experiment {id}" });
+        var shortId = id.ToString("N")[..8];
+        var baseDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "experiments");
+        var reportPath = Path.Combine(baseDir, $"{experiment.Name}-{shortId}", "REPORT.md");
+
+        if (!System.IO.File.Exists(reportPath))
+            return NotFound(new { error = $"Report not found for experiment {id}" });
+
+        var content = await System.IO.File.ReadAllTextAsync(reportPath, ct);
+        return Content(content, "text/markdown");
     }
 }
