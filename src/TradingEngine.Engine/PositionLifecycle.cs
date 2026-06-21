@@ -119,16 +119,19 @@ public static class PositionLifecycle
     {
         if (evt.FilledLots > 0 && evt.FilledLots < state.Lots - 0.0001m)
         {
-            var reducing = state with
-            {
-                Phase = PositionPhase.Reducing,
-                Lots = state.Lots - evt.FilledLots
-            };
+            // iter-38 A4b: a partial CLOSE of an open position (PartialTp). Keep the REMAINDER open so it
+            // keeps trailing (was Phase=Reducing, which stopped trailing), and publish the closed portion as
+            // a PARTIAL trade. Golden-safe: golden positions close fully (the else branch below).
+            var remaining = state with { Lots = state.Lots - evt.FilledLots };
             var reducingEffects = new List<EngineEffect>
             {
-                Record(state, evt, reducing, "PartialClose")
+                Record(state, evt, remaining, "PartialClose"),
+                new PublishTradeClosed(state.PositionId, state.Symbol, state.Direction, evt.FilledLots,
+                    state.EntryPrice, evt.FillPrice, state.CurrentStopLoss, state.TakeProfit,
+                    state.StrategyId, "PARTIAL", evt.OccurredAtUtc, state.OpenedAtUtc,
+                    OrderId: state.OrderId, HighWater: state.HighWater, LowWater: state.LowWater)
             };
-            return (reducing, reducingEffects);
+            return (remaining, reducingEffects);
         }
 
         var exitReason = state.CloseReason ?? "FORCE";

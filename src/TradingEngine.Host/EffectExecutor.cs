@@ -92,6 +92,11 @@ public sealed class EffectExecutor : IEffectExecutor
                     await _broker.ClosePositionAsync(closePos.OrderId, ct);
                 break;
 
+            case ClosePartialOpenPosition partial:
+                // iter-38 A4b: close part of the position; the venue emits a partial fill that reduces it.
+                await _broker.ClosePartialPositionAsync(partial.OrderId, partial.CloseLots, ct);
+                break;
+
             case RecordDecisionEvent record:
                 // iter-36 K5: the gate decision is now journaled losslessly on the StepRecord (DecisionReason),
                 // so the kernel path no longer needs the old IDecisionJournal. Kept optional only for the

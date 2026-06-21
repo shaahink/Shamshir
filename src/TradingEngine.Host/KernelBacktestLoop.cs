@@ -32,7 +32,7 @@ public sealed class KernelBacktestLoop
     private readonly Action<Bar> _advanceVenue;
     private readonly Func<decimal>? _realizedEquity;
     private readonly Action<Bar, EngineState>? _onBarProcessed;
-    private readonly Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, Price NewStopLoss)>>? _evaluateTrailing;
+    private readonly Func<Bar, EngineState, TrailingDecisions>? _evaluateTrailing;
     private readonly ResetConfig? _resetConfig;
     private readonly decimal _initialBalance;
     private readonly string _runId;
@@ -60,7 +60,7 @@ public sealed class KernelBacktestLoop
         Func<EngineState, RiskSnapshot>? captureRisk = null,
         Func<decimal>? realizedEquity = null,
         Action<Bar, EngineState>? onBarProcessed = null,
-        Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, Price NewStopLoss)>>? evaluateTrailing = null,
+        Func<Bar, EngineState, TrailingDecisions>? evaluateTrailing = null,
         ResetConfig? resetConfig = null)
     {
         _kernel = kernel;
@@ -176,13 +176,14 @@ public sealed class KernelBacktestLoop
         // per-position config); the reducer applies it purely (update the stop + emit ModifyStopLoss).
         if (_evaluateTrailing is not null)
         {
-            var moves = _evaluateTrailing(barModel, state);
-            if (moves.Count > 0)
+            var decisions = _evaluateTrailing(barModel, state);
+            if (decisions.Moves.Count > 0 || decisions.Partials.Count > 0)
             {
-                for (var i = 0; i < moves.Count; i++)
-                {
-                    _queue.Enqueue(new StopLossModifyRequested(moves[i].PositionId, moves[i].NewStopLoss, bar.BarOpenTimeUtc));
-                }
+                for (var i = 0; i < decisions.Moves.Count; i++)
+                    _queue.Enqueue(new StopLossModifyRequested(decisions.Moves[i].PositionId, decisions.Moves[i].NewStopLoss, bar.BarOpenTimeUtc));
+                // iter-38 A4b: PartialTp partial-close requests run after the stop moves (deterministic order).
+                for (var i = 0; i < decisions.Partials.Count; i++)
+                    _queue.Enqueue(new PartialCloseRequested(decisions.Partials[i].PositionId, decisions.Partials[i].CloseLots, decisions.Partials[i].Reason, bar.BarOpenTimeUtc));
                 state = await PumpAsync(state, ct);
             }
         }

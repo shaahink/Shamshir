@@ -49,6 +49,8 @@ public sealed class EngineReducerWiringTests
             nameof(MonthRolled),
             // iter-36 (K4 gap-3): trailing/breakeven stop move — wired in the reducer (update stop + emit ModifyStopLoss).
             nameof(StopLossModifyRequested),
+            // iter-38 (A4b): PartialTp partial-close request — wired in the reducer (emit ClosePartialOpenPosition).
+            nameof(PartialCloseRequested),
         };
 
         var unwiredTypes = new HashSet<string>(StringComparer.Ordinal)

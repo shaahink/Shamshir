@@ -49,6 +49,12 @@ public record CloseRequested(Guid PositionId, string Reason, DateTime OccurredAt
 /// </summary>
 public record StopLossModifyRequested(Guid PositionId, Price NewStopLoss, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 
+/// <summary>iter-38 A4 (PartialTp): a partial-close request for an open position. Decided outside the kernel
+/// (PositionManager → KernelTrailingEvaluator) exactly like <see cref="StopLossModifyRequested"/>; the reducer
+/// emits a <see cref="ClosePartialOpenPosition"/> effect and the venue's partial fill reduces the position
+/// (the remainder stays Open and keeps trailing).</summary>
+public record PartialCloseRequested(Guid PositionId, decimal CloseLots, string Reason, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+
 /// <summary>An account observation from the venue (was the imperative <c>AccountUpdate</c>). Carries the
 /// full account so the kernel can fold an authoritative <see cref="AccountView"/> + run the breach
 /// watchdog in the reducer/kernel instead of in AccountProcessor (iter-35 A2, fixes C5-class issues by

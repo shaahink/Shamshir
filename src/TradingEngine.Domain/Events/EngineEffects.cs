@@ -20,6 +20,10 @@ public record ModifyTakeProfit(Guid PositionId, Price NewTakeProfit) : EngineEff
 // the venue fills server-side).
 public record CloseOpenPosition(Guid OrderId, string Reason, Price? ExitPrice = null) : EngineEffect;
 
+// iter-38 A4 (PartialTp): close PART of an open position. OrderId is the venue order id (like
+// CloseOpenPosition); the venue's partial fill reduces the position and the remainder stays open.
+public record ClosePartialOpenPosition(Guid OrderId, decimal CloseLots, string Reason) : EngineEffect;
+
 public record RecordDecisionEvent(DecisionRecord Decision) : EngineEffect;
 
 // GrossProfit/NetProfit/Commission/Swap carry the venue-authoritative PnL when known (live);

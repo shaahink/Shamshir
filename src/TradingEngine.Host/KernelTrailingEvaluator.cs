@@ -4,6 +4,12 @@ using TradingEngine.Services.AddOns;
 
 namespace TradingEngine.Host;
 
+/// <summary>iter-38 A4: the per-bar management decisions the kernel loop applies — trailing/breakeven stop
+/// moves plus any PartialTp partial-close requests.</summary>
+public readonly record struct TrailingDecisions(
+    IReadOnlyList<(Guid PositionId, Price NewStopLoss)> Moves,
+    IReadOnlyList<(Guid PositionId, decimal CloseLots, string Reason)> Partials);
+
 /// <summary>
 /// The kernel-path adapter for per-bar trailing / breakeven (iter-36 K4 gap-3). It is the impure half of
 /// the trailing seam: it reads the per-position management config + recent bars (which the pure kernel
@@ -28,18 +34,20 @@ public sealed class KernelTrailingEvaluator(
 
     public void Reset() => _registered.Clear();
 
-    /// <summary>Evaluate trailing for every Open position on this bar's symbol; returns the stop moves
-    /// (position id + new stop) the kernel should apply. Pure of kernel state — the only thing it mutates
-    /// is the position manager's own per-position water-mark/config state (deterministic over the tape).</summary>
-    public IReadOnlyList<(Guid PositionId, Price NewStopLoss)> Evaluate(Bar bar, EngineState state)
+    /// <summary>Evaluate per-bar management for every Open position on this bar's symbol; returns the stop
+    /// moves AND any PartialTp partial-close requests (iter-38 A4) the kernel should apply. Pure of kernel
+    /// state — the only thing it mutates is the position manager's own per-position water-mark/config state
+    /// (deterministic over the tape).</summary>
+    public TrailingDecisions Evaluate(Bar bar, EngineState state)
     {
-        if (state.Positions.Count == 0) return [];
+        if (state.Positions.Count == 0) return new TrailingDecisions([], []);
 
         var halfSpread = ResolveHalfSpread(bar.Symbol);
         var tick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread, bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
         var recentBars = GetRecentBars(bar.Symbol, bar.Timeframe);
 
         List<(Guid, Price)>? moves = null;
+        List<(Guid, decimal, string)>? partials = null;
         foreach (var (id, ps) in state.Positions)
         {
             if (ps.Phase != PositionPhase.Open || ps.Symbol != bar.Symbol) continue;
@@ -63,12 +71,14 @@ public sealed class KernelTrailingEvaluator(
 
             foreach (var mod in positionManager.Evaluate(position, tick, recentBars))
             {
-                if (mod is not MoveStopLoss move) continue;
-                (moves ??= []).Add((id, move.NewStopLoss));
+                if (mod is MoveStopLoss move) (moves ??= []).Add((id, move.NewStopLoss));
+                else if (mod is PartialClose pc) (partials ??= []).Add((id, pc.CloseLots, pc.Reason));
             }
         }
 
-        return (IReadOnlyList<(Guid, Price)>?)moves ?? [];
+        return new TrailingDecisions(
+            (IReadOnlyList<(Guid, Price)>?)moves ?? [],
+            (IReadOnlyList<(Guid, decimal, string)>?)partials ?? []);
     }
 
     /// <summary>iter-38 A3: the volatility context fed to the add-on tuner at entry. ATR (14) from this

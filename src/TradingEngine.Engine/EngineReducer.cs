@@ -31,6 +31,9 @@ public static class EngineReducer
             case StopLossModifyRequested mod:
                 return HandleStopLossModify(state, mod);
 
+            case PartialCloseRequested partialClose:
+                return HandlePartialCloseRequested(state, partialClose);
+
             case BarClosed bar:
                 return HandleBarClosed(state, bar, effects);
 
@@ -212,6 +215,20 @@ public static class EngineReducer
 
         var effects = new List<EngineEffect> { new ModifyStopLoss(ps.OrderId, evt.NewStopLoss, ps.TakeProfit) };
         return new EngineDecision(state with { Positions = newPositions }, effects);
+    }
+
+    // iter-38 A4 (PartialTp): a partial-close request decided outside the kernel. The reducer stays pure —
+    // it emits a ClosePartialOpenPosition effect to the venue and leaves the position unchanged; the venue's
+    // partial fill (OrderFilled, FilledLots < lots) reduces it via PositionLifecycle, keeping it Open.
+    private static EngineDecision HandlePartialCloseRequested(EngineState state, PartialCloseRequested evt)
+    {
+        if (!state.Positions.TryGetValue(evt.PositionId, out var ps) || ps.Phase != PositionPhase.Open)
+        {
+            return new EngineDecision(state, []);
+        }
+
+        var effects = new List<EngineEffect> { new ClosePartialOpenPosition(ps.OrderId, evt.CloseLots, evt.Reason) };
+        return new EngineDecision(state, effects);
     }
     // from the tape, and this reducer branch owns SL/TP detection + GovernorMachine.ApplyBar.
     // Replaces EngineRunner.SimulateBarExitsAsync (Kill-List).
