@@ -1,4 +1,4 @@
-import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy } from '@angular/core';
+import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, HistogramSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 
@@ -14,6 +14,7 @@ export interface HistogramBin {
     <h3 class="mb-2 text-sm font-medium text-gray-400">{{ title() }}</h3>
     <div class="h-64 w-full chart-host"></div>
   </div>`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HistogramChartComponent implements OnDestroy {
   readonly title = input('Distribution');
