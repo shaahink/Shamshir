@@ -8,6 +8,7 @@ import { DataTableComponent, type ColumnDef } from '../../../shared/data-table.c
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
 import { ScatterChartComponent } from '../../../shared/scatter-chart.component';
 import { BadgeComponent } from '../../../shared/badge.component';
+import { downloadBlob } from '../../../shared/download.helper';
 import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance } from '../../../models/api.types';
 
 type JournalRow = JournalEntry & { outcome?: string | null };
@@ -538,12 +539,7 @@ export class RunReportComponent implements OnInit {
       ext = 'md';
     }
     const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `run-${d.runId.slice(0, 8)}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `run-${d.runId.slice(0, 8)}.${ext}`);
   }
 
   // F1 — render a violation/decision reason as a readable name, never raw JSON / [object Object].
