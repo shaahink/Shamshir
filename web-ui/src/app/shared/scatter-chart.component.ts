@@ -1,6 +1,7 @@
 import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
+import { queryHost } from './dom.helper';
 
 export interface ScatterPoint {
   x: number;
@@ -38,7 +39,7 @@ export class ScatterChartComponent implements OnDestroy {
   }
 
   private initChart(): void {
-    const container = this.el.nativeElement.querySelector('.chart-host') as HTMLDivElement;
+    const container = queryHost(this.el, '.chart-host') as HTMLDivElement;
     if (!container || this.chart) return;
     this.chart = createChart(container, {
       width: container.clientWidth,

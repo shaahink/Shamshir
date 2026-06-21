@@ -8,6 +8,7 @@ import {
   type IChartApi,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import { queryHost } from './dom.helper';
 
 export interface OhlcBar {
   time: number;
@@ -51,7 +52,7 @@ export class CandleChartComponent implements OnDestroy {
   }
 
   private initChart(): void {
-    const container = this.el.nativeElement.querySelector('.chart-host') as HTMLDivElement;
+    const container = queryHost(this.el, '.chart-host') as HTMLDivElement;
     if (!container || this.chart) return;
 
     this.chart = createChart(container, {

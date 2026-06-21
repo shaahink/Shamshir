@@ -1,6 +1,7 @@
 import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, HistogramSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
+import { queryHost } from './dom.helper';
 
 export interface HistogramBin {
   time: number;
@@ -35,7 +36,7 @@ export class HistogramChartComponent implements OnDestroy {
   }
 
   private initChart(): void {
-    const container = this.el.nativeElement.querySelector('.chart-host') as HTMLDivElement;
+    const container = queryHost(this.el, '.chart-host') as HTMLDivElement;
     if (!container || this.chart) return;
     this.chart = createChart(container, {
       width: container.clientWidth,
