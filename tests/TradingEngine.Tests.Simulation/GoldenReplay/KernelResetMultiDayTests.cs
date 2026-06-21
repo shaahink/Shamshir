@@ -1,4 +1,5 @@
 using TradingEngine.Engine;
+using TradingEngine.Host;
 using TradingEngine.Tests.Simulation.Harness;
 
 namespace TradingEngine.Tests.Simulation.GoldenReplay;

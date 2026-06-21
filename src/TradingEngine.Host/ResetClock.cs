@@ -1,4 +1,4 @@
-namespace TradingEngine.Engine;
+namespace TradingEngine.Host;
 
 /// <summary>
 /// The prop-firm reset clock (iter-36 NEW-1 / K-GAP-1). Given the previous and current bar sim-times (UTC)
@@ -11,6 +11,10 @@ namespace TradingEngine.Engine;
 /// PURE + fully deterministic for the default UTC zone (identity conversion). Non-UTC zones use the OS time
 /// -zone database via <see cref="TimeZoneInfo"/> and fall back to UTC when the id is unknown, so a missing
 /// zone degrades gracefully rather than throwing (see <see cref="Crossed"/>'s determinism note).
+///
+/// iter-38 B0: moved out of <c>TradingEngine.Engine</c> into the Host so the Engine assembly stays free of
+/// <c>DateTime</c>/<c>TimeOnly</c> (the <c>EnginePurityTests</c> architecture gate). It was always called
+/// from the Host (<c>KernelBacktestLoop</c>/<c>EngineRunner</c>), so this is a pure relocation.
 /// </summary>
 public static class ResetClock
 {
