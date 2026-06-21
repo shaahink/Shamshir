@@ -76,6 +76,9 @@ export interface TradeSummary {
   timeframe?: string;
   slPrice?: number;
   tpPrice?: number;
+  // iter-38 W-A1: the trade-detail API returns stopLoss/takeProfit directly (TradeDetailResponse DTO).
+  stopLoss?: number;
+  takeProfit?: number | null;
 }
 
 // iter-36 K5: the journal is now the lossless StepRecord stream (GET /api/runs/{id}/journal). eventKind
