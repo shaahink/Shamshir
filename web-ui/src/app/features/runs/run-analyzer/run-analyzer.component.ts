@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { RunsApiService } from '../runs.service';
 import { HistogramChartComponent, type HistogramBin } from '../../../shared/histogram-chart.component';
@@ -32,7 +32,8 @@ import type { RunAnalytics } from '../../../models/api.types';
         <div class="py-12 text-center text-sm text-gray-500">Loading analytics...</div>
       }
     </div>
-  `,
+  \`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RunAnalyzerComponent implements OnInit {
   private route = inject(ActivatedRoute);

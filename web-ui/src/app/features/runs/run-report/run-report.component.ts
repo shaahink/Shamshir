@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, computed } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe, NgClass, DecimalPipe } from '@angular/common';
 import { RunsStore } from '../runs.store';
@@ -300,7 +300,8 @@ type JournalRow = JournalEntry & { outcome?: string | null };
         <div class="py-12 text-center text-sm text-gray-500">Run not found.</div>
       }
     }
-  `,
+  \`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RunReportComponent implements OnInit {
   private route = inject(ActivatedRoute);

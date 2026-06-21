@@ -1,4 +1,4 @@
-import { Component, ElementRef, inject, OnDestroy, OnInit, signal, ViewChild } from '@angular/core';
+import { Component, ElementRef, inject, OnDestroy, OnInit, signal, ViewChild, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { Subscription } from 'rxjs';
@@ -124,7 +124,8 @@ import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-ch
         }
       </div>
     </div>
-  `,
+  \`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RunMonitorComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);

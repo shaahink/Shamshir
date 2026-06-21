@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { RunsStore } from '../runs.store';
@@ -139,7 +139,8 @@ import { BadgeComponent } from '../../../shared/badge.component';
         </div>
       }
     </div>
-  `,
+  \`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RunListComponent implements OnInit {
   readonly store = inject(RunsStore);

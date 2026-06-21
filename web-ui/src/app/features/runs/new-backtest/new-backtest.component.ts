@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -212,7 +212,8 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
         </button>
       </div>
     </div>
-  `,
+  \`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NewBacktestComponent implements OnInit {
   private store = inject(RunsStore);
