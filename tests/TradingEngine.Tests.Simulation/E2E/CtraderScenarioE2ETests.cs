@@ -14,13 +14,8 @@ public sealed class CtraderScenarioE2ETests
     private static async Task<E2EResult?> RunAsync(
         string symbol, string period, DateTime start, DateTime end, string label)
     {
-        if (!HasCredentials)
-        {
-            // ⚠ BUG (iter-36, OPEN-ISSUES CT-1): silent skip → misleading PASS while live coverage isn't
-            // running. Fix the cTrader env (see .claude/skills/ctrader-e2e), not the test.
-            Console.WriteLine($"[{label}] No cTrader credentials — SKIPPING (should run; see ctrader-e2e skill)");
-            return null;
-        }
+        // iter-38 CT-1: genuinely SKIP (not a misleading PASS) when the live cTrader env is absent.
+        Skip.IfNot(HasCredentials, $"[{label}] No cTrader credentials — see .claude/skills/ctrader-e2e (CT-1).");
 
         return await new CtraderE2EHarness(label)
             .WithSymbol(symbol, period)
@@ -28,7 +23,7 @@ public sealed class CtraderScenarioE2ETests
             .RunAsync();
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task HappyPath_EurUsd_TradeLedgerHasIntegrity()
     {
         var result = await RunAsync("EURUSD", "H1",
@@ -56,7 +51,7 @@ public sealed class CtraderScenarioE2ETests
         realMovers.Should().OnlyContain(t => t.NetPnL != 0m);
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task EdgeCase_WeekendRange_RunsToCompletionWithoutGarbage()
     {
         var result = await RunAsync("EURUSD", "H1",
@@ -69,7 +64,7 @@ public sealed class CtraderScenarioE2ETests
         (result.TradesList ?? []).Should().OnlyContain(t => t.EntryPrice > 0);
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task AfterRun_NoOrphanCtraderProcesses()
     {
         var result = await RunAsync("EURUSD", "H1",

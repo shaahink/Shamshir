@@ -25,14 +25,10 @@ public sealed class DiscoveryAuditTests
             .UseSqlite($"Data Source={dbPath}")
             .Options);
 
-    [Fact(Timeout = 600_000)]
+    [SkippableFact(Timeout = 600_000)]
     public async Task EurUsd_H1_1Month_MeanReversion_FullAudit()
     {
-        if (!HasCredentials)
-        {
-            Console.WriteLine("[Discovery] No cTrader credentials — skipping");
-            return;
-        }
+        Skip.IfNot(HasCredentials, "No cTrader credentials — see .claude/skills/ctrader-e2e (CT-1).");
 
         var testName = "discovery-eurusd-h1-1m-meanrev";
         await using var harness = new CtraderE2EHarness(testName)

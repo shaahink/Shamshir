@@ -12,11 +12,8 @@ public sealed class PipelineE2ETests
     private static async Task<E2EResult?> RunAsync(
         string symbol, string period, DateTime start, DateTime end, string label)
     {
-        if (!HasCredentials)
-        {
-            Console.WriteLine($"[{label}] No cTrader credentials — skipping");
-            return null;
-        }
+        // iter-38 CT-1: genuinely SKIP when the live cTrader env is absent.
+        Skip.IfNot(HasCredentials, $"[{label}] No cTrader credentials — see .claude/skills/ctrader-e2e (CT-1).");
 
         return await new CtraderE2EHarness(label)
             .WithSymbol(symbol, period)
@@ -25,7 +22,7 @@ public sealed class PipelineE2ETests
     }
 
     [Trait("Category", "Slow")]
-    [Fact(Timeout = 600_000)]
+    [SkippableFact(Timeout = 600_000)]
     public async Task EurUsd_H1_ThreeMonth_GeneratesAtLeastOneTrade()
     {
         var result = await RunAsync("EURUSD", "H1",
@@ -38,7 +35,7 @@ public sealed class PipelineE2ETests
     }
 
     [Trait("Category", "Fast")]
-    [Theory]
+    [SkippableTheory]
     [InlineData("EURUSD")]
     [InlineData("GBPUSD")]
     public async Task ThreeDays_PipeAndDataFlow(string symbol)
@@ -51,7 +48,7 @@ public sealed class PipelineE2ETests
         result.BarEvals.Should().BeGreaterThan(0);
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task EurUsd_H1_3Days_ProducesTrades()
     {
         var result = await RunAsync("EURUSD", "H1",
@@ -63,7 +60,7 @@ public sealed class PipelineE2ETests
         result.Trades.Should().BeGreaterThan(0);
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task EurUsd_H1_30Days_MirrorsWebDefault_ProducesTrades()
     {
         var result = await RunAsync("EURUSD", "H1",
@@ -74,7 +71,7 @@ public sealed class PipelineE2ETests
         result.BarEvals.Should().BeGreaterThan(0);
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task EurUsd_M15_3Days_ProducesTrades()
     {
         var result = await RunAsync("EURUSD", "M15",
@@ -85,7 +82,7 @@ public sealed class PipelineE2ETests
         result.BarEvals.Should().BeGreaterThan(0);
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task GbpUsd_H1_30Days_ProducesTrades()
     {
         var result = await RunAsync("GBPUSD", "H1",
@@ -97,7 +94,7 @@ public sealed class PipelineE2ETests
         result.Trades.Should().BeGreaterThan(0);
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task InProcessEngine_WithCtraderCli_EurUsd_OneDay_ProducesTrades()
     {
         var result = await RunAsync("EURUSD", "H1",

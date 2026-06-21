@@ -19,14 +19,10 @@ public sealed class DiffE2ETests
             .UseSqlite($"Data Source={dbPath}")
             .Options);
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task CtraderVsDb_Comparison_ProducesReport()
     {
-        if (!HasCredentials)
-        {
-            Console.WriteLine("[Diff-E2E] No cTrader credentials — skipping");
-            return;
-        }
+        Skip.IfNot(HasCredentials, "No cTrader credentials — see .claude/skills/ctrader-e2e (CT-1).");
 
         await using var harness = new CtraderE2EHarness("diff-e2e-3d");
         var result = await harness
@@ -59,14 +55,10 @@ public sealed class DiffE2ETests
         Console.WriteLine($"[Diff-E2E] Comparison complete. {diff.Discrepancies.Count} discrepancies found.");
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task CostIntegrity_PerTradeCostsMatch_ClientOrderIdReconciliation()
     {
-        if (!HasCredentials)
-        {
-            Console.WriteLine("[CostIntegrity-E2E] No cTrader credentials — skipping");
-            return;
-        }
+        Skip.IfNot(HasCredentials, "No cTrader credentials — see .claude/skills/ctrader-e2e (CT-1).");
 
         await using var harness = new CtraderE2EHarness("cost-integrity-3d");
         var result = await harness

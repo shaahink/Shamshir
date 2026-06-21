@@ -14,17 +14,11 @@ public sealed class CtraderE2EHarnessSmokeTests
     private static bool HasCredentials =>
         !string.IsNullOrEmpty(CtraderTestHelpers.ResolveCredential("CtId", "CTrader__CtId"));
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task EurUsd_H1_3Days_ProducesTrades_UsingPhasedHarness()
     {
-        if (!HasCredentials)
-        {
-            // ⚠ BUG (iter-36, OPEN-ISSUES CT-1): this silent skip reports a misleading PASS while CRITICAL
-            // live coverage is NOT running. The fix is the cTrader env (creds + built cBot algo), not the
-            // test — see .claude/skills/ctrader-e2e. xUnit v2 has no Assert.Skip; revisit with [SkippableFact].
-            Console.WriteLine("[E2E-Smoke] No cTrader credentials — SKIPPING (should run; see ctrader-e2e skill)");
-            return;
-        }
+        // iter-38 CT-1: genuinely SKIP when the live cTrader env is absent (was a misleading PASS).
+        Skip.IfNot(HasCredentials, "No cTrader credentials — see .claude/skills/ctrader-e2e (CT-1).");
 
         await using var harness = new CtraderE2EHarness("smoke-phased-3d")
             .WithSymbol("EURUSD", "H1")
@@ -51,17 +45,11 @@ public sealed class CtraderE2EHarnessSmokeTests
         result.FinalTransportStatus.Should().NotBeNull();
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task EurUsd_H1_3Days_ProducesTrades_UsingRunAsync()
     {
-        if (!HasCredentials)
-        {
-            // ⚠ BUG (iter-36, OPEN-ISSUES CT-1): this silent skip reports a misleading PASS while CRITICAL
-            // live coverage is NOT running. The fix is the cTrader env (creds + built cBot algo), not the
-            // test — see .claude/skills/ctrader-e2e. xUnit v2 has no Assert.Skip; revisit with [SkippableFact].
-            Console.WriteLine("[E2E-Smoke] No cTrader credentials — SKIPPING (should run; see ctrader-e2e skill)");
-            return;
-        }
+        // iter-38 CT-1: genuinely SKIP when the live cTrader env is absent (was a misleading PASS).
+        Skip.IfNot(HasCredentials, "No cTrader credentials — see .claude/skills/ctrader-e2e (CT-1).");
 
         var result = await new CtraderE2EHarness("smoke-runasync-3d")
             .WithSymbol("EURUSD", "H1")
@@ -74,14 +62,10 @@ public sealed class CtraderE2EHarnessSmokeTests
         result.Trades.Should().BeGreaterThan(0, "at least one trade expected in 3 days");
     }
 
-    [Fact(Timeout = 300_000)]
+    [SkippableFact(Timeout = 300_000)]
     public async Task TradeLedger_ClientOrderIdReconciliation_NoMissingTrades()
     {
-        if (!HasCredentials)
-        {
-            Console.WriteLine("[Ledger-E2E] No cTrader credentials — SKIPPING (should run; see ctrader-e2e skill)");
-            return;
-        }
+        Skip.IfNot(HasCredentials, "No cTrader credentials — see .claude/skills/ctrader-e2e (CT-1).");
 
         await using var harness = new CtraderE2EHarness("ledger-recon-3d")
             .WithSymbol("EURUSD", "H1")
