@@ -484,6 +484,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             // iter-38 PK3 / D1: apply a named add-on pack over each strategy's own add-ons (per-strategy pack
             // wins over the global UsePackId; the pack REPLACES enrichments, baseline SL/TP stays — D4).
             var usePackId = cfg.CustomParams.GetValueOrDefault("UsePackId");
+            var disableRegime = cfg.CustomParams.GetValueOrDefault("DisableRegime") == "true";   // iter-38 R1 run-master
             Dictionary<string, string>? perStrategyPacks = null;
             if (cfg.CustomParams.TryGetValue("PerStrategyPackIds", out var ppJson) && !string.IsNullOrWhiteSpace(ppJson))
             {
@@ -508,6 +509,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     if (pack is not null)
                         c = c with { PositionManagement = _configResolver.ApplyPack(c.PositionManagement, pack) };
                 }
+                // iter-38 R1 run-master: force regime detection OFF for every strategy this run. The existing
+                // per-strategy mechanism (RegimeFilterOptions.DetectionEnabled=false ⇒ Allows allow-all) then
+                // lets the strategy trade in any regime — no engine-path change needed.
+                if (disableRegime)
+                    c = c with { RegimeFilter = (c.RegimeFilter ?? new RegimeFilterOptions()) with { DetectionEnabled = false } };
                 strategyConfigs.Add(c);
             }
         }
