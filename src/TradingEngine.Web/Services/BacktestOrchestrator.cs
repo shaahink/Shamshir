@@ -385,8 +385,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             _progressStore.Complete(runId);
 
             // iter-21 U1 — terminal frame, always delivered (bypasses the throttle).
-            _broadcaster.PublishDone(BuildProgress(state,
-                state.Status == "failed" ? "failed" : "completed"));
+            // iter-38 B7 / T9: pass the actual status so a user-cancelled run is reported as
+            // "cancelled", not "completed" (the old ternary only distinguished "failed").
+            _broadcaster.PublishDone(BuildProgress(state, state.Status switch
+            {
+                "failed" => "failed",
+                "cancelled" => "cancelled",
+                _ => "completed"
+            }));
 
             _broadcaster.RemoveRun(runId);
             _runs.TryRemove(runId, out _);
