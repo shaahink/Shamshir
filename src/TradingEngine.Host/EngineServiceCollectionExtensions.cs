@@ -504,10 +504,17 @@ public static class EngineHostWireExtensions
         if (ruleSet is not null)
         {
             rm.SetActiveRuleSet(ruleSet);
+
             var resolvedProfile = activeProfile ?? new RiskProfile(
                 "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,
                 false, activeRuleSetId, LotSizingMethod.PercentRisk, 0.1m, 0m, 0.25, 1.5, 3);
-            rm.SetConstraints(ConstraintSet.Resolve(resolvedProfile, ruleSet));
+            // iter-37 T8 / iter-38 B3: AND the Governor page's Enabled into the kernel gate switch,
+            // same fix already applied in EngineHostFactory.WireRiskRules. Without this the governor
+            // page's disable-toggle has no effect on the extension-method path.
+            var constraints = ConstraintSet.Resolve(resolvedProfile, ruleSet);
+            var govOptions = app.Services.GetRequiredService<GovernorOptions>();
+            constraints = constraints with { GovernorEnabled = constraints.GovernorEnabled && govOptions.Enabled };
+            rm.SetConstraints(constraints);
             var passEstimator = app.Services.GetRequiredService<IPassProbabilityEstimator>();
             var complianceSvc = new PropFirmComplianceService(
                 ruleSet, rm, app.Services.GetRequiredService<IEngineClock>(), passEstimator);
