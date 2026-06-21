@@ -356,7 +356,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             _logger.LogInformation("CTRADER|RECONCILE|{Result}", recLine);
             OnStatusChange?.Invoke("RECONCILE", recLine);
         }
-        catch { }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to format reconcile line"); }
     }
 
     private static ExecutionEvent ParseExecution(JsonElement ex)

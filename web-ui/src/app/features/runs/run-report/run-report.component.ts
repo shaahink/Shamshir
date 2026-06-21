@@ -115,7 +115,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
             />
             <app-stat-tile
               label="Return %"
-              [value]="(d.initialBalance > 0 ? (d.netProfit / d.initialBalance) * 100 : 0).toFixed(2) + '%'"
+              [value]="returnPct(d)"
               [positive]="d.netProfit > 0"
               [negative]="d.netProfit < 0"
             />
@@ -258,7 +258,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
           @if (trades().length > 0) {
             <div>
               <h2 class="mb-3 text-sm font-medium text-gray-400">Trades ({{ trades().length }})</h2>
-              <app-data-table [columns]="tradeColumns" [data]="$any(trades())" (rowClick)="onTradeClick($event)" />
+              <app-data-table [columns]="tradeColumns" [data]="trades()" trackKey="id" (rowClick)="onTradeClick($event)" />
             </div>
           }
 
@@ -448,6 +448,10 @@ export class RunReportComponent implements OnInit {
     return l === 0 ? (g > 0 ? Number.MAX_VALUE : 0) : g / l;
   });
   pfDisplay = computed(() => (this.profitFactor() >= Number.MAX_VALUE - 1 ? '∞' : this.profitFactor().toFixed(2)));
+
+  returnPct(d: { netProfit: number; initialBalance: number }): string {
+    return d.initialBalance > 0 ? ((d.netProfit / d.initialBalance) * 100).toFixed(2) + '%' : '—';
+  }
   recNetOk = computed(() => {
     const d = this.store.selectedRun();
     return d ? Math.abs(d.netProfit - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01 : false;

@@ -1,11 +1,12 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence.Entities;
 
 namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
-public sealed class SqliteGovernorOptionsStore(TradingDbContext db) : IGovernorOptionsStore
+public sealed class SqliteGovernorOptionsStore(TradingDbContext db, Microsoft.Extensions.Logging.ILogger<SqliteGovernorOptionsStore> logger) : IGovernorOptionsStore
 {
     private static readonly JsonSerializerOptions _jsonOpts = new()
     {
@@ -18,7 +19,7 @@ public sealed class SqliteGovernorOptionsStore(TradingDbContext db) : IGovernorO
         if (entity is not null)
         {
             try { return JsonSerializer.Deserialize<GovernorOptions>(entity.Json, _jsonOpts) ?? new(); }
-            catch { }
+            catch (Exception ex) { logger.LogWarning(ex, "Failed to deserialize governor options JSON — falling back to defaults"); }
         }
         return new GovernorOptions();
     }
