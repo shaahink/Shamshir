@@ -99,6 +99,11 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                 services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
+                // iter-38 (CT-1 sibling): EngineWorkerDependencies resolves EntryPlanner (below), so it must be
+                // registered or the inner host fails DI resolution at StartAsync (this smoke test was red).
+                services.AddSingleton<TradingEngine.Services.EntryPlanner>();
+                // iter-36 K4: the kernel EngineRunner requires an EffectExecutor (wired into PersistenceServices below).
+                services.AddSingleton<EffectExecutor>();
 
                 services.AddSingleton<IProgress<BacktestProgressEvent>>(_ =>
                     new Progress<BacktestProgressEvent>(_ => { }));
@@ -106,6 +111,9 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                 var registry = new StrategyRegistry();
                 services.AddSingleton(registry);
                 services.AddSingleton<IEnumerable<IStrategy>>(_ => []);
+                // iter-36 K4: EffectExecutor needs IReadOnlyList<IStrategy> (production exposes both — see
+                // EngineServiceCollectionExtensions; registering only IEnumerable left EffectExecutor unresolvable).
+                services.AddSingleton<IReadOnlyList<IStrategy>>(_ => []);
 
                 services.AddSingleton<EngineWorker>(sp => new EngineWorker(
                     new EngineWorkerDependencies
@@ -145,6 +153,8 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                             EventBus = sp.GetRequiredService<IEventBus>(),
                             Persistence = sp.GetRequiredService<PersistenceService>(),
                             Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
+                            EffectExecutor = sp.GetRequiredService<EffectExecutor>(),
+                            EquitySink = sp.GetRequiredService<IEquitySink>(),
                         },
                     },
                     sp.GetRequiredService<EngineRunContext>(),
