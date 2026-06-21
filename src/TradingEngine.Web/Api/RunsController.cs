@@ -187,9 +187,23 @@ public sealed class RunsController : ControllerBase
         [FromQuery] int limit = 50,
         CancellationToken ct = default)
     {
-        var entries = await _journals.GetByRunAsync(runId, afterSeq, Math.Clamp(limit, 1, 1000), ct);
-        if (!string.IsNullOrWhiteSpace(kind))
-            entries = entries.Where(e => string.Equals(e.EventKind, kind, StringComparison.OrdinalIgnoreCase)).ToList();
+        // iter-38 W-C2/B2: push the kind filter to the DB query (was applied client-side AFTER the limit,
+        // so paging and kind-filtering together produced a misleading short page).
+        var entries = await _journals.GetByRunAsync(runId, afterSeq, Math.Clamp(limit, 1, 1000), ct, kind);
+        return Ok(entries);
+    }
+
+    // iter-38 B2: per-bar decisions for the "why" funnel (F2). Returns ONLY BarClosed StepRecords (which
+    // carry StrategyVerdicts + regime), server-paged. De-noises: EquityObserved etc. are excluded by
+    // the kind filter; the page size is reasonable for a per-bar view.
+    [HttpGet("{runId}/bar-decisions")]
+    public async Task<IActionResult> GetBarDecisions(
+        string runId,
+        [FromQuery] long? afterSeq,
+        [FromQuery] int limit = 100,
+        CancellationToken ct = default)
+    {
+        var entries = await _journals.GetByRunAsync(runId, afterSeq, Math.Clamp(limit, 1, 500), ct, "BarClosed");
         return Ok(entries);
     }
 

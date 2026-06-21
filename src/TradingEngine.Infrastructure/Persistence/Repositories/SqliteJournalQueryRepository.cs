@@ -13,11 +13,14 @@ public sealed class SqliteJournalQueryRepository(TradingDbContext db) : IJournal
     };
 
     public async Task<IReadOnlyList<StepRecord>> GetByRunAsync(
-        string runId, long? afterSeq, int limit, CancellationToken ct)
+        string runId, long? afterSeq, int limit, CancellationToken ct, string? kind = null)
     {
         var query = db.JournalEntries.Where(e => e.RunId == runId);
         if (afterSeq.HasValue)
             query = query.Where(e => e.Seq > afterSeq.Value);
+        // iter-38 B2/W-C2: push kind filter to the DB so paging works correctly (was applied post-limit).
+        if (!string.IsNullOrEmpty(kind))
+            query = query.Where(e => e.EventKind == kind);
         var entities = await query
             .OrderBy(e => e.Seq)
             .Take(limit)
