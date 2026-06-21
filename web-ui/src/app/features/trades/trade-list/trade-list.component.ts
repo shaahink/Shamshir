@@ -1,9 +1,8 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
 import type { TradeSummary } from '../../../models/api.types';
+import { TradesApiService } from '../trades.service';
 
 @Component({
   selector: 'app-trade-list',
@@ -103,7 +102,7 @@ import type { TradeSummary } from '../../../models/api.types';
   `,
 })
 export class TradeListComponent implements OnInit {
-  private http = inject(HttpClient);
+  private api = inject(TradesApiService);
   allTrades = signal<TradeSummary[]>([]);
   filterSymbol = '';
   filterStrategy = '';
@@ -179,7 +178,7 @@ export class TradeListComponent implements OnInit {
     await this.load();
   }
   async load(): Promise<void> {
-    const data = await firstValueFrom(this.http.get<TradeSummary[]>('/api/trades'));
+    const data = await this.api.getAll();
     this.allTrades.set(data);
     this.page.set(1);
   }

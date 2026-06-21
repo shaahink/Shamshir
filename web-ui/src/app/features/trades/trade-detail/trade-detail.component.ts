@@ -1,11 +1,10 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute } from '@angular/router';
 import { DatePipe } from '@angular/common';
-import { firstValueFrom } from 'rxjs';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { CandleChartComponent, type OhlcBar, type PriceMarker } from '../../../shared/candle-chart.component';
 import type { TradeSummary, BarData } from '../../../models/api.types';
+import { TradesApiService } from '../trades.service';
 
 @Component({
   selector: 'app-trade-detail',
@@ -62,7 +61,7 @@ import type { TradeSummary, BarData } from '../../../models/api.types';
 })
 export class TradeDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
-  private http = inject(HttpClient);
+  private api = inject(TradesApiService);
   trade = signal<TradeSummary | null>(null);
   bars = signal<OhlcBar[]>([]);
 
@@ -82,7 +81,7 @@ export class TradeDetailComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
-    const t = await firstValueFrom(this.http.get<TradeSummary>(`/api/trades/${id}`));
+    const t = await this.api.getById(id);
     this.trade.set(t);
     // T1: order-safe window — never assume openedAtUtc < closedAtUtc (a wall-clock-stamped entry can
     // invert the order). Build [min-pad, max+pad] so /api/bars always gets a valid (from <= to) range.
@@ -95,10 +94,11 @@ export class TradeDetailComponent implements OnInit {
     const to = new Date(hi + pad);
     const tf = t.timeframe || 'H1';
     try {
-      const bars = await firstValueFrom(
-        this.http.get<BarData[]>(
-          `/api/bars?symbol=${t.symbol}&timeframe=${tf}&from=${from.toISOString()}&to=${to.toISOString()}`,
-        ),
+      const bars = await this.api.getBars(
+        t.symbol,
+        tf,
+        from.toISOString(),
+        to.toISOString(),
       );
       this.bars.set(
         bars.map((b: BarData) => ({ time: b.time * 1000, open: b.open, high: b.high, low: b.low, close: b.close })),
