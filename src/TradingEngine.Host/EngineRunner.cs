@@ -182,10 +182,29 @@ public sealed class EngineRunner
             captureRisk: RiskSnapshots.Capture,
             realizedEquity: null,                // production = mark-to-market via the venue AccountStream
             onBarProcessed: ReportBar,
+            onEvent: ReportEvent,              // iter-38 B1: feed live-monitor counters
             evaluateTrailing: _trailing.Evaluate,
             // iter-36 K-GAP-1: drive the prop-firm day/week/month resets off the active ruleset's reset clock
             // so multi-day runs re-base drawdown + reset the governor (C4/H7). Single-day golden never crosses.
             resetConfig: ResetConfig.FromRuleSet(ruleSet.DailyResetTimeUtc, ruleSet.DailyResetTimezone));
+    }
+
+    // iter-38 B1: feed the live-monitor counters (Signals/Orders/Fills/Rejections/Breaches) from the
+    // authoriative kernel event stream. The kernel engine only fired BAR + CLOSE progress events before,
+    // leaving the other counters permanently at 0 on the SignalR monitor (OPEN-ISSUES O1/T7a).
+    private void ReportEvent(EngineEvent evt)
+    {
+        var type = evt switch
+        {
+            OrderProposed => "SIGNAL",
+            OrderSubmitted => "ORDER",
+            OrderFilled or OrderPartiallyFilled => "EXEC",
+            OrderRejected => "REJECTED",
+            DrawdownBreached => "BREACH",
+            _ => null,
+        };
+        if (type is not null)
+            _progress?.Report(new BacktestProgressEvent(_runContext.RunId, type, string.Empty, evt.OccurredAtUtc));
     }
 
     private void ReportBar(Bar bar, EngineState state)

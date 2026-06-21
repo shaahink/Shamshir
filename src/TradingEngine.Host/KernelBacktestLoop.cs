@@ -32,6 +32,7 @@ public sealed class KernelBacktestLoop
     private readonly Action<Bar> _advanceVenue;
     private readonly Func<decimal>? _realizedEquity;
     private readonly Action<Bar, EngineState>? _onBarProcessed;
+    private readonly Action<EngineEvent>? _onEvent;
     private readonly Func<Bar, EngineState, TrailingDecisions>? _evaluateTrailing;
     private readonly ResetConfig? _resetConfig;
     private readonly decimal _initialBalance;
@@ -60,6 +61,7 @@ public sealed class KernelBacktestLoop
         Func<EngineState, RiskSnapshot>? captureRisk = null,
         Func<decimal>? realizedEquity = null,
         Action<Bar, EngineState>? onBarProcessed = null,
+        Action<EngineEvent>? onEvent = null,
         Func<Bar, EngineState, TrailingDecisions>? evaluateTrailing = null,
         ResetConfig? resetConfig = null)
     {
@@ -76,6 +78,7 @@ public sealed class KernelBacktestLoop
         _captureRisk = captureRisk ?? RiskSnapshots.Capture;
         _realizedEquity = realizedEquity;
         _onBarProcessed = onBarProcessed;
+        _onEvent = onEvent;
         _evaluateTrailing = evaluateTrailing;
         _resetConfig = resetConfig;
     }
@@ -220,6 +223,9 @@ public sealed class KernelBacktestLoop
                 var decision = _kernel.Decide(state, evt);
                 state = decision.State;
                 _journal.Append(BuildStepRecord(++_seq, evt, decision, state));
+
+                // iter-38 B1: feed per-event progress so the live-monitor counters aren't stuck at 0.
+                _onEvent?.Invoke(evt);
 
                 for (var i = 0; i < decision.Effects.Count; i++)
                 {
