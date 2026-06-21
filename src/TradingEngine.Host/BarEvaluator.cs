@@ -28,7 +28,8 @@ public sealed class BarEvaluator(
     IRiskManager riskManager,
     IRiskProfileResolver riskProfileResolver,
     ITradingGovernor? governor,
-    Microsoft.Extensions.Logging.ILogger logger)
+    Microsoft.Extensions.Logging.ILogger logger,
+    bool disableRegime = false)
 {
     private long _orderSeq;
 
@@ -79,8 +80,13 @@ public sealed class BarEvaluator(
         signalGate?.OnBar(simTime);
         governor?.OnBar(simTime);
 
-        var regime = regimeDetector.Detect(symbol, barSnapshot[tf], indicatorSnapshot.ReusableIndicatorDict);
-        var activeStrategies = strategyBank.GetActive(symbol, tf, regime);
+        // iter-38 R1 / D3: when the run master-disable is set, skip regime detection entirely (treat the
+        // regime as Bypassed = Unknown) and ignore the per-strategy regime filter (allow-all). The default
+        // path (disableRegime=false) detects + filters exactly as before, so golden stays byte-identical.
+        var regime = disableRegime
+            ? MarketRegime.Unknown
+            : regimeDetector.Detect(symbol, barSnapshot[tf], indicatorSnapshot.ReusableIndicatorDict);
+        var activeStrategies = strategyBank.GetActive(symbol, tf, regime, ignoreRegime: disableRegime);
 
         var proposals = new List<OrderProposed>();
         var verdicts = new List<StrategyVerdict>();

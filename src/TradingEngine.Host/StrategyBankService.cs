@@ -29,7 +29,7 @@ public sealed class StrategyBankService : IStrategyBank
         }
     }
 
-    public IReadOnlyList<IStrategy> GetActive(Symbol symbol, Timeframe timeframe, MarketRegime regime)
+    public IReadOnlyList<IStrategy> GetActive(Symbol symbol, Timeframe timeframe, MarketRegime regime, bool ignoreRegime = false)
     {
         var timeframeStr = timeframe.ToString();
         var symbolStr = symbol.Value;
@@ -38,7 +38,7 @@ public sealed class StrategyBankService : IStrategyBank
             .Where(s => _enabledOverrides.TryGetValue(s.Id, out var en) ? en : s.Config.Enabled)
             .Where(s => IsInRunPlan(s.Id, symbolStr, timeframeStr))
             .Where(s => s.RequiredTimeframes.Contains(timeframe))
-            .Where(s => s.Config.RegimeFilter.Allows(regime))
+            .Where(s => ignoreRegime || s.Config.RegimeFilter.Allows(regime))
             .ToList();
     }
 
