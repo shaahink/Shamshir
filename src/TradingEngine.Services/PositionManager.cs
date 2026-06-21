@@ -15,6 +15,7 @@ public sealed class PositionManager(
 
     private readonly Dictionary<Guid, (Position Pos, PositionManagementConfig Config, string State)> _tracked = new();
     private readonly HashSet<Guid> _beApplied = new();
+    private readonly HashSet<Guid> _partialApplied = new();
     private readonly Dictionary<Guid, decimal> _highWaterBid = new();
     private readonly Dictionary<Guid, decimal> _lowWaterAsk = new();
     private readonly Dictionary<Guid, decimal> _initialSlDistance = new();
@@ -24,6 +25,7 @@ public sealed class PositionManager(
         _tracked[position.Id] = (position, config, StateActive);
         _highWaterBid[position.Id] = position.EntryPrice.Value;
         _lowWaterAsk[position.Id] = position.EntryPrice.Value;
+        _initialSlDistance[position.Id] = Math.Abs(position.EntryPrice.Value - position.CurrentStopLoss.Value);
         logger.LogInformation("Position state changed. Id={Id} From=None To=Active", position.Id);
     }
 
@@ -35,6 +37,7 @@ public sealed class PositionManager(
         }
         _tracked.Remove(positionId);
         _beApplied.Remove(positionId);
+        _partialApplied.Remove(positionId);
         _highWaterBid.Remove(positionId);
         _lowWaterAsk.Remove(positionId);
         _initialSlDistance.Remove(positionId);
@@ -64,6 +67,29 @@ public sealed class PositionManager(
         _lowWaterAsk[position.Id] = Math.Min(
             _lowWaterAsk.GetValueOrDefault(position.Id, position.EntryPrice.Value), currentTick.Ask);
 
+        var mods = new List<PositionModification>();
+
+        // iter-38 A4 (PartialTp): close a fraction of the position ONCE when it first reaches the trigger
+        // R-multiple. The remainder stays open and keeps trailing. Off (default) ⇒ no partial.
+        if (config.PartialTpEnabled && !_partialApplied.Contains(position.Id))
+        {
+            var initialSlDist = _initialSlDistance.GetValueOrDefault(position.Id);
+            var favorable = position.Direction == TradeDirection.Long
+                ? currentTick.Bid - position.EntryPrice.Value
+                : position.EntryPrice.Value - currentTick.Ask;
+            var currentR = initialSlDist > 0 ? (double)(favorable / initialSlDist) : 0;
+            if (currentR >= config.PartialTpTriggerR)
+            {
+                var step = symbolInfo.LotStep > 0 ? symbolInfo.LotStep : 0.01m;
+                var closeLots = Math.Floor(position.Lots * (decimal)config.PartialTpCloseFraction / step) * step;
+                if (closeLots > 0 && closeLots < position.Lots)
+                {
+                    mods.Add(new PartialClose(position.Id, closeLots, "PARTIAL"));
+                    _partialApplied.Add(position.Id);
+                }
+            }
+        }
+
         Price? candidate = null;
         var breakevenTriggered = false;
 
@@ -85,18 +111,19 @@ public sealed class PositionManager(
         if (trail.HasValue)
             candidate = MoreFavorable(candidate, trail.Value, position.Direction);
 
-        if (candidate is null || !Improves(candidate.Value, position.CurrentStopLoss, position.Direction))
-            return [];
-
-        if (breakevenTriggered) _beApplied.Add(position.Id);
-        var newState = state == StateActive ? (breakevenTriggered ? StateBreakevenSet : StateTrailing) : state;
-        if (newState != state)
+        if (candidate is not null && Improves(candidate.Value, position.CurrentStopLoss, position.Direction))
         {
-            _tracked[position.Id] = (position, config, newState);
-            logger.LogInformation("Position state changed. Id={Id} From={From} To={To}", position.Id, state, newState);
+            if (breakevenTriggered) _beApplied.Add(position.Id);
+            var newState = state == StateActive ? (breakevenTriggered ? StateBreakevenSet : StateTrailing) : state;
+            if (newState != state)
+            {
+                _tracked[position.Id] = (position, config, newState);
+                logger.LogInformation("Position state changed. Id={Id} From={From} To={To}", position.Id, state, newState);
+            }
+            mods.Add(new MoveStopLoss(position.Id, candidate.Value));
         }
 
-        return [new MoveStopLoss(position.Id, candidate.Value)];
+        return mods;
     }
 
     private Price? ComputeTrail(
@@ -181,7 +208,13 @@ public sealed class PositionManager(
         return new PositionManagementConfig(
             strategyId, trailing,
             opts.Breakeven.Enabled, opts.Breakeven.TriggerRMultiple, new Pips(opts.Breakeven.OffsetPips),
-            new Money(initialRiskAmount, "USD"));
+            new Money(initialRiskAmount, "USD"))
+        {
+            // iter-38 A4: opts.PartialTp is already add-on-resolved (Auto ⇒ tuner) at registration.
+            PartialTpEnabled = opts.PartialTp?.Enabled ?? false,
+            PartialTpTriggerR = opts.PartialTp?.TriggerRMultiple ?? 1.0,
+            PartialTpCloseFraction = opts.PartialTp?.CloseFraction ?? 0.5,
+        };
     }
 
     private static TrailingMethod ParseTrailingMethod(string method) => method switch
