@@ -1,5 +1,6 @@
 using TradingEngine.Engine;
 using TradingEngine.Services;
+using TradingEngine.Services.AddOns;
 
 namespace TradingEngine.Host;
 
@@ -19,7 +20,9 @@ public sealed class KernelTrailingEvaluator(
     IPositionManager positionManager,
     ISymbolInfoRegistry symbolRegistry,
     IndicatorSnapshotService indicatorSnapshot,
-    IReadOnlyList<IStrategy> strategies)
+    IReadOnlyList<IStrategy> strategies,
+    AddOnResolver addOnResolver,
+    IIndicatorService indicators)
 {
     private readonly HashSet<Guid> _registered = [];
 
@@ -50,7 +53,12 @@ public sealed class KernelTrailingEvaluator(
             {
                 var pmOptions = strategies.FirstOrDefault(s => s.Id == position.StrategyId)?.Config.PositionManagement
                     ?? new PositionManagementOptions();
-                positionManager.RegisterPosition(position, PositionManager.BuildConfig(position.StrategyId, pmOptions, 0m));
+                // iter-38 A3 / D2: resolve add-ons ONCE at entry (registration) and freeze them onto this
+                // position's config. Auto-mode add-ons get tuner-derived numbers from this bar's volatility;
+                // a position with no add-ons enabled resolves to an identical config (pass-through), so the
+                // default/golden path stays byte-identical.
+                var resolved = addOnResolver.ResolveAtEntry(pmOptions, bar.Timeframe, BuildVolatility(bar, recentBars)).Resolved;
+                positionManager.RegisterPosition(position, PositionManager.BuildConfig(position.StrategyId, resolved, 0m));
             }
 
             foreach (var mod in positionManager.Evaluate(position, tick, recentBars))
@@ -61,6 +69,27 @@ public sealed class KernelTrailingEvaluator(
         }
 
         return (IReadOnlyList<(Guid, Price)>?)moves ?? [];
+    }
+
+    /// <summary>iter-38 A3: the volatility context fed to the add-on tuner at entry. ATR (14) from this
+    /// symbol/timeframe's recent bars, converted to pips; spread from the symbol registry. Unknown symbol or
+    /// too-few bars ⇒ neutral (0 ⇒ the tuner uses a 1.0 volatility factor), so resolution never throws.</summary>
+    private VolatilityContext BuildVolatility(Bar bar, IReadOnlyList<Bar> recentBars)
+    {
+        double atrPips = 0, spreadPips = 0;
+        try
+        {
+            var info = symbolRegistry.Get(bar.Symbol);
+            var pip = (double)info.PipSize;
+            if (pip > 0)
+            {
+                spreadPips = (double)info.TypicalSpread / pip;
+                if (recentBars.Count >= 2)
+                    atrPips = indicators.Atr(recentBars, 14) / pip;
+            }
+        }
+        catch { /* unknown symbol ⇒ neutral volatility */ }
+        return new VolatilityContext(AtrPips: atrPips, TypicalSpreadPips: spreadPips, ReferenceAtrPips: 0);
     }
 
     private IReadOnlyList<Bar> GetRecentBars(Symbol symbol, Timeframe tf)

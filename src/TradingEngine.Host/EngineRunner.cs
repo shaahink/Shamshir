@@ -81,7 +81,8 @@ public sealed class EngineRunner
             deps.Risk.NewsFilter, deps.Risk.SessionFilter, _riskManager, _riskProfileResolver,
             deps.Risk.Governor, logger);
         _trailing = new KernelTrailingEvaluator(
-            deps.Strategies.PositionManager, _symbolRegistry, _indicatorSnapshot, _strategies);
+            deps.Strategies.PositionManager, _symbolRegistry, _indicatorSnapshot, _strategies,
+            new TradingEngine.Services.AddOns.AddOnResolver(), deps.Market.Indicators);
     }
 
     public async Task RunAsync(CancellationToken ct)
