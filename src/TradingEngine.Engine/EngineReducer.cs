@@ -34,6 +34,10 @@ public static class EngineReducer
             case PartialCloseRequested partialClose:
                 return HandlePartialCloseRequested(state, partialClose);
 
+            // iter-38 A7: ADDON_RESOLVED is journal-only (BuildStepRecord) — a pure no-op in the reducer.
+            case AddOnsResolved:
+                return new EngineDecision(state, effects);
+
             case BarClosed bar:
                 return HandleBarClosed(state, bar, effects);
 

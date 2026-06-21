@@ -55,6 +55,11 @@ public record StopLossModifyRequested(Guid PositionId, Price NewStopLoss, DateTi
 /// (the remainder stays Open and keeps trailing).</summary>
 public record PartialCloseRequested(Guid PositionId, decimal CloseLots, string Reason, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 
+/// <summary>iter-38 A7 (ADDON_RESOLVED): journaled once per position at entry when add-ons are enabled,
+/// carrying the resolved add-on numbers (<paramref name="DetailJson"/>) so a run is self-describing and
+/// reproducible. A pure no-op in the reducer — it exists only to produce a StepRecord.</summary>
+public record AddOnsResolved(Guid PositionId, string DetailJson, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+
 /// <summary>An account observation from the venue (was the imperative <c>AccountUpdate</c>). Carries the
 /// full account so the kernel can fold an authoritative <see cref="AccountView"/> + run the breach
 /// watchdog in the reducer/kernel instead of in AccountProcessor (iter-35 A2, fixes C5-class issues by

@@ -177,8 +177,11 @@ public sealed class KernelBacktestLoop
         if (_evaluateTrailing is not null)
         {
             var decisions = _evaluateTrailing(barModel, state);
-            if (decisions.Moves.Count > 0 || decisions.Partials.Count > 0)
+            if (decisions.Moves.Count > 0 || decisions.Partials.Count > 0 || decisions.Resolutions.Count > 0)
             {
+                // iter-38 A7: journal ADDON_RESOLVED first so the resolved numbers precede any TRAIL/PARTIAL.
+                for (var i = 0; i < decisions.Resolutions.Count; i++)
+                    _queue.Enqueue(new AddOnsResolved(decisions.Resolutions[i].PositionId, decisions.Resolutions[i].DetailJson, bar.BarOpenTimeUtc));
                 for (var i = 0; i < decisions.Moves.Count; i++)
                     _queue.Enqueue(new StopLossModifyRequested(decisions.Moves[i].PositionId, decisions.Moves[i].NewStopLoss, bar.BarOpenTimeUtc));
                 // iter-38 A4b: PartialTp partial-close requests run after the stop moves (deterministic order).
@@ -307,6 +310,7 @@ public sealed class KernelBacktestLoop
     private static string EventKindFor(EngineEvent evt) => evt switch
     {
         PartialCloseRequested => AddOnJournalKinds.Partial,
+        AddOnsResolved => AddOnJournalKinds.AddOnsResolved,
         _ => evt.GetType().Name,
     };
 }

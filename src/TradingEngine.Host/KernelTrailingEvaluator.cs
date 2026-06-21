@@ -8,7 +8,8 @@ namespace TradingEngine.Host;
 /// moves plus any PartialTp partial-close requests.</summary>
 public readonly record struct TrailingDecisions(
     IReadOnlyList<(Guid PositionId, Price NewStopLoss)> Moves,
-    IReadOnlyList<(Guid PositionId, decimal CloseLots, string Reason)> Partials);
+    IReadOnlyList<(Guid PositionId, decimal CloseLots, string Reason)> Partials,
+    IReadOnlyList<(Guid PositionId, string DetailJson)> Resolutions);
 
 /// <summary>
 /// The kernel-path adapter for per-bar trailing / breakeven (iter-36 K4 gap-3). It is the impure half of
@@ -40,7 +41,7 @@ public sealed class KernelTrailingEvaluator(
     /// (deterministic over the tape).</summary>
     public TrailingDecisions Evaluate(Bar bar, EngineState state)
     {
-        if (state.Positions.Count == 0) return new TrailingDecisions([], []);
+        if (state.Positions.Count == 0) return new TrailingDecisions([], [], []);
 
         var halfSpread = ResolveHalfSpread(bar.Symbol);
         var tick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread, bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
@@ -48,6 +49,7 @@ public sealed class KernelTrailingEvaluator(
 
         List<(Guid, Price)>? moves = null;
         List<(Guid, decimal, string)>? partials = null;
+        List<(Guid, string)>? resolutions = null;
         foreach (var (id, ps) in state.Positions)
         {
             if (ps.Phase != PositionPhase.Open || ps.Symbol != bar.Symbol) continue;
@@ -65,8 +67,12 @@ public sealed class KernelTrailingEvaluator(
                 // position's config. Auto-mode add-ons get tuner-derived numbers from this bar's volatility;
                 // a position with no add-ons enabled resolves to an identical config (pass-through), so the
                 // default/golden path stays byte-identical.
-                var resolved = addOnResolver.ResolveAtEntry(pmOptions, bar.Timeframe, BuildVolatility(bar, recentBars)).Resolved;
-                positionManager.RegisterPosition(position, PositionManager.BuildConfig(position.StrategyId, resolved, 0m));
+                var resolution = addOnResolver.ResolveAtEntry(pmOptions, bar.Timeframe, BuildVolatility(bar, recentBars));
+                positionManager.RegisterPosition(position, PositionManager.BuildConfig(position.StrategyId, resolution.Resolved, 0m));
+                // iter-38 A7 (ADDON_RESOLVED): journal the resolved add-on numbers once at entry — but only
+                // when this position actually has add-ons enabled, so the default/golden path emits nothing.
+                if (HasAnyAddOn(resolution.Resolved))
+                    (resolutions ??= []).Add((position.Id, System.Text.Json.JsonSerializer.Serialize(resolution.Raw)));
             }
 
             foreach (var mod in positionManager.Evaluate(position, tick, recentBars))
@@ -78,8 +84,13 @@ public sealed class KernelTrailingEvaluator(
 
         return new TrailingDecisions(
             (IReadOnlyList<(Guid, Price)>?)moves ?? [],
-            (IReadOnlyList<(Guid, decimal, string)>?)partials ?? []);
+            (IReadOnlyList<(Guid, decimal, string)>?)partials ?? [],
+            (IReadOnlyList<(Guid, string)>?)resolutions ?? []);
     }
+
+    private static bool HasAnyAddOn(PositionManagementOptions o) =>
+        o.Trailing.Enabled || o.Breakeven.Enabled
+        || (o.PartialTp?.Enabled ?? false) || (o.Ride?.Enabled ?? false) || (o.DynamicSlTp?.Enabled ?? false);
 
     /// <summary>iter-38 A3: the volatility context fed to the add-on tuner at entry. ATR (14) from this
     /// symbol/timeframe's recent bars, converted to pips; spread from the symbol registry. Unknown symbol or

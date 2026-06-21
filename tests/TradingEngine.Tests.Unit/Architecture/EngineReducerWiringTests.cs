@@ -51,6 +51,8 @@ public sealed class EngineReducerWiringTests
             nameof(StopLossModifyRequested),
             // iter-38 (A4b): PartialTp partial-close request — wired in the reducer (emit ClosePartialOpenPosition).
             nameof(PartialCloseRequested),
+            // iter-38 (A7): ADDON_RESOLVED journal marker — wired as a pure no-op (StepRecord only).
+            nameof(AddOnsResolved),
         };
 
         var unwiredTypes = new HashSet<string>(StringComparer.Ordinal)
