@@ -117,6 +117,9 @@ public class BacktestAnalyticsController : ControllerBase
     public async Task<IActionResult> GetDailyPnL(string runId)
     {
         var trades = await _db.Trades.Where(t => t.RunId == runId).OrderBy(t => t.ClosedAtUtc).ToListAsync();
+        // iter-38 W-B9/W-B10: daily buckets are UTC calendar dates — grouped off ClosedAtUtc (stored UTC;
+        // SQLite materializes the same wall-clock with Kind=Unspecified). The W-B8 converter emits 'Z' so the
+        // client localizes for display; the server-side buckets stay deterministic UTC.
         var daily = trades.GroupBy(t => t.ClosedAtUtc.Date)
             .Select(g => new { date = g.Key.ToString("yyyy-MM-dd"), pnl = g.Sum(t => t.NetPnLAmount) })
             .ToList();
@@ -134,6 +137,8 @@ public class BacktestAnalyticsController : ControllerBase
         // exactly 60min — a misleading distribution).
         var holdingTimes = trades.Select(t => t.DurationSeconds).ToList();
         // iter-38 W-B5: keep PnL in decimal (repo money rule) instead of casting to double per bucket.
+        // iter-38 W-B9/W-B10: pnl-by-hour/-day are UTC buckets (ClosedAtUtc is stored UTC and materialized
+        // faithfully by SQLite) — a deliberate UTC convention, not a defect.
         var pnlByHour = trades.GroupBy(t => t.ClosedAtUtc.Hour)
             .Select(g => new { key = g.Key, value = g.Sum(t => t.NetPnLAmount) }).ToList();
         var pnlByDay = trades.GroupBy(t => t.ClosedAtUtc.DayOfWeek)
