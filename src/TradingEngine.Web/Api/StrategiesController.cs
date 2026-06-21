@@ -180,22 +180,47 @@ public class StrategiesController : ControllerBase
             })
             .ToListAsync(ct);
 
+        // iter-38 W-B6: compute real max consecutive win/loss streaks per strategy.
+        var streaks = await ComputeStreaksAsync(ct);
+
         var map = new Dictionary<string, object>();
         foreach (var r in rows)
         {
             if (string.IsNullOrEmpty(r.StrategyId)) continue;
             var loss = Math.Abs(r.GrossLoss);
+            var (winStreak, lossStreak) = streaks.GetValueOrDefault(r.StrategyId);
             map[r.StrategyId] = new
             {
                 totalTrades = r.TotalTrades,
                 winningTrades = r.WinningTrades,
                 totalPnL = r.TotalPnL,
-                profitFactor = loss > 0 ? r.GrossWin / loss : (r.GrossWin > 0 ? 999 : 0),
-                winStreak = 0,
-                lossStreak = 0,
+                // iter-38 W-B6: 0 when undefined (all wins) — honest, not the fabricated 999.
+                profitFactor = loss > 0 ? r.GrossWin / loss : 0,
+                winStreak,
+                lossStreak,
                 lastRegime = 0,
                 winRate = r.TotalTrades > 0 ? (double)r.WinningTrades / r.TotalTrades : 0,
             };
+        }
+        return map;
+    }
+
+    private async Task<Dictionary<string, (int WinStreak, int LossStreak)>> ComputeStreaksAsync(CancellationToken ct)
+    {
+        var trades = await _db.Trades
+            .OrderBy(t => t.StrategyId)
+            .ThenBy(t => t.ClosedAtUtc)
+            .ToListAsync(ct);
+        var map = new Dictionary<string, (int, int)>();
+        foreach (var g in trades.GroupBy(t => t.StrategyId))
+        {
+            int maxWin = 0, maxLoss = 0, curWin = 0, curLoss = 0;
+            foreach (var t in g)
+            {
+                if (t.NetPnLAmount > 0) { curWin++; curLoss = 0; maxWin = Math.Max(maxWin, curWin); }
+                else if (t.NetPnLAmount < 0) { curLoss++; curWin = 0; maxLoss = Math.Max(maxLoss, curLoss); }
+            }
+            map[g.Key] = (maxWin, maxLoss);
         }
         return map;
     }
