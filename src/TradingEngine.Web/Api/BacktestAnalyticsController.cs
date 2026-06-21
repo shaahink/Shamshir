@@ -96,11 +96,14 @@ public class BacktestAnalyticsController : ControllerBase
         if (trades.Count == 0) return Ok(new { rMultiples = Array.Empty<double>(), holdingTimes = Array.Empty<double>(), pnlByHour = Array.Empty<object>(), pnlByDay = Array.Empty<object>(), maeMfe = Array.Empty<object>() });
 
         var rMultiples = trades.Select(t => t.RMultiple).ToList();
-        var holdingTimes = trades.Select(t => Math.Min(t.DurationSeconds, 3600)).ToList();
+        // iter-38 W-B3: report the real holding time (was clamped at 3600s, so every trade held >1h showed as
+        // exactly 60min — a misleading distribution).
+        var holdingTimes = trades.Select(t => t.DurationSeconds).ToList();
+        // iter-38 W-B5: keep PnL in decimal (repo money rule) instead of casting to double per bucket.
         var pnlByHour = trades.GroupBy(t => t.ClosedAtUtc.Hour)
-            .Select(g => new { key = g.Key, value = g.Sum(t => (double)t.NetPnLAmount) }).ToList();
+            .Select(g => new { key = g.Key, value = g.Sum(t => t.NetPnLAmount) }).ToList();
         var pnlByDay = trades.GroupBy(t => t.ClosedAtUtc.DayOfWeek)
-            .Select(g => new { key = g.Key.ToString(), value = g.Sum(t => (double)t.NetPnLAmount) }).ToList();
+            .Select(g => new { key = g.Key.ToString(), value = g.Sum(t => t.NetPnLAmount) }).ToList();
         var maeMfe = trades.Select(t => new { x = -t.MaxAdverseExcursion, y = t.MaxFavorableExcursion }).ToList();
 
         return Ok(new { rMultiples, holdingTimes, pnlByHour, pnlByDay, maeMfe });
