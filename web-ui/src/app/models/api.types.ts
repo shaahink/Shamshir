@@ -171,6 +171,8 @@ export interface StartRunRequest {
   riskProfileId?: string;
   venue?: string;
   strategyOverrides?: Record<string, Record<string, unknown>>;
+  usePackId?: string;
+  disableRegime?: boolean;
 }
 
 export interface RiskProfile {

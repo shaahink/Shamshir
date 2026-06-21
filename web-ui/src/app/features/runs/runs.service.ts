@@ -41,6 +41,8 @@ export class RunsApiService {
       riskProfileId: req.riskProfileId ?? '',
       venue: req.venue ?? '',
       strategyOverrides: req.strategyOverrides ?? {},
+      usePackId: req.usePackId ?? '',
+      disableRegime: req.disableRegime ?? false,
     };
     return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }

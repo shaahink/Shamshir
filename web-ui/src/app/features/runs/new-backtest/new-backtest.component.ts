@@ -5,6 +5,8 @@ import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { RunsStore } from '../runs.store';
 import type { StrategySummary, StartRunRequest } from '../../../models/api.types';
+import { StrategiesApiService } from '../../strategies/strategies.service';
+import { AddOnPacksApiService } from '../../addon-packs/addon-packs.service';
 
 const ALL_SYMBOLS = [
   'EURUSD',
@@ -136,6 +138,30 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
           </div>
         </div>
 
+        </div>
+
+        <!-- iter-38 S10 U3: pack selection + regime toggle -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Add-on Pack</label>
+            <select
+              [(ngModel)]="usePackId"
+              class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none"
+            >
+              <option value="">None (strategy defaults)</option>
+              @for (p of packs(); track p.id) {
+                <option [value]="p.id">{{ p.name }}</option>
+              }
+            </select>
+          </div>
+          <div class="flex items-end pb-2">
+            <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+              <input type="checkbox" [(ngModel)]="disableRegime" class="rounded" />
+              Disable Regime Detection
+            </label>
+          </div>
+        </div>
+
         <div>
           <label class="block text-xs font-medium text-gray-400 mb-2">Strategies</label>
           <div class="grid gap-2 md:grid-cols-2">
@@ -195,6 +221,10 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
             <span class="text-gray-500">Risk Profile:</span><span class="text-gray-300">{{ riskProfile }}</span>
             <span class="text-gray-500">Venue:</span
             ><span class="text-gray-300">{{ venue || '(default · replay)' }}</span>
+            <span class="text-gray-500">Pack:</span
+            ><span class="text-gray-300">{{ packName() }}</span>
+            <span class="text-gray-500">Regime:</span
+            ><span class="text-gray-300">{{ disableRegime ? 'Off' : 'On' }}</span>
             <span class="text-gray-500">Strategies:</span><span class="text-gray-300">{{ stratListStr() }}</span>
           </div>
         </div>
@@ -219,6 +249,7 @@ export class NewBacktestComponent implements OnInit {
   private store = inject(RunsStore);
   private router = inject(Router);
   private http = inject(HttpClient);
+  private packsApi = inject(AddOnPacksApiService);
 
   allSymbols = ALL_SYMBOLS;
   allTimeframes = ALL_TIMEFRAMES;
@@ -230,6 +261,9 @@ export class NewBacktestComponent implements OnInit {
   commission = 30;
   spread = 1;
   riskProfile = 'standard';
+  usePackId = '';
+  packs = signal<{ id: string; name: string }[]>([]);
+  disableRegime = false;
   venue = '';
   strategies = signal<any[]>([]);
   riskProfiles = signal<any[]>([{ id: 'standard', displayName: 'Standard', riskPerTradePercent: 0.005 }]);
@@ -246,6 +280,9 @@ export class NewBacktestComponent implements OnInit {
   }
   stratListStr(): string {
     return [...this.selectedStrategyIds()].join(', ') || '(enabled defaults)';
+  }
+  packName(): string {
+    return this.packs().find((p) => p.id === this.usePackId)?.name ?? (this.usePackId || 'None');
   }
   overrideFor(id: string): string {
     return this.overridesText()[id] ?? '';
@@ -285,6 +322,10 @@ export class NewBacktestComponent implements OnInit {
     } catch {
       /* keep default */
     }
+    try {
+      const pks = await this.packsApi.getAll();
+      this.packs.set(pks.map((p) => ({ id: p.id, name: p.name })));
+    } catch { /* */ }
   }
 
   toggleSymbol(sym: string) {
@@ -387,6 +428,8 @@ export class NewBacktestComponent implements OnInit {
       strategyIds: stratIds,
       riskProfileId: this.riskProfile,
       venue: this.venue,
+      usePackId: this.usePackId || undefined,
+      disableRegime: this.disableRegime || undefined,
       strategyOverrides,
     };
     const runId = await this.store.startBacktest(req);
