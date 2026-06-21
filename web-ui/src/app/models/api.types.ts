@@ -74,6 +74,7 @@ export interface TradeSummary {
   strategyId: string;
   durationSeconds: number;
   timeframe?: string;
+  // @deprecated Use stopLoss/takeProfit instead (iter-38 W-A1). These are kept for backward compat only.
   slPrice?: number;
   tpPrice?: number;
   // iter-38 W-A1: the trade-detail API returns stopLoss/takeProfit directly (TradeDetailResponse DTO).
