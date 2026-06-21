@@ -234,7 +234,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                     </tr>
                   </thead>
                   <tbody>
-                    @for (v of perBarVerdicts(); track $index) {
+                    @for (v of perBarVerdicts(); track v.strategyId) {
                       <tr class="border-b border-gray-800 last:border-0">
                         <td class="px-3 py-1 text-gray-500">{{ v.simTimeUtc | date: 'MM-dd HH:mm' }}</td>
                         <td class="px-3 py-1 text-gray-300">{{ v.strategyId }}</td>

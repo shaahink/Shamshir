@@ -23,7 +23,7 @@ export interface ColumnDef {
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-800">
-          @for (row of data(); track $index) {
+          @for (row of data(); track (trackKey() ? $any(row)[trackKey()!] : $index)) {
             <tr class="transition hover:bg-gray-800/30 cursor-pointer" (click)="rowClick.emit(row)">
               @for (col of columns(); track col.key) {
                 <td
@@ -47,6 +47,8 @@ export class DataTableComponent {
   readonly columns = input.required<ColumnDef[]>();
   readonly data = input.required<unknown[]>();
   readonly rowClick = output<any>();
+  // iter-38 S8 NG-R9: stable tracking key for the body rows — avoids unnecessary DOM re-render.
+  readonly trackKey = input<string>('');
 
   cellColor(value: unknown, col: ColumnDef): string | null {
     if (!col.colorFn || value == null) return null;
