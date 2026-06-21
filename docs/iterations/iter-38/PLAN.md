@@ -285,7 +285,7 @@ plus chart/UX items that ride the Angular refactor (S8/S9). Verification legend:
 | W-A4 | MED ✅ | Fragile time-unit round-trip (`×1000` then `/1000`, untyped) | one unit end-to-end; brand/validate | S8 |
 | W-A5 | MED 🔎 | Histogram/scatter use bin indices as epoch ts (`run-analyzer:40-42`) | category/index axis, not time | S8 |
 | W-A6 | LOW 🔎 | Live-equity time discontinuity (wall-clock fallback then sim jump, `run-monitor:126`) | consistent sim-time | S8 |
-| W-A7 | MED 🔎 | Governor state always blank — `BacktestOrchestrator.ApplySnapshot:993-1002` never sets Governor/DistanceToDailyLimit | map governor onto the snapshot (also iter-37 T11) | S5 |
+| W-A7 | MED 🔎 | Governor state always blank — `BacktestOrchestrator.ApplySnapshot:1041` never set Governor/DistanceToDailyLimit | map governor onto the snapshot (also iter-37 T11) | S5 ✅ |
 
 **B — Data correctness**
 

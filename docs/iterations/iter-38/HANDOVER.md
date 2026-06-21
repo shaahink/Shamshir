@@ -64,8 +64,13 @@ cd web-ui ; npm run build    # "Application bundle generation complete"
 | `415e0e5` | **W-B1** | removed hardcoded `regime-history` `"Unknown"` stub (no consumer) | Integ 61 |
 | `1e7d9df` | **W-B6** | real win/loss streaks + honest profit factor (drop the `999` sentinel) | Integ 61 |
 | `9d66a79` | **W-C3** | cap `/api/bars` response (`limit`, default 5000, keep most-recent) | Web build |
+| `e8cc477` | **W-A7** | governor band/reason + distance-to-daily-limit on the monitor (via `KernelEquitySnapshot.From` ← `EngineState.Governor`) | golden 61/61, Integ 61 |
+| `a4dca56` | **W-B4** | pass-probability reads the configured prop-firm ruleset (not hardcoded 10/5/10) — **recovered: was missing from the original S5 list** | Integ 61 |
+| `cd128e6` | **W-B2** | experiment report resolves by id (`{Name}-{shortId}/REPORT.md`), 404 if absent | Integ 61 |
+| `1dd7681` | **W-B8** | `DateTime` → UTC `Z` via `UtcDateTimeConverter` on MVC + SignalR + NDJSON export (ConfigSetId serializers untouched) | golden 61/61, Integ 61 |
+| `88ff58d` | **W-B9/B10** | documented analytics pnl buckets as UTC (verify-only) | Integ 61 |
 
-**Result:** S0, S1, S2, S3, S4 are **complete**; S5 is **7 of ~11 W-fixes done**.
+**Result:** S0–S5 are **complete**. **S6 is next.** (The golden-determinism subset count moved 60→**61** when W-A7 added `KernelEquitySnapshotTests.From_MapsGovernorBandReasonAndDistanceToDailyLimit`; the golden snapshot itself stayed byte-identical.)
 
 ---
 
@@ -83,7 +88,14 @@ cd web-ui ; npm run build    # "Application bundle generation complete"
 
 ## 4. LEFTOVERS — the remaining backlog (do these next, in order)
 
-### S5 remaining (Stream W backend) — 4 items, each NOT a trivial edit
+### S5 — COMPLETE (all Stream-W backend fixes landed)
+
+All S5 items are done (see the §2 table). Notes for the record:
+- **W-B4** (pass-probability ignored the run ruleset) was **missing from the original S5 list** below and was recovered during the resume — it is now fixed (`a4dca56`).
+- **W-C1 / W-C2 — paging** is **deferred to S8** by owner decision (it spans backend + Angular; do the server pagination + the component pager together with the Angular reactivity slice). The detail below stays as the spec for S8.
+- **W-A7 / W-B8** runtime verification (live-monitor governor render; every frontend `new Date()` on charts) is **deferred to the S12 review / final runtime drive** per the agreed self-verify-and-defer plan.
+
+Historical detail (now resolved except the S8-deferred paging):
 
 - **W-A7 — live-monitor Governor state always blank.** `BacktestOrchestrator.ApplySnapshot` (`:1041`) maps `AccountSnapshot` (which has **no** governor data — confirmed) and never sets `state.GovernorState/GovernorReason/DistanceToDailyLimit` (`:69-72`); `BuildProgress` (`:96-133`) reads them → always null/0 on the SignalR monitor.
   **Approach:** source the authoritative governor from the kernel. The orchestrator's per-bar callback receives the `EngineState` (`KernelBacktestLoop` `_onBarProcessed?.Invoke(barModel, state)`); read the governor band/reason/distance from `EngineState` there and stamp the run state. Avoid parsing journal reason-strings (`RunProjection.GetGovernorTimelineAsync` filters `Reason.StartsWith("GOVERNOR")` — fragile). `DistanceToDailyLimit` = a function of `DailyDdPct` and the run's prop-firm daily-loss-limit.
