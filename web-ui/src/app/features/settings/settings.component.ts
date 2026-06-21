@@ -1,6 +1,7 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { StrategiesApiService } from '../strategies/strategies.service';
+import { RunsApiService } from '../runs/runs.service';
+import { RiskProfilesApiService } from '../risk-profiles/risk-profiles.service';
 
 @Component({
   selector: 'app-settings',
@@ -48,23 +49,25 @@ import { firstValueFrom } from 'rxjs';
   `,
 })
 export class SettingsComponent implements OnInit {
-  private http = inject(HttpClient);
+  private strategies = inject(StrategiesApiService);
+  private runs = inject(RunsApiService);
+  private profiles = inject(RiskProfilesApiService);
   stratCount = signal(0);
   runCount = signal(0);
   profileCount = signal(0);
 
   async ngOnInit(): Promise<void> {
     try {
-      const s: any = await firstValueFrom(this.http.get('/api/strategies'));
-      this.stratCount.set(Array.isArray(s) ? s.length : s.strategies?.length || 0);
+      const s = await this.strategies.getAll();
+      this.stratCount.set(s.length);
     } catch {}
     try {
-      const r: any = await firstValueFrom(this.http.get('/api/runs'));
-      this.runCount.set(Array.isArray(r) ? r.length : 0);
+      const r = await this.runs.getRuns();
+      this.runCount.set(r.length);
     } catch {}
     try {
-      const p: any = await firstValueFrom(this.http.get('/api/risk-profiles'));
-      this.profileCount.set(Array.isArray(p) ? p.length : p.profiles?.length || 0);
+      const p = await this.profiles.getAll();
+      this.profileCount.set(p.length);
     } catch {}
   }
 }
