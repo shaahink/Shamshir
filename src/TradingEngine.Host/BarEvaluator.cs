@@ -29,6 +29,7 @@ public sealed class BarEvaluator(
     IRiskProfileResolver riskProfileResolver,
     ITradingGovernor? governor,
     Microsoft.Extensions.Logging.ILogger logger,
+    IIndicatorService indicators,
     bool disableRegime = false)
 {
     private long _orderSeq;
@@ -132,6 +133,40 @@ public sealed class BarEvaluator(
             // MapOpenPositionsToProjected use today, so non-account-currency symbols are correct).
             var symbolInfo = symbolRegistry.Get(intent.Symbol);
             var entryPrice = intent.LimitPrice ?? new Price(bar.Close);
+
+            // iter-38 A6 / D4: the DynamicSlTp add-on REPLACES the strategy's baseline SL/TP with an
+            // auto-tuned (or Custom) ATR stop + RR target. Off (null/Enabled=false) ⇒ the strategy's own
+            // SL/TP stand, so the default/golden path is byte-identical.
+            var pm = strategy.Config.PositionManagement;
+            if (pm.DynamicSlTp is { Enabled: true } dyn)
+            {
+                var atrPrice = indicators.Atr(barSnapshot[tf], 14);
+                if (atrPrice > 0)
+                {
+                    double slMult, tpRr;
+                    if (dyn.Mode == AddOnMode.Auto)
+                    {
+                        var pip = (double)symbolInfo.PipSize;
+                        var vol = new TradingEngine.Services.AddOns.VolatilityContext(
+                            AtrPips: pip > 0 ? atrPrice / pip : 0,
+                            TypicalSpreadPips: pip > 0 ? (double)symbolInfo.TypicalSpread / pip : 0,
+                            ReferenceAtrPips: 0);
+                        var tuned = TradingEngine.Services.AddOns.AddOnAutoTuner.Tune(tf, vol);
+                        slMult = tuned.DynamicSlAtrMultiple;
+                        tpRr = tuned.DynamicTpRrMultiple;
+                    }
+                    else
+                    {
+                        slMult = dyn.AtrMultipleSl;
+                        tpRr = dyn.RrMultipleTp;
+                    }
+
+                    var dynSl = SlTpHelpers.AtrBased(entryPrice, intent.Direction, atrPrice, slMult, symbolInfo);
+                    var dynTp = SlTpHelpers.RRMultiple(entryPrice, dynSl, intent.Direction, tpRr, symbolInfo);
+                    intent = intent with { StopLoss = dynSl, TakeProfit = dynTp };
+                }
+            }
+
             var slPips = (decimal)PipCalculator.Distance(entryPrice, intent.StopLoss, symbolInfo).Value;
             var pipValuePerLot = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, getCrossRate);
 

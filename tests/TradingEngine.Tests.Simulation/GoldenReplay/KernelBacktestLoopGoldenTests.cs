@@ -175,7 +175,7 @@ internal static class KernelLoopHarness
             indicatorSnapshot, strategyBank, regimeDetector, signalGate: null,
             new EntryPlanner(symbolRegistry, NullLogger<EntryPlanner>.Instance),
             symbolRegistry, crossRate, newsFilter, sessionFilter, riskManager, riskProfileResolver,
-            governor: null, NullLogger.Instance);
+            governor: null, NullLogger.Instance, new TradingEngine.Infrastructure.Indicators.SkenderIndicatorService());
 
         var eventBus = new CollectingEventBus();
         var decisionJournal = new InMemoryDecisionJournal();

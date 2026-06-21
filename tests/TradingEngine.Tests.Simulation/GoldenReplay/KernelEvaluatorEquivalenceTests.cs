@@ -95,7 +95,7 @@ public sealed class KernelEvaluatorEquivalenceTests
             new EntryPlanner(symbolRegistry, NullLogger<EntryPlanner>.Instance),
             symbolRegistry, getCrossRate: (_, _) => 1.0m,
             newsFilter, sessionFilter, riskManager, riskProfileResolver,
-            governor: null, NullLogger.Instance);
+            governor: null, NullLogger.Instance, new TradingEngine.Infrastructure.Indicators.SkenderIndicatorService());
     }
 
     private static EngineState InitialState() => new(

@@ -79,7 +79,7 @@ public sealed class EngineRunner
             _indicatorSnapshot, deps.Strategies.StrategyBank, deps.Strategies.RegimeDetector, _signalGate,
             deps.Strategies.EntryPlanner, _symbolRegistry, _crossRate,
             deps.Risk.NewsFilter, deps.Risk.SessionFilter, _riskManager, _riskProfileResolver,
-            deps.Risk.Governor, logger);
+            deps.Risk.Governor, logger, deps.Market.Indicators);
         _trailing = new KernelTrailingEvaluator(
             deps.Strategies.PositionManager, _symbolRegistry, _indicatorSnapshot, _strategies,
             new TradingEngine.Services.AddOns.AddOnResolver(), deps.Market.Indicators);
