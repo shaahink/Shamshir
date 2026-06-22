@@ -1,22 +1,28 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence.Entities;
 
 namespace TradingEngine.Infrastructure.Persistence;
 
 /// <summary>
 /// iter-38 (owner decision D5 / Stream T2). Auto-stamps <see cref="IAuditableEntity"/> rows on save:
-/// <c>CreatedAtUtc</c> on insert (when still default), <c>UpdatedAtUtc</c> always. Uses an injected clock so
-/// tests are deterministic (<c>AuditStampInterceptorTests</c>).
-///
-/// TODO(iter-38 T2): register on the DbContext — in <c>EngineServiceCollectionExtensions.AddPersistence</c>'s
-/// <c>AddDbContext</c> lambda add <c>o.AddInterceptors(new AuditStampInterceptor(clock))</c> (and the same for
-/// the Web composition root if it builds its own options). Keep the manual <c>UpdatedAtUtc = DateTime.UtcNow</c>
-/// in the stores or delete it — the interceptor makes it redundant.
+/// <c>CreatedAtUtc</c> on insert (when still default), <c>UpdatedAtUtc</c> always. Uses an injected
+/// <see cref="IEngineClock"/> for test determinism; falls back to <c>DateTime.UtcNow</c> when the
+/// parameterless constructor is used.
 /// </summary>
-public sealed class AuditStampInterceptor(Func<DateTime> utcNow) : SaveChangesInterceptor
+public sealed class AuditStampInterceptor : SaveChangesInterceptor
 {
+    private readonly Func<DateTime> _utcNow;
+
     public AuditStampInterceptor() : this(() => DateTime.UtcNow) { }
+
+    public AuditStampInterceptor(IEngineClock clock) : this(() => clock.UtcNow) { }
+
+    public AuditStampInterceptor(Func<DateTime> utcNow)
+    {
+        _utcNow = utcNow;
+    }
 
     public override InterceptionResult<int> SavingChanges(
         DbContextEventData eventData, InterceptionResult<int> result)
@@ -35,7 +41,7 @@ public sealed class AuditStampInterceptor(Func<DateTime> utcNow) : SaveChangesIn
     private void Stamp(DbContext? context)
     {
         if (context is null) return;
-        var now = utcNow();
+        var now = _utcNow();
         foreach (var entry in context.ChangeTracker.Entries<IAuditableEntity>())
         {
             if (entry.State == EntityState.Added && entry.Entity.CreatedAtUtc == default)

@@ -121,10 +121,17 @@ public static class EngineServiceCollectionExtensions
 
     public static IServiceCollection AddPersistence(this IServiceCollection services, string dbPath, string? basePath)
     {
-        services.AddDbContext<TradingDbContext>(o =>
+        services.AddScoped<TradingEngine.Infrastructure.Persistence.AuditStampInterceptor>(sp =>
+        {
+            var clock = sp.GetService<TradingEngine.Domain.IEngineClock>();
+            return clock is not null
+                ? new TradingEngine.Infrastructure.Persistence.AuditStampInterceptor(clock)
+                : new TradingEngine.Infrastructure.Persistence.AuditStampInterceptor();
+        });
+        services.AddDbContext<TradingDbContext>((sp, o) =>
         {
             o.UseSqlite($"Data Source={dbPath}");
-            o.AddInterceptors(new TradingEngine.Infrastructure.Persistence.AuditStampInterceptor());
+            o.AddInterceptors(sp.GetRequiredService<TradingEngine.Infrastructure.Persistence.AuditStampInterceptor>());
         });
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();

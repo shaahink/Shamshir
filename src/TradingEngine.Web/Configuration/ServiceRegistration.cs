@@ -57,10 +57,17 @@ public static class ServiceRegistration
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
         var cs = $"Data Source={dbPath}";
 
-        services.AddDbContext<TradingDbContext>(o =>
+        services.AddScoped<AuditStampInterceptor>(sp =>
+        {
+            var clock = sp.GetService<TradingEngine.Domain.IEngineClock>();
+            return clock is not null
+                ? new AuditStampInterceptor(clock)
+                : new AuditStampInterceptor();
+        });
+        services.AddDbContext<TradingDbContext>((sp, o) =>
         {
             o.UseSqlite(cs, sqlOpts => sqlOpts.CommandTimeout(30));
-            o.AddInterceptors(new TradingEngine.Infrastructure.Persistence.AuditStampInterceptor());
+            o.AddInterceptors(sp.GetRequiredService<AuditStampInterceptor>());
         });
         services.AddDbContext<ReportingDbContext>(o => o.UseSqlite(cs, sqlOpts =>
         {
