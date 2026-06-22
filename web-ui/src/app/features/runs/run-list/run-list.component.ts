@@ -139,7 +139,7 @@ import { BadgeComponent } from '../../../shared/badge.component';
         </div>
       }
     </div>
-  \`,
+  `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RunListComponent implements OnInit {

@@ -131,11 +131,11 @@ type JournalRow = JournalEntry & { outcome?: string | null };
             <app-stat-tile
               label="Gross P/L"
               [value]="grossDisplay()"
-              [positive]="(d.grossPnL ?? 0) > 0"
-              [negative]="(d.grossPnL ?? 0) < 0"
+              [positive]="d.grossPnL > 0"
+              [negative]="d.grossPnL < 0"
             />
-            <app-stat-tile label="Commission" [value]="commDisplay()" [negative]="(d.commissionTotal ?? 0) !== 0" />
-            <app-stat-tile label="Swap" [value]="swapDisplay()" [negative]="(d.swapTotal ?? 0) !== 0" />
+            <app-stat-tile label="Commission" [value]="commDisplay()" [negative]="d.commissionTotal !== 0" />
+            <app-stat-tile label="Swap" [value]="swapDisplay()" [negative]="d.swapTotal !== 0" />
             <app-stat-tile label="Avg R" [value]="avgR().toFixed(2)" [positive]="avgR() > 0" />
           </div>
 
@@ -173,7 +173,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                     [class.bg-emerald-600]="dp.pnl >= 0"
                     [class.bg-red-600]="dp.pnl < 0"
                     [style.height]="barHeight(dp.pnl) + '%'"
-                    [title]="dp.date + ': ' + (dp.pnl ?? 0).toFixed(2)"
+                    [title]="dp.date + ': ' + dp.pnl.toFixed(2)"
                   ></div>
                 }
               </div>
@@ -302,7 +302,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
         <div class="py-12 text-center text-sm text-gray-500">Run not found.</div>
       }
     }
-  \`,
+  `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RunReportComponent implements OnInit {

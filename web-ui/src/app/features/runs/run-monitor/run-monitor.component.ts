@@ -124,7 +124,7 @@ import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-ch
         }
       </div>
     </div>
-  \`,
+  `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RunMonitorComponent implements OnInit, OnDestroy {

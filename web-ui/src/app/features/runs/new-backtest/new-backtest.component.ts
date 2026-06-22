@@ -137,8 +137,6 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
           </div>
         </div>
 
-        </div>
-
         <!-- iter-38 S10 U3: pack selection + regime toggle -->
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -241,7 +239,7 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
         </button>
       </div>
     </div>
-  \`,
+  `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NewBacktestComponent implements OnInit {
@@ -313,7 +311,7 @@ export class NewBacktestComponent implements OnInit {
 
     try {
       const rp = await this.profilesApi.getAll();
-      const profiles: any[] = Array.isArray(rp) ? rp : rp.profiles || [];
+      const profiles = rp;
       if (profiles.length > 0) {
         this.riskProfiles.set(profiles);
         if (!profiles.some((p) => p.id === this.riskProfile)) this.riskProfile = profiles[0].id;

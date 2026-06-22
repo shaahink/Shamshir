@@ -32,7 +32,7 @@ import type { RunAnalytics } from '../../../models/api.types';
         <div class="py-12 text-center text-sm text-gray-500">Loading analytics...</div>
       }
     </div>
-  \`,
+  `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RunAnalyzerComponent implements OnInit {

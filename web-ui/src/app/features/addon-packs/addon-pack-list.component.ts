@@ -1,12 +1,13 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { DatePipe } from '@angular/common';
 import type { AddOnPack } from '../../models/api.types';
 import { AddOnPacksApiService } from './addon-packs.service';
 
 @Component({
   selector: 'app-addon-pack-list',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, DatePipe],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">
