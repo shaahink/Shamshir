@@ -1,6 +1,6 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import type { AddOnPack } from '../../../models/api.types';
+import type { AddOnPack } from '../../models/api.types';
 import { AddOnPacksApiService } from './addon-packs.service';
 
 @Component({
@@ -61,7 +61,7 @@ export class AddOnPackListComponent implements OnInit {
   }
 
   async createStarter(): Promise<void> {
-    const id = `pack-${Date.now()}`;
+    const id = 'pack-' + Date.now();
     await this.api.save(id, {
       id, name: id, description: 'Custom add-on pack',
       addOns: {

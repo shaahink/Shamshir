@@ -265,9 +265,12 @@ export interface GovernorOptions {
   coolingOffBars?: number;
   coolingOffConsecutiveLosses?: number;
   profitLockDayFraction?: number;
+  profitLockEnabled?: boolean;
   softStopDailyDdFraction?: number;
   hardStopDailyDdFraction?: number;
   sizeMultiplier?: number;
+  lossBandFractions?: string;
+  lossBandMultipliers?: string;
 }
 
 // iter-38 S10 U1: add-on pack types matching the backend AddOnPack record + auto-tune preview.

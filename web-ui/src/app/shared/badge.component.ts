@@ -13,13 +13,13 @@ export class BadgeComponent {
     const base = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium';
     switch (this.variant()) {
       case 'success':
-        return `${base} bg-emerald-900/50 text-emerald-400`;
+        return base + ' bg-emerald-900/50 text-emerald-400';
       case 'error':
-        return `${base} bg-red-900/50 text-red-400`;
+        return base + ' bg-red-900/50 text-red-400';
       case 'warning':
-        return `${base} bg-yellow-900/50 text-yellow-400`;
+        return base + ' bg-yellow-900/50 text-yellow-400';
       default:
-        return `${base} bg-gray-800 text-gray-400`;
+        return base + ' bg-gray-800 text-gray-400';
     }
   }
 }

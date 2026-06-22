@@ -9,7 +9,7 @@ import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-ch
 import { ScatterChartComponent } from '../../../shared/scatter-chart.component';
 import { BadgeComponent } from '../../../shared/badge.component';
 import { downloadBlob } from '../../../shared/download.helper';
-import { exportReport, type ExportStats } from './report-export.helper';
+import { exportReport as doExportReport, type ExportStats } from '../report-export.helper';
 import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance } from '../../../models/api.types';
 
 type JournalRow = JournalEntry & { outcome?: string | null };
@@ -501,7 +501,7 @@ export class RunReportComponent implements OnInit {
       profitFactor: this.pfDisplay(),
       avgR: this.avgR().toFixed(2),
     };
-    exportReport(d, stats, this.breakdown(), this.trades(), fmt);
+    doExportReport(d, stats, this.breakdown(), this.trades(), fmt);
   }
 
   // F1 — render a violation/decision reason as a readable name, never raw JSON / [object Object].

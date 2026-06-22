@@ -196,7 +196,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
     this.elapsedTimer = setInterval(() => {
       const s = Math.floor((Date.now() - this.startTime) / 1000);
       this.elapsed.set(
-        s > 3600 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.floor(s / 60)}m ${s % 60}s`,
+        s > 3600 ? Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm' : Math.floor(s / 60) + 'm ' + (s % 60) + 's',
       );
     }, 1000);
 
@@ -212,7 +212,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
         this.barsPerSec.set(e.barsPerSec ?? 0);
         if (e.etaSeconds > 0) {
           const m = Math.floor(e.etaSeconds / 60);
-          this.eta.set(m > 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`);
+          this.eta.set(m > 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm');
         }
         if (e.simTimeUtc) this.simTime.set(e.simTimeUtc);
         if (e.equity != null) {

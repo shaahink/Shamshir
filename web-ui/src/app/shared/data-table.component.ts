@@ -73,7 +73,7 @@ export class DataTableComponent {
       case 'duration': {
         const h = Math.floor(n / 3600);
         const m = Math.floor((n % 3600) / 60);
-        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        return h > 0 ? h + 'h ' + m + 'm' : m + 'm';
       }
       default:
         return String(value);

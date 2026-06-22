@@ -1,7 +1,7 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import type { AddOnPack, AutoTunePreview } from '../../../models/api.types';
+import type { AddOnPack, AutoTunePreview } from '../../models/api.types';
 import { AddOnPacksApiService } from './addon-packs.service';
 
 @Component({

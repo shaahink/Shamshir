@@ -15,7 +15,7 @@ export class AddOnPacksApiService {
     return firstValueFrom(this.http.get<AddOnPack>(`/api/addons/packs/${id}`));
   }
 
-  save(id: string, body: AddOnPack): Promise<{ id: string }> {
+  save(id: string, body: Record<string, unknown>): Promise<{ id: string }> {
     return firstValueFrom(this.http.put<{ id: string }>(`/api/addons/packs/${id}`, body));
   }
 

@@ -347,15 +347,15 @@ export class NewBacktestComponent implements OnInit {
   }
   symClass(sym: string): string {
     const sel = this.selectedSymbols().has(sym);
-    return `cursor-pointer rounded-md border px-2.5 py-1 text-xs transition ${sel ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-400'}`;
+    return 'cursor-pointer rounded-md border px-2.5 py-1 text-xs transition ' + (sel ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-400');
   }
   tfClass(tf: string): string {
     const sel = this.selectedPeriods().has(tf);
-    return `cursor-pointer rounded-md border px-2.5 py-1 text-xs uppercase transition ${sel ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-400'}`;
+    return 'cursor-pointer rounded-md border px-2.5 py-1 text-xs uppercase transition ' + (sel ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-400');
   }
   stratClass(id: string): string {
     const sel = this.selectedStrategyIds().has(id);
-    return `flex items-center gap-2 rounded-md border border-gray-700 p-3 cursor-pointer hover:border-gray-600 transition ${sel ? 'border-emerald-600 bg-emerald-900/10' : ''}`;
+    return 'flex items-center gap-2 rounded-md border border-gray-700 p-3 cursor-pointer hover:border-gray-600 transition ' + (sel ? 'border-emerald-600 bg-emerald-900/10' : '');
   }
 
   setDateRange(months: number): void {
@@ -409,7 +409,7 @@ export class NewBacktestComponent implements OnInit {
           strategyOverrides[id] = parsed;
         }
       } catch {
-        this.error.set(`Invalid JSON override for strategy "${id}"`);
+        this.error.set('Invalid JSON override for strategy "' + id + '"');
         return;
       }
     }
