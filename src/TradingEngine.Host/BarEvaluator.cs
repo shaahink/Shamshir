@@ -150,7 +150,8 @@ public sealed class BarEvaluator(
                         var vol = new TradingEngine.Services.AddOns.VolatilityContext(
                             AtrPips: pip > 0 ? atrPrice / pip : 0,
                             TypicalSpreadPips: pip > 0 ? (double)symbolInfo.TypicalSpread / pip : 0,
-                            ReferenceAtrPips: 0);
+                            ReferenceAtrPips: TradingEngine.Services.AddOns.AddOnAutoTuner.ReferenceAtrPips(
+                                tf, pip > 0 ? (double)symbolInfo.TypicalSpread / pip : 0));
                         var tuned = TradingEngine.Services.AddOns.AddOnAutoTuner.Tune(tf, vol);
                         slMult = tuned.DynamicSlAtrMultiple;
                         tpRr = tuned.DynamicTpRrMultiple;

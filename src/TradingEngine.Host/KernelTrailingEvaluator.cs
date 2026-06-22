@@ -110,7 +110,8 @@ public sealed class KernelTrailingEvaluator(
             }
         }
         catch { /* unknown symbol ⇒ neutral volatility */ }
-        return new VolatilityContext(AtrPips: atrPips, TypicalSpreadPips: spreadPips, ReferenceAtrPips: 0);
+        var refAtr = AddOnAutoTuner.ReferenceAtrPips(bar.Timeframe, spreadPips);
+        return new VolatilityContext(AtrPips: atrPips, TypicalSpreadPips: spreadPips, ReferenceAtrPips: refAtr);
     }
 
     private IReadOnlyList<Bar> GetRecentBars(Symbol symbol, Timeframe tf)

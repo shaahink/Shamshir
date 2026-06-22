@@ -81,4 +81,22 @@ public static class AddOnAutoTuner
         Timeframe.H4 => 2,
         _ => 3,
     };
+
+    public static double ReferenceAtrPips(Timeframe tf, double typicalSpreadPips)
+    {
+        if (typicalSpreadPips <= 0) return 0;
+        var factor = tf switch
+        {
+            Timeframe.M1 => 3.0,
+            Timeframe.M5 => 5.0,
+            Timeframe.M15 => 10.0,
+            Timeframe.M30 => 15.0,
+            Timeframe.H1 => 20.0,
+            Timeframe.H4 => 35.0,
+            Timeframe.D1 => 60.0,
+            Timeframe.W1 => 100.0,
+            _ => 20.0,
+        };
+        return typicalSpreadPips * factor;
+    }
 }

@@ -64,4 +64,47 @@ public sealed class AddOnAutoTunerTests
         r.DynamicTpRrMultiple.Should().BeInRange(1.5, 3.0);
         r.TrailingStepPips.Should().BeGreaterThanOrEqualTo(1.0);
     }
+
+    [Fact]
+    public void ReferenceAtrPips_returns_zero_for_nonpositive_spread()
+    {
+        AddOnAutoTuner.ReferenceAtrPips(Timeframe.H1, 0).Should().Be(0);
+        AddOnAutoTuner.ReferenceAtrPips(Timeframe.H1, -1).Should().Be(0);
+    }
+
+    [Fact]
+    public void ReferenceAtrPips_is_monotonic_in_timeframe()
+    {
+        var m1 = AddOnAutoTuner.ReferenceAtrPips(Timeframe.M1, 1.0);
+        var m15 = AddOnAutoTuner.ReferenceAtrPips(Timeframe.M15, 1.0);
+        var h1 = AddOnAutoTuner.ReferenceAtrPips(Timeframe.H1, 1.0);
+        var h4 = AddOnAutoTuner.ReferenceAtrPips(Timeframe.H4, 1.0);
+        var d1 = AddOnAutoTuner.ReferenceAtrPips(Timeframe.D1, 1.0);
+
+        m15.Should().BeGreaterThan(m1);
+        h1.Should().BeGreaterThan(m15);
+        h4.Should().BeGreaterThan(h1);
+        d1.Should().BeGreaterThan(h4);
+    }
+
+    [Fact]
+    public void ReferenceAtrPips_scales_linearly_with_spread()
+    {
+        var half = AddOnAutoTuner.ReferenceAtrPips(Timeframe.H1, 1.0);
+        var full = AddOnAutoTuner.ReferenceAtrPips(Timeframe.H1, 2.0);
+        full.Should().BeApproximately(half * 2.0, 0.0001);
+    }
+
+    [Fact]
+    public void Vol_factor_deviates_from_neutral_when_reference_known()
+    {
+        // When reference ATR is non-zero, volFactor should deviate from 1.0
+        // High volatility relative to reference => wider trail (volFactor > 1)
+        var wild = AddOnAutoTuner.Tune(Timeframe.H1, Vol(atr: 30, refAtr: 10)).TrailingAtrMultiple;
+        // Low volatility relative to reference => tighter trail (volFactor < 1)
+        var calm = AddOnAutoTuner.Tune(Timeframe.H1, Vol(atr: 5, refAtr: 10)).TrailingAtrMultiple;
+
+        wild.Should().BeGreaterThan(2.5); // above neutral
+        calm.Should().BeLessThan(2.5);    // below neutral
+    }
 }
