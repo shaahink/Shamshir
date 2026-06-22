@@ -514,7 +514,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                         packCache[packId] = pack;
                     }
                     if (pack is not null)
-                        c = c with { PositionManagement = _configResolver.ApplyPack(c.PositionManagement, pack) };
+                    {
+                        c = c with {
+                            PositionManagement = _configResolver.ApplyPack(c.PositionManagement, pack),
+                            RegimeFilter = (c.RegimeFilter ?? new RegimeFilterOptions()) with {
+                                DetectionEnabled = pack.RegimeDetectionEnabled
+                            }
+                        };
+                    }
                 }
                 // iter-38 R1 run-master: force regime detection OFF for every strategy this run. The existing
                 // per-strategy mechanism (RegimeFilterOptions.DetectionEnabled=false ⇒ Allows allow-all) then
