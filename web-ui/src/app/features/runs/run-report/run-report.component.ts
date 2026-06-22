@@ -1,8 +1,10 @@
 import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe, NgClass, DecimalPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RunsStore } from '../runs.store';
 import { RunsApiService } from '../runs.service';
+import { AddOnPacksApiService } from '../../addon-packs/addon-packs.service';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { DataTableComponent, type ColumnDef } from '../../../shared/data-table.component';
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
@@ -10,7 +12,7 @@ import { ScatterChartComponent } from '../../../shared/scatter-chart.component';
 import { BadgeComponent } from '../../../shared/badge.component';
 import { downloadBlob } from '../../../shared/download.helper';
 import { exportReport as doExportReport, type ExportStats } from '../report-export.helper';
-import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance } from '../../../models/api.types';
+import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance, AddOnPack } from '../../../models/api.types';
 
 type JournalRow = JournalEntry & { outcome?: string | null };
 
@@ -22,6 +24,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
     DatePipe,
     NgClass,
     DecimalPipe,
+    FormsModule,
     StatTileComponent,
     DataTableComponent,
     EquityChartComponent,
@@ -59,7 +62,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
             </div>
             <div class="flex gap-2">
               <button
-                (click)="duplicate(d.runId)"
+                (click)="openDuplicate(d.runId)"
                 [disabled]="duplicating()"
                 class="rounded-md border border-emerald-700 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-50"
               >
@@ -298,6 +301,44 @@ type JournalRow = JournalEntry & { outcome?: string | null };
             </div>
           }
         </div>
+
+        @if (dupOpen() && dupRunId() === d.runId) {
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" (click)="dupOpen.set(false)">
+            <div class="w-full max-w-sm rounded-lg border border-gray-700 bg-gray-900 p-5 shadow-xl" (click)="$event.stopPropagation()">
+              <h3 class="mb-3 text-sm font-medium text-gray-300">Duplicate Run</h3>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Add-on Pack</label>
+                  <select
+                    [(ngModel)]="dupPackId"
+                    class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200"
+                  >
+                    <option value="">None (strategy defaults)</option>
+                    @for (p of packs(); track p.id) {
+                      <option [value]="p.id">{{ p.name }}</option>
+                    }
+                  </select>
+                </div>
+                <div>
+                  <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+                    <input type="checkbox" [(ngModel)]="dupDisableRegime" class="rounded" />
+                    Disable Regime Detection
+                  </label>
+                </div>
+              </div>
+              <div class="mt-4 flex gap-2 justify-end">
+                <button
+                  (click)="dupOpen.set(false)"
+                  class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-800"
+                >Cancel</button>
+                <button
+                  (click)="confirmDuplicate()"
+                  class="rounded-md bg-emerald-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
+                >Duplicate</button>
+              </div>
+            </div>
+          </div>
+        }
       } @else {
         <div class="py-12 text-center text-sm text-gray-500">Run not found.</div>
       }
@@ -322,6 +363,12 @@ export class RunReportComponent implements OnInit {
   dailyPnl = signal<DailyPnl[]>([]);
   journalKind = signal<string | null>(null);
   duplicating = signal(false);
+  private packsApi = inject(AddOnPacksApiService);
+  dupRunId = signal<string | null>(null);
+  dupPackId = signal('');
+  dupDisableRegime = signal(false);
+  packs = signal<{ id: string; name: string }[]>([]);
+  dupOpen = signal(false);
   journalKinds = [
     'ALL',
     'SIGNAL',
@@ -547,6 +594,37 @@ export class RunReportComponent implements OnInit {
       if (Array.isArray(s) && s.length > 1) return s.join(', ');
     } catch {}
     return d.symbol;
+  }
+
+  async openDuplicate(runId: string): Promise<void> {
+    this.dupRunId.set(runId);
+    this.dupPackId.set('');
+    this.dupDisableRegime.set(false);
+    this.dupOpen.set(true);
+    if (this.packs().length === 0) {
+      try {
+        const pks = await this.packsApi.getAll();
+        this.packs.set(pks.map((p) => ({ id: p.id, name: p.name })));
+      } catch { /* keep empty list */ }
+    }
+  }
+
+  async confirmDuplicate(): Promise<void> {
+    const runId = this.dupRunId();
+    if (!runId || this.duplicating()) return;
+    this.duplicating.set(true);
+    this.dupOpen.set(false);
+    try {
+      const body: { usePackId?: string; disableRegime?: boolean } = {};
+      const packId = this.dupPackId();
+      if (packId) body.usePackId = packId;
+      if (this.dupDisableRegime()) body.disableRegime = true;
+      const res = await this.api.duplicateRun(runId, body);
+      if (res?.runId) this.router.navigate(['/runs', res.runId, 'monitor']);
+    } finally {
+      this.duplicating.set(false);
+      this.dupRunId.set(null);
+    }
   }
 
   async duplicate(runId: string): Promise<void> {
