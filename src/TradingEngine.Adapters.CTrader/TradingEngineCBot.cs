@@ -352,7 +352,7 @@ public class TradingEngineCBot : Robot
                     ModifyPosition(pos, slPrice > 0 ? slPrice : pos.StopLoss, tpPrice > 0 ? tpPrice : pos.TakeProfit);
 #pragma warning restore CS0618
                 }
-                catch { }
+                catch { Print($"CBOT|MODIFY_FAIL|posId={pos.Id}|orderId={clientOrderId}"); }
             }
 
             PublishAccount();
@@ -599,7 +599,10 @@ public class TradingEngineCBot : Robot
                 return;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Print($"CBOT|DEALER_RECV_ERR|{ex.Message}|raw={captured.Substring(0, Math.Min(captured.Length, 200))}");
+        }
 
         _inbox.Add(captured);
         Diag($"DEALER_RECV|inboxDepth={_inbox.Count}|jsonLen={captured.Length}");
@@ -655,7 +658,13 @@ public class TradingEngineCBot : Robot
                 commission = pos.Commissions,
                 swap = pos.Swap
             });
-            try { _dealer?.SendFrame(execJson); } catch { }
+            // iter-39 C1/C2: retry exec frame send — a single lost close exec = missing trade in DB.
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try { _dealer?.SendFrame(execJson); break; }
+                catch when (attempt < 2) { Thread.Sleep(100); }
+                catch (Exception ex) { Print($"CBOT|EXEC_SEND_FAIL|clientOrderId={clientOrderId}|ex={ex.Message}"); }
+            }
             _execsSent++;
             Diag($"EXEC_SENT|{clientOrderId}|Filled|kind=close|reason={closeReason}|fill={closePrice:F5}|lots={lots:F4}|pnl={pos.NetProfit:F2}");
             _positionMap.Remove(pos.Id);
@@ -701,7 +710,7 @@ public class TradingEngineCBot : Robot
             ordersExecuted = _ordersExecuted,
             execsSent = _execsSent
         });
-        try { _dealer?.SendFrame(stats); } catch { }
+        try { _dealer?.SendFrame(stats); } catch (Exception ex) { Print($"CBOT|STATS_SEND_FAIL|ex={ex.Message}"); }
 
         if (_dealer is not null) _dealer.Options.Linger = TimeSpan.FromSeconds(2);
         if (_pub is not null) _pub.Options.Linger = TimeSpan.FromSeconds(2);
