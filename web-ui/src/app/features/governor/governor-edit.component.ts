@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import type { GovernorOptions } from '../../models/api.types';
 import { GovernorApiService } from './governor.service';
@@ -105,6 +105,7 @@ import { GovernorApiService } from './governor.service';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GovernorEditComponent implements OnInit {
   private api = inject(GovernorApiService);

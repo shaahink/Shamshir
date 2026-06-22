@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import type { StrategyDetail, RiskProfile } from '../../../models/api.types';
@@ -328,6 +328,7 @@ import { RiskProfilesApiService } from '../../risk-profiles/risk-profiles.servic
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StrategyDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);

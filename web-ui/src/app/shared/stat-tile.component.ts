@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 
 @Component({
   selector: 'app-stat-tile',
@@ -19,6 +19,7 @@ import { Component, input } from '@angular/core';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StatTileComponent {
   readonly label = input.required<string>();

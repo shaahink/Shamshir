@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import type { AddOnPack, AutoTunePreview } from '../../models/api.types';
@@ -65,6 +65,7 @@ import { AddOnPacksApiService } from './addon-packs.service';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AddOnPackDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);

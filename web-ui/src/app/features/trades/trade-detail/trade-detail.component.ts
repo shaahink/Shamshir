@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
@@ -58,6 +58,7 @@ import { TradesApiService } from '../trades.service';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TradeDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);

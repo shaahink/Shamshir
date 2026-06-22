@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { StatTileComponent } from '../../shared/stat-tile.component';
 import { EquityChartComponent, type ChartPoint } from '../../shared/equity-chart.component';
 import type { GovernorState } from '../../models/api.types';
@@ -48,6 +48,7 @@ import { DashboardApiService } from './dashboard.service';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardComponent implements OnInit {
   private api = inject(DashboardApiService);

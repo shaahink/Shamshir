@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { PropFirmRulesApiService } from './prop-firm-rules.service';
@@ -234,6 +234,7 @@ import { PropFirmRulesApiService } from './prop-firm-rules.service';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PropFirmRuleDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);

@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 
 export interface ColumnDef {
   key: string;
@@ -42,6 +42,7 @@ export interface ColumnDef {
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DataTableComponent {
   readonly columns = input.required<ColumnDef[]>();

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { StrategiesApiService } from '../strategies/strategies.service';
 import { RunsApiService } from '../runs/runs.service';
 import { RiskProfilesApiService } from '../risk-profiles/risk-profiles.service';
@@ -47,6 +47,7 @@ import { RiskProfilesApiService } from '../risk-profiles/risk-profiles.service';
       </div>
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SettingsComponent implements OnInit {
   private strategies = inject(StrategiesApiService);

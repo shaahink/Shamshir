@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import type { TradeSummary } from '../../../models/api.types';
@@ -100,6 +100,7 @@ import { TradesApiService } from '../trades.service';
       </div>
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TradeListComponent implements OnInit {
   private api = inject(TradesApiService);

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import type { AddOnPack } from '../../models/api.types';
@@ -52,6 +52,7 @@ import { AddOnPacksApiService } from './addon-packs.service';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AddOnPackListComponent implements OnInit {
   private api = inject(AddOnPacksApiService);

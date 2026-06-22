@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import type { StrategySummary } from '../../../models/api.types';
@@ -56,6 +56,7 @@ import { StrategiesApiService } from '../strategies.service';
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StrategyListComponent implements OnInit {
   private api = inject(StrategiesApiService);
