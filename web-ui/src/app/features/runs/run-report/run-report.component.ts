@@ -9,6 +9,7 @@ import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-ch
 import { ScatterChartComponent } from '../../../shared/scatter-chart.component';
 import { BadgeComponent } from '../../../shared/badge.component';
 import { downloadBlob } from '../../../shared/download.helper';
+import { exportReport, type ExportStats } from './report-export.helper';
 import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance } from '../../../models/api.types';
 
 type JournalRow = JournalEntry & { outcome?: string | null };
@@ -468,7 +469,7 @@ export class RunReportComponent implements OnInit {
   );
 
   topReasons(s: StrategyPerformance): string {
-    return (s.topRejections ?? []).map((r) => `${r.reason} (${r.count})`).join(', ') || '—';
+    return (s.topRejections ?? []).map((r) => r.reason + ' (' + r.count + ')').join(', ') || '\u2014';
   }
 
   // F4 — MAE/MFE scatter from the run's trades (x = MAE as negative pips, y = MFE).
@@ -495,55 +496,12 @@ export class RunReportComponent implements OnInit {
   exportReport(fmt: 'json' | 'md'): void {
     const d = this.store.selectedRun();
     if (!d) return;
-    const stats = {
-      runId: d.runId,
+    const stats: ExportStats = {
       symbols: this.symbolsDisplay(),
-      period: d.period,
-      from: d.backtestFrom,
-      to: d.backtestTo,
-      initialBalance: d.initialBalance,
-      netProfit: d.netProfit,
-      grossPnL: d.grossPnL,
-      commissionTotal: d.commissionTotal,
-      swapTotal: d.swapTotal,
-      maxDrawdownPct: d.maxDrawdownPct,
-      winRatePct: d.winRatePct,
-      profitFactor: this.profitFactor(),
-      avgR: this.avgR(),
-      totalTrades: d.totalTrades,
-      perStrategy: this.breakdown(),
+      profitFactor: this.pfDisplay(),
+      avgR: this.avgR().toFixed(2),
     };
-    let content: string;
-    let mime: string;
-    let ext: string;
-    if (fmt === 'json') {
-      content = JSON.stringify({ ...stats, trades: this.trades() }, null, 2);
-      mime = 'application/json';
-      ext = 'json';
-    } else {
-      content = [
-        `# Run ${d.runId.slice(0, 8)}`,
-        ``,
-        `- Symbols: ${stats.symbols} ${d.period}`,
-        `- Period: ${d.backtestFrom} → ${d.backtestTo}`,
-        `- Balance: ${d.initialBalance}`,
-        `- Net P/L: ${d.netProfit.toFixed(2)} (Gross ${(d.grossPnL ?? 0).toFixed(2)}, Comm ${(d.commissionTotal ?? 0).toFixed(2)}, Swap ${(d.swapTotal ?? 0).toFixed(2)})`,
-        `- Max DD: ${(d.maxDrawdownPct * 100).toFixed(2)}% · Win rate: ${(d.winRatePct * 100).toFixed(1)}% · Profit factor: ${this.pfDisplay()} · Avg R: ${this.avgR().toFixed(2)}`,
-        `- Trades: ${d.totalTrades}`,
-        ``,
-        `## Per-strategy`,
-        `| Strategy | Bars | Signals | Trades | Win% | Top no-signal |`,
-        `|---|---|---|---|---|---|`,
-        ...this.breakdown().map(
-          (s) =>
-            `| ${s.strategyId} | ${s.totalBarsEvaluated} | ${s.signalsFired} | ${s.tradesOpened} | ${(s.winRatePct * 100).toFixed(0)}% | ${this.topReasons(s)} |`,
-        ),
-      ].join('\n');
-      mime = 'text/markdown';
-      ext = 'md';
-    }
-    const blob = new Blob([content], { type: mime });
-    downloadBlob(blob, `run-${d.runId.slice(0, 8)}.${ext}`);
+    exportReport(d, stats, this.breakdown(), this.trades(), fmt);
   }
 
   // F1 — render a violation/decision reason as a readable name, never raw JSON / [object Object].
@@ -570,7 +528,7 @@ export class RunReportComponent implements OnInit {
       v.reason ??
       v.message ??
       Object.entries(v)
-        .map(([k, val]) => `${k}=${val}`)
+        .map(([k, val]) => k + '=' + val)
         .join(' ')
     );
   }
