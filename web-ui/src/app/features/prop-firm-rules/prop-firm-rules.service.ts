@@ -7,8 +7,9 @@ import type { PropFirmRule } from '../../models/api.types';
 export class PropFirmRulesApiService {
   private http = inject(HttpClient);
 
-  getAll(): Promise<PropFirmRule[]> {
-    return firstValueFrom(this.http.get<PropFirmRule[]>('/api/prop-firm-rules'));
+  async getAll(): Promise<PropFirmRule[]> {
+    const r = await firstValueFrom(this.http.get<{ rules: PropFirmRule[] }>('/api/prop-firm-rules'));
+    return r.rules;
   }
 
   getById(id: string): Promise<PropFirmRule> {

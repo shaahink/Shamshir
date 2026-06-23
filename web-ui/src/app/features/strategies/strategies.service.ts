@@ -7,8 +7,9 @@ import type { StrategySummary, StrategyDetail } from '../../models/api.types';
 export class StrategiesApiService {
   private http = inject(HttpClient);
 
-  getAll(): Promise<StrategySummary[]> {
-    return firstValueFrom(this.http.get<StrategySummary[]>('/api/strategies'));
+  async getAll(): Promise<StrategySummary[]> {
+    const r = await firstValueFrom(this.http.get<{ strategies: StrategySummary[] }>('/api/strategies'));
+    return r.strategies;
   }
 
   getById(id: string): Promise<StrategyDetail> {

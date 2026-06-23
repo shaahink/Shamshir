@@ -7,8 +7,9 @@ import type { RiskProfile } from '../../models/api.types';
 export class RiskProfilesApiService {
   private http = inject(HttpClient);
 
-  getAll(): Promise<RiskProfile[]> {
-    return firstValueFrom(this.http.get<RiskProfile[]>('/api/risk-profiles'));
+  async getAll(): Promise<RiskProfile[]> {
+    const r = await firstValueFrom(this.http.get<{ profiles: RiskProfile[] }>('/api/risk-profiles'));
+    return r.profiles;
   }
 
   getById(id: string): Promise<RiskProfile> {
