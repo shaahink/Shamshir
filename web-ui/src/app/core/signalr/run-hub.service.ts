@@ -2,8 +2,6 @@ import { Injectable, OnDestroy } from '@angular/core';
 import { Subject } from 'rxjs';
 import * as signalR from '@microsoft/signalr';
 
-export const HttpTransport = signalR.HttpTransportType;
-
 export interface RunProgressEnvelope {
   runId: string;
   status: string;
@@ -53,25 +51,13 @@ export class RunHubService implements OnDestroy {
 
   async start(): Promise<void> {
     if (this.hub) return;
-    this.hub = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/run', { transport: HttpTransport.WebSockets | HttpTransport.LongPolling })
-      .configureLogging(signalR.LogLevel.Information)
-      .build();
+    this.hub = new signalR.HubConnectionBuilder().withUrl('/hubs/run').withAutomaticReconnect().build();
 
-    this.hub.onreconnecting(() => console.warn('[SignalR] reconnecting...'));
-    this.hub.onreconnected(() => console.log('[SignalR] reconnected'));
-    this.hub.onclose((e) => console.error('[SignalR] closed:', e));
-
-    this.hub.on('RunProgress', (e: RunProgressEnvelope) => { console.log('[SignalR] RunProgress', e.runId, e.barsProcessed); this.progress$.next(e); });
+    this.hub.on('RunProgress', (e: RunProgressEnvelope) => this.progress$.next(e));
     this.hub.on('JournalAppend', (e: JournalEnvelope) => this.journal$.next(e));
-    this.hub.on('RunCompleted', (e: RunCompletedEnvelope) => { console.log('[SignalR] RunCompleted', e.runId, e.status); this.completed$.next(e); });
+    this.hub.on('RunCompleted', (e: RunCompletedEnvelope) => this.completed$.next(e));
 
-    try {
-      await this.hub.start();
-      console.log('[SignalR] connected');
-    } catch (err) {
-      console.error('[SignalR] start failed:', err);
-    }
+    await this.hub.start();
   }
 
   async joinRun(runId: string): Promise<void> {

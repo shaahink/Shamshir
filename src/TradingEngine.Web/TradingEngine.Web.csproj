@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="TradingEngine.Tests.Integration" />
+    <InternalsVisibleTo Include="TradingEngine.Tests.Unit" />
   </ItemGroup>
 
   <ItemGroup>

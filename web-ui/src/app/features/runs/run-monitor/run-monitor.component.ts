@@ -5,7 +5,6 @@ import { interval } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RunHubService, type RunProgressEnvelope, type JournalEnvelope, type RunCompletedEnvelope } from '../../../core/signalr/run-hub.service';
 import { RunsStore } from '../runs.store';
-import { RunsApiService } from '../runs.service';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
 
@@ -133,7 +132,6 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private hub = inject(RunHubService);
   private store = inject(RunsStore);
-  private api = inject(RunsApiService);
 
   runId = signal('');
   status = signal('connecting');
@@ -187,37 +185,6 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
     });
   }
 
-  private maxJournalSeq = 0;
-
-  private async pollJournal(): Promise<void> {
-    try {
-      const entries = await this.api.getRunJournal(this.runId(), undefined, this.maxJournalSeq, 200);
-      if (entries.length > 0) {
-        const existing = this.journalEntries();
-        const existingSeqs = new Set(existing.map((x) => x.seq));
-        const fresh = entries.filter((e) => !existingSeqs.has(e.seq));
-        if (fresh.length > 0) {
-          const mapped: JournalEnvelope[] = fresh.map((r) => ({
-            runId: this.runId(),
-            seq: r.seq,
-            simTimeUtc: r.simTimeUtc,
-            kind: r.kind ?? r.eventKind ?? 'Unknown',
-            symbol: r.symbol ?? undefined,
-            strategyId: r.strategyId ?? undefined,
-            reason: r.reason ?? r.decisionReason ?? undefined,
-            detail: r.detail ?? undefined,
-          }));
-          const combined = [...existing, ...mapped];
-          this.journalEntries.set(combined.length > 2000 ? combined.slice(-2000) : combined);
-          if (this.stick()) this.scrollJournalToBottom();
-          this.maxJournalSeq = combined[combined.length - 1].seq;
-        }
-      }
-    } catch {
-      /* best-effort polling — retry next tick */
-    }
-  }
-
   async ngOnInit(): Promise<void> {
     const rid = this.route.snapshot.paramMap.get('runId');
     if (!rid) return;
@@ -232,11 +199,6 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
           s > 3600 ? Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm' : Math.floor(s / 60) + 'm ' + (s % 60) + 's',
         );
       });
-
-    // 31-B2: periodic journal poll as fallback (primary trigger is progress events).
-    interval(2000)
-      .pipe(takeUntilDestroyed())
-      .subscribe(() => { this.pollJournal(); });
 
     await this.hub.start();
     await this.hub.joinRun(rid);
@@ -281,7 +243,25 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
             breaches: e.counters.breaches ?? 0,
           });
         }
-        this.pollJournal();
+        if (Array.isArray(e.recentJournal) && e.recentJournal.length > 0) {
+          const mapped: JournalEnvelope[] = e.recentJournal.map((r: any) => ({
+            runId: this.runId(),
+            seq: r.seq,
+            simTimeUtc: r.simTimeUtc,
+            kind: r.kind ?? r.event,
+            symbol: r.symbol,
+            strategyId: r.strategyId,
+            reason: r.reason,
+            detail: r.detail ?? r.detailJson,
+          }));
+          const existing = this.journalEntries();
+          const existingSeqs = new Set(existing.map((x) => x.seq));
+          const fresh = mapped.filter((m) => !existingSeqs.has(m.seq));
+          if (fresh.length > 0) {
+            this.journalEntries.set([...existing, ...fresh].slice(-500));
+            if (this.stick()) this.scrollJournalToBottom();
+          }
+        }
       });
 
     this.hub.completed$
