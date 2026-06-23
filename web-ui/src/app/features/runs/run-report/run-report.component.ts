@@ -11,6 +11,8 @@ import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-ch
 import { ScatterChartComponent } from '../../../shared/scatter-chart.component';
 import { BadgeComponent } from '../../../shared/badge.component';
 import { downloadBlob } from '../../../shared/download.helper';
+import { formatSymbols } from '../../../shared/symbols.helper';
+import { TRADE_COLUMNS } from '../../../shared/trade-columns';
 import { exportReport as doExportReport, type ExportStats } from '../report-export.helper';
 import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance, AddOnPack } from '../../../models/api.types';
 
@@ -586,15 +588,7 @@ export class RunReportComponent implements OnInit {
     return Math.min(100, (Math.abs(pnl ?? 0) / m) * 100);
   }
 
-  symbolsDisplay(): string {
-    const d = this.store.selectedRun();
-    if (!d) return '';
-    try {
-      const s = typeof d.symbols === 'string' ? JSON.parse(d.symbols) : d.symbols;
-      if (Array.isArray(s) && s.length > 1) return s.join(', ');
-    } catch {}
-    return d.symbol;
-  }
+  symbolsDisplay = () => formatSymbols(this.store.selectedRun() ?? { symbols: '', symbol: '' });
 
   async openDuplicate(runId: string): Promise<void> {
     this.dupRunId.set(runId);
@@ -644,19 +638,17 @@ export class RunReportComponent implements OnInit {
     { key: 'lots', label: 'Lots', format: 'number' },
     { key: 'entryPrice', label: 'Entry', format: 'number' },
     { key: 'exitPrice', label: 'Exit', format: 'number' },
-    {
-      key: 'grossPnLAmount',
-      label: 'Gross',
-      format: 'currency',
-      colorFn: (v: number) => (v >= 0 ? '#34d399' : '#f87171'),
-    },
+    { key: 'entryType', label: 'Type' },
+    { key: 'stopLoss', label: 'SL', format: 'number' },
+    { key: 'takeProfit', label: 'TP', format: 'number' },
+    { key: 'grossPnLAmount', label: 'Gross', format: 'currency', colorFn: (v: number) => (v >= 0 ? '#34d399' : '#f87171') },
     { key: 'commissionAmount', label: 'Comm', format: 'currency' },
     { key: 'swapAmount', label: 'Swap', format: 'currency' },
     { key: 'netPnLAmount', label: 'Net', format: 'currency', colorFn: (v: number) => (v >= 0 ? '#34d399' : '#f87171') },
     { key: 'pnLPips', label: 'Pips', format: 'pips' },
     { key: 'rMultiple', label: 'R', format: 'number' },
-    { key: 'maxAdverseExcursion', label: 'MAE', format: 'pips' },
-    { key: 'maxFavorableExcursion', label: 'MFE', format: 'pips' },
+    { key: 'maxAdverseExcursion', label: 'MAE', format: 'number' },
+    { key: 'maxFavorableExcursion', label: 'MFE', format: 'number' },
     { key: 'exitReason', label: 'Exit' },
     { key: 'strategyId', label: 'Strategy' },
     { key: 'durationSeconds', label: 'Hold', format: 'duration' },

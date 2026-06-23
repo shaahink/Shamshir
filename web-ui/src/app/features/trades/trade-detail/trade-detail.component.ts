@@ -5,6 +5,7 @@ import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { CandleChartComponent, type OhlcBar, type PriceMarker } from '../../../shared/candle-chart.component';
 import type { TradeDetail, BarData } from '../../../models/api.types';
 import { TradesApiService } from '../trades.service';
+import { formatDuration } from '../../../shared/format.helper';
 
 @Component({
   selector: 'app-trade-detail',
@@ -109,9 +110,5 @@ export class TradeDetailComponent implements OnInit {
     }
   }
 
-  fmtDuration(s: number): string {
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    return h > 0 ? h + 'h ' + m + 'm' : m + 'm';
-  }
+  fmtDuration = formatDuration;
 }

@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { RunsStore } from '../runs.store';
 import { BadgeComponent } from '../../../shared/badge.component';
+import { formatSymbols } from '../../../shared/symbols.helper';
 
 @Component({
   selector: 'app-run-list',
@@ -146,13 +147,7 @@ export class RunListComponent implements OnInit {
   readonly store = inject(RunsStore);
   selectedRuns = signal<string[]>([]);
   compareOpen = signal(false);
-  symbolsDisplay(run: any): string {
-    try {
-      const s = typeof run.symbols === 'string' ? JSON.parse(run.symbols) : run.symbols;
-      if (Array.isArray(s) && s.length > 1) return s.join(', ');
-    } catch {}
-    return run.symbol;
-  }
+  symbolsDisplay = formatSymbols;
 
   ngOnInit(): void {
     this.store.loadRuns();
