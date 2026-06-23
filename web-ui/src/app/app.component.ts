@@ -38,6 +38,13 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
               Strategies
             </a>
             <a
+              routerLink="/addon-packs"
+              routerLinkActive="bg-gray-800 text-white"
+              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
+            >
+              Packs
+            </a>
+            <a
               routerLink="/risk-profiles"
               routerLinkActive="bg-gray-800 text-white"
               class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"

@@ -359,7 +359,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         catch (Exception ex) { _logger.LogWarning(ex, "Failed to format reconcile line"); }
     }
 
-    private static ExecutionEvent ParseExecution(JsonElement ex)
+    private ExecutionEvent ParseExecution(JsonElement ex)
     {
         var orderId = ex.TryGetProperty("clientOrderId", out var oid) && oid.GetString() is { } oidStr
             ? Guid.Parse(oidStr) : Guid.Empty;
@@ -368,7 +368,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         var filledLots = ex.GetProperty("filledLots").GetDecimal();
         var reason = ex.TryGetProperty("reason", out var r) && r.ValueKind == JsonValueKind.String
             ? r.GetString() : null;
-        var time = ex.TryGetProperty("simTime", out var st) ? st.GetDateTime().ToUniversalTime() : DateTime.UtcNow;
+        var time = ex.TryGetProperty("simTime", out var st) ? st.GetDateTime().ToUniversalTime() : BrokerTimeUtc;
         return new ExecutionEvent(orderId, state,
             fillPrice > 0 ? new Price(fillPrice) : null,
             filledLots, reason, time)

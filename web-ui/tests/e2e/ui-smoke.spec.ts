@@ -253,3 +253,93 @@ test.describe('iter-37 structure surfaces', () => {
     await expect(page.locator('app-risk-profile-detail li').first()).toBeVisible({ timeout: TIMEOUT });
   });
 });
+
+// iter-38/39 surfaces — add-on packs, pack selection, regime toggle, duplicate dialog, analyzer, strategy add-ons.
+test.describe('Add-on Packs UI (iter-38 S10 U1)', () => {
+  test('list page renders with cards', async ({ page }) => {
+    await page.goto('/addon-packs');
+    await expect(page.locator('app-addon-pack-list')).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-addon-pack-list', { hasText: 'Add-on Packs' })).toBeVisible({ timeout: TIMEOUT });
+  });
+
+  test('card links navigate to detail', async ({ page }) => {
+    await page.goto('/addon-packs');
+    await expect(page.locator('app-addon-pack-list a').first()).toBeVisible({ timeout: TIMEOUT });
+    await page.locator('app-addon-pack-list a').first().click();
+    await page.waitForURL('**/addon-packs/**', { timeout: TIMEOUT });
+    await expect(page.locator('app-addon-pack-detail')).toBeVisible({ timeout: TIMEOUT });
+  });
+
+  test('detail page has editable fields', async ({ page }) => {
+    await page.goto('/addon-packs');
+    await expect(page.locator('app-addon-pack-list a').first()).toBeVisible({ timeout: TIMEOUT });
+    await page.locator('app-addon-pack-list a').first().click();
+    await page.waitForURL('**/addon-packs/**', { timeout: TIMEOUT });
+    await expect(page.locator('app-addon-pack-detail')).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-addon-pack-detail input, app-addon-pack-detail textarea, app-addon-pack-detail select').first()).toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+test.describe('New-Backtest pack + regime (iter-38 S10 U3)', () => {
+  test('renders pack dropdown and regime checkbox', async ({ page }) => {
+    await page.goto('/runs/new');
+    await expect(page.locator('app-new-backtest')).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-new-backtest', { hasText: 'Add-on Pack' })).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-new-backtest', { hasText: 'Disable Regime Detection' })).toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+test.describe('Strategy Detail add-ons (iter-38 S10 U2)', () => {
+  test('shows Baseline & Add-ons section with labels', async ({ page }) => {
+    await page.goto('/strategies');
+    await expect(page.locator('app-strategy-list a').first()).toBeVisible({ timeout: TIMEOUT });
+    await page.locator('app-strategy-list a').first().click();
+    await page.waitForURL('**/strategies/**', { timeout: TIMEOUT });
+    await expect(page.locator('app-strategy-detail')).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-strategy-detail', { hasText: 'Baseline & Add-ons' })).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-strategy-detail', { hasText: 'Breakeven (Add-on)' })).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-strategy-detail', { hasText: 'Trailing (Add-on)' })).toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+test.describe('Run Analyzer (iter-38)', () => {
+  test('page renders with chart host elements', async ({ page }) => {
+    await page.goto('/runs');
+    await expect(page.locator('app-run-list table tbody tr').first()).toBeVisible({ timeout: TIMEOUT });
+    const rows = page.locator('app-run-list table tbody tr');
+    const count = await rows.count();
+    await rows.nth(count - 1).click();
+    await page.waitForURL('**/runs/**', { timeout: TIMEOUT });
+    const url = page.url();
+    await page.goto(url + '/analyzer');
+    await expect(page.locator('app-run-analyzer')).toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+test.describe('Nav bar Packs link (iter-38)', () => {
+  test('has Packs nav link', async ({ page }) => {
+    await page.goto('/runs');
+    await expect(page.locator('nav a[routerlink="/addon-packs"]')).toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+test.describe('Duplicate dialog modal (iter-39 A1, requires SEEDED_RUN_ID)', () => {
+  const seeded = process.env.SEEDED_RUN_ID;
+
+  test('opens modal with pack dropdown and regime checkbox', async ({ page }) => {
+    test.skip(!seeded, 'set SEEDED_RUN_ID to a finished run');
+    await page.goto(`/runs/${seeded}`);
+    await expect(page.locator('app-run-report')).toBeVisible({ timeout: TIMEOUT });
+
+    const dupBtn = page.locator('app-run-report button', { hasText: 'Duplicate' });
+    await expect(dupBtn).toBeVisible({ timeout: TIMEOUT });
+    await dupBtn.click();
+
+    await expect(page.locator('app-run-report', { hasText: 'Duplicate Run' })).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-run-report', { hasText: 'Add-on Pack' })).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-run-report', { hasText: 'Disable Regime Detection' })).toBeVisible({ timeout: TIMEOUT });
+
+    const cancel = page.locator('button', { hasText: 'Cancel' });
+    if (await cancel.isVisible().catch(() => false)) await cancel.click();
+  });
+});
