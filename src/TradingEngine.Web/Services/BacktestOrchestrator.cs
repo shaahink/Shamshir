@@ -598,9 +598,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             }
             TallyEvent(state, evt);
 
-            // iter-21 U1 — push a throttled progress frame to the run's SignalR group. Breaches
-            // force a frame through so the breach alert is never swallowed by the throttle window.
-            _broadcaster.Publish(BuildProgress(state, "running"), force: evt.EventType == "BREACH");
+            var barCount = Volatile.Read(ref state.BarCount) + 1;
+            if (barCount <= 5 || barCount % 50 == 0)
+                _journal.Write(runId, "LIVE_DIAG", $"BAR#{barCount} tally={state.Signals}s/{state.Orders}o/{state.Fills}f/{state.Closes}c");
+
+            _broadcaster.Publish(BuildProgress(state, "running"), force: evt.EventType == "BREACH" || barCount <= 3);
         });
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(userCt,

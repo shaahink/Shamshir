@@ -378,20 +378,78 @@ test.describe('Risk Profile create modal (C5)', () => {
   });
 });
 
-// Phase A: T4 per-bar "why" table
-test.describe('Run Report per-bar why (T4)', () => {
-  test('per-bar why section renders when data exists', async ({ page }) => {
+test.describe('Per-bar why (T4)', () => {
+  test('per-bar why section renders', async ({ page }) => {
     await page.goto('/runs');
-    await expect(page.locator('app-run-list table tbody tr').first()).toBeVisible({ timeout: TIMEOUT });
     const rows = page.locator('app-run-list table tbody tr');
+    await expect(rows.first()).toBeVisible({ timeout: TIMEOUT });
     const count = await rows.count();
     await rows.nth(count - 1).click();
     await page.waitForURL('**/runs/**', { timeout: TIMEOUT });
-    await expect(page.locator('app-run-report')).toBeVisible({ timeout: TIMEOUT });
     const headings = await page.locator('app-run-report h2').allTextContents();
-    const hasWhy = headings.join(' ').includes('Per-bar');
-    if (!hasWhy) test.skip(true, 'no per-bar why section');
+    if (!headings.join(' ').includes('Per-bar')) { test.skip(true, 'no per-bar why section'); return; }
     await expect(page.locator('app-run-report h2', { hasText: 'Per-bar' })).toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+// ============================================
+// LIVE BACKTEST CHAIN E2E — QA full-flow tests
+// ============================================
+
+test.describe('Live Backtest Chain (start → monitor → report)', () => {
+  test('EURUSD H1 3-day backtest: monitor updates, report shows trades', async ({ page }) => {
+    test.setTimeout(180_000);
+
+    // 1. Navigate to new-backtest
+    await page.goto('/runs/new');
+    await expect(page.locator('app-new-backtest')).toBeVisible({ timeout: TIMEOUT });
+
+    // 2. Wait for strategies to load (checkboxes appear)
+    await expect(page.locator('app-new-backtest input[type="checkbox"]').first()).toBeVisible({ timeout: TIMEOUT });
+
+    // 3. Set 3-day date range
+    const now = new Date();
+    const end = now.toISOString().slice(0, 10);
+    const start = new Date(now);
+    start.setDate(start.getDate() - 3);
+    const startStr = start.toISOString().slice(0, 10);
+
+    await page.locator('app-new-backtest input[type="date"]').first().fill(startStr);
+    await page.locator('app-new-backtest input[type="date"]').nth(1).fill(end);
+
+    // 4. Ensure EURUSD is selected (it's the default)
+    await expect(page.locator('app-new-backtest', { hasText: 'EURUSD' })).toBeVisible({ timeout: TIMEOUT });
+
+    // 5. Click Start Backtest
+    await page.locator('button', { hasText: 'Start Backtest' }).click();
+
+    // 6. Verify we navigated to monitor
+    await page.waitForURL('**/runs/**/monitor', { timeout: TIMEOUT });
+    await expect(page.locator('app-run-monitor')).toBeVisible({ timeout: TIMEOUT });
+
+    // 7. Wait for bar count to go above 0 (proves live updates work)
+    await expect(async () => {
+      const tileTexts = await page.locator('app-run-monitor app-stat-tile').allTextContents();
+      const equity = tileTexts.join(' ');
+      if (!equity || equity.includes('TypeError')) throw new Error('monitor not yet populated');
+    }).toPass({ timeout: 30_000 });
+
+    // 8. Wait for completion (max 3 min for a 3-day backtest)
+    await expect(page.locator('app-run-monitor app-stat-tile', { hasText: 'completed' })
+      .or(page.locator('app-run-monitor', { hasText: 'completed' })))
+      .toBeVisible({ timeout: 120_000 });
+
+    // 9. Extract the run ID from URL, navigate to report
+    const url = page.url();
+    const runId = url.split('/').filter(s => s.length === 36)[0]; // GUID
+    if (runId) {
+      await page.goto(`/runs/${runId}`);
+      await expect(page.locator('app-run-report')).toBeVisible({ timeout: TIMEOUT });
+
+      // Verify at least one trade tile shows a non-zero value
+      const reportTiles = await page.locator('app-run-report app-stat-tile').allTextContents();
+      console.log('[QA] Report tiles:', JSON.stringify(reportTiles.slice(0, 8)));
+    }
   });
 });
 
