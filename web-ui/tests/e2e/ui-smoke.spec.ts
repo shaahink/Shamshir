@@ -482,4 +482,3 @@ test.describe('New-Backtest per-strategy pack (32-P5)', () => {
     await expect(page.locator('app-new-backtest', { hasText: 'Pack: strategy default' })).toBeVisible({ timeout: TIMEOUT });
   });
 });
-});
