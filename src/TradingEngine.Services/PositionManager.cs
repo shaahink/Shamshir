@@ -200,8 +200,13 @@ public sealed class PositionManager(
         string strategyId, PositionManagementOptions opts, decimal initialRiskAmount)
     {
         var tr = opts.Trailing;
+        // iter-38 A1: the Trailing add-on is gated by its universal Enabled toggle (consistent with Breakeven
+        // and every other add-on). A configured Method WITHOUT Enabled is treated as OFF, so the UI / pack
+        // toggle is the single source of truth rather than a Method side-channel. Strategies that should trail
+        // set trailing.enabled=true (Mode=Custom keeps their stored numbers; Mode=Auto ⇒ AddOnResolver tunes).
+        var trailingMethod = tr.Enabled ? ParseTrailingMethod(tr.Method) : TrailingMethod.None;
         var trailing = new TrailingConfig(
-            ParseTrailingMethod(tr.Method), tr.StepPips, tr.AtrMultiple, opts.Breakeven.TriggerRMultiple)
+            trailingMethod, tr.StepPips, tr.AtrMultiple, opts.Breakeven.TriggerRMultiple)
         {
             StructureLookbackBars = tr.StructureLookbackBars,
             SteppedRLevels = tr.SteppedRLevels,

@@ -3,7 +3,7 @@ import { ActivatedRoute } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { CandleChartComponent, type OhlcBar, type PriceMarker } from '../../../shared/candle-chart.component';
-import type { TradeSummary, BarData } from '../../../models/api.types';
+import type { TradeDetail, BarData } from '../../../models/api.types';
 import { TradesApiService } from '../trades.service';
 
 @Component({
@@ -63,7 +63,7 @@ import { TradesApiService } from '../trades.service';
 export class TradeDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(TradesApiService);
-  trade = signal<TradeSummary | null>(null);
+  trade = signal<TradeDetail | null>(null);
   bars = signal<OhlcBar[]>([]);
 
   chartMarkers = (): PriceMarker[] => {

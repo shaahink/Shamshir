@@ -82,6 +82,37 @@ export interface TradeSummary {
   takeProfit?: number | null;
 }
 
+// iter-38 A4 / W-A1 + W-D3: the trade-detail endpoint (/api/trades/{id}) returns TradeDetailResponse — a richer,
+// distinct shape from the list's TradeSummary. This dedicated interface ends the "TradeSummary used for the
+// detail view" type-lie: stopLoss is REQUIRED (the chart SL marker depends on it), takeProfit is nullable, and
+// the field set matches the backend DTO exactly. Keep this in sync with Dtos/Trades/TradeDetailResponse.cs.
+export interface TradeDetail {
+  id: string;
+  positionId: string;
+  orderId: string;
+  symbol: string;
+  direction: string;
+  lots: number;
+  entryPrice: number;
+  exitPrice: number;
+  stopLoss: number;
+  takeProfit: number | null;
+  openedAtUtc: string;
+  closedAtUtc: string;
+  grossPnLAmount: number;
+  commissionAmount: number;
+  swapAmount: number;
+  netPnLAmount: number;
+  pnLPips: number;
+  rMultiple: number;
+  maxAdverseExcursion: number;
+  maxFavorableExcursion: number;
+  exitReason: string;
+  strategyId: string;
+  durationSeconds: number;
+  timeframe: string;
+}
+
 // iter-36 K5: the journal is now the lossless StepRecord stream (GET /api/runs/{id}/journal). eventKind
 // is the StepRecord event type; decisionReason is the gate accept/reject reason. Legacy fields kept
 // optional so older views compile during the iter-37 journal-surface migration.

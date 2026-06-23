@@ -11,7 +11,7 @@
     "stopLoss": { "method": "AtrMultiple", "atrMultiple": 2.0 },
     "takeProfit": { "method": "RrMultiple", "rrMultiple": 3.0 },
     "breakeven": { "enabled": true, "triggerRMultiple": 1.0, "offsetPips": 1.0 },
-    "trailing": { "method": "AtrMultiple", "atrMultiple": 2.5 }
+    "trailing": { "enabled": true, "mode": "Custom", "method": "AtrMultiple", "atrMultiple": 2.5 }
   },
   "parameters": {
     "macdFast": 12,

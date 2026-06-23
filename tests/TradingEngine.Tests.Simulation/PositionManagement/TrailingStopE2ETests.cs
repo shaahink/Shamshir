@@ -82,7 +82,9 @@ public sealed class TrailingStopE2ETests
         public PositionManagementOptions PositionManagement => new()
         {
             Breakeven = new BreakevenOptions { Enabled = true, TriggerRMultiple = 1.0, OffsetPips = 1.0 },
-            Trailing = new TrailingOptions { Method = "AtrMultiple", AtrMultiple = 2.5 },
+            // iter-38 A1: trailing is now gated by its Enabled toggle (Method alone no longer activates it).
+            // Custom keeps the stored 2.5 multiple (no auto-tune), so this E2E stays byte-identical.
+            Trailing = new TrailingOptions { Enabled = true, Mode = AddOnMode.Custom, Method = "AtrMultiple", AtrMultiple = 2.5 },
         };
         public ReentryOptions Reentry => new();
     }

@@ -1,7 +1,7 @@
 ﻿import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import type { TradeSummary, BarData } from '../../models/api.types';
+import type { TradeSummary, TradeDetail, BarData } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
 export class TradesApiService {
@@ -11,8 +11,8 @@ export class TradesApiService {
     return firstValueFrom(this.http.get<TradeSummary[]>('/api/trades'));
   }
 
-  getById(id: string): Promise<TradeSummary> {
-    return firstValueFrom(this.http.get<TradeSummary>(`/api/trades/${id}`));
+  getById(id: string): Promise<TradeDetail> {
+    return firstValueFrom(this.http.get<TradeDetail>(`/api/trades/${id}`));
   }
 
   getBars(symbol: string, timeframe: string, from: string, to: string): Promise<BarData[]> {

@@ -9,10 +9,9 @@ namespace TradingEngine.Infrastructure.Persistence.Repositories;
 /// iter-38 (Stream PK1). SQLite-backed <see cref="IAddOnPackStore"/>, mirroring <c>SqliteStrategyConfigStore</c>.
 /// The pack payload (breakeven/trailing/partial/ride/dynamic) is stored as a <c>PositionManagementOptions</c>
 /// JSON blob so a pack and a strategy share one shape. <c>CreatedAtUtc</c>/<c>UpdatedAtUtc</c> are stamped by
-/// <c>AuditStampInterceptor</c> (D5) — no manual timestamping here.
-///
-/// This is a working skeleton; the agent should add the 3 seeded starter packs (PK1) + DI registration, and
-/// (PK3) feed the resolved pack into <c>EffectiveConfigResolver</c> for a run.
+/// <c>AuditStampInterceptor</c> (D5) — no manual timestamping here. The 3 starter packs (PK1) are seeded on
+/// startup by <c>AddOnPackSeeder</c> (Web), and the run wiring (PK3) feeds the resolved pack into
+/// <c>EffectiveConfigResolver.ApplyPack</c> inside the <c>BacktestOrchestrator</c>.
 /// </summary>
 public sealed class SqliteAddOnPackStore(TradingDbContext db) : IAddOnPackStore
 {

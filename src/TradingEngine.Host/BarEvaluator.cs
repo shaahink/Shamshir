@@ -29,8 +29,7 @@ public sealed class BarEvaluator(
     IRiskProfileResolver riskProfileResolver,
     ITradingGovernor? governor,
     Microsoft.Extensions.Logging.ILogger logger,
-    IIndicatorService indicators,
-    bool disableRegime = false)
+    IIndicatorService indicators)
 {
     private long _orderSeq;
 
@@ -81,13 +80,15 @@ public sealed class BarEvaluator(
         signalGate?.OnBar(simTime);
         governor?.OnBar(simTime);
 
-        // iter-38 R1 / D3: when the run master-disable is set, skip regime detection entirely (treat the
-        // regime as Bypassed = Unknown) and ignore the per-strategy regime filter (allow-all). The default
-        // path (disableRegime=false) detects + filters exactly as before, so golden stays byte-identical.
-        var regime = disableRegime
-            ? MarketRegime.Unknown
-            : regimeDetector.Detect(symbol, barSnapshot[tf], indicatorSnapshot.ReusableIndicatorDict);
-        var activeStrategies = strategyBank.GetActive(symbol, tf, regime, ignoreRegime: disableRegime);
+        // iter-38 R1 / D3: regime detection is governed entirely by each strategy's
+        // RegimeFilterOptions.DetectionEnabled — the single source of truth. A run forces it off for every
+        // strategy via the run-master DisableRegime flag, which the orchestrator folds onto each strategy's
+        // RegimeFilter.DetectionEnabled (a pack's RegimeDetectionEnabled and the per-strategy default fold the
+        // same way). StrategyBankService.GetActive already lets a detection-off strategy trade in ANY regime
+        // (its RegimeFilter.Allows short-circuits to allow-all), so the filtering is correct without a second
+        // run-level switch here, and the golden path (all strategies detect-on) stays byte-identical.
+        var regime = regimeDetector.Detect(symbol, barSnapshot[tf], indicatorSnapshot.ReusableIndicatorDict);
+        var activeStrategies = strategyBank.GetActive(symbol, tf, regime);
 
         var proposals = new List<OrderProposed>();
         var verdicts = new List<StrategyVerdict>();
@@ -191,7 +192,14 @@ public sealed class BarEvaluator(
                 strategy.Id, symbol.Value, intent.Direction, slPips, entryPrice.Value);
         }
 
-        return Latest = new BarEvaluation(regime.ToString(), proposals, verdicts);
+        // iter-38 R1 / D3: surface "Bypassed" in the per-bar journal / live monitor when every active strategy
+        // has regime detection turned off (per-strategy, or via the run-master). Trading is unaffected — this is
+        // a pure observability label so the "why" view shows detection is off rather than a regime nobody gated
+        // on. With all strategies detect-on (the golden/default path) the detected regime is reported as before.
+        var regimeLabel = activeStrategies.Count > 0 && activeStrategies.All(s => !s.Config.RegimeFilter.DetectionEnabled)
+            ? "Bypassed"
+            : regime.ToString();
+        return Latest = new BarEvaluation(regimeLabel, proposals, verdicts);
     }
 
     /// <summary>
