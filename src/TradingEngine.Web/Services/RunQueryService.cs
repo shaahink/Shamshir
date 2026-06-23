@@ -114,6 +114,7 @@ public sealed class RunQueryService : IRunQueryService
                 ExitReason = t.ExitReason,
                 StrategyId = t.StrategyId,
                 DurationSeconds = t.DurationSeconds,
+                EntryType = t.Mode,
             })
             .ToListAsync(ct);
     }

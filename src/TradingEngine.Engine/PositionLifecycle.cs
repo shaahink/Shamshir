@@ -129,7 +129,9 @@ public static class PositionLifecycle
                 new PublishTradeClosed(state.PositionId, state.Symbol, state.Direction, evt.FilledLots,
                     state.EntryPrice, evt.FillPrice, state.CurrentStopLoss, state.TakeProfit,
                     state.StrategyId, "PARTIAL", evt.OccurredAtUtc, state.OpenedAtUtc,
-                    OrderId: state.OrderId, HighWater: state.HighWater, LowWater: state.LowWater)
+                    OrderId: state.OrderId, HighWater: state.HighWater, LowWater: state.LowWater,
+                    GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
+                    Commission: evt.Commission, Swap: evt.Swap)
             };
             return (remaining, reducingEffects);
         }
@@ -143,7 +145,9 @@ public static class PositionLifecycle
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, closed.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc,
-                OrderId: closed.OrderId, HighWater: closed.HighWater, LowWater: closed.LowWater)
+                OrderId: closed.OrderId, HighWater: closed.HighWater, LowWater: closed.LowWater,
+                GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
+                Commission: evt.Commission, Swap: evt.Swap)
         };
         return (closed, effects);
     }
@@ -208,7 +212,9 @@ public static class PositionLifecycle
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc,
-                OrderId: closed.OrderId, HighWater: closed.HighWater, LowWater: closed.LowWater)
+                OrderId: closed.OrderId, HighWater: closed.HighWater, LowWater: closed.LowWater,
+                GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
+                Commission: evt.Commission, Swap: evt.Swap)
         };
         return (closed, effects);
     }
@@ -239,7 +245,9 @@ public static class PositionLifecycle
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc,
-                OrderId: closed.OrderId, HighWater: closed.HighWater, LowWater: closed.LowWater)
+                OrderId: closed.OrderId, HighWater: closed.HighWater, LowWater: closed.LowWater,
+                GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
+                Commission: evt.Commission, Swap: evt.Swap)
         };
         return (closed, effects);
     }

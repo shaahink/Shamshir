@@ -26,4 +26,5 @@ public sealed record TradeSummaryResponse
     public string? Timeframe { get; init; }
     public decimal? SlPrice { get; init; }
     public decimal? TpPrice { get; init; }
+    public string? EntryType { get; init; }
 }

@@ -27,7 +27,13 @@ public record OrderProposed(Guid OrderId, Symbol Symbol, TradeDirection Directio
 
 public record OrderSubmitted(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price? LimitPrice, string StrategyId, DateTime OccurredAtUtc, Price StopLoss = default, Price? TakeProfit = null) : EngineEvent(OccurredAtUtc);
 
-public record OrderFilled(Guid OrderId, Symbol Symbol, decimal FilledLots, Price FillPrice, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
+public record OrderFilled(Guid OrderId, Symbol Symbol, decimal FilledLots, Price FillPrice, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc)
+{
+    public decimal? GrossProfit { get; init; }
+    public decimal? NetProfit { get; init; }
+    public decimal? Commission { get; init; }
+    public decimal? Swap { get; init; }
+}
 
 public record OrderPartiallyFilled(Guid OrderId, Symbol Symbol, decimal FilledLots, Price FillPrice, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);
 

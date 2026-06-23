@@ -279,7 +279,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                     class="rounded px-2 py-0.5 text-xs"
                     [ngClass]="active ? 'bg-emerald-900/50 text-emerald-400' : 'text-gray-500'"
                   >
-                    {{ k }}
+                    {{ kindLabel(k) }}
                   </button>
                 }
               </div>
@@ -374,19 +374,32 @@ export class RunReportComponent implements OnInit {
   dupOpen = signal(false);
   journalKinds = [
     'ALL',
-    'SIGNAL',
-    'ORDER',
-    'FILL',
-    'CLOSE',
-    'REJECTED',
-    'BREACH',
-    'GOVERNOR',
-    'ENTRY_EXPIRED',
-    'CANCELLED',
+    'OrderProposed',
+    'OrderSubmitted',
+    'OrderFilled',
+    'OrderPartiallyFilled',
+    'OrderRejected',
+    'OrderCancelled',
     'TRAIL',
     'BREAKEVEN',
     'PARTIAL',
+    'ADDON_RESOLVED',
+    'BarClosed',
+    'EquityObserved',
+    'DayRolled',
+    'CloseRequested',
   ];
+  // Human-readable labels for journal kind filter buttons.
+  kindLabel(k: string): string {
+    const map: Record<string, string> = {
+      ALL: 'All', OrderProposed: 'Signal', OrderSubmitted: 'Order',
+      OrderFilled: 'Fill', OrderPartiallyFilled: 'Fill', OrderRejected: 'Rejected',
+      OrderCancelled: 'Cancelled', TRAIL: 'Trail', BREAKEVEN: 'Breakeven',
+      PARTIAL: 'Partial', ADDON_RESOLVED: 'AddOn', BarClosed: 'Bar',
+      EquityObserved: 'Equity', DayRolled: 'Roll', CloseRequested: 'Close',
+    };
+    return map[k] ?? k;
+  }
 
   journalExportUrl(runId: string): string {
     return this.api.journalExportUrl(runId);

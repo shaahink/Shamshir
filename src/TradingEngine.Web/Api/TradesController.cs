@@ -37,17 +37,25 @@ public sealed class TradesController : ControllerBase
             {
                 Id = t.Id,
                 PositionId = t.PositionId,
+                OrderId = t.OrderId,
                 Symbol = t.Symbol,
                 Direction = t.Direction,
                 Lots = t.Lots,
                 EntryPrice = t.EntryPrice,
                 ExitPrice = t.ExitPrice,
                 ClosedAtUtc = t.ClosedAtUtc,
+                GrossPnLAmount = t.GrossPnLAmount,
+                CommissionAmount = t.CommissionAmount,
+                SwapAmount = t.SwapAmount,
                 NetPnLAmount = t.NetPnLAmount,
                 PnLPips = t.PnLPips,
                 RMultiple = t.RMultiple,
+                MaxAdverseExcursion = t.MaxAdverseExcursion,
+                MaxFavorableExcursion = t.MaxFavorableExcursion,
                 ExitReason = t.ExitReason,
                 StrategyId = t.StrategyId,
+                DurationSeconds = t.DurationSeconds,
+                EntryType = t.Mode,
             })
             .ToListAsync(ct);
 

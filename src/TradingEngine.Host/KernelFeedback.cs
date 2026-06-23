@@ -23,7 +23,13 @@ public static class KernelFeedback
         OrderState.PartiallyFilled =>
             new OrderPartiallyFilled(e.OrderId, symbol, e.FilledLots, e.FillPrice ?? new Price(0m), e.TimestampUtc),
         OrderState.Filled =>
-            new OrderFilled(e.OrderId, symbol, e.FilledLots, e.FillPrice ?? new Price(0m), e.TimestampUtc),
+            new OrderFilled(e.OrderId, symbol, e.FilledLots, e.FillPrice ?? new Price(0m), e.TimestampUtc)
+            {
+                GrossProfit = e.GrossProfit,
+                NetProfit = e.NetProfit,
+                Commission = e.Commission,
+                Swap = e.Swap,
+            },
         OrderState.Cancelled =>
             new OrderCancelled(e.OrderId, symbol, e.RejectionReason ?? "CANCELLED", e.TimestampUtc),
         OrderState.Rejected =>

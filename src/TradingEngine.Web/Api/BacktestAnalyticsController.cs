@@ -2,6 +2,11 @@ namespace TradingEngine.Web.Api;
 
 using TradingEngine.Risk.Compliance;
 
+/// <summary>
+/// Legacy analytics controller. The SPA now uses <c>/api/runs/{id}/...</c> endpoints exclusively
+/// (see <see cref="RunsController"/>). These endpoints survive for backward compatibility with
+/// external callers / curl / manual testing, but are NOT consumed by the Angular SPA.
+/// </summary>
 [ApiController]
 [Route("api/backtest/analytics")]
 public class BacktestAnalyticsController : ControllerBase

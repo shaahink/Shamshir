@@ -117,6 +117,10 @@ export class TradeListComponent implements OnInit {
   columns: ColumnDef[] = [
     { key: 'timeframe', label: 'TF' },
     ...TRADE_COLUMNS,
+    { key: 'entryType', label: 'Type' },
+    { key: 'durationSeconds', label: 'Hold', format: 'duration' },
+    { key: 'maxAdverseExcursion', label: 'MAE', format: 'number' },
+    { key: 'maxFavorableExcursion', label: 'MFE', format: 'number' },
   ];
 
   filtered(): TradeSummary[] {
