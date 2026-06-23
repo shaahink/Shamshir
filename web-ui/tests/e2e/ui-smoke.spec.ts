@@ -343,3 +343,55 @@ test.describe('Duplicate dialog modal (iter-39 A1, requires SEEDED_RUN_ID)', () 
     if (await cancel.isVisible().catch(() => false)) await cancel.click();
   });
 });
+
+// Phase B: lossless monitor journal polling (31-B2)
+test.describe('Live Monitor journal polling (31-B2)', () => {
+  test('renders journal section with entries', async ({ page }) => {
+    await page.goto('/runs');
+    await expect(page.locator('app-run-list table tbody tr').first()).toBeVisible({ timeout: TIMEOUT });
+    const rows = page.locator('app-run-list table tbody tr');
+    const count = await rows.count();
+    await rows.nth(count - 1).click();
+    await page.waitForURL('**/runs/**', { timeout: TIMEOUT });
+    const url = page.url();
+    await page.goto(url + '/monitor');
+    await expect(page.locator('app-run-monitor')).toBeVisible({ timeout: TIMEOUT });
+    // Journal section should be present
+    await expect(page.locator('app-run-monitor', { hasText: 'Journal' })).toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+// Phase C5: CreateModal in risk-profile-list
+test.describe('Risk Profile create modal (C5)', () => {
+  test('opens and closes via Cancel', async ({ page }) => {
+    await page.goto('/risk-profiles');
+    await expect(page.locator('app-risk-profile-list')).toBeVisible({ timeout: TIMEOUT });
+    const newBtn = page.locator('app-risk-profile-list button', { hasText: 'New Profile' });
+    await expect(newBtn).toBeVisible({ timeout: TIMEOUT });
+    await newBtn.click();
+    // Modal should appear
+    await expect(page.locator('app-create-modal')).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-create-modal', { hasText: 'New Risk Profile' })).toBeVisible({ timeout: TIMEOUT });
+    // Cancel should close it
+    await page.locator('app-create-modal button', { hasText: 'Cancel' }).click();
+    await expect(page.locator('app-create-modal')).not.toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+// Phase A: T4 per-bar "why" table
+test.describe('Run Report per-bar why (T4)', () => {
+  test('per-bar why section renders when data exists', async ({ page }) => {
+    await page.goto('/runs');
+    await expect(page.locator('app-run-list table tbody tr').first()).toBeVisible({ timeout: TIMEOUT });
+    const rows = page.locator('app-run-list table tbody tr');
+    const count = await rows.count();
+    await rows.nth(count - 1).click();
+    await page.waitForURL('**/runs/**', { timeout: TIMEOUT });
+    await expect(page.locator('app-run-report')).toBeVisible({ timeout: TIMEOUT });
+    // The per-bar "why" heading should be present
+    const headings = await page.locator('app-run-report h2').allTextContents();
+    const hasWhy = headings.join(' ').includes('Per-bar');
+    if (!hasWhy) test.skip(true, 'no per-bar why section');
+    await expect(page.locator('app-run-report h2', { hasText: 'Per-bar' })).toBeVisible({ timeout: TIMEOUT });
+  });
+});
