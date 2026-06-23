@@ -3,6 +3,7 @@ import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import type { PropFirmRule, PropFirmRuleEdit } from '../../models/api.types';
 import { PropFirmRulesApiService } from './prop-firm-rules.service';
+import { DetailFormBase } from '../../shared/detail-form-base';
 
 @Component({
   selector: 'app-prop-firm-rule-detail',
@@ -237,15 +238,13 @@ import { PropFirmRulesApiService } from './prop-firm-rules.service';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class PropFirmRuleDetailComponent implements OnInit {
+export class PropFirmRuleDetailComponent extends DetailFormBase implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(PropFirmRulesApiService);
   private router = inject(Router);
   data = signal<PropFirmRule | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   edit: Record<string, any> = {};
-  saving = signal(false);
-  savedOk = signal(false);
 
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id');

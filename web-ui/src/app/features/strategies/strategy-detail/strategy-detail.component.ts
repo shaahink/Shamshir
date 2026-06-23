@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import type { StrategyDetail, RiskProfile } from '../../../models/api.types';
 import { StrategiesApiService } from '../strategies.service';
 import { RiskProfilesApiService } from '../../risk-profiles/risk-profiles.service';
+import { DetailFormBase } from '../../../shared/detail-form-base';
 
 @Component({
   selector: 'app-strategy-detail',
@@ -364,7 +365,7 @@ import { RiskProfilesApiService } from '../../risk-profiles/risk-profiles.servic
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class StrategyDetailComponent implements OnInit {
+export class StrategyDetailComponent extends DetailFormBase implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(StrategiesApiService);
   private rpApi = inject(RiskProfilesApiService);
@@ -372,8 +373,6 @@ export class StrategyDetailComponent implements OnInit {
 
   data = signal<StrategyDetail | null>(null);
   editing = signal(false);
-  saving = signal(false);
-  savedOk = signal(false);
   validationError = signal<string | null>(null);
   riskProfiles = signal<RiskProfile[]>([]);
   isCreate = false;

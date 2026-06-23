@@ -2,6 +2,7 @@ import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@ang
 import { FormsModule } from '@angular/forms';
 import type { GovernorOptions, GovernorOptionsEdit } from '../../models/api.types';
 import { GovernorApiService } from './governor.service';
+import { DetailFormBase } from '../../shared/detail-form-base';
 
 @Component({
   selector: 'app-governor-edit',
@@ -107,13 +108,11 @@ import { GovernorApiService } from './governor.service';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class GovernorEditComponent implements OnInit {
+export class GovernorEditComponent extends DetailFormBase implements OnInit {
   private api = inject(GovernorApiService);
   data = signal<GovernorOptions | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   edit: Record<string, any> = {};
-  saving = signal(false);
-  savedOk = signal(false);
 
   async ngOnInit(): Promise<void> {
     const g = await this.api.get();

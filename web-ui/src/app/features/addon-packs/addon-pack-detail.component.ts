@@ -3,6 +3,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import type { AddOnPack, AutoTunePreview } from '../../models/api.types';
 import { AddOnPacksApiService } from './addon-packs.service';
+import { DetailFormBase } from '../../shared/detail-form-base';
 
 @Component({
   selector: 'app-addon-pack-detail',
@@ -67,7 +68,7 @@ import { AddOnPacksApiService } from './addon-packs.service';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AddOnPackDetailComponent implements OnInit {
+export class AddOnPackDetailComponent extends DetailFormBase implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(AddOnPacksApiService);
   pack = signal<AddOnPack | null>(null);
@@ -78,8 +79,6 @@ export class AddOnPackDetailComponent implements OnInit {
   beEnabled = false;
   beTriggerR = 1.0;
   beOffset = 1.0;
-  saving = signal(false);
-  savedOk = signal(false);
 
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id');

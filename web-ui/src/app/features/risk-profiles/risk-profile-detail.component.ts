@@ -3,6 +3,7 @@ import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import type { RiskProfile, RiskProfileEdit } from '../../models/api.types';
 import { RiskProfilesApiService } from './risk-profiles.service';
+import { DetailFormBase } from '../../shared/detail-form-base';
 
 @Component({
   selector: 'app-risk-profile-detail',
@@ -243,15 +244,13 @@ import { RiskProfilesApiService } from './risk-profiles.service';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class RiskProfileDetailComponent implements OnInit {
+export class RiskProfileDetailComponent extends DetailFormBase implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(RiskProfilesApiService);
   private router = inject(Router);
   data = signal<RiskProfile | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   edit: Record<string, any> = {};
-  saving = signal(false);
-  savedOk = signal(false);
   errors = signal<string[]>([]);
 
   // F7 — validate before save; block the PUT and surface field errors when invalid.
