@@ -1,12 +1,14 @@
 # Shamshir — Open Issues
 
-**Updated**: 2026-06-21 (iter-38 add-ons, in-progress on branch `iter/38-addons`)
+**Updated**: 2026-06-23 (iter-38 add-ons + iter-39 cleanup, on branch `iter/38-addons`)
 **Branch**: `iter/38-addons` (cut from `iter/37-frontend-finish`)
-**Current gate**: build 0 err · Unit 249/0/5-skip · Architecture 5/5 · Integration 61/61 · Simulation determinism 61/61 · SPA build green.
+**Current gate**: build 0 err · Unit 260/5-skip · Architecture 5/5 · Integration 61/61 · Simulation determinism 61/61 · SPA build 0 errors.
 
-> **S5 (Stream-W backend) is COMPLETE** — W-A7 (governor monitor), W-B4 (pass-prob ruleset), W-B2 (experiment-by-id), W-B8 (DateTime UTC-Z), W-B9/B10 (UTC buckets). **S6 is in-progress** — CT-1 SkippableFact conversion, InProcessEngineSmokeTests DI fix, B3 WireRiskRules consolidation+T8, B7/T9 cancelled status are landed; B1 (kernel counters), B2 (per-bar why), B4 (cTrader equity-flush), B5 (Duplicate replay), B6 (cTrader impl) remain.
+> **Iter-38 is COMPLETE.** All S0–S10 slices delivered. **Iter-39 cleanup** landed: Duplicate dialog (S6 B5), typed edit states (4 components), OnPush on all 26 components, auto-tuner `referenceAtrFor` lookup, regime detection from pack wiring, SqliteGovernorOptionsStore logged catch, AuditStampInterceptor clock injection, AddOnJournalKindsTests, and 4 cBot unlogged catches fixed.
 >
-> The **5 pre-existing cTrader/NetMQ reds** are handled (1 fixed + passes, 4 `[SkippableFact]`-gated + parked for owner-verify; a `CTrader:CtId` is configured on this machine so they run+fail against the absent platform).
+> **cTrader E2E:** credentials ARE configured. 2/3 smoke tests pass. `TradeLedger_ClientOrderIdReconciliation_NoMissingTrades` shows cTrader=17 DB=16 — a pump-drain race where the engine stops processing before the last execs drain from the channel. CBOT logging now enables diagnosis.
+>
+> See `docs/iterations/iter-38/HANDOVER.md` for the full comprehensive status. This OPEN-ISSUES file tracks the long-lived carry-forward items below.
 
 > **iter-37 SIGNED OFF.** The iter-36 cutover follow-ups (K-GAP-1..6, K-GAP-5 excepted) + the
 > frontend finish (F1–F8) + the pressure/reality test spine (G/F/J/E/B/C/D) + the **D-drop dead-code removal
