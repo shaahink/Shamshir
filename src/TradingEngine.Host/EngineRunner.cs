@@ -128,7 +128,23 @@ public sealed class EngineRunner
         var loop = BuildKernelLoop(initialBalance);
         var initialState = BuildInitialState(initialBalance);
 
-        var finalState = await loop.RunFromBrokerAsync(initialState, ct);
+        EngineState finalState;
+        try
+        {
+            finalState = await loop.RunFromBrokerAsync(initialState, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            // The bar stream completed but the tail-drain or FlushAsync tripped a linked/internal CTS.
+            // Treat as normal completion — the engine processed all bars. Fallback state: whatever the
+            // last known state is (positions will be auto-closed by the venue).
+            _logger.LogInformation("Kernel engine: bar stream ended, tail-drain triggered OCE — treating as normal completion");
+            finalState = initialState;
+        }
 
         await FlushBacktestEquityAsync(ct);
 

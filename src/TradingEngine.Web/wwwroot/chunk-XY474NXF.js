@@ -1,0 +1,1 @@
+import"./chunk-AP4OEWII.js";var t=[{path:"",loadComponent:()=>import("./chunk-HXYCDY54.js").then(o=>o.RiskProfileListComponent)},{path:":id",loadComponent:()=>import("./chunk-66K2AANZ.js").then(o=>o.RiskProfileDetailComponent)}];export{t as RISK_PROFILES_ROUTES};

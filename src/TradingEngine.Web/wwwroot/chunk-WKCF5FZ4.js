@@ -1,0 +1,1 @@
+import"./chunk-AP4OEWII.js";var t=[{path:"",loadComponent:()=>import("./chunk-PCCZCVKR.js").then(o=>o.AddOnPackListComponent)},{path:":id",loadComponent:()=>import("./chunk-Y2DWLYCH.js").then(o=>o.AddOnPackDetailComponent)}];export{t as addonPacksRoutes};
