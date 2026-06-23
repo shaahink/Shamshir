@@ -1,14 +1,6 @@
-import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
-import { isPlatformBrowser } from '@angular/common';
-import {
-  ColorType,
-  createChart,
-  CandlestickSeries,
-  LineSeries,
-  type IChartApi,
-  type UTCTimestamp,
-} from 'lightweight-charts';
-import { queryHost } from './dom.helper';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
+import { CandlestickSeries, LineSeries } from 'lightweight-charts';
+import { BaseChartComponent } from './base-chart.component';
 import { toUtcTimestamp } from './chart-time.helper';
 
 export interface OhlcBar {
@@ -33,38 +25,20 @@ export interface PriceMarker {
   </div>`,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class CandleChartComponent implements OnDestroy {
+export class CandleChartComponent extends BaseChartComponent {
   readonly title = input('Price Chart');
   readonly bars = input<OhlcBar[]>([]);
   readonly markers = input<PriceMarker[]>([]);
 
-  private el = inject(ElementRef);
-  private platformId = inject(PLATFORM_ID);
-  private chart: IChartApi | null = null;
   private candleSeries: any = null;
   private markerLines: any[] = [];
-  private resizeObserver: ResizeObserver | null = null;
 
-  constructor() {
-    afterNextRender(() => {
-      if (!isPlatformBrowser(this.platformId)) return;
-      this.initChart();
-    });
-    effect(() => this.updateData());
-  }
-
-  private initChart(): void {
-    const container = queryHost(this.el, '.chart-host') as HTMLDivElement;
-    if (!container || this.chart) return;
-
-    this.chart = createChart(container, {
-      width: container.clientWidth,
-      height: 384,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#9ca3af' },
-      grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
+  protected initChart(): void {
+    const container = this.initChartBase('.chart-host', 0, 384, {
       timeScale: { timeVisible: true, borderColor: '#374151' },
       rightPriceScale: { borderColor: '#374151' },
     });
+    if (!container || !this.chart) return;
 
     this.candleSeries = this.chart.addSeries(CandlestickSeries, {
       upColor: '#10b981',
@@ -74,49 +48,29 @@ export class CandleChartComponent implements OnDestroy {
       wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
     });
-
-    // iter-38 W-A3: respond to viewport changes so charts don't clip/leave dead space on resize.
-    this.resizeObserver = new ResizeObserver(() => {
-      if (!this.chart || !container) return;
-      this.chart.resize(container.clientWidth, container.clientHeight);
-    });
-    this.resizeObserver.observe(container);
   }
 
-  private updateData(): void {
-    if (!this.candleSeries) return;
+  protected updateChart(): void {
+    if (!this.candleSeries || !this.chart) return;
 
     const candleData = this.bars().map((b) => ({
       time: toUtcTimestamp(b.time),
-      open: b.open,
-      high: b.high,
-      low: b.low,
-      close: b.close,
+      open: b.open, high: b.high, low: b.low, close: b.close,
     }));
     this.candleSeries.setData(candleData.length > 0 ? candleData : []);
 
-    this.markerLines.forEach((s) => this.chart?.removeSeries(s));
+    this.markerLines.forEach((s) => this.chart!.removeSeries(s));
     this.markerLines = [];
 
     for (const m of this.markers()) {
       const ls = this.chart!.addSeries(LineSeries, {
-        color: m.color,
-        lineWidth: 1,
-        lineStyle: 2,
-        priceLineVisible: false,
-        lastValueVisible: false,
+        color: m.color, lineWidth: 1, lineStyle: 2,
+        priceLineVisible: false, lastValueVisible: false,
       });
       const t0 = candleData[0]?.time ?? toUtcTimestamp(Date.now());
       const t1 = candleData[candleData.length - 1]?.time ?? t0;
-      ls.setData([
-        { time: t0, value: m.price },
-        { time: t1, value: m.price },
-      ]);
+      ls.setData([{ time: t0, value: m.price }, { time: t1, value: m.price }]);
       this.markerLines.push(ls);
     }
-  }
-  ngOnDestroy(): void {
-    this.resizeObserver?.disconnect();
-    this.chart?.remove();
   }
 }

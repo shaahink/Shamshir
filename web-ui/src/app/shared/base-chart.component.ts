@@ -1,0 +1,54 @@
+import { inject, OnDestroy, PLATFORM_ID, afterNextRender, effect, ElementRef, Directive } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+import { ColorType, createChart, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
+import { queryHost } from './dom.helper';
+import { toUtcTimestamp } from './chart-time.helper';
+
+@Directive()
+export abstract class BaseChartComponent implements OnDestroy {
+  protected el = inject(ElementRef);
+  protected platformId = inject(PLATFORM_ID);
+  protected chart: IChartApi | null = null;
+  protected resizeObserver: ResizeObserver | null = null;
+
+  constructor() {
+    afterNextRender(() => {
+      if (!isPlatformBrowser(this.platformId)) return;
+      this.initChart();
+    });
+    effect(() => this.updateChart());
+  }
+
+  protected initChartBase(
+    containerSelector: string,
+    width: number,
+    height: number,
+    options?: Record<string, unknown>,
+  ): HTMLDivElement | null {
+    const container = queryHost(this.el, containerSelector) as HTMLDivElement;
+    if (!container || this.chart) return null;
+
+    this.chart = createChart(container, {
+      width,
+      height,
+      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#9ca3af' },
+      grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
+      ...options,
+    });
+
+    this.resizeObserver = new ResizeObserver(() => {
+      if (!this.chart || !container) return;
+      this.chart.resize(container.clientWidth, container.clientHeight);
+    });
+    this.resizeObserver.observe(container);
+    return container;
+  }
+
+  protected abstract initChart(): void;
+  protected abstract updateChart(): void;
+
+  ngOnDestroy(): void {
+    this.resizeObserver?.disconnect();
+    this.chart?.remove();
+  }
+}

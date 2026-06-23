@@ -1,7 +1,6 @@
-import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
-import { isPlatformBrowser } from '@angular/common';
-import { ColorType, createChart, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
-import { queryHost } from './dom.helper';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
+import { LineSeries, type UTCTimestamp } from 'lightweight-charts';
+import { BaseChartComponent } from './base-chart.component';
 
 export interface ScatterPoint {
   x: number;
@@ -17,69 +16,33 @@ export interface ScatterPoint {
   </div>`,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ScatterChartComponent implements OnDestroy {
+export class ScatterChartComponent extends BaseChartComponent {
   readonly title = input('Scatter');
   readonly data = input<ScatterPoint[]>([]);
-  readonly color = input('#10b981');
+  readonly color = input('#f472b6');
   readonly xLabel = input('X');
   readonly yLabel = input('Y');
 
-  private el = inject(ElementRef);
-  private platformId = inject(PLATFORM_ID);
-  private chart: IChartApi | null = null;
-  private seriesY: any = null;
-  private seriesX: any = null;
-  private resizeObserver: ResizeObserver | null = null;
+  private xSeries: any = null;
+  private ySeries: any = null;
 
-  constructor() {
-    afterNextRender(() => {
-      if (!isPlatformBrowser(this.platformId)) return;
-      this.initChart();
-    });
-    effect(() => this.updateData());
-  }
-
-  private initChart(): void {
-    const container = queryHost(this.el, '.chart-host') as HTMLDivElement;
-    if (!container || this.chart) return;
-    this.chart = createChart(container, {
-      width: container.clientWidth,
-      height: 288,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#9ca3af' },
-      grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
+  protected initChart(): void {
+    const container = this.initChartBase('.chart-host', 0, 288, {
+      timeScale: { visible: false },
       rightPriceScale: { borderColor: '#374151' },
     });
-    this.seriesY = this.chart.addSeries(LineSeries, {
-      color: this.color(),
-      lineVisible: false,
-      pointMarkersVisible: true,
-      lastValueVisible: false,
-    } as any);
-    this.seriesX = this.chart.addSeries(LineSeries, {
-      color: '#f59e0b',
-      lineVisible: false,
-      pointMarkersVisible: true,
-      lastValueVisible: false,
-    } as any);
-    this.updateData();
+    if (!container || !this.chart) return;
 
-    this.resizeObserver = new ResizeObserver(() => {
-      if (!this.chart || !container) return;
-      this.chart.resize(container.clientWidth, container.clientHeight);
-    });
-    this.resizeObserver.observe(container);
+    this.ySeries = this.chart.addSeries(LineSeries, { lineWidth: 2, priceLineVisible: false, lastValueVisible: false, color: this.color() });
+    this.xSeries = this.chart.addSeries(LineSeries, { lineWidth: 2, priceLineVisible: false, lastValueVisible: false, color: '#60a5fa', priceScaleId: 'x' });
+    this.chart.priceScale('x').applyOptions({ mode: 2, invertScale: true, visible: false });
   }
 
-  private updateData(): void {
-    if (!this.seriesY || !this.seriesX || !this.chart) return;
+  protected updateChart(): void {
+    if (!this.xSeries || !this.ySeries || !this.chart) return;
     const ptsY = this.data().map((d, i) => ({ time: i as UTCTimestamp, value: d.y }));
     const ptsX = this.data().map((d, i) => ({ time: i as UTCTimestamp, value: d.x }));
-    this.seriesY.setData(ptsY);
-    this.seriesX.setData(ptsX);
-  }
-
-  ngOnDestroy(): void {
-    this.resizeObserver?.disconnect();
-    this.chart?.remove();
+    this.xSeries.setData(ptsX);
+    this.ySeries.setData(ptsY);
   }
 }

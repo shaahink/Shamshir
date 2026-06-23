@@ -1,7 +1,6 @@
-import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
-import { isPlatformBrowser } from '@angular/common';
-import { ColorType, createChart, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
-import { queryHost } from './dom.helper';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
+import { LineSeries } from 'lightweight-charts';
+import { BaseChartComponent } from './base-chart.component';
 import { toUtcTimestamp } from './chart-time.helper';
 
 export interface ChartPoint {
@@ -19,67 +18,42 @@ export interface ChartPoint {
   </div>`,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class EquityChartComponent implements OnDestroy {
+export class EquityChartComponent extends BaseChartComponent {
   readonly title = input('Equity Curve');
   readonly data = input<ChartPoint[]>([]);
   readonly lineColor = input('#10b981');
   readonly showDrawdown = input(true);
   readonly showBalance = input(false);
 
-  private el = inject(ElementRef);
-  private platformId = inject(PLATFORM_ID);
-  private chart: IChartApi | null = null;
   private equitySeries: any = null;
   private balanceSeries: any = null;
   private ddSeries: any = null;
-  private resizeObserver: ResizeObserver | null = null;
 
-  constructor() {
-    afterNextRender(() => {
-      if (!isPlatformBrowser(this.platformId)) return;
-      this.initChart();
-    });
-    effect(() => {
-      this.updateData(this.data(), this.showBalance(), this.showDrawdown());
-    });
-  }
-
-  private initChart(): void {
-    const container = queryHost(this.el, '.chart-host') as HTMLDivElement;
-    if (!container || this.chart) return;
-
-    this.chart = createChart(container, {
-      width: container.clientWidth,
-      height: 288,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#9ca3af' },
-      grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
+  protected initChart(): void {
+    const container = this.initChartBase('.chart-host', 0, 288, {
       timeScale: { timeVisible: true, borderColor: '#374151' },
       rightPriceScale: { borderColor: '#374151' },
     });
-
+    if (!container || !this.chart) return;
     this.equitySeries = this.chart.addSeries(LineSeries, { color: this.lineColor(), lineWidth: 2 });
-
-    // iter-38 W-A3: respond to viewport changes.
-    this.resizeObserver = new ResizeObserver(() => {
-      if (!this.chart || !container) return;
-      this.chart.resize(container.clientWidth, container.clientHeight);
-    });
-    this.resizeObserver.observe(container);
   }
 
-  private updateData(points: ChartPoint[], showBal: boolean, showDD: boolean): void {
+  protected updateChart(): void {
+    const points = this.data();
     if (!this.equitySeries || points.length === 0) return;
     const equityData = points.map((d) => ({ time: toUtcTimestamp(d.time), value: d.value }));
+    this.equitySeries.setData(equityData);
 
+    const showBal = this.showBalance();
+    const showDD = this.showDrawdown();
     const hasBalance = showBal && points.some((p) => p.balance != null);
+
     if (hasBalance && !this.balanceSeries && this.chart) {
       this.balanceSeries = this.chart.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 1, lineStyle: 1 });
     }
     if (hasBalance && this.balanceSeries) {
       this.balanceSeries.setData(
-        points
-          .filter((p) => p.balance != null)
-          .map((p) => ({ time: toUtcTimestamp(p.time), value: p.balance! })),
+        points.filter((p) => p.balance != null).map((p) => ({ time: toUtcTimestamp(p.time), value: p.balance! })),
       );
     }
     if (!hasBalance && this.balanceSeries) {
@@ -89,31 +63,21 @@ export class EquityChartComponent implements OnDestroy {
 
     if (showDD && points.length > 1) {
       let peak = points[0].value;
-      const ddPoints: { time: UTCTimestamp; value: number }[] = [];
+      const ddPoints: { time: number; value: number }[] = [];
       for (const p of points) {
         if (p.value > peak) peak = p.value;
         ddPoints.push({ time: toUtcTimestamp(p.time), value: peak > 0 ? ((p.value - peak) / peak) * 100 : 0 });
       }
-      if (!this.ddSeries) {
-        this.ddSeries = this.chart!.addSeries(LineSeries, {
-          color: '#ef4444',
-          lineWidth: 1,
-          priceScaleId: 'dd',
-        });
-        this.chart!.priceScale('dd').applyOptions({ mode: 2, invertScale: true, visible: false });
+      if (!this.ddSeries && this.chart) {
+        this.ddSeries = this.chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, priceScaleId: 'dd' });
+        this.chart.priceScale('dd').applyOptions({ mode: 2, invertScale: true, visible: false });
       }
-      this.ddSeries.setData(ddPoints);
+      this.ddSeries?.setData(ddPoints);
     } else {
       if (this.ddSeries) {
         this.chart?.removeSeries(this.ddSeries);
         this.ddSeries = null;
       }
     }
-    this.equitySeries.setData(equityData);
-  }
-
-  ngOnDestroy(): void {
-    this.resizeObserver?.disconnect();
-    this.chart?.remove();
   }
 }

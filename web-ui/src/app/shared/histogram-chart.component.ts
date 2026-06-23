@@ -1,7 +1,6 @@
-import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, effect, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
-import { isPlatformBrowser } from '@angular/common';
-import { ColorType, createChart, HistogramSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
-import { queryHost } from './dom.helper';
+import { Component, input, ChangeDetectionStrategy, Directive } from '@angular/core';
+import { HistogramSeries } from 'lightweight-charts';
+import { BaseChartComponent } from './base-chart.component';
 
 export interface HistogramBin {
   time: number;
@@ -17,54 +16,23 @@ export interface HistogramBin {
   </div>`,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class HistogramChartComponent implements OnDestroy {
+export class HistogramChartComponent extends BaseChartComponent {
   readonly title = input('Distribution');
   readonly data = input<HistogramBin[]>([]);
   readonly color = input('#10b981');
 
-  private el = inject(ElementRef);
-  private platformId = inject(PLATFORM_ID);
-  private chart: IChartApi | null = null;
   private series: any = null;
-  private resizeObserver: ResizeObserver | null = null;
 
-  constructor() {
-    afterNextRender(() => {
-      if (!isPlatformBrowser(this.platformId)) return;
-      this.initChart();
-    });
-    effect(() => this.updateData());
-  }
-
-  private initChart(): void {
-    const container = queryHost(this.el, '.chart-host') as HTMLDivElement;
-    if (!container || this.chart) return;
-    this.chart = createChart(container, {
-      width: container.clientWidth,
-      height: 256,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#9ca3af' },
-      grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
-      timeScale: { visible: false },
-      rightPriceScale: { borderColor: '#374151' },
-    });
+  protected initChart(): void {
+    const container = this.initChartBase('.chart-host', 0, 256);
+    if (!container || !this.chart) return;
+    this.chart.applyOptions({ timeScale: { visible: false }, rightPriceScale: { borderColor: '#374151' } });
     this.series = this.chart.addSeries(HistogramSeries, { color: this.color() });
-    this.updateData();
-
-    this.resizeObserver = new ResizeObserver(() => {
-      if (!this.chart || !container) return;
-      this.chart.resize(container.clientWidth, container.clientHeight);
-    });
-    this.resizeObserver.observe(container);
   }
 
-  private updateData(): void {
+  protected updateChart(): void {
     if (!this.series || !this.chart) return;
-    const pts = this.data().map((d) => ({ time: d.time as UTCTimestamp, value: d.value }));
+    const pts = this.data().map((d) => ({ time: d.time as any, value: d.value }));
     this.series.setData(pts);
-  }
-
-  ngOnDestroy(): void {
-    this.resizeObserver?.disconnect();
-    this.chart?.remove();
   }
 }
