@@ -257,4 +257,62 @@ public sealed class RunsController : ControllerBase
         var points = await _legacyQuery.GetEquityAsync(from, to, ct);
         return Ok(points.Select(p => new { p.TimestampUtc, p.Equity, p.Balance }));
     }
+
+    // C2: one-page JSON export — all run data in a single machine-readable document.
+    [HttpGet("{runId}/export/json")]
+    public async Task<IActionResult> ExportJson(string runId, CancellationToken ct)
+    {
+        var run = await _query.GetRunAsync(runId, ct);
+        if (run is null) return NotFound(new { error = $"Run {runId} not found" });
+
+        var trades = await _query.GetRunTradesAsync(runId, ct);
+        var equity = await _query.GetRunEquityAsync(runId, ct);
+        var dailyPnl = await _query.GetRunDailyPnLAsync(runId, ct);
+        var analytics = await _query.GetRunAnalyticsAsync(runId, ct);
+        var breakdown = await _legacyQuery.GetStrategyBreakdownAsync(runId, ct);
+
+        var costs = trades.Aggregate((Gross: 0m, Comm: 0m, Swap: 0m, Net: 0m),
+            (a, t) => (a.Gross + t.GrossPnLAmount, a.Comm + t.CommissionAmount, a.Swap + t.SwapAmount, a.Net + t.NetPnLAmount));
+
+        var result = new
+        {
+            run = new
+            {
+                run.RunId,
+                run.Status,
+                run.Symbol,
+                run.Period,
+                Symbols = ParseJsonArray(run.Symbols),
+                Periods = ParseJsonArray(run.Periods),
+                run.StartedAtUtc,
+                run.CompletedAtUtc,
+                BacktestFrom = run.BacktestFrom,
+                BacktestTo = run.BacktestTo,
+                run.InitialBalance,
+                run.NetProfit,
+                run.GrossPnL,
+                run.CommissionTotal,
+                run.SwapTotal,
+                run.MaxDrawdownPct,
+                run.TotalTrades,
+                run.WinningTrades,
+                run.WinRatePct,
+            },
+            costReconciliation = new
+            {
+                gross = costs.Gross,
+                commission = costs.Comm,
+                swap = costs.Swap,
+                net = costs.Net,
+                verified = costs.Gross - costs.Comm - costs.Swap == costs.Net,
+            },
+            trades,
+            equity,
+            dailyPnl,
+            analytics,
+            strategyBreakdown = breakdown,
+        };
+
+        return Ok(result);
+    }
 }

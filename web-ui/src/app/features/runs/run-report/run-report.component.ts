@@ -220,6 +220,25 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                   </tbody>
                 </table>
               </div>
+              <!-- C1: per-strategy rejection reason histogram -->
+              <div class="mt-3 space-y-2">
+                @for (s of breakdown(); track s.strategyId) {
+                  @if (s.topRejections?.length) {
+                    <div>
+                      <div class="text-xs text-gray-500 mb-0.5">{{ s.strategyId }}</div>
+                      <div class="flex gap-0.5 items-end">
+                        @for (r of s.topRejections; track r.reason) {
+                          <div class="text-center" [style.flex]="1">
+                            <div class="rounded-t bg-emerald-700/60 min-w-4" [style.height.px]="rejectionBarHeight(r.count, s.topRejections)"
+                              [title]="r.reason + ': ' + r.count"></div>
+                            <div class="text-xs text-gray-500 truncate" [title]="r.reason">{{ r.reason }}</div>
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+                }
+              </div>
             </div>
           }
 
@@ -533,6 +552,11 @@ export class RunReportComponent implements OnInit {
 
   topReasons(s: StrategyPerformance): string {
     return (s.topRejections ?? []).map((r) => r.reason + ' (' + r.count + ')').join(', ') || '\u2014';
+  }
+
+  rejectionBarHeight(count: number, rejections: { count: number }[]): number {
+    const max = Math.max(...rejections.map(r => r.count), 1);
+    return Math.max(4, (count / max) * 60);
   }
 
   // F4 — MAE/MFE scatter from the run's trades (x = MAE as negative pips, y = MFE).
