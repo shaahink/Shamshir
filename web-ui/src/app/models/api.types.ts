@@ -188,7 +188,18 @@ export interface RiskProfile {
   allowHedging?: boolean;
   maxSlPips?: number;
   maxExposurePercent?: number;
+  maxExposurePerCurrencyPercent?: number;
+  drawdownScaleThreshold?: number;
+  drawdownScaleFloor?: number;
+  fixedLots?: number;
+  fixedDollarRisk?: number;
+  kellyFraction?: number;
+  antiMartingaleMultiplier?: number;
+  antiMartingaleMaxSteps?: number;
+  sizeModifiers?: Record<string, unknown>;
 }
+
+export type RiskProfileEdit = RiskProfile;
 
 export interface StartRunResponse {
   runId: string;
@@ -235,7 +246,7 @@ export interface StrategyDetail {
   positionManagementJson: string | null;
   orderEntryJson: string | null;
   regimeFilterJson: string | null;
-  reentryJson: string | null;
+  reentryJson?: string | null;
 }
 
 export interface BarData {
@@ -258,7 +269,24 @@ export interface PropFirmRule {
   forceCloseOnBreach: boolean;
   allowTradesDuringNews: boolean;
   allowWeekendHolding: boolean;
+  dailyDdBase?: string;
+  maxWeeklyLossPercent?: number;
+  maxMonthlyLossPercent?: number;
+  dailyResetTimeUtc?: string;
+  dailyResetTimezone?: string;
+  newsImpactFilter?: string;
+  newsWindowMinutesBefore?: number;
+  newsWindowMinutesAfter?: number;
+  weekendCloseUtc?: string;
+  weekendNoOpenUtc?: string;
+  protectionResetPolicy?: string;
+  requireProfitTarget?: boolean;
+  equityDefinition?: string;
+  gracePeriod?: Record<string, unknown>;
+  toggles?: Record<string, unknown>;
 }
+
+export type PropFirmRuleEdit = PropFirmRule;
 
 export interface GovernorOptions {
   enabled: boolean;
@@ -266,11 +294,32 @@ export interface GovernorOptions {
   coolingOffConsecutiveLosses?: number;
   profitLockDayFraction?: number;
   profitLockEnabled?: boolean;
+  profitLockFraction?: number;
   softStopDailyDdFraction?: number;
   hardStopDailyDdFraction?: number;
   sizeMultiplier?: number;
-  lossBandFractions?: string;
-  lossBandMultipliers?: string;
+  streakReduceAt?: number;
+  streakMultiplier?: number;
+  streakPauseAt?: number;
+  lossBandFractions?: number[];
+  lossBandMultipliers?: number[];
+}
+
+export interface GovernorOptionsEdit {
+  enabled: boolean;
+  coolingOffBars?: number;
+  coolingOffConsecutiveLosses?: number;
+  profitLockDayFraction?: number;
+  profitLockEnabled?: boolean;
+  profitLockFraction?: number;
+  softStopDailyDdFraction?: number;
+  hardStopDailyDdFraction?: number;
+  sizeMultiplier?: number;
+  streakReduceAt?: number;
+  streakMultiplier?: number;
+  streakPauseAt?: number;
+  lossBandFractions: string;
+  lossBandMultipliers: string;
 }
 
 // iter-38 S10 U1: add-on pack types matching the backend AddOnPack record + auto-tune preview.

@@ -352,8 +352,8 @@ export class RunReportComponent implements OnInit {
   private api = inject(RunsApiService);
   readonly store = inject(RunsStore);
 
-  onTradeClick(row: any): void {
-    if (row?.id) this.router.navigate(['/trades', row.id]);
+  onTradeClick(row: Record<string, unknown>): void {
+    if (row && typeof row['id'] === 'string') this.router.navigate(['/trades', row['id']]);
   }
 
   trades = signal<TradeSummary[]>([]);

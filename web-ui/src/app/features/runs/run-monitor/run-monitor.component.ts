@@ -2,7 +2,7 @@ import { Component, ElementRef, inject, OnDestroy, OnInit, signal, ViewChild, Ch
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { Subscription } from 'rxjs';
-import { RunHubService, type RunProgressEnvelope, type JournalEnvelope } from '../../../core/signalr/run-hub.service';
+import { RunHubService, type RunProgressEnvelope, type JournalEnvelope, type RunCompletedEnvelope } from '../../../core/signalr/run-hub.service';
 import { RunsStore } from '../runs.store';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
@@ -204,9 +204,9 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
     await this.hub.joinRun(rid);
 
     this.subs.add(
-      this.hub.progress$.subscribe((e: any) => {
+      this.hub.progress$.subscribe((e: RunProgressEnvelope) => {
         this.status.set('running');
-        this.barCount.set(e.barsProcessed ?? e.barCount ?? 0);
+        this.barCount.set(e.barsProcessed ?? 0);
         this.totalBars.set(e.barsTotal ?? 0);
         this.percent.set(e.percent ?? 0);
         this.barsPerSec.set(e.barsPerSec ?? 0);
@@ -264,7 +264,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       }),
     );
     this.subs.add(
-      this.hub.completed$.subscribe((e: any) => {
+      this.hub.completed$.subscribe((e: RunCompletedEnvelope) => {
         this.status.set(e.status || 'completed');
         if (e.error) {
           this.breachBanner.set(e.error);

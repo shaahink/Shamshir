@@ -1,6 +1,6 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import type { GovernorOptions } from '../../models/api.types';
+import type { GovernorOptions, GovernorOptionsEdit } from '../../models/api.types';
 import { GovernorApiService } from './governor.service';
 
 @Component({
@@ -110,7 +110,8 @@ import { GovernorApiService } from './governor.service';
 export class GovernorEditComponent implements OnInit {
   private api = inject(GovernorApiService);
   data = signal<GovernorOptions | null>(null);
-  edit: any = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  edit: Record<string, any> = {};
   saving = signal(false);
   savedOk = signal(false);
 

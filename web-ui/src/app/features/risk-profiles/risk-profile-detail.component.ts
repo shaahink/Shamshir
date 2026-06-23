@@ -1,6 +1,7 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import type { RiskProfile, RiskProfileEdit } from '../../models/api.types';
 import { RiskProfilesApiService } from './risk-profiles.service';
 
 @Component({
@@ -246,8 +247,9 @@ export class RiskProfileDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(RiskProfilesApiService);
   private router = inject(Router);
-  data = signal<any>(null);
-  edit: any = {};
+  data = signal<RiskProfile | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  edit: Record<string, any> = {};
   saving = signal(false);
   savedOk = signal(false);
   errors = signal<string[]>([]);

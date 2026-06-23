@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@ang
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { RunsStore } from '../runs.store';
-import type { StrategySummary, StartRunRequest } from '../../../models/api.types';
+import type { StrategySummary, StartRunRequest, RiskProfile } from '../../../models/api.types';
 import { StrategiesApiService } from '../../strategies/strategies.service';
 import { RiskProfilesApiService } from '../../risk-profiles/risk-profiles.service';
 import { AddOnPacksApiService } from '../../addon-packs/addon-packs.service';
@@ -263,8 +263,8 @@ export class NewBacktestComponent implements OnInit {
   packs = signal<{ id: string; name: string }[]>([]);
   disableRegime = false;
   venue = '';
-  strategies = signal<any[]>([]);
-  riskProfiles = signal<any[]>([{ id: 'standard', displayName: 'Standard', riskPerTradePercent: 0.005 }]);
+  strategies = signal<StrategySummary[]>([]);
+  riskProfiles = signal<RiskProfile[]>([{ id: 'standard', displayName: 'Standard', riskPerTradePercent: 0.005, maxDailyDrawdownPercent: 0.05, maxTotalDrawdownPercent: 0.1, maxConcurrentPositions: 5, lotSizingMethod: 'PercentRisk', propFirmRuleSetId: 'ftmo-standard' }]);
   selectedStrategyIds = signal<Set<string>>(new Set());
   overridesText = signal<Record<string, string>>({});
   loading = this.store.isLoading;

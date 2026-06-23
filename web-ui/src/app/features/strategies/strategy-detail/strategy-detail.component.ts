@@ -336,13 +336,14 @@ export class StrategyDetailComponent implements OnInit {
   private rpApi = inject(RiskProfilesApiService);
   private router = inject(Router);
 
-  data = signal<any>(null);
+  data = signal<StrategyDetail | null>(null);
   editing = signal(false);
   saving = signal(false);
   savedOk = signal(false);
   validationError = signal<string | null>(null);
-  riskProfiles = signal<any[]>([]);
-  edit: any = {};
+  riskProfiles = signal<RiskProfile[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  edit: Record<string, any> = {};
   private pmOpenSections = new Set<string>();
 
   regimeFields = [

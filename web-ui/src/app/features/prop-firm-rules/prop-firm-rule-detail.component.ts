@@ -1,6 +1,7 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import type { PropFirmRule, PropFirmRuleEdit } from '../../models/api.types';
 import { PropFirmRulesApiService } from './prop-firm-rules.service';
 
 @Component({
@@ -240,8 +241,9 @@ export class PropFirmRuleDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(PropFirmRulesApiService);
   private router = inject(Router);
-  data = signal<any>(null);
-  edit: any = {};
+  data = signal<PropFirmRule | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  edit: Record<string, any> = {};
   saving = signal(false);
   savedOk = signal(false);
 
