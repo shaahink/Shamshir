@@ -122,6 +122,11 @@ public sealed class KernelBacktestLoop
             state = await ProcessBarAsync(barClosed, state, ct);
         }
 
+        // Tail-drain: after the bar loop, drain any late-arriving venue execution frames (e.g. cTrader's
+        // autonomous end-of-run flatten sends a close exec after the last bar). The replay venue has no
+        // late autonomous execs, so this keeps the golden path byte-identical. One drain serves both venues.
+        state = await PumpAsync(state, ct);
+
         await _journal.FlushAsync(ct);
         return state;
     }

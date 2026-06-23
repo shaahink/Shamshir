@@ -59,7 +59,7 @@ export class HistogramChartComponent implements OnDestroy {
 
   private updateData(): void {
     if (!this.series || !this.chart) return;
-    const pts = this.data().map((d) => ({ time: (d.time / 1000) as UTCTimestamp, value: d.value }));
+    const pts = this.data().map((d) => ({ time: d.time as UTCTimestamp, value: d.value }));
     this.series.setData(pts);
   }
 

@@ -5,6 +5,7 @@ import type {
   RunSummary,
   RunDetail,
   TradeSummary,
+  TradeListResponse,
   JournalEntry,
   EquityPoint,
   DailyPnl,
@@ -51,8 +52,9 @@ export class RunsApiService {
     return firstValueFrom(this.http.delete<{ cancelled: boolean }>(`/api/runs/${runId}`));
   }
 
-  getRunTrades(runId: string): Promise<TradeSummary[]> {
-    return firstValueFrom(this.http.get<TradeSummary[]>(`/api/runs/${runId}/trades`));
+  async getRunTrades(runId: string): Promise<TradeSummary[]> {
+    const r = await firstValueFrom(this.http.get<TradeListResponse>(`/api/runs/${runId}/trades`));
+    return r.trades;
   }
 
   getRunJournal(runId: string, kind?: string, afterSeq?: number, limit = 50): Promise<JournalEntry[]> {

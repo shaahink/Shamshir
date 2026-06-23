@@ -29,6 +29,7 @@ public sealed class TradesController : ControllerBase
         if (to.HasValue) query = query.Where(t => t.ClosedAtUtc <= to.Value);
         if (!string.IsNullOrEmpty(strategyId)) query = query.Where(t => t.StrategyId == strategyId);
 
+        var totalCount = await query.CountAsync(ct);
         var trades = await query
             .OrderByDescending(t => t.ClosedAtUtc)
             .Skip(skip).Take(Math.Clamp(take, 1, 200))
@@ -50,7 +51,7 @@ public sealed class TradesController : ControllerBase
             })
             .ToListAsync(ct);
 
-        return Ok(trades);
+        return Ok(new { totalCount, trades });
     }
 
     [HttpGet("{id:guid}")]

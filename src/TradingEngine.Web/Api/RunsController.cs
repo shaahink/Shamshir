@@ -173,7 +173,7 @@ public sealed class RunsController : ControllerBase
     public async Task<IActionResult> GetTrades(string runId, CancellationToken ct)
     {
         var trades = await _query.GetRunTradesAsync(runId, ct);
-        return Ok(trades);
+        return Ok(new { totalCount = trades.Count, trades });
     }
 
     // iter-36 K5: the single journal is the lossless StepRecord stream (JournalEntries), SQL-paged by seq.

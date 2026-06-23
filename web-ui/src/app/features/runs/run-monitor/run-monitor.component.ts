@@ -1,7 +1,8 @@
 import { Component, ElementRef, inject, OnDestroy, OnInit, signal, ViewChild, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
-import { Subscription } from 'rxjs';
+import { interval } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RunHubService, type RunProgressEnvelope, type JournalEnvelope, type RunCompletedEnvelope } from '../../../core/signalr/run-hub.service';
 import { RunsStore } from '../runs.store';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
@@ -184,27 +185,27 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
     });
   }
 
-  private subs = new Subscription();
-  private startTime = 0;
-  private elapsedTimer: any = null;
-
   async ngOnInit(): Promise<void> {
     const rid = this.route.snapshot.paramMap.get('runId');
     if (!rid) return;
     this.runId.set(rid);
-    this.startTime = Date.now();
-    this.elapsedTimer = setInterval(() => {
-      const s = Math.floor((Date.now() - this.startTime) / 1000);
-      this.elapsed.set(
-        s > 3600 ? Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm' : Math.floor(s / 60) + 'm ' + (s % 60) + 's',
-      );
-    }, 1000);
+    const startTime = Date.now();
+
+    interval(1000)
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => {
+        const s = Math.floor((Date.now() - startTime) / 1000);
+        this.elapsed.set(
+          s > 3600 ? Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm' : Math.floor(s / 60) + 'm ' + (s % 60) + 's',
+        );
+      });
 
     await this.hub.start();
     await this.hub.joinRun(rid);
 
-    this.subs.add(
-      this.hub.progress$.subscribe((e: RunProgressEnvelope) => {
+    this.hub.progress$
+      .pipe(takeUntilDestroyed())
+      .subscribe((e: RunProgressEnvelope) => {
         this.status.set('running');
         this.barCount.set(e.barsProcessed ?? 0);
         this.totalBars.set(e.barsTotal ?? 0);
@@ -217,7 +218,9 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
         if (e.simTimeUtc) this.simTime.set(e.simTimeUtc);
         if (e.equity != null) {
           this.equity.set(e.equity);
-          const t = e.simTimeUtc ? new Date(e.simTimeUtc).getTime() : Date.now();
+          const t = e.simTimeUtc ? new Date(e.simTimeUtc).getTime() : this.equityData().length > 0
+            ? this.equityData()[this.equityData().length - 1].time
+            : Date.now();
           this.equityData.update((d) => [
             ...d.slice(-499),
             { time: t, value: e.equity, balance: e.balance ?? e.equity },
@@ -228,7 +231,6 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
         if (e.dailyDdPct != null) this.dailyDdPct.set(e.dailyDdPct);
         if (e.maxDdPct != null) this.maxDdPct.set(e.maxDdPct);
         if (e.distanceToDailyLimit != null) this.distanceToLimit.set(e.distanceToDailyLimit);
-        // Clear breach banner when DD recovers below threshold during a run
         if (e.dailyDdPct != null && e.dailyDdPct < 0.02 && this.breachBanner()) this.breachBanner.set(null);
         if (e.governorState) this.governorState.set(e.governorState);
         if (e.counters) {
@@ -241,7 +243,6 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
             breaches: e.counters.breaches ?? 0,
           });
         }
-        // L2: append-only journal — merge by seq, never replace the whole array. Keep last 500 entries.
         if (Array.isArray(e.recentJournal) && e.recentJournal.length > 0) {
           const mapped: JournalEnvelope[] = e.recentJournal.map((r: any) => ({
             runId: this.runId(),
@@ -261,18 +262,18 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
             if (this.stick()) this.scrollJournalToBottom();
           }
         }
-      }),
-    );
-    this.subs.add(
-      this.hub.completed$.subscribe((e: RunCompletedEnvelope) => {
+      });
+
+    this.hub.completed$
+      .pipe(takeUntilDestroyed())
+      .subscribe((e: RunCompletedEnvelope) => {
         this.status.set(e.status || 'completed');
         if (e.error) {
           this.breachBanner.set(e.error);
         } else {
           this.breachBanner.set(null);
         }
-      }),
-    );
+      });
   }
 
   async cancel(): Promise<void> {
@@ -282,8 +283,6 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.elapsedTimer) clearInterval(this.elapsedTimer);
-    this.subs.unsubscribe();
     this.hub.leaveRun(this.runId());
   }
 }

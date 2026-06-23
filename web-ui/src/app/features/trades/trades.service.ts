@@ -1,14 +1,15 @@
 ﻿import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import type { TradeSummary, TradeDetail, BarData } from '../../models/api.types';
+import type { TradeSummary, TradeDetail, BarData, TradeListResponse } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
 export class TradesApiService {
   private http = inject(HttpClient);
 
-  getAll(): Promise<TradeSummary[]> {
-    return firstValueFrom(this.http.get<TradeSummary[]>('/api/trades'));
+  async getAll(): Promise<TradeSummary[]> {
+    const r = await firstValueFrom(this.http.get<TradeListResponse>('/api/trades'));
+    return r.trades;
   }
 
   getById(id: string): Promise<TradeDetail> {

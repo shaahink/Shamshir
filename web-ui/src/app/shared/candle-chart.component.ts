@@ -9,6 +9,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { queryHost } from './dom.helper';
+import { toUtcTimestamp } from './chart-time.helper';
 
 export interface OhlcBar {
   time: number;
@@ -86,7 +87,7 @@ export class CandleChartComponent implements OnDestroy {
     if (!this.candleSeries) return;
 
     const candleData = this.bars().map((b) => ({
-      time: (b.time / 1000) as UTCTimestamp,
+      time: toUtcTimestamp(b.time),
       open: b.open,
       high: b.high,
       low: b.low,
@@ -105,7 +106,7 @@ export class CandleChartComponent implements OnDestroy {
         priceLineVisible: false,
         lastValueVisible: false,
       });
-      const t0 = candleData[0]?.time ?? ((Date.now() / 1000) as UTCTimestamp);
+      const t0 = candleData[0]?.time ?? toUtcTimestamp(Date.now());
       const t1 = candleData[candleData.length - 1]?.time ?? t0;
       ls.setData([
         { time: t0, value: m.price },

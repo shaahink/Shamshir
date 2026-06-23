@@ -51,6 +51,11 @@ export interface RunDetail {
   configSetId?: string | null;
 }
 
+export interface TradeListResponse {
+  totalCount: number;
+  trades: TradeSummary[];
+}
+
 export interface TradeSummary {
   id: string;
   positionId: string;

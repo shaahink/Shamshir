@@ -2,6 +2,7 @@ import { Component, ElementRef, inject, input, PLATFORM_ID, afterNextRender, eff
 import { isPlatformBrowser } from '@angular/common';
 import { ColorType, createChart, LineSeries, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 import { queryHost } from './dom.helper';
+import { toUtcTimestamp } from './chart-time.helper';
 
 export interface ChartPoint {
   time: number;
@@ -68,7 +69,7 @@ export class EquityChartComponent implements OnDestroy {
 
   private updateData(points: ChartPoint[], showBal: boolean, showDD: boolean): void {
     if (!this.equitySeries || points.length === 0) return;
-    const equityData = points.map((d) => ({ time: (d.time / 1000) as UTCTimestamp, value: d.value }));
+    const equityData = points.map((d) => ({ time: toUtcTimestamp(d.time), value: d.value }));
 
     const hasBalance = showBal && points.some((p) => p.balance != null);
     if (hasBalance && !this.balanceSeries && this.chart) {
@@ -78,7 +79,7 @@ export class EquityChartComponent implements OnDestroy {
       this.balanceSeries.setData(
         points
           .filter((p) => p.balance != null)
-          .map((p) => ({ time: (p.time / 1000) as UTCTimestamp, value: p.balance! })),
+          .map((p) => ({ time: toUtcTimestamp(p.time), value: p.balance! })),
       );
     }
     if (!hasBalance && this.balanceSeries) {
@@ -91,7 +92,7 @@ export class EquityChartComponent implements OnDestroy {
       const ddPoints: { time: UTCTimestamp; value: number }[] = [];
       for (const p of points) {
         if (p.value > peak) peak = p.value;
-        ddPoints.push({ time: (p.time / 1000) as UTCTimestamp, value: peak > 0 ? ((p.value - peak) / peak) * 100 : 0 });
+        ddPoints.push({ time: toUtcTimestamp(p.time), value: peak > 0 ? ((p.value - peak) / peak) * 100 : 0 });
       }
       if (!this.ddSeries) {
         this.ddSeries = this.chart!.addSeries(LineSeries, {

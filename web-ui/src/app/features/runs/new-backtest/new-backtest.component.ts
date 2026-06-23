@@ -173,7 +173,7 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
                   <div class="text-sm font-medium text-gray-200">{{ s.displayName }}</div>
                   <div class="text-xs text-gray-500">
                     {{ s.id }}
-                    @if (s.stats?.totalTrades) {
+                    @if (s.stats.totalTrades) {
                       · {{ s.stats.totalTrades }} trades
                     }
                   </div>

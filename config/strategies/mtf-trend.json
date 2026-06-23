@@ -11,7 +11,7 @@
     "stopLoss": { "method": "SwingPoint", "atrMultiple": 1.5, "maxPips": 200 },
     "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0 },
     "breakeven": { "enabled": true, "triggerRMultiple": 1.0, "offsetPips": 1.0 },
-    "trailing": { "enabled": true, "mode": "Custom", "method": "Structure", "atrMultiple": 1.0, "structureLookbackBars": 10 }
+    "trailing": { "enabled": true, "mode": "Auto", "method": "Structure", "atrMultiple": 1.0, "structureLookbackBars": 10 }
   },
   "parameters": {
     "emaPeriod": 200,
