@@ -236,4 +236,52 @@ public sealed class FakeTransportTests
 
         await adapter.DisconnectAsync(CancellationToken.None);
     }
+
+    // ── 31-C2: limit offset intent produces a limit order frame with populated limitPrice and expiryBars ──
+    [Fact]
+    public async Task LimitOffsetIntent_ProducesLimitOrderFrame()
+    {
+        var transport = new FakeMessageTransport();
+        var adapter = new CTraderBrokerAdapter(transport, Substitute.For<ILogger<CTraderBrokerAdapter>>());
+
+        await adapter.ConnectAsync(CancellationToken.None);
+        await transport.RouterWriter.WriteAsync((new byte[] { 1, 2, 3 }, """{"type":"hello"}"""));
+        await Task.Delay(100);
+
+        var intent = new TradeIntent(Symbol.Parse("EURUSD"), TradeDirection.Short, OrderType.Limit,
+            new Price(1.0750m), new Price(1.0800m), new Price(1.0700m),
+            "mean-reversion", "standard", "limit-offset-5", DateTime.UtcNow)
+        {
+            Entry = new OrderEntryOptions
+            {
+                Method = OrderEntryMethod.LimitOffset,
+                LimitOffsetPips = 5,
+                LimitOrderExpiryBars = 3,
+                MaxSlippagePips = 2.0,
+            },
+        };
+        var orderReq = new OrderRequest(intent, 0.1m, intent.Symbol, intent.Direction, OrderType.Limit, intent.LimitPrice);
+
+        await adapter.SubmitOrderAsync(orderReq, CancellationToken.None);
+        await adapter.CompleteBarAsync(1, CancellationToken.None);
+
+        transport.SentMessages.Should().HaveCount(2, "hello ack + bar_done");
+        var (_, json) = transport.SentMessages[1];
+        using var doc = JsonDocument.Parse(json);
+        var commands = doc.RootElement.GetProperty("commands");
+        commands.GetArrayLength().Should().Be(1);
+
+        var cmd = commands[0];
+        cmd.GetProperty("type").GetString().Should().Be("submit_order");
+        cmd.GetProperty("orderType").GetString().Should().Be("Limit");
+        cmd.GetProperty("limitPrice").GetDouble().Should().BeGreaterThan(0, "limitPrice must be populated for Limit orders");
+        cmd.GetProperty("expiryBars").GetInt32().Should().Be(3);
+        cmd.GetProperty("symbol").GetString().Should().Be("EURUSD");
+        cmd.GetProperty("direction").GetString().Should().Be("Short");
+        cmd.GetProperty("lots").GetDouble().Should().Be(0.1);
+        cmd.GetProperty("slPrice").GetDouble().Should().Be(1.0800);
+        cmd.GetProperty("tpPrice").GetDouble().Should().Be(1.0700);
+
+        await adapter.DisconnectAsync(CancellationToken.None);
+    }
 }

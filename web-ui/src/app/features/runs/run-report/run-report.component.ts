@@ -358,6 +358,7 @@ export class RunReportComponent implements OnInit {
 
   trades = signal<TradeSummary[]>([]);
   journal = signal<JournalEntry[]>([]);
+  barDecisions = signal<JournalEntry[]>([]);
   breakdown = signal<StrategyPerformance[]>([]);
   equityPoints = signal<ChartPoint[]>([]);
   dailyPnl = signal<DailyPnl[]>([]);
@@ -524,10 +525,9 @@ export class RunReportComponent implements OnInit {
     this.trades().map((t) => ({ x: -(t.maxAdverseExcursion ?? 0), y: t.maxFavorableExcursion ?? 0 })),
   );
 
-  // F2 — flatten the journal's per-bar StrategyVerdicts into a "why" table.
+  // T4: per-bar "why" flattened from the server-paged bar-decisions endpoint.
   perBarVerdicts = computed(() =>
-    this.journal()
-      .filter((e) => (e.eventKind ?? e.kind) === 'BarClosed' && (e.strategyVerdicts?.length ?? 0) > 0)
+    this.barDecisions()
       .flatMap((e) =>
         (e.strategyVerdicts ?? []).map((v) => ({
           simTimeUtc: e.simTimeUtc,
@@ -675,6 +675,11 @@ export class RunReportComponent implements OnInit {
       this.journal.set(await this.api.getRunJournal(runId, undefined, undefined, 200));
     } catch {
       /* no journal */
+    }
+    try {
+      this.barDecisions.set(await this.api.getBarDecisions(runId, undefined, 500));
+    } catch {
+      /* no bar decisions */
     }
     try {
       this.breakdown.set(await this.api.getStrategyBreakdown(runId));

@@ -34,17 +34,16 @@ public sealed class AddOnResolver
         if (ride is { Enabled: true, Mode: AddOnMode.Auto })
             ride = ride with { AdxFloor = tuned.RideAdxFloor, RelaxedAtrMultiple = tuned.RideRelaxedAtrMultiple };
 
-        var dyn = opts.DynamicSlTp;
-        if (dyn is { Enabled: true, Mode: AddOnMode.Auto })
-            dyn = dyn with { AtrMultipleSl = tuned.DynamicSlAtrMultiple, RrMultipleTp = tuned.DynamicTpRrMultiple };
-
+        // B6: DynamicSlTp is resolved per-bar in BarEvaluator (re-reads the raw PositionManagementOptions
+        // off the strategy config every signal), NOT via BuildConfig/PositionManagementConfig (which has no
+        // DynamicSlTp field). Resolving it here at entry is dead — BuildConfig silently drops it. Keeping
+        // the raw opts.DynamicSlTp in the resolved record (untuned) lets BarEvaluator consume it correctly.
         var resolved = opts with
         {
             Trailing = trailing,
             Breakeven = breakeven,
             PartialTp = partial,
             Ride = ride,
-            DynamicSlTp = dyn,
         };
 
         return new AddOnResolution(resolved, tuned);

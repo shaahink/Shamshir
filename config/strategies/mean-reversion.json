@@ -13,7 +13,9 @@
     "allowUnknown": true
   },
   "orderEntry": {
-    "method": "Market",
+    "method": "LimitOffset",
+    "limitOffsetPips": 5.0,
+    "limitOrderExpiryBars": 3,
     "maxSlippagePips": 2.0
   },
   "positionManagement": {

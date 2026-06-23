@@ -64,6 +64,13 @@ export class RunsApiService {
     return firstValueFrom(this.http.get<JournalEntry[]>(url));
   }
 
+  // T4: bar-decisions endpoint — server-paged BarClosed StepRecords with per-strategy verdicts.
+  getBarDecisions(runId: string, afterSeq?: number, limit = 200): Promise<JournalEntry[]> {
+    let url = `/api/runs/${runId}/bar-decisions?limit=${limit}`;
+    if (afterSeq != null) url += `&afterSeq=${afterSeq}`;
+    return firstValueFrom(this.http.get<JournalEntry[]>(url));
+  }
+
   getRunEquity(runId: string): Promise<EquityPoint[]> {
     return firstValueFrom(this.http.get<EquityPoint[]>(`/api/runs/${runId}/equity`));
   }
