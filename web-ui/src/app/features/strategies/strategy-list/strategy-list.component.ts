@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { RouterLink, Router } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import type { StrategySummary } from '../../../models/api.types';
 import { StrategiesApiService } from '../strategies.service';
@@ -10,7 +10,15 @@ import { StrategiesApiService } from '../strategies.service';
   imports: [RouterLink, DatePipe],
   template: `
     <div class="space-y-6">
-      <h1 class="text-xl font-semibold">Strategies</h1>
+      <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">Strategies</h1>
+        <a
+          routerLink="/strategies/new"
+          class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
+        >
+          New Strategy
+        </a>
+      </div>
       <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         @for (s of strategies(); track s.id) {
           <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 transition hover:border-gray-600">

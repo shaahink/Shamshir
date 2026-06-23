@@ -1,11 +1,12 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { RunsStore } from '../runs.store';
 import type { StrategySummary, StartRunRequest, RiskProfile } from '../../../models/api.types';
 import { StrategiesApiService } from '../../strategies/strategies.service';
 import { RiskProfilesApiService } from '../../risk-profiles/risk-profiles.service';
 import { AddOnPacksApiService } from '../../addon-packs/addon-packs.service';
+import { RunsApiService } from '../runs.service';
 
 const ALL_SYMBOLS = [
   'EURUSD',
@@ -191,15 +192,29 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
             <label class="block text-xs font-medium text-gray-400 mb-2">Per-strategy overrides (optional)</label>
             @for (s of strategies(); track s.id) {
               @if (selectedStrategyIds().has(s.id)) {
-                <div class="mb-1">
-                  <span class="text-xs text-gray-500">{{ s.displayName || s.id }}</span>
-                  <textarea
-                    [ngModel]="overrideFor(s.id)"
-                    (ngModelChange)="setOverride(s.id, $event)"
-                    placeholder='JSON overrides e.g. {"Param1":42}'
-                    class="mt-0.5 w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 font-mono focus:border-emerald-500 focus:outline-none"
-                    rows="2"
-                  ></textarea>
+                <div class="mb-2">
+                  <div class="flex gap-2 items-start">
+                    <span class="text-xs text-gray-500 pt-1 min-w-32">{{ s.displayName || s.id }}</span>
+                    <div class="flex-1 space-y-1">
+                      <select
+                        [ngModel]="perStratPack(s.id)"
+                        (ngModelChange)="setPerStratPack(s.id, $event)"
+                        class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200"
+                      >
+                        <option value="">Pack: strategy default</option>
+                        @for (p of packs(); track p.id) {
+                          <option [value]="p.id">{{ p.name }}</option>
+                        }
+                      </select>
+                      <textarea
+                        [ngModel]="overrideFor(s.id)"
+                        (ngModelChange)="setOverride(s.id, $event)"
+                        placeholder='JSON params e.g. {"Param1":42}'
+                        class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 font-mono focus:border-emerald-500 focus:outline-none"
+                        rows="1"
+                      ></textarea>
+                    </div>
+                  </div>
                 </div>
               }
             }
@@ -245,9 +260,11 @@ const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
 export class NewBacktestComponent implements OnInit {
   private store = inject(RunsStore);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
   private strategiesApi = inject(StrategiesApiService);
   private profilesApi = inject(RiskProfilesApiService);
   private packsApi = inject(AddOnPacksApiService);
+  private runsApi = inject(RunsApiService);
 
   allSymbols = ALL_SYMBOLS;
   allTimeframes = ALL_TIMEFRAMES;
@@ -267,8 +284,12 @@ export class NewBacktestComponent implements OnInit {
   riskProfiles = signal<RiskProfile[]>([{ id: 'standard', displayName: 'Standard', riskPerTradePercent: 0.005, maxDailyDrawdownPercent: 0.05, maxTotalDrawdownPercent: 0.1, maxConcurrentPositions: 5, lotSizingMethod: 'PercentRisk', propFirmRuleSetId: 'ftmo-standard' }]);
   selectedStrategyIds = signal<Set<string>>(new Set());
   overridesText = signal<Record<string, string>>({});
+  perStratPacks = signal<Record<string, string>>({});
   loading = this.store.isLoading;
   error = this.store.error;
+
+  perStratPack(id: string): string { return this.perStratPacks()[id] ?? ''; }
+  setPerStratPack(id: string, v: string): void { this.perStratPacks.update((o) => ({ ...o, [id]: v })); }
 
   symListStr(): string {
     return [...this.selectedSymbols()].join(', ') || '(none)';
@@ -281,6 +302,11 @@ export class NewBacktestComponent implements OnInit {
   }
   packName(): string {
     return this.packs().find((p) => p.id === this.usePackId)?.name ?? (this.usePackId || 'None');
+  }
+  buildPerStratPacks(): Record<string, string> | undefined {
+    const p = this.perStratPacks();
+    const entries = Object.entries(p).filter(([, v]) => v);
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
   }
   overrideFor(id: string): string {
     return this.overridesText()[id] ?? '';
@@ -323,6 +349,31 @@ export class NewBacktestComponent implements OnInit {
       const pks = await this.packsApi.getAll();
       this.packs.set(pks.map((p) => ({ id: p.id, name: p.name })));
     } catch { /* */ }
+
+    // T10: prefill from source run (Duplicate flow)
+    const sourceRunId = this.route.snapshot.queryParamMap.get('sourceRunId');
+    if (sourceRunId) {
+      try {
+        const src = await this.runsApi.getRun(sourceRunId);
+        if (src) {
+          this.startDate = (src.backtestFrom || '').slice(0, 10);
+          this.endDate = (src.backtestTo || '').slice(0, 10);
+          this.balance = src.initialBalance || 100000;
+          try {
+            const syms = typeof src.symbols === 'string' ? JSON.parse(src.symbols) : src.symbols;
+            if (Array.isArray(syms)) this.selectedSymbols.set(new Set(syms));
+          } catch {}
+          try {
+            const pers = typeof src.periods === 'string' ? JSON.parse(src.periods) : src.periods;
+            if (Array.isArray(pers) && pers.length > 0) this.selectedPeriods.set(new Set(pers));
+          } catch {}
+        }
+      } catch { /* keep defaults */ }
+      const qp = this.route.snapshot.queryParamMap;
+      const packId = qp.get('usePackId');
+      if (packId) this.usePackId = packId;
+      if (qp.get('disableRegime') === 'true') this.disableRegime = true;
+    }
   }
 
   toggleSymbol(sym: string) {
@@ -427,6 +478,7 @@ export class NewBacktestComponent implements OnInit {
       venue: this.venue,
       usePackId: this.usePackId || undefined,
       disableRegime: this.disableRegime || undefined,
+      perStrategyPackIds: this.buildPerStratPacks(),
       strategyOverrides,
     };
     const runId = await this.store.startBacktest(req);

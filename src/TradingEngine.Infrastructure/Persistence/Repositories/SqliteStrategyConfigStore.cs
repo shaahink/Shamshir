@@ -41,6 +41,16 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyCo
         await db.SaveChangesAsync(ct);
     }
 
+    public async Task DeleteAsync(string id, CancellationToken ct)
+    {
+        var existing = await db.StrategyConfigs.FindAsync([id], ct);
+        if (existing is not null)
+        {
+            db.StrategyConfigs.Remove(existing);
+            await db.SaveChangesAsync(ct);
+        }
+    }
+
     private static StrategyConfigEntity ToEntity(StrategyConfigEntry entry)
     {
         return new StrategyConfigEntity

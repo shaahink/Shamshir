@@ -44,6 +44,7 @@ export class RunsApiService {
       strategyOverrides: req.strategyOverrides ?? {},
       usePackId: req.usePackId ?? '',
       disableRegime: req.disableRegime ?? false,
+      perStrategyPackIds: req.perStrategyPackIds,
     };
     return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }

@@ -210,6 +210,7 @@ export interface StartRunRequest {
   strategyOverrides?: Record<string, Record<string, unknown>>;
   usePackId?: string;
   disableRegime?: boolean;
+  perStrategyPackIds?: Record<string, string>;
 }
 
 export interface RiskProfile {

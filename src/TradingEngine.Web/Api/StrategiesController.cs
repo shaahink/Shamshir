@@ -158,6 +158,65 @@ public class StrategiesController : ControllerBase
         return Ok(new { id = copy.Id, saved = true });
     }
 
+    // 32-P4: create a new strategy from scratch with sensible defaults.
+    [HttpPost]
+    public async Task<IActionResult> Create(CancellationToken ct)
+    {
+        using var reader = new StreamReader(Request.Body);
+        var json = await reader.ReadToEndAsync(ct);
+        JsonElement root;
+        try { root = JsonSerializer.Deserialize<JsonElement>(json); }
+        catch (JsonException ex) { return BadRequest(new { error = $"Invalid JSON: {ex.Message}" }); }
+
+        var id = GetString(root, "id")?.Trim();
+        var displayName = GetString(root, "displayName")?.Trim();
+        if (string.IsNullOrWhiteSpace(id))
+            return BadRequest(new { error = "id is required." });
+        if (string.IsNullOrWhiteSpace(displayName))
+            return BadRequest(new { error = "displayName is required." });
+
+        var symbols = root.TryGetProperty("symbols", out var sy) && sy.ValueKind == JsonValueKind.Array
+            ? sy.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s.Length > 0).ToList()
+            : new List<string> { "EURUSD" };
+        var timeframe = GetString(root, "timeframe") ?? "H1";
+        var riskProfileId = GetString(root, "riskProfileId") ?? "standard";
+
+        var parameters = JsonSerializer.Deserialize<JsonElement>("{}");
+        var entry = new StrategyConfigEntry(
+            id, displayName, false, symbols, riskProfileId, parameters, timeframe)
+        {
+            PositionManagement = new PositionManagementOptions
+            {
+                StopLoss = new SlOptions { Method = "AtrMultiple", AtrMultiple = 1.5 },
+                TakeProfit = new TpOptions { Method = "RrMultiple", RrMultiple = 2.0 },
+            },
+            OrderEntry = new OrderEntryOptions { Method = OrderEntryMethod.Market, MaxSlippagePips = 2.0 },
+            RegimeFilter = new RegimeFilterOptions { AllowTrending = true, AllowRanging = true, AllowHighVolatility = true, AllowLowVolatility = true, AllowUnknown = true },
+            Reentry = new ReentryOptions { BlockWhileSameDirectionOpen = true, CooldownBarsAfterSl = 5, CooldownBarsAfterTp = 2, CooldownBarsAfterEntry = 3 },
+        };
+
+        var existing = (await _store.GetAllAsync(ct)).FirstOrDefault(s => s.Id == id);
+        if (existing is not null)
+            return Conflict(new { error = $"Strategy {id} already exists." });
+
+        await _store.UpsertAsync(entry, ct);
+        _logger.LogInformation("Strategy {StrategyId} created", id);
+        return Ok(new { id, displayName, saved = true });
+    }
+
+    // 32-P4: delete a strategy from the store.
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(string id, CancellationToken ct)
+    {
+        var existing = (await _store.GetAllAsync(ct)).FirstOrDefault(s => s.Id == id);
+        if (existing is null) return NotFound(new { error = $"Strategy {id} not found" });
+
+        await _store.DeleteAsync(id, ct);
+        _bank.Disable(id);
+        _logger.LogInformation("Strategy {StrategyId} deleted", id);
+        return Ok(new { id, deleted = true });
+    }
+
     private async Task SetEnabledAsync(string id, bool enabled, CancellationToken ct)
     {
         var existing = (await _store.GetAllAsync(ct)).FirstOrDefault(s => s.Id == id);

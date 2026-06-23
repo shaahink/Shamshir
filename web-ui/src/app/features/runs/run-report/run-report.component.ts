@@ -608,17 +608,13 @@ export class RunReportComponent implements OnInit {
     if (!runId || this.duplicating()) return;
     this.duplicating.set(true);
     this.dupOpen.set(false);
-    try {
-      const body: { usePackId?: string; disableRegime?: boolean } = {};
-      const packId = this.dupPackId();
-      if (packId) body.usePackId = packId;
-      if (this.dupDisableRegime()) body.disableRegime = true;
-      const res = await this.api.duplicateRun(runId, body);
-      if (res?.runId) this.router.navigate(['/runs', res.runId, 'monitor']);
-    } finally {
-      this.duplicating.set(false);
-      this.dupRunId.set(null);
-    }
+    const params = new URLSearchParams();
+    params.set('sourceRunId', runId);
+    const packId = this.dupPackId();
+    if (packId) params.set('usePackId', packId);
+    if (this.dupDisableRegime()) params.set('disableRegime', 'true');
+    this.router.navigate(['/runs/new'], { queryParams: Object.fromEntries(params) });
+    this.duplicating.set(false);
   }
 
   async duplicate(runId: string): Promise<void> {

@@ -388,10 +388,40 @@ test.describe('Run Report per-bar why (T4)', () => {
     await rows.nth(count - 1).click();
     await page.waitForURL('**/runs/**', { timeout: TIMEOUT });
     await expect(page.locator('app-run-report')).toBeVisible({ timeout: TIMEOUT });
-    // The per-bar "why" heading should be present
     const headings = await page.locator('app-run-report h2').allTextContents();
     const hasWhy = headings.join(' ').includes('Per-bar');
     if (!hasWhy) test.skip(true, 'no per-bar why section');
     await expect(page.locator('app-run-report h2', { hasText: 'Per-bar' })).toBeVisible({ timeout: TIMEOUT });
   });
+});
+
+// 32-P4: strategy create + delete + new button
+test.describe('Strategy CRUD (32-P4)', () => {
+  test('New Strategy button navigates to create page', async ({ page }) => {
+    await page.goto('/strategies');
+    await expect(page.locator('app-strategy-list a', { hasText: 'New Strategy' })).toBeVisible({ timeout: TIMEOUT });
+    await page.locator('app-strategy-list a', { hasText: 'New Strategy' }).click();
+    await page.waitForURL('**/strategies/new', { timeout: TIMEOUT });
+    await expect(page.locator('app-strategy-detail')).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-strategy-detail', { hasText: 'Create Strategy' })).toBeVisible({ timeout: TIMEOUT });
+  });
+
+  test('delete button visible on detail page', async ({ page }) => {
+    await page.goto('/strategies');
+    await expect(page.locator('app-strategy-list a[href^="/strategies/"]').first()).toBeVisible({ timeout: TIMEOUT });
+    await page.locator('app-strategy-list a[href^="/strategies/"]').first().click();
+    await page.waitForURL('**/strategies/**', { timeout: TIMEOUT });
+    await expect(page.locator('app-strategy-detail')).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-strategy-detail button', { hasText: 'Delete' })).toBeVisible({ timeout: TIMEOUT });
+  });
+});
+
+// 32-P5: new-backtest per-strategy pack dropdown
+test.describe('New-Backtest per-strategy pack (32-P5)', () => {
+  test('shows pack dropdown per selected strategy', async ({ page }) => {
+    await page.goto('/runs/new');
+    await expect(page.locator('app-new-backtest')).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-new-backtest', { hasText: 'Pack: strategy default' })).toBeVisible({ timeout: TIMEOUT });
+  });
+});
 });

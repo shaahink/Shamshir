@@ -29,6 +29,35 @@ import { RiskProfilesApiService } from '../../risk-profiles/risk-profiles.servic
         </div>
       </div>
 
+      @if (isCreate) {
+      <div class="mx-auto max-w-lg rounded-lg border border-gray-800 bg-gray-900/50 p-6 space-y-4">
+        <h2 class="text-sm font-medium text-gray-200">New Strategy</h2>
+        <div><label class="block text-xs text-gray-400 mb-1">ID *</label>
+          <input [(ngModel)]="createForm.id" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Display Name *</label>
+          <input [(ngModel)]="createForm.displayName" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Symbols</label>
+          <div class="flex flex-wrap gap-1">
+            @for (sym of ['EURUSD','GBPUSD','USDJPY','GBPJPY','XAUUSD','AUDUSD','USDCHF','USDCAD','NZDUSD','EURGBP','EURJPY','XAGUSD']; track sym) {
+              <button (click)="toggleCreateSym(sym)" [attr.class]="createForm.symbols.includes(sym) ? 'rounded border border-emerald-600 bg-emerald-900/20 px-2 py-0.5 text-xs text-emerald-400' : 'rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-400'">{{ sym }}</button>
+            }
+          </div></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Timeframe</label>
+          <select [(ngModel)]="createForm.timeframe" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100">
+            @for (tf of ['H1','H4','D1','M15','M5','M1']; track tf) { <option [value]="tf">{{ tf }}</option> }
+          </select></div>
+        <div><label class="block text-xs text-gray-400 mb-1">Risk Profile</label>
+          <select [(ngModel)]="createForm.riskProfileId" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100">
+            @for (rp of riskProfiles(); track rp.id) { <option [value]="rp.id">{{ rp.displayName }}</option> }
+          </select></div>
+        @if (createError()) { <div class="rounded-md bg-red-900/20 p-2 text-xs text-red-400">{{ createError() }}</div> }
+        <div class="flex gap-2">
+          <a routerLink="/strategies" class="rounded-md border border-gray-700 px-4 py-2 text-sm text-gray-400 hover:bg-gray-800">Cancel</a>
+          <button (click)="doCreate()" [disabled]="saving()" class="flex-1 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">{{ saving() ? 'Creating...' : 'Create Strategy' }}</button>
+        </div>
+      </div>
+      }
+
       @if (data(); as s) {
         <div class="grid gap-4 md:grid-cols-2">
           <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
@@ -68,6 +97,11 @@ import { RiskProfilesApiService } from '../../risk-profiles/risk-profiles.servic
               >
                 {{ editing() ? 'Cancel' : 'Edit Fields' }}
               </button>
+              <button
+                (click)="deleteStrategy()"
+                [disabled]="saving()"
+                class="rounded-md border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20"
+              >Delete</button>
             </div>
           </div>
         </div>
@@ -342,6 +376,9 @@ export class StrategyDetailComponent implements OnInit {
   savedOk = signal(false);
   validationError = signal<string | null>(null);
   riskProfiles = signal<RiskProfile[]>([]);
+  isCreate = false;
+  createError = signal<string | null>(null);
+  createForm = { id: '', displayName: '', symbols: ['EURUSD'], timeframe: 'H1', riskProfileId: 'standard' };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   edit: Record<string, any> = {};
   private pmOpenSections = new Set<string>();
@@ -392,6 +429,11 @@ export class StrategyDetailComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id');
+    this.isCreate = id === 'new' || !id;
+    if (this.isCreate) {
+      try { const rp = await this.rpApi.getAll(); this.riskProfiles.set(rp); } catch {}
+      return;
+    }
     if (!id) return;
     try {
       const data = await this.api.getById(id);
@@ -575,6 +617,36 @@ export class StrategyDetailComponent implements OnInit {
     } finally {
       this.saving.set(false);
     }
+  }
+
+  toggleCreateSym(sym: string): void {
+    const s = [...this.createForm.symbols];
+    const i = s.indexOf(sym);
+    if (i >= 0) s.splice(i, 1); else s.push(sym);
+    this.createForm.symbols = s;
+  }
+
+  async doCreate(): Promise<void> {
+    const f = this.createForm;
+    const id = f.id.trim(), name = f.displayName.trim();
+    if (!id) { this.createError.set('ID is required.'); return; }
+    if (!name) { this.createError.set('Display name is required.'); return; }
+    if (!f.symbols.length) { this.createError.set('At least one symbol is required.'); return; }
+    this.createError.set(null); this.saving.set(true);
+    try {
+      const res = await this.api.create({ id, displayName: name, symbols: f.symbols, timeframe: f.timeframe, riskProfileId: f.riskProfileId });
+      this.router.navigate(['/strategies', res.id]);
+    } catch (e: any) { this.createError.set(e?.error?.error || e?.message || 'Create failed'); }
+    finally { this.saving.set(false); }
+  }
+
+  async deleteStrategy(): Promise<void> {
+    const id = this.data()?.id;
+    if (!id || !confirm(`Delete strategy "${id}"? This cannot be undone.`)) return;
+    this.saving.set(true);
+    try { await this.api.delete(id); this.router.navigate(['/strategies']); }
+    catch {}
+    finally { this.saving.set(false); }
   }
 
   humanize(key: string): string {
