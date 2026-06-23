@@ -18,6 +18,11 @@ public sealed class RulePressureTests
 
     private static readonly ConstraintSet Rules = GFx.Constraints(dailyBase: DailyDdBase.DailyStart);
 
+    private static SymbolInfo Eurusd(decimal commissionPerSide = 0, decimal swapLong = 0, decimal swapShort = 0)
+        => new(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m,
+            "USD", commissionPerSide, swapLong, swapShort, "Wednesday");
+
     private static KernelCore Kernel() => new(new KernelConfig(
         Rules, GFx.Profile, GFx.Sizing, _ => GFx.SymInfo, _ => [], Seed: 42));
 
@@ -79,5 +84,21 @@ public sealed class RulePressureTests
             ResetUtc);
 
         nights.Should().Be(3, "Friday→Monday crosses Fri, Sat, Sun = 3 nights");
+    }
+
+    // G1: verify TripleSwapWeekday correctly triples swap on Wednesday.
+    [Fact]
+    public void TripleSwap_WednesdayPosition_ChargedTripleNights()
+    {
+        var sym = Eurusd(swapShort: -1.5m);
+        var costs = TradingEngine.Services.Helpers.TradeCostCalculator.Compute(
+            TradeDirection.Short, new Price(1.1000m), new Price(1.1010m), lots: 1m,
+            sym, (_, _) => 1m,
+            new DateTime(2026, 6, 17, 10, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 6, 18, 12, 0, 0, DateTimeKind.Utc),
+            ResetUtc);
+
+        costs.NightsHeld.Should().Be(3, "Wed→Thu: 1 night × triple = 3 nights charged");
+        costs.Swap.Should().Be(-4.5m, "3 nights × -1.5/night = -4.5 swap total");
     }
 }
