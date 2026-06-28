@@ -37,16 +37,6 @@ import { DetailFormBase } from '../../../shared/detail-form-base';
           <input [(ngModel)]="createForm.id" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
         <div><label class="block text-xs text-gray-400 mb-1">Display Name *</label>
           <input [(ngModel)]="createForm.displayName" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" /></div>
-        <div><label class="block text-xs text-gray-400 mb-1">Symbols</label>
-          <div class="flex flex-wrap gap-1">
-            @for (sym of ['EURUSD','GBPUSD','USDJPY','GBPJPY','XAUUSD','AUDUSD','USDCHF','USDCAD','NZDUSD','EURGBP','EURJPY','XAGUSD']; track sym) {
-              <button (click)="toggleCreateSym(sym)" [attr.class]="createForm.symbols.includes(sym) ? 'rounded border border-emerald-600 bg-emerald-900/20 px-2 py-0.5 text-xs text-emerald-400' : 'rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-400'">{{ sym }}</button>
-            }
-          </div></div>
-        <div><label class="block text-xs text-gray-400 mb-1">Timeframe</label>
-          <select [(ngModel)]="createForm.timeframe" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100">
-            @for (tf of ['H1','H4','D1','M15','M5','M1']; track tf) { <option [value]="tf">{{ tf }}</option> }
-          </select></div>
         <div><label class="block text-xs text-gray-400 mb-1">Risk Profile</label>
           <select [(ngModel)]="createForm.riskProfileId" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100">
             @for (rp of riskProfiles(); track rp.id) { <option [value]="rp.id">{{ rp.displayName }}</option> }
@@ -67,14 +57,6 @@ import { DetailFormBase } from '../../../shared/detail-form-base';
               <div class="flex justify-between">
                 <dt class="text-gray-400">ID</dt>
                 <dd class="font-mono text-gray-200">{{ s.id }}</dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-gray-400">Timeframe</dt>
-                <dd class="text-gray-200">{{ s.timeframe || '—' }}</dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-gray-400">Symbols</dt>
-                <dd class="text-gray-200">{{ (s.symbols || []).join(', ') || '—' }}</dd>
               </div>
             </dl>
           </div>
@@ -328,12 +310,6 @@ import { DetailFormBase } from '../../../shared/detail-form-base';
             @if (data(); as d) {
               <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                 <div>
-                  <span class="text-gray-500">Timeframe:</span> <span class="text-gray-300">{{ d.timeframe }}</span>
-                </div>
-                <div>
-                  <span class="text-gray-500">Symbols:</span> <span class="text-gray-300">{{ d.symbols }}</span>
-                </div>
-                <div>
                   <span class="text-gray-500">Risk Profile:</span>
                   <span class="text-gray-300">{{ d.riskProfileId }}</span>
                 </div>
@@ -377,7 +353,7 @@ export class StrategyDetailComponent extends DetailFormBase implements OnInit {
   riskProfiles = signal<RiskProfile[]>([]);
   isCreate = false;
   createError = signal<string | null>(null);
-  createForm = { id: '', displayName: '', symbols: ['EURUSD'], timeframe: 'H1', riskProfileId: 'standard' };
+  createForm = { id: '', displayName: '', riskProfileId: 'standard' };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   edit: Record<string, any> = {};
   private pmOpenSections = new Set<string>();
@@ -404,8 +380,6 @@ export class StrategyDetailComponent extends DetailFormBase implements OnInit {
       id: d.id,
       displayName: d.displayName,
       enabled: d.enabled,
-      timeframe: d.timeframe,
-      symbols: d.symbols,
       riskProfileId: d.riskProfileId,
     };
     try {
@@ -618,22 +592,14 @@ export class StrategyDetailComponent extends DetailFormBase implements OnInit {
     }
   }
 
-  toggleCreateSym(sym: string): void {
-    const s = [...this.createForm.symbols];
-    const i = s.indexOf(sym);
-    if (i >= 0) s.splice(i, 1); else s.push(sym);
-    this.createForm.symbols = s;
-  }
-
   async doCreate(): Promise<void> {
     const f = this.createForm;
     const id = f.id.trim(), name = f.displayName.trim();
     if (!id) { this.createError.set('ID is required.'); return; }
     if (!name) { this.createError.set('Display name is required.'); return; }
-    if (!f.symbols.length) { this.createError.set('At least one symbol is required.'); return; }
     this.createError.set(null); this.saving.set(true);
     try {
-      const res = await this.api.create({ id, displayName: name, symbols: f.symbols, timeframe: f.timeframe, riskProfileId: f.riskProfileId });
+      const res = await this.api.create({ id, displayName: name, riskProfileId: f.riskProfileId });
       this.router.navigate(['/strategies', res.id]);
     } catch (e: any) { this.createError.set(e?.error?.error || e?.message || 'Create failed'); }
     finally { this.saving.set(false); }

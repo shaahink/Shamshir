@@ -29,7 +29,7 @@ export class StrategiesApiService {
     return firstValueFrom(this.http.post<{ id: string }>(`/api/strategies/${id}/duplicate`, {}));
   }
 
-  create(body: { id: string; displayName: string; symbols: string[]; timeframe: string; riskProfileId?: string }): Promise<{ id: string; displayName: string; saved: boolean }> {
+  create(body: { id: string; displayName: string; riskProfileId?: string }): Promise<{ id: string; displayName: string; saved: boolean }> {
     return firstValueFrom(this.http.post<{ id: string; displayName: string; saved: boolean }>('/api/strategies', body));
   }
 

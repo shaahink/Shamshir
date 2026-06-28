@@ -41,6 +41,9 @@ public sealed class AddOnPacksController(IAddOnPackStore store) : ControllerBase
     private static readonly HashSet<string> TrailingMethods =
         new(StringComparer.OrdinalIgnoreCase) { "StepPips", "AtrMultiple", "Structure", "SteppedR", "BreakevenThenTrail" };
 
+    private static readonly HashSet<string> AtrBasedTrailingMethods =
+        new(StringComparer.OrdinalIgnoreCase) { "AtrMultiple", "Structure" };
+
     /// <summary>Validate an add-on pack: each ENABLED add-on must carry usable numbers. Disabled add-ons are
     /// not checked (their stored values are inert). Returns an empty list when the pack is well-formed.</summary>
     internal static IReadOnlyList<string> ValidatePack(string id, AddOnPack? pack)
@@ -84,6 +87,21 @@ public sealed class AddOnPacksController(IAddOnPackStore store) : ControllerBase
                 errors.Add("DynamicSlTp ATR multiple (SL) must be > 0.");
             if (d.RrMultipleTp <= 0)
                 errors.Add("DynamicSlTp RR multiple (TP) must be > 0.");
+        }
+
+        // Cross-add-on conflict checks: enforce that enabled add-ons don't contradict each other.
+        if (o.Ride is { Enabled: true })
+        {
+            if (o.Trailing is not { Enabled: true })
+                errors.Add("Ride requires Trailing to be enabled.");
+            else if (!AtrBasedTrailingMethods.Contains(o.Trailing.Method))
+                errors.Add($"Ride requires ATR-based trailing (AtrMultiple or Structure), not '{o.Trailing.Method}'.");
+        }
+
+        if (o.Trailing is { Enabled: true, ActivateAfterBreakeven: true }
+            && o.Breakeven is not { Enabled: true })
+        {
+            errors.Add("ActivateAfterBreakeven requires Breakeven to be enabled.");
         }
 
         return errors;

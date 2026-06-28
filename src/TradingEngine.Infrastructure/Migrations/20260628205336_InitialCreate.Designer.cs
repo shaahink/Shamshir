@@ -11,7 +11,7 @@ using TradingEngine.Infrastructure.Persistence;
 namespace TradingEngine.Infrastructure.Migrations
 {
     [DbContext(typeof(TradingDbContext))]
-    [Migration("20260621081744_InitialCreate")]
+    [Migration("20260628205336_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -695,10 +695,6 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("DefaultSymbols")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -726,12 +722,11 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Timeframe")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 

@@ -29,8 +29,6 @@ export class RunsApiService {
 
   startRun(req: StartRunRequest): Promise<StartRunResponse> {
     const payload = {
-      symbol: req.symbol,
-      period: req.period,
       start: req.start,
       end: req.end,
       balance: req.balance,

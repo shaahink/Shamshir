@@ -316,6 +316,12 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                     @if (reasonOf(entry)) {
                       <span class="ml-2 text-gray-600">- {{ reasonOf(entry) }}</span>
                     }
+                    @if (kindOf(entry) === 'ADDON_RESOLVED' && addonDetail(entry)) {
+                      <span class="ml-2 text-emerald-400/70">{{ addonDetail(entry) }}</span>
+                    }
+                    @if (kindOf(entry) === 'PARTIAL' && partialDetail(entry)) {
+                      <span class="ml-2 text-amber-400/70">{{ partialDetail(entry) }}</span>
+                    }
                   </div>
                 }
               </div>
@@ -471,6 +477,55 @@ export class RunReportComponent implements OnInit {
       return o.OrderId ?? o.orderId ?? null;
     } catch {
       return null;
+    }
+  }
+
+  addonDetail(e: JournalEntry): string {
+    if (!e.eventJson) return '';
+    try {
+      const o = JSON.parse(e.eventJson);
+      const parts: string[] = [];
+      if (o.Trailing?.Enabled) {
+        const m = o.Trailing.Method ?? '?';
+        const atr = o.Trailing.AtrMultiple ?? o.Trailing.StepPips ?? '?';
+        parts.push(`Trail=${m}${m === 'StepPips' ? '@' + atr + 'pip' : '@' + atr + '×ATR'}`);
+      }
+      if (o.Breakeven?.Enabled) {
+        const t = o.Breakeven.TriggerRMultiple ?? '?';
+        const off = o.Breakeven.OffsetPips ?? 0;
+        parts.push(`BE@${t}R+${off}pip`);
+      }
+      if (o.PartialTp?.Enabled) {
+        const frac = o.PartialTp.CloseFraction ?? o.PartialTp.Fraction ?? '?';
+        const t = o.PartialTp.TriggerRMultiple ?? '?';
+        parts.push(`Partial@${t}R×${frac}`);
+      }
+      if (o.Ride?.Enabled) {
+        const adx = o.Ride.AdxFloor ?? '?';
+        const atr = o.Ride.RelaxedAtrMultiple ?? '?';
+        parts.push(`Ride ADX>${adx}→×${atr}`);
+      }
+      if (o.DynamicSlTp?.Enabled) {
+        const sl = o.DynamicSlTp.AtrMultipleSl ?? '?';
+        const tp = o.DynamicSlTp.RrMultipleTp ?? '?';
+        parts.push(`DynamicSl=${sl}×ATR TP=${tp}R`);
+      }
+      return parts.join('  ');
+    } catch {
+      return '';
+    }
+  }
+
+  partialDetail(e: JournalEntry): string {
+    if (!e.eventJson) return '';
+    try {
+      const o = JSON.parse(e.eventJson);
+      const lots = o.CloseLots ?? o.Lots ?? null;
+      const posId = o.PositionId ?? null;
+      if (lots != null) return `Close ${lots} lots` + (posId ? ' pos=' + posId : '');
+      return '';
+    } catch {
+      return '';
     }
   }
 

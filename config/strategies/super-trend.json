@@ -1,28 +1,45 @@
 {
-  "id": "super-trend",
-  "displayName": "SuperTrend",
-  "enabled": true,
-  "symbols": ["EURUSD", "GBPUSD", "USDJPY"],
-  "riskProfileId": "standard",
-  "timeframe": "H1",
-  "regimeFilter": { "allowRanging": false },
-  "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
-  "positionManagement": {
-    "stopLoss": { "method": "SwingPoint" },
-    "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0 },
-    "breakeven": { "enabled": true, "triggerRMultiple": 1.0, "offsetPips": 1.0 },
-    "trailing": { "enabled": true, "mode": "Auto", "method": "AtrMultiple", "atrMultiple": 2.5 }
-  },
-  "parameters": {
-    "atrPeriod": 10,
-    "atrMultiplier": 3.0,
-    "adxPeriod": 14,
-    "adxMinThreshold": 20.0
-  },
-  "reentry": {
-    "blockWhileSameDirectionOpen": true,
-    "cooldownBarsAfterSl": 5,
-    "cooldownBarsAfterTp": 2,
-    "cooldownBarsAfterEntry": 3
-  }
+    "id":  "super-trend",
+    "displayName":  "SuperTrend",
+    "enabled":  true,
+    "riskProfileId":  "standard",
+    "regimeFilter":  {
+                         "allowRanging":  false
+                     },
+    "orderEntry":  {
+                       "method":  "Market",
+                       "maxSlippagePips":  2.0
+                   },
+    "positionManagement":  {
+                               "stopLoss":  {
+                                                "method":  "SwingPoint"
+                                            },
+                               "takeProfit":  {
+                                                  "method":  "RrMultiple",
+                                                  "rrMultiple":  2.0
+                                              },
+                               "breakeven":  {
+                                                 "enabled":  true,
+                                                 "triggerRMultiple":  1.0,
+                                                 "offsetPips":  1.0
+                                             },
+                               "trailing":  {
+                                                "enabled":  true,
+                                                "mode":  "Auto",
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  2.5
+                                            }
+                           },
+    "parameters":  {
+                       "atrPeriod":  10,
+                       "atrMultiplier":  3.0,
+                       "adxPeriod":  14,
+                       "adxMinThreshold":  20.0
+                   },
+    "reentry":  {
+                    "blockWhileSameDirectionOpen":  true,
+                    "cooldownBarsAfterSl":  5,
+                    "cooldownBarsAfterTp":  2,
+                    "cooldownBarsAfterEntry":  3
+                }
 }

@@ -464,8 +464,6 @@ export class NewBacktestComponent implements OnInit {
     }
 
     const req: StartRunRequest = {
-      symbol: symList[0] || 'EURUSD',
-      period: perList[0] || 'h1',
       start: this.startDate,
       end: this.endDate,
       balance: this.balance,

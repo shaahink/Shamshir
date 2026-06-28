@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using TradingEngine.Services.SLTPCalculation;
 
 namespace TradingEngine.Strategies.MtfTrend;
@@ -8,8 +10,6 @@ public sealed class MtfTrendStrategy : IStrategy
     private readonly MtfTrendConfig _config;
     private readonly ILogger<MtfTrendStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
-    private readonly Timeframe _entryTf;
-    private readonly Timeframe _higherTf;
     private double? _prevRsi;
     private int _winStreak;
     private int _lossStreak;
@@ -22,20 +22,19 @@ public sealed class MtfTrendStrategy : IStrategy
         _config = config;
         _symbolRegistry = symbolRegistry;
         _logger = logger;
-        _entryTf = config.Timeframe;
-        _higherTf = config.HigherTimeframe;
     }
 
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [_entryTf, _higherTf];
+    public Timeframe EntryTimeframe => Timeframe.H1;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1, _config.HigherTimeframe];
     public int RequiredBarCount => _config.Parameters.EmaPeriod + _config.Parameters.RsiPeriod + _config.Parameters.SwingLookback + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod, Timeframe: _entryTf),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _entryTf),
-        new($"EMA_{_config.Parameters.EmaPeriod}", IndicatorType.Ema, _config.Parameters.EmaPeriod, Timeframe: _higherTf),
+        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod, Timeframe: Timeframe.H1),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: Timeframe.H1),
+        new($"EMA_{_config.Parameters.EmaPeriod}", IndicatorType.Ema, _config.Parameters.EmaPeriod, Timeframe: _config.HigherTimeframe),
     ];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);
@@ -44,16 +43,10 @@ public sealed class MtfTrendStrategy : IStrategy
     {
         try
         {
-            if (!_config.Symbols.Contains(context.Symbol.Value))
-            {
-                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
-                return null;
-            }
-
-            var h1Bars = context.Bars.GetValueOrDefault(_entryTf);
+            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
             if (h1Bars is null || h1Bars.Count < RequiredBarCount)
             {
-                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|tf={Tf} has={Count} needs={Need}", Id, _entryTf, h1Bars?.Count ?? 0, RequiredBarCount);
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|tf={Tf} has={Count} needs={Need}", Id, Timeframe.H1, h1Bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
@@ -140,5 +133,21 @@ public sealed class MtfTrendStrategy : IStrategy
         _prevRsi = null;
         _winStreak = 0;
         _lossStreak = 0;
+    }
+
+    public static MtfTrendStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new MtfTrendConfig
+        {
+            Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+            RiskProfileId = entry.RiskProfileId,
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+            Parameters = StrategyFactoryHelper.DeserializeParams<MtfTrendParameters>(entry.Parameters),
+        };
+        return new MtfTrendStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<MtfTrendStrategy>>());
     }
 }

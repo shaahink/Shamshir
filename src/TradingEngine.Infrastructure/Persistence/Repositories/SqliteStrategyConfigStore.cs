@@ -28,14 +28,13 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyCo
         {
             existing.DisplayName = entry.DisplayName;
             existing.Enabled = entry.Enabled;
-            existing.DefaultSymbols = JsonSerializer.Serialize(entry.Symbols);
-            existing.Timeframe = entry.Timeframe;
             existing.RiskProfileId = entry.RiskProfileId;
             existing.ParametersJson = RawTextOrEmpty(entry.Parameters);
             existing.PositionManagementJson = SerializeOptional(entry.PositionManagement);
             existing.OrderEntryJson = SerializeOptional(entry.OrderEntry);
             existing.RegimeFilterJson = SerializeOptional(entry.RegimeFilter);
             existing.ReentryJson = SerializeOptional(entry.Reentry);
+            existing.Version++;
             existing.UpdatedAtUtc = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
@@ -58,8 +57,6 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyCo
             Id = entry.Id,
             DisplayName = entry.DisplayName,
             Enabled = entry.Enabled,
-            DefaultSymbols = JsonSerializer.Serialize(entry.Symbols),
-            Timeframe = entry.Timeframe,
             RiskProfileId = entry.RiskProfileId,
             ParametersJson = RawTextOrEmpty(entry.Parameters),
             PositionManagementJson = SerializeOptional(entry.PositionManagement),
@@ -73,16 +70,13 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyCo
     private static StrategyConfigEntry ToEntry(StrategyConfigEntity entity)
     {
         var parameters = JsonSerializer.Deserialize<JsonElement>(entity.ParametersJson);
-        var symbols = JsonSerializer.Deserialize<List<string>>(entity.DefaultSymbols) ?? [];
 
         return new StrategyConfigEntry(
             entity.Id,
             entity.DisplayName,
             entity.Enabled,
-            symbols,
             entity.RiskProfileId,
-            parameters,
-            entity.Timeframe)
+            parameters)
         {
             RegimeFilter = DeserializeOptional<RegimeFilterOptions>(entity.RegimeFilterJson),
             OrderEntry = DeserializeOptional<OrderEntryOptions>(entity.OrderEntryJson),

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using TradingEngine.Services.SLTPCalculation;
 
 namespace TradingEngine.Strategies.RsiDivergence;
@@ -6,19 +8,20 @@ namespace TradingEngine.Strategies.RsiDivergence;
 public sealed class RsiDivergenceStrategy : IStrategy
 {
     private readonly RsiDivergenceConfig _config;
-    private readonly SymbolEntry[] _symbols;
+    private readonly ISymbolInfoRegistry _symbolRegistry;
     private int _winStreak;
     private int _lossStreak;
 
     public RsiDivergenceStrategy(RsiDivergenceConfig config, ISymbolInfoRegistry symbolRegistry, ILogger<RsiDivergenceStrategy> logger)
     {
         _config = config;
-        _symbols = config.Symbols.Select(s => new SymbolEntry(Symbol.Parse(s), symbolRegistry.Get(Symbol.Parse(s)))).ToArray();
+        _symbolRegistry = symbolRegistry;
     }
 
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
+    public Timeframe EntryTimeframe => Timeframe.H1;
     public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
     public int RequiredBarCount => _config.Parameters.DivergenceLookback + _config.Parameters.RsiPeriod + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => [
@@ -30,9 +33,6 @@ public sealed class RsiDivergenceStrategy : IStrategy
 
     public TradeIntent? Evaluate(MarketContext context)
     {
-        var found = Array.Find(_symbols, s => s.Symbol == context.Symbol);
-        if (found is null) return null;
-
         // Indicator keys are bare (e.g. "RSI_14"), matching IndicatorSnapshotService —
         // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
         if (!context.IndicatorValues.TryGetValue($"RSI_{_config.Parameters.RsiPeriod}", out var rsi))
@@ -71,8 +71,8 @@ public sealed class RsiDivergenceStrategy : IStrategy
         var dir = bullish ? TradeDirection.Long : TradeDirection.Short;
         var entry = new Price(dir == TradeDirection.Long ? currentBar.High + 0.00001m : currentBar.Low - 0.00001m);
         var pm = _config.PositionManagement;
-        var sl = SlTpHelpers.AtrBased(entry, dir, atr, pm.StopLoss.AtrMultiple, found.SymbolInfo);
-        var tp = SlTpHelpers.RRMultiple(entry, sl, dir, pm.TakeProfit.RrMultiple, found.SymbolInfo);
+        var sl = SlTpHelpers.AtrBased(entry, dir, atr, pm.StopLoss.AtrMultiple, _symbolRegistry.Get(context.Symbol));
+        var tp = SlTpHelpers.RRMultiple(entry, sl, dir, pm.TakeProfit.RrMultiple, _symbolRegistry.Get(context.Symbol));
 
         return new TradeIntent(context.Symbol, dir, OrderType.Market, null, sl, tp,
             _config.Id, _config.RiskProfileId, bullish ? "bullish-rsi-div" : "bearish-rsi-div", context.EngineTimeUtc);
@@ -86,5 +86,19 @@ public sealed class RsiDivergenceStrategy : IStrategy
 
     public void Reset() { _winStreak = 0; _lossStreak = 0; }
 
-    private sealed record SymbolEntry(Symbol Symbol, SymbolInfo SymbolInfo);
+    public static RsiDivergenceStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new RsiDivergenceConfig
+        {
+            Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+            RiskProfileId = entry.RiskProfileId,
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+            Parameters = StrategyFactoryHelper.DeserializeParams<RsiDivergenceParameters>(entry.Parameters),
+        };
+        return new RsiDivergenceStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<RsiDivergenceStrategy>>());
+    }
 }

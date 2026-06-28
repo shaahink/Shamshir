@@ -6,17 +6,12 @@ public sealed class EffectiveConfigResolver
 {
     public EffectiveConfigEntry Resolve(
         StrategyConfigEntry storedDefault,
-        StrategyOverride? perRunOverride,
-        SymbolTimeframePair? runPlanEntry)
+        StrategyOverride? perRunOverride)
     {
         var id = perRunOverride?.StrategyId ?? storedDefault.Id;
         var displayName = storedDefault.DisplayName;
         var enabled = perRunOverride?.Enabled ?? storedDefault.Enabled;
-        var symbols = runPlanEntry is not null
-            ? [runPlanEntry.Symbol]
-            : storedDefault.Symbols;
         var riskProfileId = perRunOverride?.RiskProfileId ?? storedDefault.RiskProfileId;
-        var timeframe = perRunOverride?.Timeframe ?? runPlanEntry?.Timeframe ?? storedDefault.Timeframe;
 
         var parameters = MergeParameters(storedDefault.Parameters, perRunOverride?.Parameters);
 
@@ -33,10 +28,8 @@ public sealed class EffectiveConfigResolver
             id,
             displayName,
             enabled,
-            symbols,
             riskProfileId,
             parameters,
-            timeframe,
             positionManagement,
             orderEntry,
             regimeFilter,

@@ -190,6 +190,22 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             ? ids.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             : Array.Empty<string>();
 
+    private static RunPlan BuildRunPlan(string[] strategyIds, string[] symbols, string[] periods)
+    {
+        var entries = new List<RunPlanEntry>();
+        foreach (var sid in strategyIds)
+        {
+            foreach (var sym in symbols)
+            {
+                foreach (var pf in periods)
+                {
+                    entries.Add(new RunPlanEntry(sid, sym, pf));
+                }
+            }
+        }
+        return new RunPlan(entries);
+    }
+
     private static Timeframe ParseTimeframe(string period) => period.ToUpperInvariant() switch
     {
         "M1" => Timeframe.M1,
@@ -566,8 +582,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private async Task<BacktestResult> RunEngineReplayAsync(
         string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines, CancellationToken userCt = default)
     {
-        var symbol = Symbol.Parse(cfg.Symbol);
-        var timeframe = ParseTimeframe(cfg.Period);
         var from = cfg.Start;
         var to = cfg.End;
 
@@ -590,8 +604,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 Interlocked.Increment(ref state.BarCount);
                 if (evt.Message.Length > 4 && evt.Message.StartsWith("Bar "))
                 {
-                    // Message looks like "Bar 2024-01-01 00:00 | close=…" — keep the whole timestamp
-                    // (date AND time) up to the " | " separator so the sim clock advances intra-day.
                     var pipeIdx = evt.Message.IndexOf(" | ", StringComparison.Ordinal);
                     state.SimTime = pipeIdx > 4 ? evt.Message[4..pipeIdx] : evt.Message[4..];
                 }
@@ -608,60 +620,94 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(userCt,
             new CancellationTokenSource(TimeSpan.FromMinutes(30)).Token);
 
-        var innerHost = EngineHostFactory.Create(new EngineHostOptions
-        {
-            RunId = runId,
-            Mode = EngineMode.Backtest,
-            AdapterFactory = sp => new BacktestReplayAdapter(barRepo, symbol, timeframe, from, to,
-                cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
-                sp.GetRequiredService<Func<string, string, decimal>>(),
-                sp.GetRequiredService<ILogger<BacktestReplayAdapter>>()),
-            DbPath = dbPath,
-            SolutionRoot = solutionRoot,
-            SymbolNames = cfg.Symbols,
-            ActiveStrategyIds = ParseStrategyIds(cfg),
-            PreloadedConfig = await BuildLoadedConfigFromDbAsync(cfg),
-            Progress = progressCallback,
-            MinLogLevel = LogLevel.Warning,
-        });
-        state.EngineHost = innerHost;
-        EngineHostFactory.WireEventHandlers(innerHost);
-        EngineHostFactory.WireRiskRules(innerHost);
+        var strategyIds = ParseStrategyIds(cfg);
+        var loadedConfig = await BuildLoadedConfigFromDbAsync(cfg);
+        var effectiveStrategyIds = strategyIds.Length > 0
+            ? strategyIds
+            : loadedConfig.StrategyConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
+        var runPlan = BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
 
-        await innerHost.StartAsync(cts.Token);
-        EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] Engine started. Replaying bars...");
+        var combinations = runPlan.Entries
+            .Select(e => (Symbol: Symbol.Parse(e.Symbol), Timeframe: ParseTimeframe(e.Timeframe)))
+            .Distinct()
+            .ToList();
 
-        var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
-        _ = StartEquityPollingAsync(innerHost, state, runId, cts.Token);
-        await adapter.BarStream.Completion;
-
-        var barCount = (adapter as BacktestReplayAdapter)?.BarCount ?? 0;
-        state.BarsTotal = barCount;
-        if (barCount == 0)
+        if (combinations.Count == 0)
         {
             EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] No bars found for {cfg.Symbol}/{cfg.Period} in {cfg.Start:yyyy-MM-dd}–{cfg.End:yyyy-MM-dd}. Run scripts/seed-bars.ps1 to seed data.");
+                $"[{DateTime.UtcNow:HH:mm:ss}] No symbol/timeframe combinations to run.");
+            return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = "", ErrorMessage = "No combinations." };
+        }
+
+        var totalBars = 0;
+        var anyBars = false;
+
+        foreach (var (sym, tf) in combinations)
+        {
+            var innerHost = EngineHostFactory.Create(new EngineHostOptions
+            {
+                RunId = runId,
+                Mode = EngineMode.Backtest,
+                AdapterFactory = sp => new BacktestReplayAdapter(barRepo, sym, tf, from, to,
+                    cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
+                    sp.GetRequiredService<Func<string, string, decimal>>(),
+                    sp.GetRequiredService<ILogger<BacktestReplayAdapter>>()),
+                DbPath = dbPath,
+                SolutionRoot = solutionRoot,
+                SymbolNames = cfg.Symbols,
+                ActiveStrategyIds = strategyIds,
+                RunPlan = runPlan,
+                PreloadedConfig = loadedConfig,
+                Progress = progressCallback,
+                MinLogLevel = LogLevel.Warning,
+            });
+            state.EngineHost = innerHost;
+            EngineHostFactory.WireEventHandlers(innerHost);
+            EngineHostFactory.WireRiskRules(innerHost);
+
+            await innerHost.StartAsync(cts.Token);
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] Pass {sym}/{tf} started...");
+
+            using var equityCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+            _ = StartEquityPollingAsync(innerHost, state, runId, equityCts.Token);
+
+            var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
+            await adapter.BarStream.Completion;
+
+            var barCount = (adapter as BacktestReplayAdapter)?.BarCount ?? 0;
+            totalBars += barCount;
+            if (barCount > 0) anyBars = true;
+            state.BarsTotal = totalBars;
+
+            equityCts.Cancel();
+            await FlushRunPersistenceAsync(innerHost);
+            CaptureFinalEquity(state, innerHost, runId);
             await innerHost.StopAsync(CancellationToken.None);
             await DisposeHostAsync(innerHost);
+
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] Pass {sym}/{tf} complete ({barCount} bars).");
+        }
+
+        state.BarsTotal = totalBars;
+        state.EngineHost = null;
+
+        if (!anyBars)
+        {
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] No bars found for any symbol/timeframe in {cfg.Start:yyyy-MM-dd}–{cfg.End:yyyy-MM-dd}.");
             return new BacktestResult
             {
                 RunId = runId,
                 ExitCode = 1,
                 AlgoHash = "",
-                ErrorMessage = $"No bars found for {cfg.Symbol}/{cfg.Period}."
+                ErrorMessage = "No bars found for any symbol/timeframe combination."
             };
         }
 
-        await Task.Delay(2_000, cts.Token);
-
         EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] Engine replay complete.");
-        await FlushRunPersistenceAsync(innerHost);
-        CaptureFinalEquity(state, innerHost, runId);
-        await innerHost.StopAsync(CancellationToken.None);
-        await DisposeHostAsync(innerHost);
-
+            $"[{DateTime.UtcNow:HH:mm:ss}] All passes complete ({combinations.Count} combinations, {totalBars} total bars).");
         return new BacktestResult { RunId = runId, ExitCode = 0, AlgoHash = "" };
     }
 
@@ -727,6 +773,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
             0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
 
+        var strategyIds = ParseStrategyIds(cfg);
+        var loadedConfig = await BuildLoadedConfigFromDbAsync(cfg);
+        var effectiveStrategyIds = strategyIds.Length > 0
+            ? strategyIds
+            : loadedConfig.StrategyConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
+        var runPlan = BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
+
         var innerHost = EngineHostFactory.Create(new EngineHostOptions
         {
             RunId = runId,
@@ -751,8 +804,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             DbPath = dbPath,
             SolutionRoot = solutionRoot,
             SymbolNames = cfg.Symbols,
-            ActiveStrategyIds = ParseStrategyIds(cfg),
-            PreloadedConfig = await BuildLoadedConfigFromDbAsync(cfg),
+            ActiveStrategyIds = strategyIds,
+            RunPlan = runPlan,
+            PreloadedConfig = loadedConfig,
             Progress = progressCallback,
             MinLogLevel = LogLevel.Warning,
         });
@@ -814,10 +868,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
         finally
         {
-            // iter-38 B4: the CLI exiting doesn't guarantee the in-process engine runner has finished
-            // consuming all bars from the NetMQ feed. Give it time to drain the queue so the flush
-            // below captures the tail equity/bar data (replay path does the same at :646).
-            await Task.Delay(3_000, CancellationToken.None);
+            var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
+            await adapter.BarStream.Completion;
             await FlushRunPersistenceAsync(innerHost);
             CaptureFinalEquity(_runs[runId], innerHost, runId);
             await innerHost.StopAsync(CancellationToken.None);
@@ -1037,11 +1089,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     // and the 500-bar batch threshold drop the run's data — the empty equity chart / "no bars" bugs).
     private static async Task FlushRunPersistenceAsync(IHost host)
     {
-        // Allow background flush loops (Equity every 5s, PipelineEvents every 3s) to catch the
-        // last few items before we force-drain everything. The old 5s settle was a blunt instrument;
-        // a shorter pause here is enough because FlushAsync/FlushRemainingAsync drain synchronously.
-        await Task.Delay(1_000);
-
         try { await host.Services.GetRequiredService<EquityPersistenceHandler>().FlushAsync(); }
         catch { /* best effort */ }
         try { await host.Services.GetRequiredService<BufferedBarWriter>().FlushAsync(); }
@@ -1095,8 +1142,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 var stored = storedConfigs.FirstOrDefault(s => s.Id == sid);
                 if (stored is null) continue;
                 var ovr = overrides.GetValueOrDefault(sid);
-                var plan = new SymbolTimeframePair(cfg.Symbol, cfg.Period);
-                resolvedEntries.Add(_configResolver.Resolve(stored, ovr, plan));
+                resolvedEntries.Add(_configResolver.Resolve(stored, ovr));
             }
 
             if (resolvedEntries.Count == 0) return null;

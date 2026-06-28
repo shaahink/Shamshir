@@ -1,33 +1,51 @@
 {
-  "id": "macd-momentum",
-  "displayName": "MACD Momentum",
-  "enabled": true,
-  "symbols": ["EURUSD", "GBPUSD", "USDJPY"],
-  "riskProfileId": "standard",
-  "timeframe": "H1",
-  "regimeFilter": { "allowRanging": false },
-  "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
-  "positionManagement": {
-    "stopLoss": { "method": "AtrMultiple", "atrMultiple": 2.0 },
-    "takeProfit": { "method": "RrMultiple", "rrMultiple": 3.0 },
-    "breakeven": { "enabled": true, "triggerRMultiple": 1.0, "offsetPips": 1.0 },
-    "trailing": { "enabled": true, "mode": "Auto", "method": "AtrMultiple", "atrMultiple": 2.5 }
-  },
-  "parameters": {
-    "macdFast": 12,
-    "macdSlow": 26,
-    "macdSignal": 9,
-    "smaPeriod": 200,
-    "adxPeriod": 14,
-    "adxMinThreshold": 20.0,
-    "atrPeriod": 14,
-    "slAtrMultiple": 2.0,
-    "tpRrMultiple": 3.0
-  },
-  "reentry": {
-    "blockWhileSameDirectionOpen": true,
-    "cooldownBarsAfterSl": 5,
-    "cooldownBarsAfterTp": 2,
-    "cooldownBarsAfterEntry": 3
-  }
+    "id":  "macd-momentum",
+    "displayName":  "MACD Momentum",
+    "enabled":  true,
+    "riskProfileId":  "standard",
+    "regimeFilter":  {
+                         "allowRanging":  false
+                     },
+    "orderEntry":  {
+                       "method":  "Market",
+                       "maxSlippagePips":  2.0
+                   },
+    "positionManagement":  {
+                               "stopLoss":  {
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  2.0
+                                            },
+                               "takeProfit":  {
+                                                  "method":  "RrMultiple",
+                                                  "rrMultiple":  3.0
+                                              },
+                               "breakeven":  {
+                                                 "enabled":  true,
+                                                 "triggerRMultiple":  1.0,
+                                                 "offsetPips":  1.0
+                                             },
+                               "trailing":  {
+                                                "enabled":  true,
+                                                "mode":  "Auto",
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  2.5
+                                            }
+                           },
+    "parameters":  {
+                       "macdFast":  12,
+                       "macdSlow":  26,
+                       "macdSignal":  9,
+                       "smaPeriod":  200,
+                       "adxPeriod":  14,
+                       "adxMinThreshold":  20.0,
+                       "atrPeriod":  14,
+                       "slAtrMultiple":  2.0,
+                       "tpRrMultiple":  3.0
+                   },
+    "reentry":  {
+                    "blockWhileSameDirectionOpen":  true,
+                    "cooldownBarsAfterSl":  5,
+                    "cooldownBarsAfterTp":  2,
+                    "cooldownBarsAfterEntry":  3
+                }
 }

@@ -141,8 +141,8 @@ public static class ServiceRegistration
             var loaded = new LoadedConfig([], [])
             {
                 StrategyConfigs = configs.Select(c => new StrategyConfigEntry(
-                    c.Id, c.DisplayName, c.Enabled, c.Symbols, c.RiskProfileId,
-                    c.Parameters, c.Timeframe)
+                    c.Id, c.DisplayName, c.Enabled, c.RiskProfileId,
+                    c.Parameters)
                 {
                     RegimeFilter = c.RegimeFilter,
                     OrderEntry = c.OrderEntry,

@@ -13,10 +13,8 @@ public sealed record SessionBreakoutConfig(
     string Id,
     string DisplayName,
     bool Enabled,
-    IReadOnlyList<string> Symbols,
     string RiskProfileId,
-    SessionBreakoutParameters Parameters,
-    Timeframe Timeframe = Timeframe.H1) : IStrategyConfig
+    SessionBreakoutParameters Parameters) : IStrategyConfig
 {
     public RegimeFilterOptions RegimeFilter { get; init; } = new();
     public OrderEntryOptions OrderEntry { get; init; } = new();

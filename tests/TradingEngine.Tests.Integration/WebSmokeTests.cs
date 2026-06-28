@@ -90,19 +90,19 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     }
 
     [Fact]
-    public async Task ApiBacktestStart_ReturnsRunId()
+    public async Task ApiStartRun_ReturnsRunId()
     {
         var payload = JsonSerializer.Serialize(new
         {
-            symbol = "EURUSD",
-            period = "h1",
+            symbols = new[] { "EURUSD" },
+            periods = new[] { "H1" },
             start = "2024-01-01",
             end = "2024-01-02",
             balance = 100000
         });
 
         var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
-        var response = await _client.PostAsync("/api/backtest/start", content);
+        var response = await _client.PostAsync("/api/runs", content);
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);

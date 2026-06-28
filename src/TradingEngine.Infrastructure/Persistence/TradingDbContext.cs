@@ -61,14 +61,13 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnType("TEXT").IsRequired();
             e.Property(x => x.DisplayName).HasColumnType("TEXT").IsRequired();
-            e.Property(x => x.DefaultSymbols).HasColumnType("TEXT").IsRequired();
-            e.Property(x => x.Timeframe).HasColumnType("TEXT").IsRequired();
             e.Property(x => x.RiskProfileId).HasColumnType("TEXT").IsRequired();
             e.Property(x => x.ParametersJson).HasColumnType("TEXT").IsRequired();
             e.Property(x => x.PositionManagementJson).HasColumnType("TEXT");
             e.Property(x => x.OrderEntryJson).HasColumnType("TEXT");
             e.Property(x => x.RegimeFilterJson).HasColumnType("TEXT");
             e.Property(x => x.ReentryJson).HasColumnType("TEXT");
+            e.Property(x => x.Version).HasColumnType("INTEGER").IsRequired();
             e.Property(x => x.UpdatedAtUtc).HasColumnType("TEXT");
         });
 

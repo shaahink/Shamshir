@@ -39,7 +39,7 @@ public sealed class StrategyCharacterizationTests
     public void EmaAlignment_FiresLong_OnCleanUptrend()
     {
         var s = new EmaAlignmentStrategy(
-            new EmaAlignmentConfig("ema", "EMA Alignment", true, ["EURUSD"], "standard", new EmaAlignmentParameters()),
+            new EmaAlignmentConfig("ema", "EMA Alignment", true, "standard", new EmaAlignmentParameters()),
             Registry(), Substitute.For<ILogger<EmaAlignmentStrategy>>());
 
         var signals = Signals(s, StrongTrend(up: true, 260));
@@ -52,7 +52,7 @@ public sealed class StrategyCharacterizationTests
     public void MeanReversion_Fires_OnOscillationWithRejectionWicks()
     {
         var s = new MeanReversionStrategy(
-            new MeanReversionConfig("mr", "Mean Reversion", true, ["EURUSD"], "standard", new MeanReversionParameters()),
+            new MeanReversionConfig("mr", "Mean Reversion", true, "standard", new MeanReversionParameters()),
             Registry(), Substitute.For<ILogger<MeanReversionStrategy>>());
 
         // A battery: a strategy this alive should fire on at least one mean-reverting regime.

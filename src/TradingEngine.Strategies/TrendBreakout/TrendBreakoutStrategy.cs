@@ -1,3 +1,6 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using TradingEngine.Services.SLTPCalculation;
 
 namespace TradingEngine.Strategies.TrendBreakout;
@@ -8,7 +11,6 @@ public sealed class TrendBreakoutStrategy : IStrategy
     private readonly TrendBreakoutConfig _config;
     private readonly ILogger<TrendBreakoutStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
-    private readonly Timeframe _timeframe;
     private int? _lastSignalDirection;
     private int _winStreak;
     private int _lossStreak;
@@ -18,7 +20,8 @@ public sealed class TrendBreakoutStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [_timeframe];
+    public Timeframe EntryTimeframe => Timeframe.H1;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
     public int RequiredBarCount => Math.Max(
         Math.Max(_config.Parameters.LookbackBars, _config.Parameters.MaPeriod),
         _config.Parameters.AtrPeriod) + 5;
@@ -40,20 +43,13 @@ public sealed class TrendBreakoutStrategy : IStrategy
         _config = config;
         _symbolRegistry = symbolRegistry;
         _logger = logger;
-        _timeframe = config.Timeframe;
     }
 
     public TradeIntent? Evaluate(MarketContext context)
     {
         try
         {
-            if (!_config.Symbols.Contains(context.Symbol.Value))
-            {
-                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
-                return null;
-            }
-
-            var h1Bars = context.Bars.GetValueOrDefault(_timeframe);
+            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
             if (h1Bars is null || h1Bars.Count < RequiredBarCount)
             {
                 _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
@@ -141,5 +137,23 @@ public sealed class TrendBreakoutStrategy : IStrategy
         _lastSignalDirection = null;
         _winStreak = 0;
         _lossStreak = 0;
+    }
+
+    public static TrendBreakoutStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new TrendBreakoutConfig
+        {
+            Id = entry.Id,
+            DisplayName = entry.DisplayName,
+            Enabled = entry.Enabled,
+            RiskProfileId = entry.RiskProfileId,
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+            Parameters = StrategyFactoryHelper.DeserializeParams<TrendBreakoutParameters>(entry.Parameters),
+        };
+        return new TrendBreakoutStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<TrendBreakoutStrategy>>());
     }
 }
