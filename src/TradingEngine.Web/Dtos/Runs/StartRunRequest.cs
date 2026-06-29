@@ -26,6 +26,13 @@ public sealed record StartRunRequest
     // Run-level governor toggle (D4). Default true = governor on, as today. False disables the governor
     // for the whole run (GovernorOptions.Enabled = false).
     public bool GovernorEnabled { get; init; } = true;
+
+    // Run-level protection toggles (P5). Default true = ruleset defaults apply. False forces the
+    // corresponding protection OFF for this run — the pre-trade gate skips the check AND the
+    // breach watchdog won't enter protection mode for that limit.
+    public bool DailyDdEnabled { get; init; } = true;
+    public bool MaxDdEnabled { get; init; } = true;
+    public bool ForceCloseOnBreachEnabled { get; init; } = true;
 }
 
 public sealed record RunRowRequest

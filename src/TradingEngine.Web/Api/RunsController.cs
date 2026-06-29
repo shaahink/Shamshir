@@ -108,6 +108,10 @@ public sealed class RunsController : ControllerBase
             cfg.CustomParams["RunRows"] = System.Text.Json.JsonSerializer.Serialize(rowPlan.Entries);
         // Run-level governor toggle (D4) — always recorded so the persisted run shows the choice.
         cfg.CustomParams["GovernorEnabled"] = req.GovernorEnabled ? "true" : "false";
+        // Run-level protection toggles (P5) — default "true" means ruleset defaults apply.
+        cfg.CustomParams["DailyDdEnabled"] = req.DailyDdEnabled ? "true" : "false";
+        cfg.CustomParams["MaxDdEnabled"] = req.MaxDdEnabled ? "true" : "false";
+        cfg.CustomParams["ForceCloseOnBreachEnabled"] = req.ForceCloseOnBreachEnabled ? "true" : "false";
         if (!string.IsNullOrWhiteSpace(req.RiskProfileId))
             cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
         if (!string.IsNullOrWhiteSpace(req.Venue))

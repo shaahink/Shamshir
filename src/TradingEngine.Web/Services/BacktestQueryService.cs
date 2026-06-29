@@ -87,6 +87,39 @@ public sealed class BacktestQueryService : IBacktestQueryService
             }
         }
 
+        // iter-strategy-system P5: also count gate rejections from the StepRecord journal. When the
+        // pre-trade gate rejects a proposal, the kernel writes an OrderProposed StepRecord with a
+        // non-null DecisionReason (e.g. "WorstCaseDDWouldBreachDaily"). Parse EventJson to extract
+        // the strategy ID so we can attribute the rejection to the correct strategy.
+        var gateRejections = await db.JournalEntries
+            .Where(e => e.RunId == runId && e.EventKind == "OrderProposed" && e.DecisionReason != null)
+            .Select(e => new { e.EventJson, e.DecisionReason })
+            .ToListAsync(ct);
+
+        foreach (var gr in gateRejections)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(gr.EventJson);
+                var root = doc.RootElement;
+                var sid = root.TryGetProperty("strategyId", out var sProp) ? sProp.GetString() : null;
+                if (string.IsNullOrEmpty(sid) || string.IsNullOrEmpty(gr.DecisionReason))
+                    continue;
+
+                if (!perStrategy.ContainsKey(sid))
+                    perStrategy[sid] = (0, 0, new Dictionary<string, int>());
+
+                var agg = perStrategy[sid];
+                var gateReason = "GATE:" + gr.DecisionReason;
+                agg.NoSignal[gateReason] = agg.NoSignal.GetValueOrDefault(gateReason) + 1;
+                perStrategy[sid] = agg;
+            }
+            catch
+            {
+                // best-effort; malformed JSON shouldn't break the whole breakdown
+            }
+        }
+
         var trades = await db.Trades
             .Where(t => t.RunId == runId)
             .GroupBy(t => t.StrategyId)
@@ -104,7 +137,7 @@ public sealed class BacktestQueryService : IBacktestQueryService
             var (total, signals, noSignal) = kv.Value;
             var topRejections = noSignal
                 .OrderByDescending(x => x.Value)
-                .Take(5)
+                .Take(10)
                 .Select(x => new NoSignalReason(x.Key, x.Value))
                 .ToList();
 

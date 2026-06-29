@@ -259,6 +259,10 @@ type JournalRow = JournalEntry & { outcome?: string | null };
               </div>
               <!-- C1: per-strategy rejection reason histogram -->
               <div class="mt-3 space-y-2">
+                <div class="flex gap-3 text-xs text-gray-500 mb-1">
+                  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-emerald-700/60 inline-block"></span> Strategy</span>
+                  <span class="flex items-center gap-1"><span class="w-3 h-3 rounded-sm bg-amber-700/60 inline-block"></span> Gate</span>
+                </div>
                 @for (s of breakdown(); track s.strategyId) {
                   @if (s.topRejections?.length) {
                     <div>
@@ -266,7 +270,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                       <div class="flex gap-0.5 items-end">
                         @for (r of s.topRejections; track r.reason) {
                           <div class="text-center" [style.flex]="1">
-                            <div class="rounded-t bg-emerald-700/60 min-w-4" [style.height.px]="rejectionBarHeight(r.count, s.topRejections)"
+                            <div [class]="rejectionBarColor(r.reason) + ' rounded-t min-w-4'" [style.height.px]="rejectionBarHeight(r.count, s.topRejections)"
                               [title]="r.reason + ': ' + r.count"></div>
                             <div class="text-xs text-gray-500 truncate" [title]="r.reason">{{ r.reason }}</div>
                           </div>
@@ -672,6 +676,10 @@ export class RunReportComponent implements OnInit {
   rejectionBarHeight(count: number, rejections: { count: number }[]): number {
     const max = Math.max(...rejections.map(r => r.count), 1);
     return Math.max(4, (count / max) * 60);
+  }
+
+  rejectionBarColor(reason: string): string {
+    return reason.startsWith('GATE:') ? 'bg-amber-700/60' : 'bg-emerald-700/60';
   }
 
   // F4 — MAE/MFE scatter from the run's trades (x = MAE as negative pips, y = MFE).

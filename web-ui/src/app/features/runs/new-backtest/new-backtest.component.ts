@@ -173,6 +173,15 @@ const rowKey = (sid: string, sym: string, tf: string) => `${sid}|${sym}|${tf}`;
               <input type="checkbox" [(ngModel)]="governorEnabled" class="rounded" /> Governor
             </label>
             <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+              <input type="checkbox" [(ngModel)]="dailyDdEnabled" class="rounded" /> Daily DD protection
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+              <input type="checkbox" [(ngModel)]="maxDdEnabled" class="rounded" /> Max DD protection
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+              <input type="checkbox" [(ngModel)]="forceCloseEnabled" class="rounded" /> Force close on breach
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
               <input type="checkbox" [(ngModel)]="regimeEnabled" class="rounded" /> Regime detection
             </label>
           </div>
@@ -224,6 +233,9 @@ export class NewBacktestComponent implements OnInit {
   riskProfile = 'standard';
   venue = 'replay';
   governorEnabled = true;
+  dailyDdEnabled = true;
+  maxDdEnabled = true;
+  forceCloseEnabled = true;
   regimeEnabled = true;
 
   packs = signal<{ id: string; name: string }[]>([]);
@@ -371,6 +383,9 @@ export class NewBacktestComponent implements OnInit {
       venue: this.venue,
       rows,
       governorEnabled: this.governorEnabled,
+      dailyDdEnabled: this.dailyDdEnabled,
+      maxDdEnabled: this.maxDdEnabled,
+      forceCloseOnBreachEnabled: this.forceCloseEnabled,
       disableRegime: this.regimeEnabled ? undefined : true,
     };
     const runId = await this.store.startBacktest(req);

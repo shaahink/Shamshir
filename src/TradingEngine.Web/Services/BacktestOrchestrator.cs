@@ -620,6 +620,25 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         if (cfg.CustomParams.GetValueOrDefault("GovernorEnabled") == "false")
             governor = governor with { Enabled = false };
 
+        // iter-strategy-system P5: run-level protection toggle overrides. Default (absent/"true") keeps
+        // the ruleset defaults. "false" forces the corresponding protection OFF by ANDing into every
+        // ruleset's ProtectionToggles, regardless of which ruleset gets selected later.
+        var perRunDailyDd = cfg.CustomParams.GetValueOrDefault("DailyDdEnabled") != "false";
+        var perRunMaxDd = cfg.CustomParams.GetValueOrDefault("MaxDdEnabled") != "false";
+        var perRunForceClose = cfg.CustomParams.GetValueOrDefault("ForceCloseOnBreachEnabled") != "false";
+        if (!perRunDailyDd || !perRunMaxDd || !perRunForceClose)
+        {
+            propFirms = propFirms.Select(pf => pf with
+            {
+                Toggles = pf.Toggles with
+                {
+                    DailyDdEnabled = pf.Toggles.DailyDdEnabled && perRunDailyDd,
+                    MaxDdEnabled = pf.Toggles.MaxDdEnabled && perRunMaxDd,
+                    ForceCloseOnBreachEnabled = pf.Toggles.ForceCloseOnBreachEnabled && perRunForceClose,
+                }
+            }).ToList();
+        }
+
         return new LoadedConfig(propFirms, riskProfiles)
         {
             StrategyConfigs = strategyConfigs,

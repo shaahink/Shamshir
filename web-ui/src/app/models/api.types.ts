@@ -231,6 +231,10 @@ export interface StartRunRequest {
   rows?: RunRow[];
   // Run-level governor toggle (D4). Default true.
   governorEnabled?: boolean;
+  // Run-level protection toggles (P5). Default true = ruleset defaults apply.
+  dailyDdEnabled?: boolean;
+  maxDdEnabled?: boolean;
+  forceCloseOnBreachEnabled?: boolean;
 }
 
 export interface RiskProfile {

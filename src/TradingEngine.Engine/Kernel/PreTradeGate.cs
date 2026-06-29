@@ -125,22 +125,32 @@ public static class PreTradeGate
         }
 
         // 6. Worst-case simultaneous-stop projection (C3/H1/H3/M7).
-        var candidateLoss = CandidateWorstCase(p, lots, symbol);
-        var projectedEquity = equity - (candidateLoss + totalOpenRisk);
-
-        var dailyBaseEquity = c.DailyDdBase == DailyDdBase.DailyStart
-            ? state.Drawdown.DailyStartEquity
-            : state.Drawdown.InitialAccountBalance;
-        var dailyFloor = dailyBaseEquity * (1m - c.MaxDailyLoss);
-        if (projectedEquity < dailyFloor)
+        // iter-strategy-system P5: gated behind toggle flags so per-run overrides can disable.
+        if (c.DailyDdEnabled || c.MaxDdEnabled)
         {
-            return GateResult.Reject("WorstCaseDDWouldBreachDaily");
-        }
+            var candidateLoss = CandidateWorstCase(p, lots, symbol);
+            var projectedEquity = equity - (candidateLoss + totalOpenRisk);
 
-        var maxFloor = state.Drawdown.GetMaxDrawdownFloor(c.MaxTotalLoss); // C3/H1 — single correct helper
-        if (projectedEquity < maxFloor)
-        {
-            return GateResult.Reject("WorstCaseDDWouldBreachOverall");
+            if (c.DailyDdEnabled)
+            {
+                var dailyBaseEquity = c.DailyDdBase == DailyDdBase.DailyStart
+                    ? state.Drawdown.DailyStartEquity
+                    : state.Drawdown.InitialAccountBalance;
+                var dailyFloor = dailyBaseEquity * (1m - c.MaxDailyLoss);
+                if (projectedEquity < dailyFloor)
+                {
+                    return GateResult.Reject("WorstCaseDDWouldBreachDaily");
+                }
+            }
+
+            if (c.MaxDdEnabled)
+            {
+                var maxFloor = state.Drawdown.GetMaxDrawdownFloor(c.MaxTotalLoss);
+                if (projectedEquity < maxFloor)
+                {
+                    return GateResult.Reject("WorstCaseDDWouldBreachOverall");
+                }
+            }
         }
 
         // 7. Weekly / monthly DD (H2). B1: gated behind toggle flags.
