@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Strategies.MeanReversion;
 
+[StrategyId("mean-reversion")]
 public sealed class MeanReversionStrategy : IStrategy
 {
     private readonly MeanReversionConfig _config;

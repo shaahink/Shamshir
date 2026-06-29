@@ -5,6 +5,7 @@ using TradingEngine.Services.Strategy;
 
 namespace TradingEngine.Strategies.EmaAlignment;
 
+[StrategyId("ema-alignment")]
 public sealed class EmaAlignmentStrategy : IStrategy
 {
     private readonly EmaAlignmentConfig _config;

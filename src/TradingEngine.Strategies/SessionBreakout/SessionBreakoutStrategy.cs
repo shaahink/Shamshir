@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Strategies.SessionBreakout;
 
+[StrategyId("session-breakout")]
 public sealed class SessionBreakoutStrategy : IStrategy
 {
     private readonly SessionBreakoutConfig _config;
