@@ -184,6 +184,9 @@ const rowKey = (sid: string, sym: string, tf: string) => `${sid}|${sym}|${tf}`;
             <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
               <input type="checkbox" [(ngModel)]="regimeEnabled" class="rounded" /> Regime detection
             </label>
+            <label class="flex items-center gap-2 text-sm text-amber-400 cursor-pointer">
+              <input type="checkbox" [(ngModel)]="stripAddOns" class="rounded" /> No add-ons (raw baseline SL/TP)
+            </label>
           </div>
         </div>
 
@@ -237,6 +240,7 @@ export class NewBacktestComponent implements OnInit {
   maxDdEnabled = true;
   forceCloseEnabled = true;
   regimeEnabled = true;
+  stripAddOns = false;
 
   packs = signal<{ id: string; name: string }[]>([]);
   strategies = signal<StrategySummary[]>([]);
@@ -387,6 +391,7 @@ export class NewBacktestComponent implements OnInit {
       maxDdEnabled: this.maxDdEnabled,
       forceCloseOnBreachEnabled: this.forceCloseEnabled,
       disableRegime: this.regimeEnabled ? undefined : true,
+      stripAddOns: this.stripAddOns ? true : undefined,
     };
     const runId = await this.store.startBacktest(req);
     this.router.navigate(['/runs', runId, 'monitor']);

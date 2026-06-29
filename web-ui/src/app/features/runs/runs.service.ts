@@ -13,6 +13,7 @@ import type {
   StartRunRequest,
   StartRunResponse,
   StrategyPerformance,
+  BarNarrative,
 } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
@@ -43,6 +44,12 @@ export class RunsApiService {
       usePackId: req.usePackId ?? '',
       disableRegime: req.disableRegime ?? false,
       perStrategyPackIds: req.perStrategyPackIds,
+      rows: req.rows ?? [],
+      governorEnabled: req.governorEnabled ?? true,
+      dailyDdEnabled: req.dailyDdEnabled ?? true,
+      maxDdEnabled: req.maxDdEnabled ?? true,
+      forceCloseOnBreachEnabled: req.forceCloseOnBreachEnabled ?? true,
+      stripAddOns: req.stripAddOns ?? false,
     };
     return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }
@@ -68,6 +75,11 @@ export class RunsApiService {
     let url = `/api/runs/${runId}/bar-decisions?limit=${limit}`;
     if (afterSeq != null) url += `&afterSeq=${afterSeq}`;
     return firstValueFrom(this.http.get<JournalEntry[]>(url));
+  }
+
+  // iter-redesign P5: per-bar decision narrative (regime, verdicts, proposals, gate rejections, risk)
+  getRunBars(runId: string): Promise<BarNarrative[]> {
+    return firstValueFrom(this.http.get<BarNarrative[]>(`/api/runs/${runId}/bars`));
   }
 
   getRunEquity(runId: string): Promise<EquityPoint[]> {

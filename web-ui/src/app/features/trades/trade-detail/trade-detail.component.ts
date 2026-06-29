@@ -3,7 +3,7 @@ import { ActivatedRoute } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { CandleChartComponent, type OhlcBar, type PriceMarker } from '../../../shared/candle-chart.component';
-import type { TradeDetail, BarData } from '../../../models/api.types';
+import type { TradeDetail } from '../../../models/api.types';
 import { TradesApiService } from '../trades.service';
 import { formatDuration } from '../../../shared/format.helper';
 
@@ -48,7 +48,7 @@ import { formatDuration } from '../../../shared/format.helper';
         </div>
 
         @if (bars().length > 0) {
-          <app-candle-chart title="Price Chart" [bars]="bars()" [markers]="chartMarkers()" />
+          <app-candle-chart title="Price Chart" [bars]="bars()" [markers]="markers()" />
         } @else {
           <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-12 text-center">
             <p class="text-sm text-gray-500">No price data for this window.</p>
@@ -66,47 +66,38 @@ export class TradeDetailComponent implements OnInit {
   private api = inject(TradesApiService);
   trade = signal<TradeDetail | null>(null);
   bars = signal<OhlcBar[]>([]);
-
-  chartMarkers = (): PriceMarker[] => {
-    const t = this.trade();
-    if (!t) return [];
-    const markers: PriceMarker[] = [
-      { price: t.entryPrice, label: 'Entry', color: '#60a5fa' },
-      { price: t.exitPrice, label: 'Exit', color: '#fb923c' },
-    ];
-    // iter-38 W-A1: the trade-detail API (TradeDetailResponse) emits stopLoss/takeProfit, not slPrice/tpPrice.
-    if (t.stopLoss && t.stopLoss > 0) markers.push({ price: t.stopLoss, label: 'SL', color: '#ef4444' });
-    if (t.takeProfit && t.takeProfit > 0) markers.push({ price: t.takeProfit, label: 'TP', color: '#10b981' });
-    return markers;
-  };
+  markers = signal<PriceMarker[]>([]);
 
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
     const t = await this.api.getById(id);
     this.trade.set(t);
-    // T1: order-safe window — never assume openedAtUtc < closedAtUtc (a wall-clock-stamped entry can
-    // invert the order). Build [min-pad, max+pad] so /api/bars always gets a valid (from <= to) range.
-    const a = new Date(t.openedAtUtc).getTime();
-    const b = new Date(t.closedAtUtc).getTime();
-    const lo = Math.min(a, b);
-    const hi = Math.max(a, b);
-    const pad = Math.max((hi - lo) * 2, 3_600_000);
-    const from = new Date(lo - pad);
-    const to = new Date(hi + pad);
-    const tf = t.timeframe || 'H1';
+    // iter-redesign P6.2: bars + entry/exit/SL/TP markers come from the dedicated chart endpoint, which
+    // resolves the run's timeframe and pads the window server-side.
     try {
-      const bars = await this.api.getBars(
-        t.symbol,
-        tf,
-        from.toISOString(),
-        to.toISOString(),
-      );
+      const chart = await this.api.getChart(id);
       this.bars.set(
-        bars.map((b: BarData) => ({ time: b.time * 1000, open: b.open, high: b.high, low: b.low, close: b.close })),
+        chart.bars.map((b) => ({ time: b.time * 1000, open: b.open, high: b.high, low: b.low, close: b.close })),
       );
+      this.markers.set(chart.markers.map((m) => this.markerFor(m.kind, m.price)));
     } catch {
-      /* no bars */
+      /* no chart data */
+    }
+  }
+
+  private markerFor(kind: string, price: number): PriceMarker {
+    switch (kind) {
+      case 'Entry':
+        return { price, label: 'Entry', color: '#60a5fa' };
+      case 'Exit':
+        return { price, label: 'Exit', color: '#fb923c' };
+      case 'StopLoss':
+        return { price, label: 'SL', color: '#ef4444' };
+      case 'TakeProfit':
+        return { price, label: 'TP', color: '#10b981' };
+      default:
+        return { price, label: kind, color: '#9ca3af' };
     }
   }
 

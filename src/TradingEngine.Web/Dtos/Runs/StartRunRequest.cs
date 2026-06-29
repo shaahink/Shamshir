@@ -33,6 +33,10 @@ public sealed record StartRunRequest
     public bool DailyDdEnabled { get; init; } = true;
     public bool MaxDdEnabled { get; init; } = true;
     public bool ForceCloseOnBreachEnabled { get; init; } = true;
+
+    // iter-redesign P3.2: strip all enrichment add-ons (breakeven/trailing/partial/ride/dynamic),
+    // leaving only the strategy's baseline SL/TP — the owner's "no add-ons, watch the drawdown" mode.
+    public bool StripAddOns { get; init; }
 }
 
 public sealed record RunRowRequest

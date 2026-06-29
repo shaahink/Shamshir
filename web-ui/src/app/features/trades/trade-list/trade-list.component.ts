@@ -24,6 +24,11 @@ import { TRADE_COLUMNS, type ColumnDef } from '../../../shared/trade-columns';
           placeholder="Strategy"
           class="w-32 rounded-md border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none"
         />
+        <input
+          [(ngModel)]="filterRun"
+          placeholder="Run id"
+          class="w-32 rounded-md border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none"
+        />
         <select
           [(ngModel)]="filterDirection"
           class="rounded-md border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none"
@@ -89,7 +94,22 @@ import { TRADE_COLUMNS, type ColumnDef } from '../../../shared/trade-columns';
             @for (row of pagedTrades(); track row.id) {
               <tr class="cursor-pointer transition hover:bg-gray-800/30" [routerLink]="['/trades', row.id]">
                 @for (col of columns; track col.key) {
-                  <td class="whitespace-nowrap px-4 py-2 font-mono text-xs tabular-nums">{{ fmtVal(row, col) }}</td>
+                  @if (col.key === 'runId') {
+                    <td class="whitespace-nowrap px-4 py-2 text-xs">
+                      @if (row.runId) {
+                        <a
+                          [routerLink]="['/runs', row.runId]"
+                          (click)="$event.stopPropagation()"
+                          class="font-mono text-emerald-400 hover:underline"
+                          >{{ shortRun(row.runId) }}</a
+                        >
+                      } @else {
+                        <span class="text-gray-600">—</span>
+                      }
+                    </td>
+                  } @else {
+                    <td class="whitespace-nowrap px-4 py-2 font-mono text-xs tabular-nums">{{ fmtVal(row, col) }}</td>
+                  }
                 }
               </tr>
             }
@@ -108,6 +128,7 @@ export class TradeListComponent implements OnInit {
   allTrades = signal<TradeSummary[]>([]);
   filterSymbol = '';
   filterStrategy = '';
+  filterRun = '';
   filterDirection = '';
   filterFrom = '';
   filterTo = '';
@@ -115,6 +136,7 @@ export class TradeListComponent implements OnInit {
   pageSize = 50;
 
   columns: ColumnDef[] = [
+    { key: 'runId', label: 'Run' },
     { key: 'timeframe', label: 'TF' },
     ...TRADE_COLUMNS,
     { key: 'entryType', label: 'Type' },
@@ -123,11 +145,16 @@ export class TradeListComponent implements OnInit {
     { key: 'maxFavorableExcursion', label: 'MFE', format: 'number' },
   ];
 
+  shortRun(id: string): string {
+    return id.length > 8 ? id.slice(0, 8) : id;
+  }
+
   filtered(): TradeSummary[] {
     let t = this.allTrades();
     if (this.filterSymbol) t = t.filter((x) => x.symbol.toUpperCase().includes(this.filterSymbol.toUpperCase()));
     if (this.filterStrategy)
       t = t.filter((x) => x.strategyId.toLowerCase().includes(this.filterStrategy.toLowerCase()));
+    if (this.filterRun) t = t.filter((x) => (x.runId ?? '').toLowerCase().includes(this.filterRun.toLowerCase()));
     if (this.filterDirection) t = t.filter((x) => x.direction === this.filterDirection);
     if (this.filterFrom) t = t.filter((x) => x.closedAtUtc >= this.filterFrom);
     if (this.filterTo) t = t.filter((x) => x.closedAtUtc <= this.filterTo);
@@ -169,6 +196,7 @@ export class TradeListComponent implements OnInit {
   clear(): void {
     this.filterSymbol = '';
     this.filterStrategy = '';
+    this.filterRun = '';
     this.filterDirection = '';
     this.filterFrom = '';
     this.filterTo = '';

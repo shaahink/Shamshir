@@ -5,6 +5,7 @@ public sealed record TradeSummaryResponse
     public required Guid Id { get; init; }
     public required Guid PositionId { get; init; }
     public Guid OrderId { get; init; }
+    public string? RunId { get; init; }
     public required string Symbol { get; init; }
     public required string Direction { get; init; }
     public decimal Lots { get; init; }

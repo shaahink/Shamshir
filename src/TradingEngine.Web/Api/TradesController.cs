@@ -40,6 +40,7 @@ public sealed class TradesController : ControllerBase
                 Id = t.Id,
                 PositionId = t.PositionId,
                 OrderId = t.OrderId,
+                RunId = t.RunId,
                 Symbol = t.Symbol,
                 Direction = t.Direction,
                 Lots = t.Lots,

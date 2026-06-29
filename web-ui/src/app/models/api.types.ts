@@ -68,6 +68,7 @@ export interface TradeSummary {
   id: string;
   positionId: string;
   orderId: string;
+  runId?: string | null;
   symbol: string;
   direction: string;
   lots: number;
@@ -235,6 +236,8 @@ export interface StartRunRequest {
   dailyDdEnabled?: boolean;
   maxDdEnabled?: boolean;
   forceCloseOnBreachEnabled?: boolean;
+  // iter-redesign P3.2: strip all add-ons (breakeven/trailing/partial/ride/dynamic) -> baseline SL/TP only.
+  stripAddOns?: boolean;
 }
 
 export interface RiskProfile {
@@ -314,6 +317,54 @@ export interface BarData {
   high: number;
   low: number;
   close: number;
+}
+
+// iter-redesign P6.2: trade-detail chart payload (GET /api/trades/{id}/chart).
+export interface ChartMarker {
+  time: number; // unix seconds
+  price: number;
+  kind: string; // Entry | Exit | StopLoss | TakeProfit
+}
+
+export interface TradeChartResponse {
+  tradeId: string;
+  symbol: string;
+  timeframe: string;
+  direction: string;
+  bars: BarData[];
+  markers: ChartMarker[];
+}
+
+// iter-redesign P5: per-bar decision narrative (GET /api/runs/{id}/bars).
+export interface BarStrategyVerdict {
+  strategyId: string;
+  signalFired: boolean;
+  direction?: string | null;
+  reason: string;
+}
+
+export interface BarRiskSnapshot {
+  equity: number;
+  balance: number;
+  dailyDrawdown: number;
+  maxDrawdown: number;
+  openPositions: number;
+  inProtectionMode: boolean;
+  governorState: string;
+}
+
+export interface BarNarrative {
+  simTimeUtc: string;
+  firstSeq: number;
+  eventCount: number;
+  regime?: string | null;
+  verdicts: BarStrategyVerdict[];
+  proposalCount: number;
+  gateRejections: string[];
+  risk?: BarRiskSnapshot | null;
+  fillCount: number;
+  closeCount: number;
+  rejectionCount: number;
 }
 
 // iter-38 S7 NG-R4: interfaces previously missing, now added so typed services can drop 'any'.

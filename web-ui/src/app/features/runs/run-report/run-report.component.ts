@@ -14,7 +14,7 @@ import { downloadBlob } from '../../../shared/download.helper';
 import { formatSymbols } from '../../../shared/symbols.helper';
 import { TRADE_COLUMNS } from '../../../shared/trade-columns';
 import { exportReport as doExportReport, type ExportStats } from '../report-export.helper';
-import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance, AddOnPack } from '../../../models/api.types';
+import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance, AddOnPack, BarNarrative } from '../../../models/api.types';
 
 type JournalRow = JournalEntry & { outcome?: string | null };
 
@@ -321,6 +321,48 @@ type JournalRow = JournalEntry & { outcome?: string | null };
             </div>
           }
 
+          @if (activeBars().length > 0) {
+            <div>
+              <h2 class="mb-3 text-sm font-medium text-gray-400">
+                Bar Inspector — active bars ({{ activeBars().length }} of {{ runBars().length }})
+              </h2>
+              <div class="max-h-96 overflow-y-auto rounded-lg border border-gray-800">
+                <table class="w-full text-xs">
+                  <thead class="sticky top-0 bg-gray-900 text-gray-500">
+                    <tr class="border-b border-gray-800">
+                      <th class="px-3 py-1.5 text-left">Sim time</th>
+                      <th class="px-3 py-1.5 text-left">Regime</th>
+                      <th class="px-3 py-1.5 text-left">Signals</th>
+                      <th class="px-3 py-1.5 text-right">Prop</th>
+                      <th class="px-3 py-1.5 text-right">Fill</th>
+                      <th class="px-3 py-1.5 text-right">Close</th>
+                      <th class="px-3 py-1.5 text-left">Gate rejections</th>
+                      <th class="px-3 py-1.5 text-right">Equity</th>
+                      <th class="px-3 py-1.5 text-right">Pos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (b of activeBars(); track b.firstSeq) {
+                      <tr class="border-b border-gray-800 last:border-0">
+                        <td class="px-3 py-1 text-gray-500">{{ b.simTimeUtc | date: 'MM-dd HH:mm' }}</td>
+                        <td class="px-3 py-1 text-gray-400">{{ b.regime || '—' }}</td>
+                        <td class="px-3 py-1 text-emerald-400">{{ firedSignals(b) }}</td>
+                        <td class="px-3 py-1 text-right text-gray-300">{{ b.proposalCount || '' }}</td>
+                        <td class="px-3 py-1 text-right text-gray-300">{{ b.fillCount || '' }}</td>
+                        <td class="px-3 py-1 text-right text-gray-300">{{ b.closeCount || '' }}</td>
+                        <td class="px-3 py-1 text-amber-400">{{ b.gateRejections.join('; ') }}</td>
+                        <td class="px-3 py-1 text-right font-mono text-gray-300">
+                          {{ b.risk ? b.risk.equity.toFixed(0) : '—' }}
+                        </td>
+                        <td class="px-3 py-1 text-right text-gray-400">{{ b.risk ? b.risk.openPositions : '—' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
+
           @if (trades().length > 0) {
             <div>
               <h2 class="mb-3 text-sm font-medium text-gray-400">Trades ({{ trades().length }})</h2>
@@ -427,11 +469,32 @@ export class RunReportComponent implements OnInit {
   trades = signal<TradeSummary[]>([]);
   journal = signal<JournalEntry[]>([]);
   barDecisions = signal<JournalEntry[]>([]);
+  runBars = signal<BarNarrative[]>([]);
   breakdown = signal<StrategyPerformance[]>([]);
   equityPoints = signal<ChartPoint[]>([]);
   dailyPnl = signal<DailyPnl[]>([]);
   journalKind = signal<string | null>(null);
   duplicating = signal(false);
+
+  // iter-redesign P5: per-bar narrative restricted to bars where SOMETHING happened (a signal fired, a
+  // proposal/fill/close, or a gate rejection) — the "why this trade / why no trade" bars worth inspecting.
+  activeBars(): BarNarrative[] {
+    return this.runBars().filter(
+      (b) =>
+        b.proposalCount > 0 ||
+        b.fillCount > 0 ||
+        b.closeCount > 0 ||
+        b.rejectionCount > 0 ||
+        b.verdicts.some((v) => v.signalFired),
+    );
+  }
+
+  firedSignals(b: BarNarrative): string {
+    return b.verdicts
+      .filter((v) => v.signalFired)
+      .map((v) => v.strategyId + (v.direction ? ' ' + v.direction : ''))
+      .join(', ');
+  }
 
   // iter-strategy-system P2 (D5): the persisted run plan (rows), parsed from RunDetail.runPlanJson.
   runPlan = computed(() => {
@@ -828,6 +891,11 @@ export class RunReportComponent implements OnInit {
       this.barDecisions.set(await this.api.getBarDecisions(runId, undefined, 500));
     } catch {
       /* no bar decisions */
+    }
+    try {
+      this.runBars.set(await this.api.getRunBars(runId));
+    } catch {
+      /* no bar narrative */
     }
     try {
       this.breakdown.set(await this.api.getStrategyBreakdown(runId));

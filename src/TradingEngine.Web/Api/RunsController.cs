@@ -124,6 +124,9 @@ public sealed class RunsController : ControllerBase
             cfg.CustomParams["PerStrategyPackIds"] = System.Text.Json.JsonSerializer.Serialize(req.PerStrategyPackIds);
         if (req.DisableRegime)
             cfg.CustomParams["DisableRegime"] = "true";
+        // iter-redesign P3.2: "no add-ons (raw)" — strip every enrichment add-on for the whole run.
+        if (req.StripAddOns)
+            cfg.CustomParams["StripAddOns"] = "true";
 
         var runId = await _command.StartAsync(cfg, ct);
         var state = _orchestrator.GetState(runId);
