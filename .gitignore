@@ -34,3 +34,4 @@ tests/data/*.csv
 # Build outputs
 artifacts/
 publish/
+.ng-build-stamp
