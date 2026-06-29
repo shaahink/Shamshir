@@ -22,6 +22,10 @@ export interface RunProgressEnvelope {
   governorReason: string;
   counters: { signals: number; orders: number; fills: number; closes: number; rejections: number; breaches: number };
   recentJournal: JournalEnvelope[];
+  // iter-strategy-system P3: multi-pass context.
+  currentPass?: string | null;
+  passIndex?: number;
+  passTotal?: number;
 }
 
 export interface JournalEnvelope {

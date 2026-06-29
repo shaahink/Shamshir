@@ -11,9 +11,9 @@
 |-------|-------|-------|--------|
 | P0 | Bring backbone forward (merge iter/38-addons) + G0 gate | ✅ done | merge `5c0e024`, fix `cc24c22` |
 | P1 | Backtest builder (row grid + per-row pack + venue) | ✅ done | `c492d16` |
-| P2 | Run metadata: store & display selection | 🟡 in progress | `<pending>` |
-| P3 | Live progress & journal: descriptive | 🟡 next | — |
-| P4 | Charts: equity + trade-detail price | ⬜ not started | — |
+| P2 | Run metadata: store & display selection | ✅ done | `e4b91f4` |
+| P3 | Live progress & journal: descriptive | 🟡 in progress | `<pending>` |
+| P4 | Charts: equity + trade-detail price | 🟡 next | — |
 
 Legend: ⬜ not started · 🟡 in progress · ✅ done & gated · ⚠️ done with caveat
 
@@ -87,9 +87,23 @@ Design: PLAN.md §Phase 2.
 rows (disabled dropped) all surface on GET /runs/{id}. Green. (This also discharges the P1 governor
 assertion.)
 
-## P3 — Observability  (not started)
-Design: PLAN.md §Phase 3. Enrich live journal projection (strategyId/symbol/reason), monitor polling
-fallback via GET /runs/{id}/journal + /equity, per-pass progress label.
+## P3 — Observability  🟡
+Design: PLAN.md §Phase 3. Delivered:
+- **Descriptive live journal (root cause fixed):** `EngineRunner.ReportEvent` emitted SIGNAL/ORDER/EXEC/
+  REJECTED/BREACH with an **empty message** — the kernel event's strategy/symbol/side/price/size were
+  thrown away. Now each emits a human line (e.g. "trend-breakout EURUSD Long signal @1.08320 (SL …, TP …)",
+  "EURUSD filled 0.42 lots @1.08…", "EURUSD rejected: max-exposure"). The Monitor already renders the
+  message, so the journal is now readable.
+- **Per-pass progress:** `RunProgress` + envelope + Monitor show "Pass i/N · SYM/TF" for multi-row runs
+  (state fields set in P1's replay loop).
+- **Equity reconnect/refresh survival:** Monitor hydrates the equity curve from `GET /runs/{id}/equity` on
+  init, so a refresh / late-join shows the curve-so-far instead of a blank chart.
+
+**Tests:** `RunProgressContractTests` extended to pin currentPass/passIndex/passTotal.
+**Deferred (noted):** merging the persisted StepRecord journal into the live ring — different seq spaces
+(live tally seq vs StepRecord seq) make a naive merge collide; the Report page already shows the full
+persisted journal, so live-ring backfill is lower value. Live SignalR auto-reconnect + rejoin keeps the
+stream going; only the disconnect-gap is lost.
 
 ## P4 — Charts  (not started)
 Design: PLAN.md §Phase 4. Re-verify after P0 first. Equity = data/flush; trade-detail = /api/bars

@@ -36,7 +36,12 @@ public sealed record RunProgress(
 
     RunCounters Counters,
 
-    IReadOnlyList<DecisionRecordView> RecentJournal);
+    IReadOnlyList<DecisionRecordView> RecentJournal,
+
+    // iter-strategy-system P3: which multi-pass combination is running (e.g. "EURUSD/H1", 2 of 5).
+    string? CurrentPass = null,
+    int PassIndex = 0,
+    int PassTotal = 0);
 
 /// <summary>The live funnel — signals → orders → fills → closes, plus rejections and breaches.</summary>
 public sealed record RunCounters(

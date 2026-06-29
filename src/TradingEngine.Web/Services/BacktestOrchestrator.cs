@@ -136,7 +136,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             GovernorState: state.GovernorState, GovernorReason: state.GovernorReason,
             Counters: new RunCounters(state.Signals, state.Orders, state.Fills,
                 state.Closes, state.Rejections, state.Breaches),
-            RecentJournal: journal);
+            RecentJournal: journal,
+            CurrentPass: state.CurrentPass, PassIndex: state.PassIndex, PassTotal: state.PassTotal);
     }
 
     internal static void TallyEvent(BacktestRunState state, BacktestProgressEvent evt)

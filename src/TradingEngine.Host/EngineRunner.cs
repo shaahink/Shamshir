@@ -210,17 +210,26 @@ public sealed class EngineRunner
     // leaving the other counters permanently at 0 on the SignalR monitor (OPEN-ISSUES O1/T7a).
     private void ReportEvent(EngineEvent evt)
     {
-        var type = evt switch
+        // iter-strategy-system P3: build a descriptive line for the live journal. The kernel events carry the
+        // strategy/symbol/side/price/size — the old code threw them away (empty message), which is why the
+        // Monitor journal read as bare event types with no "who did what".
+        var (type, message) = evt switch
         {
-            OrderProposed => "SIGNAL",
-            OrderSubmitted => "ORDER",
-            OrderFilled or OrderPartiallyFilled => "EXEC",
-            OrderRejected => "REJECTED",
-            DrawdownBreached => "BREACH",
-            _ => null,
+            OrderProposed p => ("SIGNAL",
+                $"{p.StrategyId} {p.Symbol.Value} {p.Direction} signal @ {p.SignalPriceMid:F5} "
+                + $"(SL {p.StopLoss.Value:F5}{(p.TakeProfit is { } tp ? $", TP {tp.Value:F5}" : "")})"),
+            OrderSubmitted s => ("ORDER",
+                $"{s.StrategyId} {s.Symbol.Value} {s.Direction} {s.Lots:0.##} lots order"),
+            OrderFilled f => ("EXEC",
+                $"{f.Symbol.Value} filled {f.FilledLots:0.##} lots @ {f.FillPrice.Value:F5}"),
+            OrderPartiallyFilled f => ("EXEC",
+                $"{f.Symbol.Value} partial fill {f.FilledLots:0.##} lots @ {f.FillPrice.Value:F5}"),
+            OrderRejected r => ("REJECTED", $"{r.Symbol.Value} rejected: {r.Reason}"),
+            DrawdownBreached => ("BREACH", "Drawdown limit breached"),
+            _ => ((string?)null, string.Empty),
         };
         if (type is not null)
-            _progress?.Report(new BacktestProgressEvent(_runContext.RunId, type, string.Empty, evt.OccurredAtUtc));
+            _progress?.Report(new BacktestProgressEvent(_runContext.RunId, type, message, evt.OccurredAtUtc));
     }
 
     private void ReportBar(Bar bar, EngineState state)

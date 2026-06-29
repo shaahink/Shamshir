@@ -5,6 +5,8 @@ import { interval } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RunHubService, type RunProgressEnvelope, type JournalEnvelope, type RunCompletedEnvelope } from '../../../core/signalr/run-hub.service';
 import { RunsStore } from '../runs.store';
+import { RunsApiService } from '../runs.service';
+import type { EquityPoint } from '../../../models/api.types';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
 
@@ -43,7 +45,15 @@ import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-ch
 
       <div class="rounded-lg border border-gray-800 bg-gray-800/20 p-4">
         <div class="mb-2 flex justify-between text-xs text-gray-400">
-          <span>Progress</span><span>{{ percent().toFixed(1) }}% ({{ barCount() }} / {{ totalBars() || '?' }})</span>
+          <span>
+            Progress
+            @if (passTotal() > 1) {
+              <span class="ml-2 rounded bg-gray-700/60 px-1.5 py-0.5 text-gray-300">Pass {{ passIndex() }}/{{ passTotal() }} · {{ currentPass() }}</span>
+            } @else if (currentPass()) {
+              <span class="ml-2 text-gray-500">{{ currentPass() }}</span>
+            }
+          </span>
+          <span>{{ percent().toFixed(1) }}% ({{ barCount() }} / {{ totalBars() || '?' }})</span>
         </div>
         <div class="h-2 overflow-hidden rounded-full bg-gray-700">
           <div
@@ -132,8 +142,13 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private hub = inject(RunHubService);
   private store = inject(RunsStore);
+  private api = inject(RunsApiService);
 
   runId = signal('');
+  // iter-strategy-system P3: multi-pass context shown on the progress bar.
+  currentPass = signal<string | null>(null);
+  passIndex = signal(0);
+  passTotal = signal(0);
   status = signal('connecting');
   barCount = signal(0);
   totalBars = signal(0);
@@ -203,10 +218,23 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
     await this.hub.start();
     await this.hub.joinRun(rid);
 
+    // P3: hydrate the equity curve from the persisted snapshots so a refresh / late-join (or reconnect)
+    // shows the curve-so-far instead of a blank chart until the next live frame arrives.
+    try {
+      const eq = await this.api.getRunEquity(rid);
+      if (eq.length > 0) {
+        this.equityData.set(eq.map((p: EquityPoint) => ({
+          time: new Date(p.timestampUtc).getTime(), value: p.equity, balance: p.balance,
+        })));
+      }
+    } catch { /* no equity yet */ }
+
     this.hub.progress$
       .pipe(takeUntilDestroyed())
       .subscribe((e: RunProgressEnvelope) => {
         this.status.set('running');
+        if (e.currentPass) this.currentPass.set(e.currentPass);
+        if (e.passTotal) { this.passIndex.set(e.passIndex ?? 0); this.passTotal.set(e.passTotal); }
         this.barCount.set(e.barsProcessed ?? 0);
         this.totalBars.set(e.barsTotal ?? 0);
         this.percent.set(e.percent ?? 0);
