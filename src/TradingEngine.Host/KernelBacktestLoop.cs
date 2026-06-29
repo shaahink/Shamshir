@@ -166,8 +166,16 @@ public sealed class KernelBacktestLoop
         {
             _queue.Enqueue(proposal);
         }
-        _queue.Enqueue(bar);
 
+        // iter-redesign P1.2: pump the proposals FIRST so each accepted entry's fill drains off the venue's
+        // ExecutionStream and the position reaches Open BEFORE this bar's BarClosed is applied. Previously the
+        // proposal and the BarClosed were pumped together, so BarClosed hit a still-Submitted position →
+        // (Submitted, BarClosed) illegal-transition records (the "85"), and a freshly entered position could
+        // never exit on its own entry bar. Draining entry fills first makes the position Open in time, so the
+        // FSM only ever sees legal (Open, BarClosed) arms and same-bar SL/TP detection works.
+        state = await PumpAsync(state, ct);
+
+        _queue.Enqueue(bar);
         state = await PumpAsync(state, ct);
 
         // Equity → drawdown + breach. Realized model (initial + closed net PnL) for golden parity;

@@ -242,6 +242,17 @@ public static class EngineReducer
         foreach (var (id, posState) in state.Positions)
         {
             if (posState.Symbol != evt.Symbol) continue;
+
+            // iter-redesign P1.1/P1.2: BarClosed is only a legal event for a LIVE (Open/Reducing) position.
+            // A position still Submitted is waiting for its entry fill — applying BarClosed to it routes
+            // through the FSM's illegal-transition default arm (the "85" records) and starves it of the bar.
+            // A terminal position (Closed/Rejected/Cancelled) should never be in the live book at all; it is
+            // purged below. In both cases: do not apply the bar — never manufacture an illegal transition.
+            if (posState.Phase is not PositionPhase.Open and not PositionPhase.Reducing)
+            {
+                continue;
+            }
+
             var (nextPos, posEffects) = PositionLifecycle.Apply(posState, evt);
             effects.AddRange(posEffects);
 
@@ -262,6 +273,18 @@ public static class EngineReducer
             }
 
             newPositions[id] = nextPos;
+        }
+
+        // iter-redesign P1.1: the open book must never leak. Purge any position that has reached a terminal
+        // phase so SumWorstCase / state.Positions.Count (PreTradeGate) only ever see live positions. Without
+        // this, a position that fails to be removed by the fill/reject/cancel handlers permanently inflates
+        // totalOpenRisk and the position count, latching every later proposal into BudgetBlocked/MAX_*.
+        foreach (var (id, pos) in newPositions.ToArray())
+        {
+            if (pos.Phase is PositionPhase.Closed or PositionPhase.Rejected or PositionPhase.Cancelled)
+            {
+                newPositions.Remove(id);
+            }
         }
 
         var newGovernor = GovernorMachine.ApplyBar(state.Governor);
