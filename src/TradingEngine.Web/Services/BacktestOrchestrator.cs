@@ -328,6 +328,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var state = _runs[runId];
         var startedAt = state.StartedAt;
         string? effectiveConfigJson = null;
+        bool finalized = false;
 
         try
         {
@@ -373,7 +374,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             EnqueueLog(runId, state.LogLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] Done. Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1} Gross={tradeStats.GrossPnL:N2} Comm={tradeStats.CommissionTotal:N2} Swap={tradeStats.SwapTotal:N2}");
 
-            await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson);
+            finalized = await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson);
         }
         catch (OperationCanceledException)
         {
@@ -399,7 +400,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 $"[{DateTime.UtcNow:HH:mm:ss}] Run {state.Status} ({tradeStats.TotalTrades} trades saved).");
             _logger.LogInformation("Backtest {RunId} ended via cancellation; status={Status} trades={Trades}",
                 runId, state.Status, tradeStats.TotalTrades);
-            await WriteEndRecordAsync(runId, cfg, startedAt, cancelResult, tradeStats, effectiveConfigJson);
+            finalized = await WriteEndRecordAsync(runId, cfg, startedAt, cancelResult, tradeStats, effectiveConfigJson);
         }
         catch (Exception ex)
         {
@@ -410,12 +411,34 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
 
-            await WriteEndRecordAsync(runId, cfg, startedAt,
+            finalized = await WriteEndRecordAsync(runId, cfg, startedAt,
                 new BacktestResult { RunId = runId, ExitCode = 1, ErrorMessage = ex.Message },
                 tradeStats, effectiveConfigJson);
         }
         finally
         {
+            // iter-redesign P4.1: guarantee a terminal write. If WriteEndRecordAsync failed in the
+            // try/catch above (or was never reached), do a last-ditch terminal write here so the run row
+            // never stays at ExitCode=-1 / CompletedAtUtc=DateTime.MinValue.
+            if (!finalized)
+            {
+                try
+                {
+                    var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
+                    var terminalResult = state.Result ?? new BacktestResult
+                    {
+                        RunId = runId,
+                        ExitCode = state.Status switch { "failed" => 1, _ => 0 },
+                        ErrorMessage = state.Error,
+                    };
+                    await WriteEndRecordAsync(runId, cfg, startedAt, terminalResult, tradeStats, effectiveConfigJson);
+                }
+                catch (Exception finalEx)
+                {
+                    _logger.LogError(finalEx, "P4.1 finally-net: terminal write for {RunId} also failed", runId);
+                }
+            }
+
             var doneJson = JsonSerializer.Serialize(
                 new { done = true, status = state.Status, error = state.Error });
             _progressStore.GetWriter(runId).TryWrite(doneJson);
@@ -498,7 +521,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
     }
 
-    private async Task WriteEndRecordAsync(
+    private async Task<bool> WriteEndRecordAsync(
         string runId, BacktestConfig cfg, DateTime startedAt,
         BacktestResult result, TradeStats stats, string? effectiveConfigJson)
     {
@@ -515,10 +538,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 result.ExitCode, result.ErrorMessage,
                 result.ReportJsonPath);
             await repo.UpdateAsync(summary, CancellationToken.None);
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to write end record for {RunId}", runId);
+            return false;
         }
     }
 

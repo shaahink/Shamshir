@@ -89,10 +89,10 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
 
     // A run interrupted after its trades were persisted but before WriteEndRecordAsync leaves the
     // summary at its start-record zeros (0 trades, ExitCode -1, CompletedAtUtc unset). Readers then
-    // show "0 trades / 0 profit / running" for a run that clearly has trades. When the stored summary
-    // shows no trades, recompute the headline stats from the persisted trades (the same equity walk as
-    // the orchestrator's GetTradeStatsAsync) and treat the run as completed at its last trade close.
-    // Healthy runs (TotalTrades already set) return unchanged, with no extra query.
+    // show "0 trades / 0 profit / running" for a run that clearly has trades.
+    // iter-redesign P4.1: also catch runs where trades were written AND counted but the end-record
+    // update failed (TotalTrades > 0, ExitCode -1 / CompletedAtUtc default). Re-derive from trades
+    // table and persist the fix so the self-heal is durable.
     private async Task<BacktestRunSummary> ReconcileAsync(BacktestRunEntity e, CancellationToken ct)
     {
         var net = e.NetProfit;
@@ -106,7 +106,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         var completedAt = e.CompletedAtUtc;
         var exitCode = e.ExitCode;
 
-        if (total == 0)
+        if (total == 0 || exitCode == -1 || completedAt == default)
         {
             var trades = await db.Trades
                 .Where(t => t.RunId == e.RunId)
@@ -140,6 +140,19 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
 
                 if (completedAt == default) completedAt = trades[^1].ClosedAtUtc;
                 exitCode = 0;
+
+                // P4.1: persist the re-derived values so the self-heal is durable.
+                e.TotalTrades = total;
+                e.WinningTrades = wins;
+                e.WinRatePct = winRate;
+                e.NetProfit = net;
+                e.GrossPnL = grossPnL;
+                e.CommissionTotal = commissionTotal;
+                e.SwapTotal = swapTotal;
+                e.MaxDrawdownPct = maxDd;
+                e.CompletedAtUtc = completedAt;
+                e.ExitCode = exitCode;
+                await db.SaveChangesAsync(ct);
             }
         }
 
