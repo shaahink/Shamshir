@@ -5,6 +5,11 @@
 > **To resume:** read this file top-to-bottom, run the gate for the last in-progress phase, continue from
 > the first unchecked box.
 
+> **STATUS: P0–P4 all complete & gated** (commits `cc24c22` · `c492d16` · `e4b91f4` · `60adc35` · `acec961`,
+> on top of the `5c0e024` backbone merge). Final gate: build 0err · Unit 272 · Arch 8 · Integration 73 ·
+> Golden 56/0 (byte-identical) · SPA 0err. See **Owner verification** at the bottom for the one thing the
+> sandbox can't do (visual chart confirmation — needs market data).
+
 ## Status board
 
 | Phase | Title | State | Commit |
@@ -13,7 +18,7 @@
 | P1 | Backtest builder (row grid + per-row pack + venue) | ✅ done | `c492d16` |
 | P2 | Run metadata: store & display selection | ✅ done | `e4b91f4` |
 | P3 | Live progress & journal: descriptive | ✅ done | `60adc35` |
-| P4 | Charts: equity + trade-detail price | 🟡 in progress | `<pending>` |
+| P4 | Charts: equity + trade-detail price | ✅ done | `acec961` |
 
 Legend: ⬜ not started · 🟡 in progress · ✅ done & gated · ⚠️ done with caveat
 
@@ -105,7 +110,7 @@ Design: PLAN.md §Phase 3. Delivered:
 persisted journal, so live-ring backfill is lower value. Live SignalR auto-reconnect + rejoin keeps the
 stream going; only the disconnect-gap is lost.
 
-## P4 — Charts  🟡
+## P4 — Charts  ✅
 Design: PLAN.md §Phase 4. **Diagnosis (verified by reading the plumbing):**
 - The chart *components are correct*: `toUtcTimestamp` = ms→s (right for lightweight-charts); `BarQueryService`
   case-normalises symbol+timeframe and dedupes by timestamp; trade-detail pads the window + maps times
@@ -133,3 +138,32 @@ pack per row · D4 risk/governor/money run-level · D5 persist+display selection
 1. Governor toggle = single on/off (default) vs per-run governor profile.
 2. Show strategy-default add-ons inline in the row grid (default yes, tooltip).
 3. cTrader stays single-row this iter (default yes).
+
+---
+
+## Owner verification (one machine-only step)
+Everything is verified by automated gates **except** the visual chart confirmation, because this sandbox's
+`data/trading.db` has no market bars. On a machine with market data:
+1. `dotnet run --project src/TradingEngine.Web` (or the `run-shamshir` skill) → open the SPA.
+2. **New Backtest:** confirm nothing is pre-selected; pick 2 strategies × 2 symbols × 1 TF → a 4-row grid
+   appears; set a different add-on pack on one row, disable another; Start.
+3. **Monitor:** progress %, "Pass i/N · SYM/TF", equity curve (survives a refresh), and a readable journal
+   ("trend-breakout EURUSD Long signal @…", "EURUSD filled …").
+4. **Report:** "Run plan (N rows)" table + chips (venue/risk/governor/regime/comm/spread); equity+drawdown
+   chart renders.
+5. **Trade detail:** open a trade → candle chart with entry/exit/SL/TP markers.
+
+## What this iteration delivered (summary)
+- **P0:** merged the `iter/38-addons` backbone; fixed a real latent bug (3 of 9 strategies undiscoverable —
+  missing `[StrategyId]`) + guard tests.
+- **P1:** row-based backtest builder (blank start, strategy×symbol×TF grid, per-row add-on pack, run-level
+  risk/governor/money, 2-option venue) with per-pass config so one strategy can carry different packs per row.
+- **P2:** persist + display the full run selection (run plan + venue/risk/governor/regime/comm/spread) via a
+  new EF migration; "Run plan" section on the report.
+- **P3:** descriptive live journal (the empty-message root cause fixed), per-pass progress, equity
+  reconnect/refresh hydration.
+- **P4:** equity chart made robust to multi-pass overlapping timestamps; chart plumbing diagnosed correct.
+
+## Deferred / not in scope (carry-forward)
+- cTrader multi-pass (still single-row); persisted-journal backfill into the live ring (seq-space mismatch);
+  parameter-schema API + strategy "Quick Test"; gitignore the built `wwwroot` (commits are noisy).

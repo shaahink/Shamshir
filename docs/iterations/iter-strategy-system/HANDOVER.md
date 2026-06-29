@@ -1,5 +1,16 @@
 # Iter Strategy System Overhaul — HANDOVER
 
+> **⟶ iter-strategy-system P0–P4 are COMPLETE & gated.** The live, authoritative record is
+> **`PROGRESS.md`** in this folder (status board, per-phase notes, commits, and the one owner-only
+> verification step). The `iter/38-addons` work described below was **merged forward** in P0 (`5c0e024`)
+> and is now the baseline the P0–P4 commits build on:
+> P0 `cc24c22` · P1 `c492d16` · P2 `e4b91f4` · P3 `60adc35` · P4 `acec961`.
+> Final gate: build 0err · Unit 272 · Arch 8 · Integration 73 · Golden 56/0 · SPA 0err. Runtime smoke
+> test confirmed the launched binary serves the SPA, discovers all 9 strategies, and round-trips a
+> row-based run's metadata.
+
+---
+
 **Branch:** `iter/38-addons` (committed as `1dcd11e`, pushed)
 **From:** Baseline `58b2745` (iter-38/39 complete state)
 **This branch:** `iter/strategy-system` (clean baseline for next iteration)
