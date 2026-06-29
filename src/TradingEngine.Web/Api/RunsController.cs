@@ -250,6 +250,16 @@ public sealed class RunsController : ControllerBase
         return Ok(points);
     }
 
+    // iter-redesign P5.2: per-bar decision narrative — "what did the engine see, decide, and why" for
+    // each bar, aggregated from the persisted journal (regime, strategy verdicts, proposals, gate
+    // rejections with numeric reasons, and the equity/dd/open-book snapshot at that bar).
+    [HttpGet("{runId}/bars")]
+    public async Task<IActionResult> GetBars(string runId, DateTime? from, DateTime? to, CancellationToken ct)
+    {
+        var bars = await _query.GetRunBarsAsync(runId, from, to, ct);
+        return Ok(bars);
+    }
+
     [HttpGet("{runId}/daily-pnl")]
     public async Task<IActionResult> GetDailyPnL(string runId, CancellationToken ct)
     {

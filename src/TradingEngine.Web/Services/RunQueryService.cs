@@ -9,15 +9,18 @@ public sealed class RunQueryService : IRunQueryService
     private readonly TradingDbContext _db;
     private readonly IBacktestRunRepository _runRepo;
     private readonly IEquityRepository _equityRepo;
+    private readonly IJournalQueryRepository _journals;
 
     public RunQueryService(
         TradingDbContext db,
         IBacktestRunRepository runRepo,
-        IEquityRepository equityRepo)
+        IEquityRepository equityRepo,
+        IJournalQueryRepository journals)
     {
         _db = db;
         _runRepo = runRepo;
         _equityRepo = equityRepo;
+        _journals = journals;
     }
 
     public async Task<IReadOnlyList<RunListResponse>> GetRunsAsync(CancellationToken ct)
@@ -175,4 +178,78 @@ public sealed class RunQueryService : IRunQueryService
             MaeMfe = trades.Select(t => new MaeMfePoint { X = -t.MaxAdverseExcursion, Y = t.MaxFavorableExcursion }).ToList(),
         };
     }
+
+    public async Task<IReadOnlyList<BarNarrativeResponse>> GetRunBarsAsync(
+        string runId, DateTime? from, DateTime? to, CancellationToken ct)
+    {
+        var bars = new Dictionary<DateTime, List<StepRecord>>();
+
+        await foreach (var record in _journals.StreamByRunAsync(runId, null, ct))
+        {
+            if (from.HasValue && record.SimTimeUtc < from.Value) continue;
+            if (to.HasValue && record.SimTimeUtc > to.Value) continue;
+
+            if (!bars.TryGetValue(record.SimTimeUtc, out var group))
+            {
+                group = [];
+                bars[record.SimTimeUtc] = group;
+            }
+            group.Add(record);
+        }
+
+        var result = new List<BarNarrativeResponse>(bars.Count);
+        foreach (var (simTime, group) in bars.OrderBy(kv => kv.Key))
+        {
+            var first = group[0];
+            var barClosed = group.FirstOrDefault(r => r.EventKind == "BarClosed");
+            var last = group[^1];
+
+            result.Add(new BarNarrativeResponse
+            {
+                SimTimeUtc = simTime,
+                FirstSeq = first.Seq,
+                EventCount = group.Count,
+                Regime = barClosed?.Regime ?? group.FirstOrDefault(r => r.Regime != null)?.Regime,
+                Verdicts = (barClosed?.StrategyVerdicts ?? [])
+                    .Select(v => new BarStrategyVerdictDto
+                    {
+                        StrategyId = v.StrategyId,
+                        SignalFired = v.SignalFired,
+                        Direction = v.Direction?.ToString() ?? (v.SignalFired ? "Long" : null),
+                        Reason = v.Reason,
+                    }).ToList(),
+                ProposalCount = group.Count(r => r.EventKind == "OrderProposed"),
+                GateRejections = group
+                    .Where(r => r.DecisionReason is not null && IsRejection(r.DecisionReason))
+                    .Select(r => r.DecisionReason!)
+                    .Distinct()
+                    .ToList(),
+                Risk = last.Risk is { } risk ? new BarRiskSnapshotDto
+                {
+                    Equity = risk.Equity,
+                    Balance = risk.Balance,
+                    DailyDrawdown = risk.DailyDrawdown,
+                    MaxDrawdown = risk.MaxDrawdown,
+                    OpenPositions = risk.OpenPositions,
+                    InProtectionMode = risk.InProtectionMode,
+                    GovernorState = risk.GovernorState,
+                } : null,
+                FillCount = group.Count(r => r.EventKind == "OrderFilled"),
+                CloseCount = group.Count(r => r.EffectKinds.Any(e => e == "PublishTradeClosed")),
+                RejectionCount = group.Count(r => r.DecisionReason is not null && IsRejection(r.DecisionReason)),
+            });
+        }
+
+        return result;
+    }
+
+    private static bool IsRejection(string reason) =>
+        !reason.Equals("Accepted", StringComparison.Ordinal) &&
+        !reason.Equals("Filled", StringComparison.Ordinal) &&
+        !reason.Equals("BarUpdate", StringComparison.Ordinal) &&
+        !reason.Equals("TickUpdate", StringComparison.Ordinal) &&
+        !reason.Equals("PartialFill", StringComparison.Ordinal) &&
+        !reason.Equals("PartialClose", StringComparison.Ordinal) &&
+        !reason.Equals("StillReducing", StringComparison.Ordinal) &&
+        !reason.Equals("PartialCloseWhileClosing", StringComparison.Ordinal);
 }

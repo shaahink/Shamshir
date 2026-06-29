@@ -10,4 +10,5 @@ public interface IRunQueryService
     Task<IReadOnlyList<EquityPointResponse>> GetRunEquityAsync(string runId, CancellationToken ct);
     Task<IReadOnlyList<DailyPnlResponse>> GetRunDailyPnLAsync(string runId, CancellationToken ct);
     Task<RunAnalyticsResponse?> GetRunAnalyticsAsync(string runId, CancellationToken ct);
+    Task<IReadOnlyList<BarNarrativeResponse>> GetRunBarsAsync(string runId, DateTime? from, DateTime? to, CancellationToken ct);
 }
