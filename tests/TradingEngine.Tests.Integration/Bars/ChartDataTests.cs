@@ -57,7 +57,7 @@ public sealed class ChartDataTests : IDisposable
         }
 
         await using var read = NewContext();
-        var result = await new TradesController(read).Get(tradeId, CancellationToken.None);
+        var result = await new TradesController(read, new TradingEngine.Web.Services.BarQueryService(read)).Get(tradeId, CancellationToken.None);
 
         var detail = (result as OkObjectResult)!.Value as TradeDetailResponse;
         detail.Should().NotBeNull();
