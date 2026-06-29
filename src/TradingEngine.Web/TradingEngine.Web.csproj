@@ -29,6 +29,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>4f0001f3-b718-44d5-9c48-28445b77f6ee</UserSecretsId>
+    <NgBuildStamp>$(MSBuildProjectDirectory)\wwwroot\.ng-build-stamp</NgBuildStamp>
+    <NgProjectDir>..\..\web-ui</NgProjectDir>
   </PropertyGroup>
+
+  <!-- Auto-rebuild Angular front-end when any web-ui source file is newer than the last build stamp.
+       Runs before the .NET build so VS / dotnet run picks up fresh static files. -->
+  <Target Name="RebuildAngularIfStale" BeforeTargets="BeforeBuild"
+          Condition="Exists('$(NgProjectDir)\package.json')">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;..\..\scripts\rebuild-ng-if-stale.ps1&quot; -NgProjectDir &quot;$(NgProjectDir)&quot; -NgBuildStamp &quot;$(NgBuildStamp)&quot;"
+          ContinueOnError="true" />
+  </Target>
 
 </Project>
