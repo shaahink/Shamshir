@@ -484,6 +484,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 usePackId = cfg.CustomParams.GetValueOrDefault("UsePackId"),
                 perStrategyPacks = cfg.CustomParams.GetValueOrDefault("PerStrategyPackIds"),
                 disableRegime = cfg.CustomParams.GetValueOrDefault("DisableRegime"),
+                stripAddOns = cfg.CustomParams.GetValueOrDefault("StripAddOns"),
                 // iter-strategy-system P1/P2: the row plan (per-row packs) + governor toggle change behaviour,
                 // so they belong in the run's content address.
                 runRows = cfg.CustomParams.GetValueOrDefault("RunRows"),
@@ -579,6 +580,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             // wins over the global UsePackId; the pack REPLACES enrichments, baseline SL/TP stays — D4).
             var usePackId = cfg.CustomParams.GetValueOrDefault("UsePackId");
             var disableRegime = cfg.CustomParams.GetValueOrDefault("DisableRegime") == "true";   // iter-38 R1 run-master
+            // iter-redesign P3.2 (D2): "no add-ons (raw)" mode — strip every add-on so the strategy runs its
+            // baseline SL/TP only, with no breakeven/trailing/partial/ride/dynamic enrichment. Wins over any
+            // pack so the owner can A/B raw vs add-on'd and watch the unmasked drawdown.
+            var stripAddOns = cfg.CustomParams.GetValueOrDefault("StripAddOns") == "true";
             Dictionary<string, string>? perStrategyPacks = null;
             if (perPassPacks is null
                 && cfg.CustomParams.TryGetValue("PerStrategyPackIds", out var ppJson) && !string.IsNullOrWhiteSpace(ppJson))
@@ -624,6 +629,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 // lets the strategy trade in any regime — no engine-path change needed.
                 if (disableRegime)
                     c = c with { RegimeFilter = (c.RegimeFilter ?? new RegimeFilterOptions()) with { DetectionEnabled = false } };
+
+                // iter-redesign P3.2 (D2): strip add-ons last so it overrides both the strategy's stored
+                // enrichments AND any applied pack — a "raw" run is provably free of breakeven/trailing/
+                // partial/ride/dynamic-SL/TP (baseline SL/TP preserved).
+                if (stripAddOns)
+                    c = c with { PositionManagement = EffectiveConfigResolver.StripAddOns(c.PositionManagement) };
+
                 strategyConfigs.Add(c);
             }
         }

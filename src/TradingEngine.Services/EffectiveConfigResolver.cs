@@ -108,6 +108,16 @@ public sealed class EffectiveConfigResolver
         };
     }
 
+    // iter-redesign P3.2: strip ALL add-ons so a "raw" / "bare" run runs the strategy's baseline SL/TP with
+    // zero enrichment — the owner's explicit "no add-ons, watch the drawdown" mode. Every add-on field is
+    // forced to its disabled/inactive default; only the mandatory SL/TP baseline is preserved from the input.
+    public static PositionManagementOptions StripAddOns(PositionManagementOptions? input) => new()
+    {
+        StopLoss = input?.StopLoss ?? new(),
+        TakeProfit = input?.TakeProfit ?? new(),
+        // Breakeven / Trailing / Ride / PartialTp / DynamicSlTp all default to off/disabled.
+    };
+
     private static SlOptions MergeSl(SlOptions stored, SlOptions overrideOpts)
     {
         return new SlOptions
