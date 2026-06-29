@@ -77,25 +77,26 @@ public static class PreTradeGate
             return GateResult.Reject($"SL_TOO_WIDE:{p.SlPips:F1}>{profile.MaxSlPips:F1}");
         }
 
-        // 3. Position-count limits.
+        // 3. Position-count limits. iter-redesign P2.2: gated so a "raw" run can run unlimited positions.
         var openCount = state.Positions.Count;
-        if (openCount >= profile.MaxConcurrentPositions)
+        if (c.MaxPositionsEnabled && openCount >= profile.MaxConcurrentPositions)
         {
             return GateResult.Reject($"MAX_POSITIONS:{openCount}>={profile.MaxConcurrentPositions}");
         }
 
         var openForStrategy = state.Positions.Values.Count(x => x.StrategyId == p.StrategyId);
-        if (openForStrategy >= profile.MaxConcurrentPositions)
+        if (c.MaxPositionsEnabled && openForStrategy >= profile.MaxConcurrentPositions)
         {
-            return GateResult.Reject($"STRATEGY_MAX_POSITIONS:{p.StrategyId}");
+            return GateResult.Reject($"STRATEGY_MAX_POSITIONS:{p.StrategyId}:{openForStrategy}>={profile.MaxConcurrentPositions}");
         }
 
-        // 4. Exposure (notional new risk vs equity).
+        // 4. Exposure (notional new risk vs equity). iter-redesign P2.2: gated behind ExposureEnabled.
         var totalOpenRisk = SumWorstCase(openPositions);
         var newPositionRiskNotional = equity * c.RiskPerTrade;
-        if ((totalOpenRisk + newPositionRiskNotional) / equity > c.MaxExposure)
+        if (c.ExposureEnabled && (totalOpenRisk + newPositionRiskNotional) / equity > c.MaxExposure)
         {
-            return GateResult.Reject("MAX_EXPOSURE");
+            return GateResult.Reject(
+                $"MAX_EXPOSURE: openRisk={totalOpenRisk:F2} + new={newPositionRiskNotional:F2} = {(totalOpenRisk + newPositionRiskNotional) / equity:P2} of equity > cap={c.MaxExposure:P2}");
         }
 
         // 4b. External (impure) gate verdicts — news window / weekend close / prop-firm compliance.
@@ -164,9 +165,10 @@ public static class PreTradeGate
         }
 
         // 8. Budget validation with halving downsizing (port of RiskManager.ValidateBudgetEntry + loop).
+        // iter-redesign P2.2: gated behind BudgetEnabled so a "raw" run applies no daily-budget/heat cap.
         var riskAmount = p.SlPips * p.PipValuePerLot * lots;
         var perTradeRiskAmount = equity * c.RiskPerTrade;
-        if (!BudgetOk(state, c, sizing, totalOpenRisk, riskAmount, perTradeRiskAmount))
+        if (c.BudgetEnabled && !BudgetOk(state, c, sizing, totalOpenRisk, riskAmount, perTradeRiskAmount))
         {
             while (lots > symbol.MinLots)
             {
@@ -184,7 +186,13 @@ public static class PreTradeGate
             }
             if (lots < symbol.MinLots || !BudgetOk(state, c, sizing, totalOpenRisk, riskAmount, perTradeRiskAmount))
             {
-                return GateResult.Reject($"BudgetBlocked:lots={lots:F4}");
+                // iter-redesign P2.3: explainable rejection with the resolved numbers.
+                var b = ComputeBudget(state, c, sizing, totalOpenRisk, riskAmount, perTradeRiskAmount);
+                var heatNote = b.HeatCap > 0 && b.TotalRisk > b.HeatCap
+                    ? $" (heatCap={b.HeatCap:F2} @{sizing.MaxPortfolioHeatRiskMultiples:F1}x)"
+                    : "";
+                return GateResult.Reject(
+                    $"BudgetBlocked: openRisk={totalOpenRisk:F2} + new={riskAmount:F2} = {b.TotalRisk:F2} > cap={b.BudgetCap:F2}{heatNote} lots={lots:F4}");
             }
         }
 
@@ -210,16 +218,27 @@ public static class PreTradeGate
         return slLoss + commission;
     }
 
+    private readonly record struct BudgetResult(bool Ok, decimal BudgetCap, decimal HeatCap, decimal TotalRisk);
+
     private static bool BudgetOk(
         EngineState state, ConstraintSet c, SizingPolicyOptions sizing,
         decimal totalOpenRisk, decimal newRiskAmount, decimal perTradeRiskAmount)
+        => ComputeBudget(state, c, sizing, totalOpenRisk, newRiskAmount, perTradeRiskAmount).Ok;
+
+    // iter-redesign P2.3: single budget computation that returns the resolved caps so the rejection
+    // reason can show the actual numbers. The boolean BudgetOk delegates here.
+    private static BudgetResult ComputeBudget(
+        EngineState state, ConstraintSet c, SizingPolicyOptions sizing,
+        decimal totalOpenRisk, decimal newRiskAmount, decimal perTradeRiskAmount)
     {
+        var totalRisk = totalOpenRisk + newRiskAmount;
+
         var dailyDdBase = c.DailyDdBase == DailyDdBase.DailyStart
             ? state.Drawdown.DailyStartEquity
             : state.Drawdown.InitialAccountBalance;
         if (dailyDdBase <= 0)
         {
-            return false;
+            return new BudgetResult(false, 0m, 0m, totalRisk);
         }
 
         var dailyDdUsedFraction = c.MaxDailyLoss > 0
@@ -227,20 +246,22 @@ public static class PreTradeGate
             : 1m;
         var remainingDailyBudget = (1m - Math.Min(dailyDdUsedFraction, 1m)) * c.MaxDailyLoss * dailyDdBase;
         var budgetCap = remainingDailyBudget * (decimal)sizing.BudgetUseFraction;
-        if (totalOpenRisk + newRiskAmount > budgetCap)
+        if (totalRisk > budgetCap)
         {
-            return false;
+            return new BudgetResult(false, budgetCap, 0m, totalRisk);
         }
 
         if (perTradeRiskAmount > 0 && sizing.MaxPortfolioHeatRiskMultiples > 0)
         {
             var heatCap = perTradeRiskAmount * (decimal)sizing.MaxPortfolioHeatRiskMultiples;
-            if (totalOpenRisk + newRiskAmount > heatCap)
+            if (totalRisk > heatCap)
             {
-                return false;
+                return new BudgetResult(false, budgetCap, heatCap, totalRisk);
             }
+
+            return new BudgetResult(true, budgetCap, heatCap, totalRisk);
         }
 
-        return true;
+        return new BudgetResult(true, budgetCap, 0m, totalRisk);
     }
 }

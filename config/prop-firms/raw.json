@@ -31,6 +31,9 @@
     "forceCloseOnBreachEnabled": false,
     "newsFilterEnabled": false,
     "weekendFilterEnabled": false,
-    "governorEnabled": false
+    "governorEnabled": false,
+    "exposureEnabled": false,
+    "budgetEnabled": false,
+    "maxPositionsEnabled": false
   }
 }

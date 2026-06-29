@@ -41,7 +41,12 @@ public sealed record ConstraintSet(
     bool ForceCloseOnBreachEnabled = true,
     bool NewsFilterEnabled = false,
     bool WeekendFilterEnabled = false,
-    bool GovernorEnabled = true)
+    bool GovernorEnabled = true,
+
+    // ── Exposure / budget / position-count toggles (iter-redesign P2.2) ──
+    bool ExposureEnabled = true,
+    bool BudgetEnabled = true,
+    bool MaxPositionsEnabled = true)
 {
     /// <summary>
     /// Project from both config sources. PropFirmRuleSet limits take precedence over
@@ -82,6 +87,9 @@ public sealed record ConstraintSet(
             ForceCloseOnBreachEnabled: ruleSet.Toggles.ForceCloseOnBreachEnabled,
             NewsFilterEnabled: ruleSet.Toggles.NewsFilterEnabled,
             WeekendFilterEnabled: ruleSet.Toggles.WeekendFilterEnabled,
-            GovernorEnabled: ruleSet.Toggles.GovernorEnabled);
+            GovernorEnabled: ruleSet.Toggles.GovernorEnabled,
+            ExposureEnabled: ruleSet.Toggles.ExposureEnabled,
+            BudgetEnabled: ruleSet.Toggles.BudgetEnabled,
+            MaxPositionsEnabled: ruleSet.Toggles.MaxPositionsEnabled);
     }
 }

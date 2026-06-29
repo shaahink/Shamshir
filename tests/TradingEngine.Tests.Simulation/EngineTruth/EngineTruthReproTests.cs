@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using TradingEngine.Engine;
 using TradingEngine.Host;
+using TradingEngine.Infrastructure.Configuration;
 using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Tests.Simulation.GoldenReplay;
 using TradingEngine.Tests.Simulation.Harness;
@@ -124,12 +125,12 @@ public sealed class EngineTruthReproTests
 
     // ════════════════════════════════════════════════════════════════
     // C2 — Raw profile / guard toggles (§2.2)
-    // Expected: FAIL — MAX_EXPOSURE and BudgetBlocked rejections still fire
-    // even when all constraint toggles are off because BudgetOk is not toggle-gated.
+    // After P2.2: with every limiter toggle OFF, the gate applies ZERO
+    // exposure/budget/position-count limiters — a "raw" run is provably raw.
     // ════════════════════════════════════════════════════════════════
 
     [Fact]
-    public void PreTradeGate_WithAllTogglesOff_StillRejectsOnExposure()
+    public void PreTradeGate_RawProfile_AcceptsWithNoLimiterRejections()
     {
         var rawConstraints = new ConstraintSet(
             Id: "raw",
@@ -142,7 +143,7 @@ public sealed class EngineTruthReproTests
             DailyDdBase: DailyDdBase.DailyStart,
             RiskPerTrade: 0.01m,
             MaxConcurrentPositions: 5,
-            MaxExposure: 0.05m,
+            MaxExposure: 0.001m,  // deliberately tiny: would reject if ExposureEnabled were on
             AllowTradesDuringNews: true,
             AllowWeekendHolding: true,
             ForceCloseOnBreach: false,
@@ -154,7 +155,10 @@ public sealed class EngineTruthReproTests
             ForceCloseOnBreachEnabled: false,
             NewsFilterEnabled: false,
             WeekendFilterEnabled: false,
-            GovernorEnabled: false);
+            GovernorEnabled: false,
+            ExposureEnabled: false,
+            BudgetEnabled: false,
+            MaxPositionsEnabled: false);
 
         var profile = new RiskProfile(
             "raw", "Raw", 0.01, 0.05, 0.10, 100.0, 0.10, 0.5, 0.1, 5,
@@ -185,11 +189,57 @@ public sealed class EngineTruthReproTests
 
         var result = PreTradeGate.Evaluate(state, proposal, rawConstraints, profile, sizing, symbol, openPositions);
 
-        // C2: with all toggles off, the gate should NOT reject on BudgetBlocked or DD.
-        // Currently MAX_EXPOSURE is NOT toggle-gated — it always fires even on "raw".
-        // Expected to FAIL until P2.2 adds ExposureEnabled / BudgetEnabled toggles.
+        // C2: with all toggles off, the gate accepts — no BudgetBlocked, no MAX_EXPOSURE, no MAX_POSITIONS.
         result.Accepted.Should().BeTrue(
-            $"raw profile must accept trades — got {result.RejectReason}. P2.2: gate BudgetOk + MAX_EXPOSURE behind toggles");
+            $"a raw run must apply zero limiters — got rejection '{result.RejectReason}'");
+        result.Lots.Should().BeGreaterThan(0m, "an accepted proposal must be sized");
+    }
+
+    [Fact]
+    public void PreTradeGate_StandardProfile_StillEnforcesLimiters()
+    {
+        // The inverse guard: the SAME proposal under standard (toggles ON) IS rejected — proving the
+        // toggles, not some unrelated change, are what makes "raw" raw.
+        var stdConstraints = new ConstraintSet(
+            Id: "standard",
+            MaxDailyLoss: 0m,
+            MaxTotalLoss: 0m,
+            MaxWeeklyLoss: 0m,
+            MaxMonthlyLoss: 0m,
+            ProfitTarget: 0m,
+            DrawdownType: "Fixed",
+            DailyDdBase: DailyDdBase.DailyStart,
+            RiskPerTrade: 0.01m,
+            MaxConcurrentPositions: 5,
+            MaxExposure: 0.001m,
+            AllowTradesDuringNews: true,
+            AllowWeekendHolding: true,
+            ForceCloseOnBreach: false);  // all toggles default to ON
+
+        var profile = new RiskProfile(
+            "standard", "Standard", 0.01, 0.05, 0.10, 100.0, 0.10, 0.5, 0.1, 5,
+            false, "standard", LotSizingMethod.PercentRisk, 0.1m, 0m, 0.25, 1.5, 3);
+
+        var sizing = new SizingPolicyOptions { BudgetUseFraction = 0.25 };
+        var symbol = new SymbolInfo(
+            Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
+            0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
+        var proposal = new OrderProposed(
+            Guid.NewGuid(), Symbol.Parse("EURUSD"), TradeDirection.Long, TradingEngine.Domain.OrderType.Market,
+            null, new Price(1.0950m), new Price(1.1100m), "test-strategy", 1.1000m, 50m, 10m,
+            DateTime.UtcNow);
+        var state = new EngineState(
+            new Dictionary<Guid, PositionState>(),
+            new GovernorState(GovernorTradingState.Normal, 0, 0, 0, 1.0m, false, "Initial"),
+            DrawdownReducer.CreateInitial(10_000m, "Fixed"),
+            0, ProtectionState.None,
+            new AccountView(10_000m, 10_000m, 0m));
+
+        var result = PreTradeGate.Evaluate(state, proposal, stdConstraints, profile, sizing, symbol, Array.Empty<ProjectedPosition>());
+
+        result.Accepted.Should().BeFalse("standard toggles ON must enforce the exposure limiter");
+        result.RejectReason.Should().Contain("MAX_EXPOSURE",
+            "the explainable rejection must name the limiter that fired");
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -244,6 +294,47 @@ public sealed class EngineTruthReproTests
         decision.State.Positions.Should().ContainKey(openId, "the live Open position survives");
         decision.State.Positions.Should().NotContainKey(closedId, "the Closed position is purged");
         decision.State.Positions.Should().ContainKey(submittedId, "a pending Submitted position is still live");
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // P2.1 — the "raw" preset is provably raw end-to-end (config → ConstraintSet)
+    // ════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public void RawConfig_LoadsWithEveryLimiterToggleOff()
+    {
+        var solutionRoot = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+
+        var config = new ConfigLoader(solutionRoot).LoadBase();
+
+        var raw = config.PropFirms.FirstOrDefault(f => f.Id == "raw");
+        raw.Should().NotBeNull("config/prop-firms/raw.json must load");
+
+        var t = raw!.Toggles;
+        // Every protection / limiter toggle must be OFF for the raw preset.
+        using (new FluentAssertions.Execution.AssertionScope())
+        {
+            t.DailyDdEnabled.Should().BeFalse();
+            t.MaxDdEnabled.Should().BeFalse();
+            t.WeeklyDdEnabled.Should().BeFalse();
+            t.MonthlyDdEnabled.Should().BeFalse();
+            t.ProfitTargetEnabled.Should().BeFalse();
+            t.ForceCloseOnBreachEnabled.Should().BeFalse();
+            t.NewsFilterEnabled.Should().BeFalse();
+            t.WeekendFilterEnabled.Should().BeFalse();
+            t.GovernorEnabled.Should().BeFalse();
+            t.ExposureEnabled.Should().BeFalse("P2.1: raw.json must disable the exposure limiter");
+            t.BudgetEnabled.Should().BeFalse("P2.1: raw.json must disable the daily-budget/heat limiter");
+            t.MaxPositionsEnabled.Should().BeFalse("P2.1: raw.json must disable the position-count limiter");
+        }
+
+        // And the resolved ConstraintSet the engine consumes carries the toggles through.
+        var rawProfile = config.RiskProfiles.First(p => p.Id == "raw");
+        var constraints = ConstraintSet.Resolve(rawProfile, raw);
+        constraints.ExposureEnabled.Should().BeFalse();
+        constraints.BudgetEnabled.Should().BeFalse();
+        constraints.MaxPositionsEnabled.Should().BeFalse();
     }
 
 }

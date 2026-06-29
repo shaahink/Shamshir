@@ -14,4 +14,7 @@ public sealed record ProtectionToggles(
     bool ForceCloseOnBreachEnabled = true,
     bool NewsFilterEnabled = false,
     bool WeekendFilterEnabled = false,
-    bool GovernorEnabled = true);
+    bool GovernorEnabled = true,
+    bool ExposureEnabled = true,
+    bool BudgetEnabled = true,
+    bool MaxPositionsEnabled = true);

@@ -465,6 +465,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 // so they belong in the run's content address.
                 runRows = cfg.CustomParams.GetValueOrDefault("RunRows"),
                 governorEnabled = cfg.CustomParams.GetValueOrDefault("GovernorEnabled"),
+                // iter-redesign P2.2: per-run protection toggle overrides change behaviour (a "Raw" run is a
+                // genuinely different run from a guarded one), so they participate in the content address.
+                dailyDdEnabled = cfg.CustomParams.GetValueOrDefault("DailyDdEnabled"),
+                maxDdEnabled = cfg.CustomParams.GetValueOrDefault("MaxDdEnabled"),
+                forceCloseOnBreachEnabled = cfg.CustomParams.GetValueOrDefault("ForceCloseOnBreachEnabled"),
+                exposureEnabled = cfg.CustomParams.GetValueOrDefault("ExposureEnabled"),
+                budgetEnabled = cfg.CustomParams.GetValueOrDefault("BudgetEnabled"),
+                maxPositionsEnabled = cfg.CustomParams.GetValueOrDefault("MaxPositionsEnabled"),
             });
             var configSetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(configIdentity);
             var parentRunId = cfg.CustomParams.GetValueOrDefault("ParentRunId");
@@ -626,7 +634,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var perRunDailyDd = cfg.CustomParams.GetValueOrDefault("DailyDdEnabled") != "false";
         var perRunMaxDd = cfg.CustomParams.GetValueOrDefault("MaxDdEnabled") != "false";
         var perRunForceClose = cfg.CustomParams.GetValueOrDefault("ForceCloseOnBreachEnabled") != "false";
-        if (!perRunDailyDd || !perRunMaxDd || !perRunForceClose)
+        // iter-redesign P2.2: exposure / daily-budget+heat / position-count limiters are now per-run
+        // overridable too, so a "Raw" run can provably disable every limiter (not just the DD set).
+        var perRunExposure = cfg.CustomParams.GetValueOrDefault("ExposureEnabled") != "false";
+        var perRunBudget = cfg.CustomParams.GetValueOrDefault("BudgetEnabled") != "false";
+        var perRunMaxPositions = cfg.CustomParams.GetValueOrDefault("MaxPositionsEnabled") != "false";
+        if (!perRunDailyDd || !perRunMaxDd || !perRunForceClose
+            || !perRunExposure || !perRunBudget || !perRunMaxPositions)
         {
             propFirms = propFirms.Select(pf => pf with
             {
@@ -635,6 +649,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     DailyDdEnabled = pf.Toggles.DailyDdEnabled && perRunDailyDd,
                     MaxDdEnabled = pf.Toggles.MaxDdEnabled && perRunMaxDd,
                     ForceCloseOnBreachEnabled = pf.Toggles.ForceCloseOnBreachEnabled && perRunForceClose,
+                    ExposureEnabled = pf.Toggles.ExposureEnabled && perRunExposure,
+                    BudgetEnabled = pf.Toggles.BudgetEnabled && perRunBudget,
+                    MaxPositionsEnabled = pf.Toggles.MaxPositionsEnabled && perRunMaxPositions,
                 }
             }).ToList();
         }
