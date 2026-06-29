@@ -12,8 +12,8 @@
 | P0 | Bring backbone forward (merge iter/38-addons) + G0 gate | ✅ done | merge `5c0e024`, fix `cc24c22` |
 | P1 | Backtest builder (row grid + per-row pack + venue) | ✅ done | `c492d16` |
 | P2 | Run metadata: store & display selection | ✅ done | `e4b91f4` |
-| P3 | Live progress & journal: descriptive | 🟡 in progress | `<pending>` |
-| P4 | Charts: equity + trade-detail price | 🟡 next | — |
+| P3 | Live progress & journal: descriptive | ✅ done | `60adc35` |
+| P4 | Charts: equity + trade-detail price | 🟡 in progress | `<pending>` |
 
 Legend: ⬜ not started · 🟡 in progress · ✅ done & gated · ⚠️ done with caveat
 
@@ -105,9 +105,23 @@ Design: PLAN.md §Phase 3. Delivered:
 persisted journal, so live-ring backfill is lower value. Live SignalR auto-reconnect + rejoin keeps the
 stream going; only the disconnect-gap is lost.
 
-## P4 — Charts  (not started)
-Design: PLAN.md §Phase 4. Re-verify after P0 first. Equity = data/flush; trade-detail = /api/bars
-availability + timeframe casing.
+## P4 — Charts  🟡
+Design: PLAN.md §Phase 4. **Diagnosis (verified by reading the plumbing):**
+- The chart *components are correct*: `toUtcTimestamp` = ms→s (right for lightweight-charts); `BarQueryService`
+  case-normalises symbol+timeframe and dedupes by timestamp; trade-detail pads the window + maps times
+  correctly. So "no chart" = **data availability**, not a UI/plumbing bug. The short-run equity/bar flush
+  fix already landed in P0 (`FlushRunPersistenceAsync`); P3 added equity hydration on the Monitor.
+- **Real bug fixed:** the equity chart broke on **multi-pass** runs because passes produce overlapping
+  sim-times under one runId, and lightweight-charts rejects duplicate/non-ascending times (`SqliteEquityRepository`
+  orders ascending but does NOT dedupe). `equity-chart.component` now collapses to one point per timestamp
+  (last wins) + sorts ascending, so it always renders (also protects the live-frame + hydration paths).
+- **Trade-detail "No price data"** is the correct empty-state when no bars exist for the window. After a real
+  replay run, `EngineRunner` persists per-run bars (K-GAP-3) so the candle chart populates.
+
+**Sandbox limitation (honest):** `data/trading.db` has **0 bars** — no market data is imported here, so a real
+backtest can't produce trades/equity/bars to *visually* confirm the charts in this environment. The plumbing
++ the multi-pass fix are verified by code; full visual confirmation needs a market-data import (separate setup)
+or the owner's machine. See "Owner verification" below.
 
 ---
 

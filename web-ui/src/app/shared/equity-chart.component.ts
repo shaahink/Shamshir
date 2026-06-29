@@ -1,5 +1,5 @@
 import { Component, input, ChangeDetectionStrategy } from '@angular/core';
-import { LineSeries } from 'lightweight-charts';
+import { LineSeries, type UTCTimestamp } from 'lightweight-charts';
 import { BaseChartComponent } from './base-chart.component';
 import { toUtcTimestamp } from './chart-time.helper';
 
@@ -39,10 +39,19 @@ export class EquityChartComponent extends BaseChartComponent {
   }
 
   protected updateChart(): void {
-    const points = this.data();
-    if (!this.equitySeries || points.length === 0) return;
-    const equityData = points.map((d) => ({ time: toUtcTimestamp(d.time), value: d.value }));
-    this.equitySeries.setData(equityData);
+    const raw = this.data();
+    if (!this.equitySeries || raw.length === 0) return;
+
+    // lightweight-charts requires strictly-ascending, unique times or setData throws. Live frames that
+    // share a sim-time, and multi-pass runs (overlapping sim-times across passes), both violate that —
+    // collapse to one point per timestamp (last wins) and sort ascending so the chart always renders.
+    const byTime = new Map<number, { value: number; balance?: number }>();
+    for (const d of raw) byTime.set(toUtcTimestamp(d.time) as number, { value: d.value, balance: d.balance });
+    const points = [...byTime.keys()]
+      .sort((a, b) => a - b)
+      .map((t) => ({ time: t as UTCTimestamp, ...byTime.get(t)! }));
+
+    this.equitySeries.setData(points.map((d) => ({ time: d.time, value: d.value })));
 
     const showBal = this.showBalance();
     const showDD = this.showDrawdown();
@@ -53,7 +62,7 @@ export class EquityChartComponent extends BaseChartComponent {
     }
     if (hasBalance && this.balanceSeries) {
       this.balanceSeries.setData(
-        points.filter((p) => p.balance != null).map((p) => ({ time: toUtcTimestamp(p.time), value: p.balance! })),
+        points.filter((p) => p.balance != null).map((p) => ({ time: p.time, value: p.balance! })),
       );
     }
     if (!hasBalance && this.balanceSeries) {
@@ -63,10 +72,10 @@ export class EquityChartComponent extends BaseChartComponent {
 
     if (showDD && points.length > 1) {
       let peak = points[0].value;
-      const ddPoints: { time: number; value: number }[] = [];
+      const ddPoints: { time: UTCTimestamp; value: number }[] = [];
       for (const p of points) {
         if (p.value > peak) peak = p.value;
-        ddPoints.push({ time: toUtcTimestamp(p.time), value: peak > 0 ? ((p.value - peak) / peak) * 100 : 0 });
+        ddPoints.push({ time: p.time, value: peak > 0 ? ((p.value - peak) / peak) * 100 : 0 });
       }
       if (!this.ddSeries && this.chart) {
         this.ddSeries = this.chart.addSeries(LineSeries, { color: '#ef4444', lineWidth: 1, priceScaleId: 'dd' });
