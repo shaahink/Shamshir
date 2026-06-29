@@ -83,6 +83,13 @@ public sealed class RunQueryService : IRunQueryService
             ExitCode = r.ExitCode,
             EffectiveConfigJson = r.EffectiveConfigJson,
             ReportJsonPath = r.ReportJsonPath,
+            RunPlanJson = r.RunPlanJson,
+            Venue = r.Venue,
+            RiskProfileId = r.RiskProfileId,
+            GovernorEnabled = r.GovernorEnabled,
+            RegimeEnabled = r.RegimeEnabled,
+            CommissionPerMillion = r.CommissionPerMillion,
+            SpreadPips = r.SpreadPips,
         };
     }
 

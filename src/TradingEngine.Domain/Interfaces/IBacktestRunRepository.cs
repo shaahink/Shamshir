@@ -28,7 +28,15 @@ public sealed record BacktestRunSummary(
     string? DatasetId = null,
     string? ConfigSetId = null,
     int Seed = 0,
-    string? ParentRunId = null);
+    string? ParentRunId = null,
+    // iter-strategy-system P2 (D5): the persisted run selection.
+    string RunPlanJson = "[]",
+    string? Venue = null,
+    string? RiskProfileId = null,
+    bool GovernorEnabled = true,
+    bool RegimeEnabled = true,
+    double CommissionPerMillion = 0,
+    double SpreadPips = 0);
 
 public interface IBacktestRunRepository
 {

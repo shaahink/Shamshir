@@ -460,6 +460,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 usePackId = cfg.CustomParams.GetValueOrDefault("UsePackId"),
                 perStrategyPacks = cfg.CustomParams.GetValueOrDefault("PerStrategyPackIds"),
                 disableRegime = cfg.CustomParams.GetValueOrDefault("DisableRegime"),
+                // iter-strategy-system P1/P2: the row plan (per-row packs) + governor toggle change behaviour,
+                // so they belong in the run's content address.
+                runRows = cfg.CustomParams.GetValueOrDefault("RunRows"),
+                governorEnabled = cfg.CustomParams.GetValueOrDefault("GovernorEnabled"),
             });
             var configSetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(configIdentity);
             var parentRunId = cfg.CustomParams.GetValueOrDefault("ParentRunId");
@@ -469,7 +473,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 cfg.Balance, "", "{}", effectiveConfigJson,
                 0, 0, 0, 0, 0, 0, 0, 0, -1, null,
                 ReportJsonPath: null, DatasetId: datasetId, ConfigSetId: configSetId, Seed: 42,
-                ParentRunId: string.IsNullOrWhiteSpace(parentRunId) ? null : parentRunId);
+                ParentRunId: string.IsNullOrWhiteSpace(parentRunId) ? null : parentRunId,
+                RunPlanJson: cfg.CustomParams.GetValueOrDefault("RunRows") ?? "[]",
+                Venue: cfg.CustomParams.GetValueOrDefault("Venue"),
+                RiskProfileId: cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
+                GovernorEnabled: cfg.CustomParams.GetValueOrDefault("GovernorEnabled") != "false",
+                RegimeEnabled: cfg.CustomParams.GetValueOrDefault("DisableRegime") != "true",
+                CommissionPerMillion: cfg.CommissionPerMillion,
+                SpreadPips: cfg.SpreadPips);
             await repo.SaveAsync(summary, CancellationToken.None);
         }
         catch (Exception ex)

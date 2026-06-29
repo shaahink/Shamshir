@@ -49,6 +49,14 @@ export interface RunDetail {
   parentRunId?: string | null;
   datasetId?: string | null;
   configSetId?: string | null;
+  // iter-strategy-system P2 (D5): persisted run selection.
+  runPlanJson?: string;
+  venue?: string | null;
+  riskProfileId?: string | null;
+  governorEnabled?: boolean;
+  regimeEnabled?: boolean;
+  commissionPerMillion?: number;
+  spreadPips?: number;
 }
 
 export interface TradeListResponse {

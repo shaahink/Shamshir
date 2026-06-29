@@ -33,4 +33,15 @@ public sealed class BacktestRunEntity : IAuditableEntity
     public string? ConfigSetId { get; set; }
     public int Seed { get; set; }
     public string? ParentRunId { get; set; }
+
+    // iter-strategy-system P2 (D5): persist the run's full selection so the report shows exactly what was
+    // run. RunPlanJson is the array of rows (strategy, symbol, timeframe, pack); the rest are the run-level
+    // choices the builder sends (D4).
+    public string RunPlanJson { get; set; } = "[]";
+    public string? Venue { get; set; }
+    public string? RiskProfileId { get; set; }
+    public bool GovernorEnabled { get; set; } = true;
+    public bool RegimeEnabled { get; set; } = true;
+    public double CommissionPerMillion { get; set; }
+    public double SpreadPips { get; set; }
 }

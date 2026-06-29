@@ -159,6 +159,43 @@ type JournalRow = JournalEntry & { outcome?: string | null };
             </span>
           </div>
 
+          @if (runPlan().length > 0) {
+            <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+              <div class="mb-2 flex flex-wrap items-center gap-2">
+                <h2 class="mr-2 text-sm font-medium text-gray-400">Run plan ({{ runPlan().length }} rows)</h2>
+                <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-300">Venue: {{ d.venue || 'replay' }}</span>
+                @if (d.riskProfileId) {
+                  <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-300">Risk: {{ d.riskProfileId }}</span>
+                }
+                <span [class]="chipClass(d.governorEnabled !== false)">Governor: {{ d.governorEnabled === false ? 'Off' : 'On' }}</span>
+                <span [class]="chipClass(d.regimeEnabled !== false)">Regime: {{ d.regimeEnabled === false ? 'Off' : 'On' }}</span>
+                <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-300">Comm {{ d.commissionPerMillion ?? 0 }}/M · Spread {{ d.spreadPips ?? 0 }} pips</span>
+              </div>
+              <div class="overflow-hidden rounded border border-gray-800">
+                <table class="w-full text-xs">
+                  <thead class="bg-gray-800/50 text-gray-500">
+                    <tr>
+                      <th class="px-3 py-1.5 text-left">Strategy</th>
+                      <th class="px-3 py-1.5 text-left">Symbol</th>
+                      <th class="px-3 py-1.5 text-left">TF</th>
+                      <th class="px-3 py-1.5 text-left">Add-on pack</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (r of runPlan(); track $index) {
+                      <tr class="border-t border-gray-800">
+                        <td class="px-3 py-1 text-gray-200">{{ r.strategyId }}</td>
+                        <td class="px-3 py-1 text-gray-300">{{ r.symbol }}</td>
+                        <td class="px-3 py-1 uppercase text-gray-300">{{ r.timeframe }}</td>
+                        <td class="px-3 py-1 text-gray-400">{{ r.packId || '—' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
+
           @if (equityPoints().length > 1) {
             <app-equity-chart
               title="Equity & Drawdown"
@@ -391,6 +428,29 @@ export class RunReportComponent implements OnInit {
   dailyPnl = signal<DailyPnl[]>([]);
   journalKind = signal<string | null>(null);
   duplicating = signal(false);
+
+  // iter-strategy-system P2 (D5): the persisted run plan (rows), parsed from RunDetail.runPlanJson.
+  runPlan = computed(() => {
+    const raw = this.store.selectedRun()?.runPlanJson;
+    if (!raw) return [];
+    try {
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr)
+        ? arr.map((e: Record<string, unknown>) => ({
+            strategyId: (e['StrategyId'] ?? e['strategyId']) as string,
+            symbol: (e['Symbol'] ?? e['symbol']) as string,
+            timeframe: (e['Timeframe'] ?? e['timeframe']) as string,
+            packId: (e['PackId'] ?? e['packId'] ?? null) as string | null,
+          }))
+        : [];
+    } catch {
+      return [];
+    }
+  });
+
+  chipClass(on: boolean): string {
+    return 'rounded border px-2 py-0.5 text-xs ' + (on ? 'border-emerald-700 text-emerald-400' : 'border-gray-700 text-gray-500');
+  }
   private packsApi = inject(AddOnPacksApiService);
   dupRunId = signal<string | null>(null);
   dupPackId = signal('');

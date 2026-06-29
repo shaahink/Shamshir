@@ -25,4 +25,13 @@ public sealed record RunDetailResponse
     public int ExitCode { get; init; }
     public string? EffectiveConfigJson { get; init; }
     public string? ReportJsonPath { get; init; }
+
+    // iter-strategy-system P2 (D5): the persisted run selection, surfaced for the report.
+    public string RunPlanJson { get; init; } = "[]";
+    public string? Venue { get; init; }
+    public string? RiskProfileId { get; init; }
+    public bool GovernorEnabled { get; init; } = true;
+    public bool RegimeEnabled { get; init; } = true;
+    public double CommissionPerMillion { get; init; }
+    public double SpreadPips { get; init; }
 }

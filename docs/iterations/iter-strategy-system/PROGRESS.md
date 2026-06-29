@@ -10,9 +10,9 @@
 | Phase | Title | State | Commit |
 |-------|-------|-------|--------|
 | P0 | Bring backbone forward (merge iter/38-addons) + G0 gate | ✅ done | merge `5c0e024`, fix `cc24c22` |
-| P1 | Backtest builder (row grid + per-row pack + venue) | 🟡 in progress | `<pending>` |
-| P2 | Run metadata: store & display selection | ⬜ next | — |
-| P3 | Live progress & journal: descriptive | ⬜ not started | — |
+| P1 | Backtest builder (row grid + per-row pack + venue) | ✅ done | `c492d16` |
+| P2 | Run metadata: store & display selection | 🟡 in progress | `<pending>` |
+| P3 | Live progress & journal: descriptive | 🟡 next | — |
 | P4 | Charts: equity + trade-detail price | ⬜ not started | — |
 
 Legend: ⬜ not started · 🟡 in progress · ✅ done & gated · ⚠️ done with caveat
@@ -72,9 +72,20 @@ Design: PLAN.md §Phase 1. **Done so far (uncommitted at this checkpoint, then c
 **Carry to P2:** assert `GovernorEnabled=false` end-to-end via the run-metadata round-trip (cheaper there).
 **Verify after build:** live app run (skill `run-shamshir`) — drive a 2×2 row run, confirm it executes.
 
-## P2 — Run metadata  (not started)
-Design: PLAN.md §Phase 2. Add RunPlanJson + Venue/RiskProfileId/GovernorEnabled/RegimeEnabled/Commission/
-Spread to BacktestRunEntity (+ EF migration), expose on GET /runs/{id}, render run-plan table on report.
+## P2 — Run metadata  🟡
+Design: PLAN.md §Phase 2.
+- `BacktestRunEntity` + `BacktestRunSummary` + `SqliteBacktestRunRepository` + `RunDetailResponse` +
+  `RunQueryService` gain: `RunPlanJson`, `Venue`, `RiskProfileId`, `GovernorEnabled`, `RegimeEnabled`,
+  `CommissionPerMillion`, `SpreadPips`.
+- **EF migration** `20260629013309_AddRunMetadata` (the app uses `MigrateAsync`, not EnsureCreated — verified).
+- `WriteStartRecordAsync` writes them from CustomParams; row plan + governor also fold into the ConfigSetId
+  content address (K6 correctness now that packs are per-row).
+- SPA `run-report`: "Run plan (N rows)" section — chips (venue/risk/governor/regime/comm/spread) + per-row
+  table (strategy · symbol · TF · pack). `api.types` RunDetail extended.
+
+**Tests:** `RunMetadataTests` (Integration) — row run round-trips: governor=false, per-row pack, 2 enabled
+rows (disabled dropped) all surface on GET /runs/{id}. Green. (This also discharges the P1 governor
+assertion.)
 
 ## P3 — Observability  (not started)
 Design: PLAN.md §Phase 3. Enrich live journal projection (strategyId/symbol/reason), monitor polling
