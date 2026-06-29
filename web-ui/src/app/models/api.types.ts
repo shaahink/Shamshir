@@ -196,8 +196,6 @@ export interface RunAnalytics {
 }
 
 export interface StartRunRequest {
-  symbol: string;
-  period: string;
   start: string;
   end: string;
   balance: number;
@@ -277,8 +275,6 @@ export interface StrategyDetail {
   displayName: string;
   isEnabled: boolean;
   enabled: boolean;
-  timeframe: string;
-  symbols: string[];
   riskProfileId: string;
   parametersJson: string | null;
   positionManagementJson: string | null;

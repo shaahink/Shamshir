@@ -49,6 +49,7 @@ public sealed class TrailingStopE2ETests
         private bool _opened;
         public string Id => "trail-test";
         public string DisplayName => "Trail Test";
+        public Timeframe EntryTimeframe => Timeframe.H1;
         public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
         public int RequiredBarCount => 1;
         public IReadOnlyList<IndicatorRequest> RequiredIndicators => [];

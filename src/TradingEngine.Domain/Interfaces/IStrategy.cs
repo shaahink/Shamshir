@@ -5,6 +5,7 @@ public interface IStrategy
     string Id { get; }
     string DisplayName { get; }
     IStrategyConfig Config { get; }
+    Timeframe EntryTimeframe { get; }
     IReadOnlyList<Timeframe> RequiredTimeframes { get; }
     int RequiredBarCount { get; }
     IReadOnlyList<IndicatorRequest> RequiredIndicators { get; }

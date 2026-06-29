@@ -384,8 +384,7 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
         var solutionRoot = CtraderTestHelpers.SolutionRoot;
         var baseConfig = new ConfigLoader(solutionRoot).Load();
         var adapted = baseConfig.StrategyConfigs.Select(s => new StrategyConfigEntry(
-            s.Id, s.DisplayName, s.Enabled, s.Symbols, s.RiskProfileId, s.Parameters,
-            period.ToUpperInvariant())
+            s.Id, s.DisplayName, s.Enabled, s.RiskProfileId, s.Parameters)
         {
             RegimeFilter = s.RegimeFilter,
             OrderEntry = s.OrderEntry,

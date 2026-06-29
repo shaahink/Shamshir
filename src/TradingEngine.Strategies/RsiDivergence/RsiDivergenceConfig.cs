@@ -5,9 +5,7 @@ public sealed record RsiDivergenceConfig : IStrategyConfig
     public string Id { get; init; } = "rsi-divergence";
     public string DisplayName { get; init; } = "RSI Divergence";
     public bool Enabled { get; init; } = true;
-    public IReadOnlyList<string> Symbols { get; init; } = ["EURUSD", "GBPUSD", "USDJPY"];
     public string RiskProfileId { get; init; } = "standard";
-    public Timeframe Timeframe { get; init; } = Timeframe.H1;
     public RegimeFilterOptions RegimeFilter { get; init; } = new() { AllowTrending = false, AllowHighVolatility = false };
     public OrderEntryOptions OrderEntry { get; init; } = new();
     public PositionManagementOptions PositionManagement { get; init; } = new();

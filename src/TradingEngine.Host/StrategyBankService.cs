@@ -37,7 +37,7 @@ public sealed class StrategyBankService : IStrategyBank
         return _registry.GetAll()
             .Where(s => _enabledOverrides.TryGetValue(s.Id, out var en) ? en : s.Config.Enabled)
             .Where(s => IsInRunPlan(s.Id, symbolStr, timeframeStr))
-            .Where(s => s.RequiredTimeframes.Contains(timeframe))
+            .Where(s => s.EntryTimeframe == timeframe)
             .Where(s => ignoreRegime || s.Config.RegimeFilter.Allows(regime))
             .ToList();
     }

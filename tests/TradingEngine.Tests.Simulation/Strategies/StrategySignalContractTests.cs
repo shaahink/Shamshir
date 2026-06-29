@@ -43,7 +43,7 @@ public sealed class StrategySignalContractTests
     [Fact]
     public void SuperTrend_emits_on_reversal()
     {
-        var s = new SuperTrendStrategy(new SuperTrendConfig { Symbols = ["EURUSD"] },
+        var s = new SuperTrendStrategy(new SuperTrendConfig(),
             Registry(), Substitute.For<ILogger<SuperTrendStrategy>>());
         CountSignals(s, Reversal(140, 140)).Should().BeGreaterThan(0,
             "a clean up-then-down reversal must flip SuperTrend at least once");
@@ -52,7 +52,7 @@ public sealed class StrategySignalContractTests
     [Fact]
     public void MacdMomentum_emits_on_reversal()
     {
-        var s = new MacdMomentumStrategy(new MacdMomentumConfig { Symbols = ["EURUSD"] },
+        var s = new MacdMomentumStrategy(new MacdMomentumConfig(),
             Registry(), Substitute.For<ILogger<MacdMomentumStrategy>>());
         CountSignals(s, Reversal(140, 140)).Should().BeGreaterThan(0,
             "MACD histogram must cross zero with price on the right side of its SMA at least once");
@@ -61,7 +61,7 @@ public sealed class StrategySignalContractTests
     [Fact]
     public void RsiDivergence_emits_on_reversal()
     {
-        var s = new RsiDivergenceStrategy(new RsiDivergenceConfig { Symbols = ["EURUSD"] },
+        var s = new RsiDivergenceStrategy(new RsiDivergenceConfig(),
             Registry(), Substitute.For<ILogger<RsiDivergenceStrategy>>());
         CountSignals(s, Reversal(140, 140)).Should().BeGreaterThan(0);
     }
@@ -74,7 +74,7 @@ public sealed class StrategySignalContractTests
     [Fact]
     public void MtfTrend_does_not_throw()
     {
-        var s = new MtfTrendStrategy(new MtfTrendConfig { Symbols = ["EURUSD"] },
+        var s = new MtfTrendStrategy(new MtfTrendConfig(),
             Registry(), Substitute.For<ILogger<MtfTrendStrategy>>());
         var act = () => CountSignals(s, Sawtooth(360));
         act.Should().NotThrow();
@@ -83,7 +83,7 @@ public sealed class StrategySignalContractTests
     [Fact]
     public void BollingerSqueeze_emits_on_squeeze_then_breakout()
     {
-        var s = new BollingerSqueezeStrategy(new BollingerSqueezeConfig { Symbols = ["EURUSD"] },
+        var s = new BollingerSqueezeStrategy(new BollingerSqueezeConfig(),
             Registry(), Substitute.For<ILogger<BollingerSqueezeStrategy>>());
         CountSignals(s, SqueezeThenBreakout()).Should().BeGreaterThan(0,
             "a volatility contraction followed by an expansion bar must trigger a squeeze breakout");

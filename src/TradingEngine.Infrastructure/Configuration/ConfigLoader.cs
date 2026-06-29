@@ -87,16 +87,13 @@ public sealed class ConfigLoader
 
             var root = doc.RootElement;
             var parameters = root.TryGetProperty("parameters", out var p) ? p.Clone() : default;
-            var timeframe = root.TryGetProperty("timeframe", out var tf) ? tf.GetString()! : "H1";
 
             results.Add(new StrategyConfigEntry(
                 root.GetProperty("id").GetString()!,
                 root.GetProperty("displayName").GetString()!,
                 root.TryGetProperty("enabled", out var en) && en.GetBoolean(),
-                root.GetProperty("symbols").EnumerateArray().Select(s => s.GetString()!).ToList(),
                 root.GetProperty("riskProfileId").GetString()!,
-                parameters,
-                timeframe)
+                parameters)
             {
                 RegimeFilter = ParseOptional<RegimeFilterOptions>(root, "regimeFilter"),
                 OrderEntry = ParseOptional<OrderEntryOptions>(root, "orderEntry"),

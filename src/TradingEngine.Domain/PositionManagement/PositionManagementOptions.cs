@@ -67,7 +67,7 @@ public record TrailingOptions
     public string Method { get; init; } = "None";
     public double StepPips { get; init; } = 10;
     public double AtrMultiple { get; init; } = 1.0;
-    public bool ActivateAfterBreakeven { get; init; } = true;
+    public bool ActivateAfterBreakeven { get; init; }
     public int StructureLookbackBars { get; init; } = 10;
     public double[] SteppedRLevels { get; init; } = [1.0, 2.0, 3.0];
 }

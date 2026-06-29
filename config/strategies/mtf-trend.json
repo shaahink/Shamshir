@@ -1,32 +1,52 @@
 {
-  "id": "mtf-trend",
-  "displayName": "Multi-Timeframe Trend",
-  "enabled": true,
-  "symbols": ["EURUSD", "GBPUSD"],
-  "riskProfileId": "standard",
-  "timeframe": "H1",
-  "regimeFilter": { "allowRanging": false },
-  "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
-  "positionManagement": {
-    "stopLoss": { "method": "SwingPoint", "atrMultiple": 1.5, "maxPips": 200 },
-    "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0 },
-    "breakeven": { "enabled": true, "triggerRMultiple": 1.0, "offsetPips": 1.0 },
-    "trailing": { "enabled": true, "mode": "Auto", "method": "Structure", "atrMultiple": 1.0, "structureLookbackBars": 10 }
-  },
-  "parameters": {
-    "emaPeriod": 200,
-    "rsiPeriod": 14,
-    "rsiBullishPullback": 45.0,
-    "rsiBearishPullback": 55.0,
-    "swingLookback": 10,
-    "atrPeriod": 14,
-    "slAtrMinMultiple": 1.5,
-    "tpRrMultiple": 2.0
-  },
-  "reentry": {
-    "blockWhileSameDirectionOpen": true,
-    "cooldownBarsAfterSl": 5,
-    "cooldownBarsAfterTp": 2,
-    "cooldownBarsAfterEntry": 3
-  }
+    "id":  "mtf-trend",
+    "displayName":  "Multi-Timeframe Trend",
+    "enabled":  true,
+    "riskProfileId":  "standard",
+    "regimeFilter":  {
+                         "allowRanging":  false
+                     },
+    "orderEntry":  {
+                       "method":  "Market",
+                       "maxSlippagePips":  2.0
+                   },
+    "positionManagement":  {
+                               "stopLoss":  {
+                                                "method":  "SwingPoint",
+                                                "atrMultiple":  1.5,
+                                                "maxPips":  200
+                                            },
+                               "takeProfit":  {
+                                                  "method":  "RrMultiple",
+                                                  "rrMultiple":  2.0
+                                              },
+                               "breakeven":  {
+                                                 "enabled":  true,
+                                                 "triggerRMultiple":  1.0,
+                                                 "offsetPips":  1.0
+                                             },
+                               "trailing":  {
+                                                "enabled":  true,
+                                                "mode":  "Auto",
+                                                "method":  "Structure",
+                                                "atrMultiple":  1.0,
+                                                "structureLookbackBars":  10
+                                            }
+                           },
+    "parameters":  {
+                       "emaPeriod":  200,
+                       "rsiPeriod":  14,
+                       "rsiBullishPullback":  45.0,
+                       "rsiBearishPullback":  55.0,
+                       "swingLookback":  10,
+                       "atrPeriod":  14,
+                       "slAtrMinMultiple":  1.5,
+                       "tpRrMultiple":  2.0
+                   },
+    "reentry":  {
+                    "blockWhileSameDirectionOpen":  true,
+                    "cooldownBarsAfterSl":  5,
+                    "cooldownBarsAfterTp":  2,
+                    "cooldownBarsAfterEntry":  3
+                }
 }

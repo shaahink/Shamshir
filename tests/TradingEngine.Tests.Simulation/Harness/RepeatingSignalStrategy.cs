@@ -6,6 +6,7 @@ public sealed class RepeatingSignalStrategy : IStrategy
 
     public string Id => "repeating-signal";
     public string DisplayName => "Repeating Signal (test only)";
+    public Timeframe EntryTimeframe => Timeframe.H1;
     public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
     public int RequiredBarCount => 1;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => [];

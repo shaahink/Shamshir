@@ -54,19 +54,16 @@ public sealed class RunsController : ControllerBase
     {
         var symList = req.Symbols is { Count: > 0 }
             ? req.Symbols.Select(s => s.ToUpperInvariant()).ToArray()
-            : new[] { req.Symbol.ToUpperInvariant() };
+            : new[] { "EURUSD" };
 
         var perList = req.Periods is { Count: > 0 }
             ? req.Periods.Select(p => p.ToUpperInvariant()).ToArray()
-            : new[] { req.Period.ToUpperInvariant() };
+            : new[] { "H1" };
 
         var stratList = req.StrategyIds is { Count: > 0 }
             ? req.StrategyIds.Select(s => s.Trim()).ToArray()
             : Array.Empty<string>();
 
-        // iter-37 guard: reject a structurally-empty/invalid backtest at the API (the SPA also blocks this
-        // client-side). Strategies are NOT required here — an empty set means "use the enabled strategies"
-        // (the duplicate flow relies on that).
         var validSymbols = symList.Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
         var validPeriods = perList.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
         var errors = new List<string>();
@@ -79,15 +76,15 @@ public sealed class RunsController : ControllerBase
 
         var cfg = new BacktestConfig
         {
-            Symbol = req.Symbol.ToUpperInvariant(),
-            Period = req.Period.ToLowerInvariant(),
+            Symbol = validSymbols[0],
+            Period = validPeriods[0].ToLowerInvariant(),
             Start = req.Start,
             End = req.End,
             Balance = req.Balance,
             CommissionPerMillion = req.CommissionPerMillion,
             SpreadPips = req.SpreadPips,
-            Symbols = symList,
-            Periods = perList,
+            Symbols = validSymbols,
+            Periods = validPeriods,
         };
 
         if (stratList.Length > 0)

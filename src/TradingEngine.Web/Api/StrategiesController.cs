@@ -48,8 +48,6 @@ public class StrategiesController : ControllerBase
             id = c.Id,
             displayName = c.DisplayName,
             isEnabled = c.Enabled,
-            timeframe = c.Timeframe,
-            symbols = c.Symbols,
             riskProfileId = c.RiskProfileId,
             createdAtUtc = createdMap.GetValueOrDefault(c.Id),
             stats = stats.GetValueOrDefault(c.Id) ?? EmptyStats(),
@@ -70,8 +68,6 @@ public class StrategiesController : ControllerBase
             displayName = c.DisplayName,
             isEnabled = c.Enabled,
             enabled = c.Enabled,
-            timeframe = c.Timeframe,
-            symbols = c.Symbols,
             riskProfileId = c.RiskProfileId,
             parametersJson = RawText(c.Parameters),
             positionManagementJson = Serialize(c.PositionManagement),
@@ -117,11 +113,7 @@ public class StrategiesController : ControllerBase
         var updated = existing with
         {
             DisplayName = GetString(root, "displayName") ?? existing.DisplayName,
-            Timeframe = GetString(root, "timeframe") ?? existing.Timeframe,
             RiskProfileId = GetString(root, "riskProfileId") ?? existing.RiskProfileId,
-            Symbols = root.TryGetProperty("symbols", out var sy) && sy.ValueKind == JsonValueKind.Array
-                ? sy.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s.Length > 0).ToList()
-                : existing.Symbols,
             Parameters = root.TryGetProperty("parameters", out var p) && p.ValueKind == JsonValueKind.Object
                 ? p.Clone()
                 : existing.Parameters,
@@ -175,15 +167,11 @@ public class StrategiesController : ControllerBase
         if (string.IsNullOrWhiteSpace(displayName))
             return BadRequest(new { error = "displayName is required." });
 
-        var symbols = root.TryGetProperty("symbols", out var sy) && sy.ValueKind == JsonValueKind.Array
-            ? sy.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s.Length > 0).ToList()
-            : new List<string> { "EURUSD" };
-        var timeframe = GetString(root, "timeframe") ?? "H1";
         var riskProfileId = GetString(root, "riskProfileId") ?? "standard";
 
         var parameters = JsonSerializer.Deserialize<JsonElement>("{}");
         var entry = new StrategyConfigEntry(
-            id, displayName, false, symbols, riskProfileId, parameters, timeframe)
+            id, displayName, false, riskProfileId, parameters)
         {
             PositionManagement = new PositionManagementOptions
             {

@@ -44,9 +44,7 @@ public sealed class JsonExportService
                 Id = entry.Id,
                 DisplayName = entry.DisplayName,
                 Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(),
                 RiskProfileId = entry.RiskProfileId,
-                Timeframe = entry.Timeframe,
                 Parameters = DeserializeElement(entry.Parameters),
                 RegimeFilter = entry.RegimeFilter,
                 OrderEntry = entry.OrderEntry,
@@ -75,9 +73,7 @@ public sealed class JsonExportService
         public string Id { get; set; } = "";
         public string DisplayName { get; set; } = "";
         public bool Enabled { get; set; }
-        public List<string> Symbols { get; set; } = [];
         public string RiskProfileId { get; set; } = "";
-        public string Timeframe { get; set; } = "H1";
         public JsonElement Parameters { get; set; }
         public RegimeFilterOptions? RegimeFilter { get; set; }
         public OrderEntryOptions? OrderEntry { get; set; }

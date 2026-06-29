@@ -114,7 +114,8 @@ public sealed class AddOnPacksApiTests : IClassFixture<WebApplicationFactory<Pro
     {
         var payload = new Dictionary<string, object?>
         {
-            ["symbol"] = "EURUSD", ["period"] = "h1",
+            ["symbols"] = new[] { "EURUSD" },
+            ["periods"] = new[] { "H1" },
             ["start"] = "2024-01-01", ["end"] = "2024-01-02",
             ["balance"] = 100_000, ["venue"] = "replay",
             ["usePackId"] = "runner-aggressive",
