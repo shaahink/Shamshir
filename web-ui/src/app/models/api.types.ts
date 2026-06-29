@@ -195,6 +195,15 @@ export interface RunAnalytics {
   maeMfe: { x: number; y: number }[];
 }
 
+// iter-strategy-system P1 (D3): a builder row = strategy × symbol × timeframe × add-on pack.
+export interface RunRow {
+  strategyId: string;
+  symbol: string;
+  timeframe: string;
+  packId?: string;
+  enabled?: boolean;
+}
+
 export interface StartRunRequest {
   start: string;
   end: string;
@@ -210,6 +219,10 @@ export interface StartRunRequest {
   usePackId?: string;
   disableRegime?: boolean;
   perStrategyPackIds?: Record<string, string>;
+  // iter-strategy-system P1: when present, rows supersede the symbols×periods×strategies cross-product.
+  rows?: RunRow[];
+  // Run-level governor toggle (D4). Default true.
+  governorEnabled?: boolean;
 }
 
 export interface RiskProfile {

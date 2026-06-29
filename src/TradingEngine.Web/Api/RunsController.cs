@@ -52,21 +52,36 @@ public sealed class RunsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Start([FromBody] StartRunRequest req, CancellationToken ct)
     {
-        var symList = req.Symbols is { Count: > 0 }
-            ? req.Symbols.Select(s => s.ToUpperInvariant()).ToArray()
-            : new[] { "EURUSD" };
+        // iter-strategy-system P1 (D3): the row-based builder sends explicit rows
+        // (strategy × symbol × timeframe × pack). When present they supersede the legacy cross-product —
+        // symbols/periods/strategies are DERIVED from the enabled rows.
+        var rowPlan = req.Rows is { Count: > 0 } ? RunPlanBuilder.FromRows(req.Rows) : null;
 
-        var perList = req.Periods is { Count: > 0 }
-            ? req.Periods.Select(p => p.ToUpperInvariant()).ToArray()
-            : new[] { "H1" };
+        string[] validSymbols, validPeriods, stratList;
+        if (rowPlan is { Entries.Count: > 0 })
+        {
+            validSymbols = rowPlan.Entries.Select(e => e.Symbol).Distinct().ToArray();
+            validPeriods = rowPlan.Entries.Select(e => e.Timeframe).Distinct().ToArray();
+            stratList = rowPlan.Entries.Select(e => e.StrategyId).Distinct().ToArray();
+        }
+        else
+        {
+            var symList = req.Symbols is { Count: > 0 }
+                ? req.Symbols.Select(s => s.ToUpperInvariant()).ToArray()
+                : new[] { "EURUSD" };
+            var perList = req.Periods is { Count: > 0 }
+                ? req.Periods.Select(p => p.ToUpperInvariant()).ToArray()
+                : new[] { "H1" };
+            stratList = req.StrategyIds is { Count: > 0 }
+                ? req.StrategyIds.Select(s => s.Trim()).ToArray()
+                : Array.Empty<string>();
+            validSymbols = symList.Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+            validPeriods = perList.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
+        }
 
-        var stratList = req.StrategyIds is { Count: > 0 }
-            ? req.StrategyIds.Select(s => s.Trim()).ToArray()
-            : Array.Empty<string>();
-
-        var validSymbols = symList.Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
-        var validPeriods = perList.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
         var errors = new List<string>();
+        if (req.Rows is { Count: > 0 } && rowPlan is not { Entries.Count: > 0 })
+            errors.Add("At least one enabled row is required.");
         if (validSymbols.Length == 0) errors.Add("At least one symbol is required.");
         if (validPeriods.Length == 0) errors.Add("At least one timeframe is required.");
         if (req.Start >= req.End) errors.Add("Start date must be before end date.");
@@ -89,6 +104,10 @@ public sealed class RunsController : ControllerBase
 
         if (stratList.Length > 0)
             cfg.CustomParams["StrategyIds"] = string.Join(",", stratList);
+        if (rowPlan is { Entries.Count: > 0 })
+            cfg.CustomParams["RunRows"] = System.Text.Json.JsonSerializer.Serialize(rowPlan.Entries);
+        // Run-level governor toggle (D4) — always recorded so the persisted run shows the choice.
+        cfg.CustomParams["GovernorEnabled"] = req.GovernorEnabled ? "true" : "false";
         if (!string.IsNullOrWhiteSpace(req.RiskProfileId))
             cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
         if (!string.IsNullOrWhiteSpace(req.Venue))

@@ -71,6 +71,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public int OpenPositions;
         public string? GovernorState;
         public string? GovernorReason;
+
+        // iter-strategy-system P1/P3: which multi-pass combination is running now (for the live Monitor).
+        public string? CurrentPass;
+        public int PassIndex;
+        public int PassTotal;
     }
 
     public BacktestOrchestrator(
@@ -189,6 +194,20 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         cfg.CustomParams.TryGetValue("StrategyIds", out var ids) && !string.IsNullOrWhiteSpace(ids)
             ? ids.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             : Array.Empty<string>();
+
+    // iter-strategy-system P1 (D3): the row-based builder serializes its enabled rows (as RunPlanEntry, incl.
+    // per-row PackId) into CustomParams["RunRows"]. Absent/blank ⇒ legacy cross-product path.
+    private static List<RunPlanEntry> ParseRunPlanEntries(BacktestConfig cfg)
+    {
+        if (!cfg.CustomParams.TryGetValue("RunRows", out var json) || string.IsNullOrWhiteSpace(json))
+            return [];
+        try { return JsonSerializer.Deserialize<List<RunPlanEntry>>(json) ?? []; }
+        catch (Exception ex)
+        {
+            // A malformed RunRows must not silently run an empty plan that looks like "all strategies".
+            throw new InvalidOperationException("Invalid RunRows payload.", ex);
+        }
+    }
 
     private static RunPlan BuildRunPlan(string[] strategyIds, string[] symbols, string[] periods)
     {
@@ -488,7 +507,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     // filter, order-entry and position-management all come from the seeded DB store, so what the New-
     // Backtest UI shows/edits is exactly what the engine evaluates. Risk profiles, prop-firm rules,
     // governor and sizing are also loaded from DB stores (seeded from JSON at startup).
-    private async Task<LoadedConfig> BuildLoadedConfigFromDbAsync(BacktestConfig cfg)
+    // iter-strategy-system P1: <paramref name="perPassPacks"/> drives per-row add-on packs (D3). When non-null
+    // (the row-based builder), it is the strategy→packId map for ONE execution pass: each listed strategy is
+    // force-enabled for the run (the user put it in a row, so a DB Enabled=false must not silently drop it)
+    // and gets that row's pack — so the SAME strategy can carry DIFFERENT packs on different (symbol,tf) passes.
+    // When null, the legacy global pack logic (UsePackId / PerStrategyPackIds) applies. The governor toggle
+    // (D4) is honoured for both paths via CustomParams["GovernorEnabled"].
+    private async Task<LoadedConfig> BuildLoadedConfigFromDbAsync(
+        BacktestConfig cfg, IReadOnlyDictionary<string, string?>? perPassPacks = null)
     {
         var solutionRoot = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
@@ -509,7 +535,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var usePackId = cfg.CustomParams.GetValueOrDefault("UsePackId");
             var disableRegime = cfg.CustomParams.GetValueOrDefault("DisableRegime") == "true";   // iter-38 R1 run-master
             Dictionary<string, string>? perStrategyPacks = null;
-            if (cfg.CustomParams.TryGetValue("PerStrategyPackIds", out var ppJson) && !string.IsNullOrWhiteSpace(ppJson))
+            if (perPassPacks is null
+                && cfg.CustomParams.TryGetValue("PerStrategyPackIds", out var ppJson) && !string.IsNullOrWhiteSpace(ppJson))
             {
                 try { perStrategyPacks = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(ppJson); }
                 catch (Exception ex) { _logger.LogWarning(ex, "Bad PerStrategyPackIds JSON — ignoring"); }
@@ -521,7 +548,15 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             foreach (var c0 in dbConfigs)
             {
                 var c = profileIsKnown ? c0 with { RiskProfileId = chosenProfile! } : c0;
-                var packId = perStrategyPacks?.GetValueOrDefault(c.Id) ?? usePackId;
+
+                // iter-strategy-system P1 (D3): a row-selected strategy runs for this pass regardless of its
+                // stored Enabled flag; routing to the right pass is the RunPlan's job (StrategyBankService).
+                if (perPassPacks is not null && perPassPacks.ContainsKey(c.Id))
+                    c = c with { Enabled = true };
+
+                var packId = perPassPacks is not null
+                    ? perPassPacks.GetValueOrDefault(c.Id)
+                    : perStrategyPacks?.GetValueOrDefault(c.Id) ?? usePackId;
                 if (!string.IsNullOrWhiteSpace(packId))
                 {
                     if (!packCache.TryGetValue(packId, out var pack))
@@ -567,6 +602,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             _logger.LogWarning(ex, "Failed to load governor options from DB — falling back to JSON config defaults (M19 fix)");
             governor = baseConfig.Governor;
         }
+
+        // iter-strategy-system P1 (D4): run-level governor toggle. Default (absent/"true") keeps the stored
+        // governor; "false" disables it for the whole run.
+        if (cfg.CustomParams.GetValueOrDefault("GovernorEnabled") == "false")
+            governor = governor with { Enabled = false };
 
         return new LoadedConfig(propFirms, riskProfiles)
         {
@@ -620,19 +660,44 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(userCt,
             new CancellationTokenSource(TimeSpan.FromMinutes(30)).Token);
 
-        var strategyIds = ParseStrategyIds(cfg);
-        var loadedConfig = await BuildLoadedConfigFromDbAsync(cfg);
-        var effectiveStrategyIds = strategyIds.Length > 0
-            ? strategyIds
-            : loadedConfig.StrategyConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
-        var runPlan = BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
+        // iter-strategy-system P1 (D3): prefer the explicit row plan (RunRows) — each row is a
+        // (strategy × symbol × timeframe × pack), built per-pass so the same strategy can carry a different
+        // pack on different passes. Otherwise fall back to the legacy Symbols×Periods×Strategies cross-product
+        // with one shared config for every pass (behaviour unchanged).
+        var rowEntries = ParseRunPlanEntries(cfg);
+        var perRow = rowEntries.Count > 0;
 
-        var combinations = runPlan.Entries
-            .Select(e => (Symbol: Symbol.Parse(e.Symbol), Timeframe: ParseTimeframe(e.Timeframe)))
-            .Distinct()
-            .ToList();
+        RunPlan runPlan;
+        IReadOnlyList<string> activeStrategyIds;
+        LoadedConfig? sharedConfig = null;
+        List<(Symbol Sym, Timeframe Tf, IReadOnlyDictionary<string, string?>? Packs)> passes;
 
-        if (combinations.Count == 0)
+        if (perRow)
+        {
+            runPlan = new RunPlan(rowEntries);
+            activeStrategyIds = rowEntries.Select(e => e.StrategyId).Distinct().ToArray();
+            passes = RunPlanBuilder.IntoPasses(runPlan)
+                .Select(p => (Symbol.Parse(p.Symbol), ParseTimeframe(p.Timeframe),
+                    (IReadOnlyDictionary<string, string?>?)p.StrategyPacks))
+                .ToList();
+        }
+        else
+        {
+            var strategyIds = ParseStrategyIds(cfg);
+            sharedConfig = await BuildLoadedConfigFromDbAsync(cfg);
+            var effectiveStrategyIds = strategyIds.Length > 0
+                ? strategyIds
+                : sharedConfig.StrategyConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
+            runPlan = BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
+            activeStrategyIds = strategyIds;
+            passes = runPlan.Entries
+                .Select(e => (Sym: Symbol.Parse(e.Symbol), Tf: ParseTimeframe(e.Timeframe)))
+                .Distinct()
+                .Select(c => (c.Sym, c.Tf, (IReadOnlyDictionary<string, string?>?)null))
+                .ToList();
+        }
+
+        if (passes.Count == 0)
         {
             EnqueueLog(runId, logLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] No symbol/timeframe combinations to run.");
@@ -641,9 +706,18 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         var totalBars = 0;
         var anyBars = false;
+        var passIndex = 0;
 
-        foreach (var (sym, tf) in combinations)
+        foreach (var (sym, tf, packs) in passes)
         {
+            passIndex++;
+            // Per-row runs build a fresh config per pass so the SAME strategy can carry a DIFFERENT pack on
+            // each (symbol,tf). Legacy runs reuse one shared config (cheaper, behaviour byte-identical).
+            var passConfig = perRow ? await BuildLoadedConfigFromDbAsync(cfg, packs) : sharedConfig!;
+            state.CurrentPass = $"{sym}/{tf}";
+            state.PassIndex = passIndex;
+            state.PassTotal = passes.Count;
+
             var innerHost = EngineHostFactory.Create(new EngineHostOptions
             {
                 RunId = runId,
@@ -655,9 +729,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 DbPath = dbPath,
                 SolutionRoot = solutionRoot,
                 SymbolNames = cfg.Symbols,
-                ActiveStrategyIds = strategyIds,
+                ActiveStrategyIds = activeStrategyIds,
                 RunPlan = runPlan,
-                PreloadedConfig = loadedConfig,
+                PreloadedConfig = passConfig,
                 Progress = progressCallback,
                 MinLogLevel = LogLevel.Warning,
             });
@@ -667,7 +741,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             await innerHost.StartAsync(cts.Token);
             EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Pass {sym}/{tf} started...");
+                $"[{DateTime.UtcNow:HH:mm:ss}] Pass {passIndex}/{passes.Count} {sym}/{tf} started...");
 
             using var equityCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
             _ = StartEquityPollingAsync(innerHost, state, runId, equityCts.Token);
@@ -687,7 +761,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             await DisposeHostAsync(innerHost);
 
             EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Pass {sym}/{tf} complete ({barCount} bars).");
+                $"[{DateTime.UtcNow:HH:mm:ss}] Pass {passIndex}/{passes.Count} {sym}/{tf} complete ({barCount} bars).");
         }
 
         state.BarsTotal = totalBars;
@@ -707,7 +781,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
 
         EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] All passes complete ({combinations.Count} combinations, {totalBars} total bars).");
+            $"[{DateTime.UtcNow:HH:mm:ss}] All passes complete ({passes.Count} combinations, {totalBars} total bars).");
         return new BacktestResult { RunId = runId, ExitCode = 0, AlgoHash = "" };
     }
 

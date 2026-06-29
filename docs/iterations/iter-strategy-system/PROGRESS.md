@@ -9,9 +9,9 @@
 
 | Phase | Title | State | Commit |
 |-------|-------|-------|--------|
-| P0 | Bring backbone forward (merge iter/38-addons) + G0 gate | ✅ done | merge `5c0e024`, fix `<pending>` |
-| P1 | Backtest builder (row grid + per-row pack + venue) | 🟡 next | — |
-| P2 | Run metadata: store & display selection | ⬜ not started | — |
+| P0 | Bring backbone forward (merge iter/38-addons) + G0 gate | ✅ done | merge `5c0e024`, fix `cc24c22` |
+| P1 | Backtest builder (row grid + per-row pack + venue) | 🟡 in progress | `<pending>` |
+| P2 | Run metadata: store & display selection | ⬜ next | — |
 | P3 | Live progress & journal: descriptive | ⬜ not started | — |
 | P4 | Charts: equity + trade-detail price | ⬜ not started | — |
 
@@ -53,9 +53,24 @@ full flow. Static read confirms iter/38-addons already landed the short-run equi
 
 ---
 
-## P1 — Backtest builder  (not started)
-Design: PLAN.md §Phase 1. Key change = per-pass pack resolution (RunPlanEntry gains PackId; move
-BuildLoadedConfigFromDbAsync inside the combination loop). DTO: StartRunRequest.Rows + GovernorEnabled.
+## P1 — Backtest builder  🟡
+Design: PLAN.md §Phase 1. **Done so far (uncommitted at this checkpoint, then committed):**
+- `RunPlanEntry` gains `PackId` (Domain/RunPlan.cs).
+- `StartRunRequest` gains `Rows: List<RunRowRequest>` + `GovernorEnabled` (Web/Dtos).
+- `RunPlanBuilder` (Web/Services) — pure FromRows + IntoPasses (per-(symbol,tf) passes w/ strategy→pack map).
+- `BacktestOrchestrator`: `ParseRunPlanEntries`; `BuildLoadedConfigFromDbAsync(cfg, perPassPacks)` —
+  per-pass packs + **force-enable row strategies** (DB Enabled=false must not drop a row) + run-level
+  governor toggle; `RunEngineReplayAsync` restructured into passes (per-pass config when rows present,
+  shared config + byte-identical behaviour when not). Pass index/total tracked on run state (for P3).
+- `RunsController.Start`: rows supersede the cross-product; derives symbols/periods/strategies from enabled
+  rows; serializes rows to `CustomParams["RunRows"]`; always records `GovernorEnabled`.
+- SPA `new-backtest.component.ts`: **full rewrite** — blank start, multi-select strategies/symbols/TFs,
+  generated row grid (per-row pack + enable, enable/disable all), run-level risk/governor/regime/money,
+  2-option venue (replay vs cTrader forward-test). `api.types.ts`: `RunRow` + `rows`/`governorEnabled`.
+
+**Tests:** `RunPlanBuilderTests` (4, Integration) green — incl. same-strategy-different-pack-per-pass.
+**Carry to P2:** assert `GovernorEnabled=false` end-to-end via the run-metadata round-trip (cheaper there).
+**Verify after build:** live app run (skill `run-shamshir`) — drive a 2×2 row run, confirm it executes.
 
 ## P2 — Run metadata  (not started)
 Design: PLAN.md §Phase 2. Add RunPlanJson + Venue/RiskProfileId/GovernorEnabled/RegimeEnabled/Commission/
