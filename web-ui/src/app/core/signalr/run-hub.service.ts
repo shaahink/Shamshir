@@ -50,7 +50,6 @@ export class RunHubService implements OnDestroy {
   private hub: signalR.HubConnection | null = null;
 
   readonly progress$ = new Subject<RunProgressEnvelope>();
-  readonly journal$ = new Subject<JournalEnvelope>();
   readonly completed$ = new Subject<RunCompletedEnvelope>();
 
   async start(): Promise<void> {
@@ -58,7 +57,6 @@ export class RunHubService implements OnDestroy {
     this.hub = new signalR.HubConnectionBuilder().withUrl('/hubs/run').withAutomaticReconnect().build();
 
     this.hub.on('RunProgress', (e: RunProgressEnvelope) => this.progress$.next(e));
-    this.hub.on('JournalAppend', (e: JournalEnvelope) => this.journal$.next(e));
     this.hub.on('RunCompleted', (e: RunCompletedEnvelope) => this.completed$.next(e));
 
     await this.hub.start();

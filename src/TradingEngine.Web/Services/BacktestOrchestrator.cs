@@ -291,6 +291,21 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     public BacktestRunState? GetState(string runId) =>
         _runs.TryGetValue(runId, out var state) ? state : null;
 
+    // iter-redesign P6.1: snapshot for a late-joining / reconnecting SignalR client so the live monitor
+    // is never blank until the next throttled broadcast. Null when the run is unknown or already finalized
+    // (those are served over AJAX). Status is normalized so the hub can pick RunProgress vs RunCompleted.
+    public RunProgress? GetCurrentProgress(string runId)
+    {
+        var state = GetState(runId);
+        if (state is null) return null;
+        var status = state.Status switch
+        {
+            "completed" or "failed" or "cancelled" => state.Status,
+            _ => "running",
+        };
+        return BuildProgress(state, status);
+    }
+
     public IReadOnlyList<BacktestRunState> GetAll() => _runs.Values.ToList();
 
     public async Task<string> StartAsync(BacktestConfig cfg, CancellationToken ct)
