@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, signal, effect, 
 import { DatePipe } from '@angular/common';
 import { interval, Subscription } from 'rxjs';
 import { RunHubService, type ConnectionState } from '../signalr/run-hub.service';
+import { BUILD_TIMESTAMP, BUILD_COMMIT, BUILD_BRANCH } from '../build-info';
 
 @Component({
   selector: 'app-status-bar',
@@ -40,6 +41,10 @@ import { RunHubService, type ConnectionState } from '../signalr/run-hub.service'
           Restart server after build (Ctrl+C → dotnet run)
         </span>
       }
+
+      <span class="ml-auto text-gray-600" [title]="'Built ' + buildAt + ' | ' + buildCommit + ' @ ' + buildBranch">
+        {{ buildAt }}
+      </span>
     </div>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,6 +59,10 @@ export class AppStatusComponent implements OnInit, OnDestroy {
   signalrError = signal<string | null>(null);
   signalrConnected = signal(false);
   signalrLabel = signal('Offline');
+
+  buildAt = BUILD_TIMESTAMP;
+  buildCommit = BUILD_COMMIT;
+  buildBranch = BUILD_BRANCH;
 
   constructor() {
     effect(() => {
@@ -87,8 +96,6 @@ export class AppStatusComponent implements OnInit, OnDestroy {
       }
     });
 
-    // Establish the SignalR connection early so the status bar shows state immediately.
-    // If the server hasn't restarted with the UseWebSockets fix, the error surfaces here.
     try {
       await this.hub.start();
     } catch {

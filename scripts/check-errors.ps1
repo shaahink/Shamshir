@@ -12,6 +12,7 @@ $repoRoot = git rev-parse --show-toplevel 2>$null
 if (-not $repoRoot) { $repoRoot = Get-Location }
 $webLogDir = Join-Path $repoRoot "src\TradingEngine.Web\logs"
 $hostLogDir = Join-Path $repoRoot "src\TradingEngine.Host\logs"
+$frontendJsonl = Join-Path $repoRoot "logs\frontend-errors.jsonl"
 
 $markerFile = Join-Path $webLogDir ".check-errors-last-run"
 $since = if ($SinceLastCheck -and (Test-Path $markerFile)) {
@@ -44,10 +45,9 @@ if ($backendCount -eq 0) { Write-Host "[Backend] No errors in window" -Foregroun
 Write-Host ""
 
 # --- Frontend JSON-lines errors ---
-$frontendFile = Join-Path $webLogDir "frontend-errors.jsonl"
 $frontendCount = 0
-if (Test-Path $frontendFile) {
-    Get-Content $frontendFile | ForEach-Object {
+if (Test-Path $frontendJsonl) {
+    Get-Content $frontendJsonl | ForEach-Object {
         try {
             $r = $_ | ConvertFrom-Json
             $ts = [DateTime]::Parse($r.timestamp)

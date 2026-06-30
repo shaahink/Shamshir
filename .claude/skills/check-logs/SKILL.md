@@ -26,11 +26,15 @@ Load this skill when:
 
 ## Log file locations
 
-| Source | Path | Format |
+All paths are relative to the repo root (`C:\Code\Shamshir\`).
+
+| Source | Absolute path | Format |
 |--------|------|--------|
-| Backend (Web) | `src/TradingEngine.Web/logs/web-*.log` | Serilog, daily rolling, text |
-| Backend (Host) | `src/TradingEngine.Host/logs/engine-*.log` | Serilog, daily rolling, text |
-| Frontend errors | `src/TradingEngine.Web/logs/frontend-errors.jsonl` | JSON-lines, append-only |
+| Backend (Web) | `C:\Code\Shamshir\src\TradingEngine.Web\logs\web-*.log` | Serilog, daily rolling, text |
+| Backend (Host) | `C:\Code\Shamshir\src\TradingEngine.Host\logs\engine-*.log` | Serilog, daily rolling, text |
+| Frontend errors | `C:\Code\Shamshir\logs\frontend-errors.jsonl` | JSON-lines, append-only |
+
+The frontend JSONL file is written at the **repo root** via `AppContext.BaseDirectory/../../../../../logs/` (5 levels up from `bin/Debug/net10.0/`).
 
 ## The error pipeline
 

@@ -4,8 +4,9 @@
   "type": "module",
   "scripts": {
     "ng": "ng",
-    "start": "npm run css && ng serve",
-    "build": "npm run css && ng build",
+    "stamp": "powershell -NoProfile -ExecutionPolicy Bypass -File ..\\scripts\\set-build-stamp.ps1 -OutDir src/app/core",
+    "start": "npm run css && npm run stamp && ng serve",
+    "build": "npm run css && npm run stamp && ng build",
     "css": "tailwindcss -i src/styles.css -o src/styles.generated.css --content \"src/**/*.ts\"",
     "lint": "ng lint",
     "format": "prettier --write \"src/**/*.{ts,html,json}\"",
