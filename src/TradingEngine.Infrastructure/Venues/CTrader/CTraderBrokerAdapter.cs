@@ -42,6 +42,16 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     public DateTime BrokerTimeUtc { get; private set; } = DateTime.UtcNow;
     public bool IsConnected => _transport.IsConnected;
 
+    // iter-redesign-ctrader P1: cTrader owns exit execution. The broker holds real SL/TP orders,
+    // triggers them server-side, and the cBot reports closes with reason (SL/TP/STOPOUT/…).
+    // The engine never detects exits bar-by-bar — it reconciles to the venue's open set.
+    public ExitMode ExitMode => ExitMode.VenueManaged;
+
+    // iter-redesign-ctrader P2.1: the venue's authoritative open position set, built from
+    // the cBot's clientOrderId ledger (populated on position open, removed on close).
+    private readonly ConcurrentDictionary<Guid, byte> _openPositionIds = new();
+    public IReadOnlySet<Guid> GetOpenPositionIds() => _openPositionIds.Keys.ToHashSet();
+
     private readonly ConcurrentQueue<object> _pendingCommands = new();
     private readonly List<object> _bufferedCommands = new();
     private readonly object _bufferLock = new();
@@ -143,6 +153,13 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                             // V1/V2 — capture the venue's open-position snapshot and reconcile.
                             var state = ParseHelloState(doc.RootElement);
                             _lastKnownState = state;
+
+                            // iter-redesign-ctrader P2.1: sync the open-position-id set from the
+                            // venue-authoritative snapshot so per-bar reconciliation is accurate.
+                            _openPositionIds.Clear();
+                            foreach (var op in state.OpenPositions)
+                                _openPositionIds.TryAdd(op.PositionId, 0);
+
                             if (state.OpenPositions.Count > 0 || state.Balance > 0)
                             {
                                 _logger.LogInformation("CTRADER|RECONCILE_SNAPSHOT|balance={Balance}|equity={Equity}|positions={Count}",
@@ -563,6 +580,17 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             if (_recentExecOrder.Count > MaxRecentExecSigs)
                 _recentExecSigs.Remove(_recentExecOrder.Dequeue());
         }
+
+        // iter-redesign-ctrader P2.1: keep the open-position-id set in sync with execution events.
+        // Entry fills add; close fills (carrying CloseReason) remove.
+        if (exec.NewState == OrderState.Filled && exec.FillPrice is not null)
+        {
+            if (exec.CloseReason is not null)
+                _openPositionIds.TryRemove(exec.OrderId, out _);
+            else if (exec.FilledLots > 0)
+                _openPositionIds.TryAdd(exec.OrderId, 0);
+        }
+
         _execChannel.Writer.TryWrite(exec);
     }
 

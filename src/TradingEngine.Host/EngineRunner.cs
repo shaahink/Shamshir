@@ -292,7 +292,12 @@ public sealed class EngineRunner
             DrawdownReducer.CreateInitial(initialBalance, drawdownType),
             0,
             ProtectionState.None,
-            new AccountView(initialBalance, initialBalance, 0m));
+            new AccountView(initialBalance, initialBalance, 0m))
+        {
+            // iter-redesign-ctrader P1: the venue determines who owns exit execution.
+            // VenueManaged (cTrader, unified replay) → engine never detects SL/TP; EngineSimulated → legacy.
+            ExitMode = _broker.ExitMode,
+        };
     }
 
     private void UpdateCrossRates(Bar bar)
