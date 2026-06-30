@@ -11,12 +11,18 @@ export abstract class BaseChartComponent implements OnDestroy {
   protected chart: IChartApi | null = null;
   protected resizeObserver: ResizeObserver | null = null;
 
+  // effect() called in a field initializer (valid injection context) instead of the
+  // constructor. In lazy-loaded @Component subclasses of a @Directive-decorated base,
+  // the constructor runs before Angular sets up the directive-level injection context,
+  // so effect() → inject(DestroyRef) fails with NG0203. Field initializers run later in
+  // the init sequence, after the injector is ready.
+  private _updateEffect = effect(() => this.updateChart());
+
   constructor() {
     afterNextRender(() => {
       if (!isPlatformBrowser(this.platformId)) return;
       this.initChart();
     });
-    effect(() => this.updateChart());
   }
 
   protected initChartBase(
