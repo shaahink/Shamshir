@@ -56,6 +56,23 @@ public static class MiddlewarePipeline
             KeepAliveInterval = TimeSpan.FromSeconds(30),
         });
 
+        // Catch unhandled exceptions from any downstream middleware/endpoint, log them to
+        // Serilog (file + console), and return a 500 JSON so the frontend ErrorLogService
+        // and scripts/check-errors.ps1 have a structured record of every crash.
+        app.Use(async (ctx, next) =>
+        {
+            try { await next(); }
+            catch (Exception ex)
+            {
+                var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
+                logger.LogError(ex, "Unhandled exception on {Method} {Path}", ctx.Request.Method, ctx.Request.Path);
+                ctx.Response.StatusCode = 500;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync(
+                    System.Text.Json.JsonSerializer.Serialize(new { error = ex.Message, traceId = ctx.TraceIdentifier }));
+            }
+        });
+
         app.UseCors();
         app.UseRouting();
         app.MapControllers();
