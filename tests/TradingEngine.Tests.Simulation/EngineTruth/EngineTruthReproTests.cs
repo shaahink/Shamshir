@@ -300,6 +300,77 @@ public sealed class EngineTruthReproTests
     // P2.1 — the "raw" preset is provably raw end-to-end (config → ConstraintSet)
     // ════════════════════════════════════════════════════════════════
 
+    // ════════════════════════════════════════════════════════════════
+    // P0 — Venue-owned exit model (iter-redesign-ctrader §4)
+    // Expected: FAIL — EngineReducer currently emits CloseOpenPosition
+    //   regardless of ExitMode (no gating exists yet). Will PASS after
+    //   Commit 4 (gate DetectSlTpExit on ExitMode.VenueManaged).
+    // ════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public void VenueManaged_EngineDoesNotEmitCloseOpenPosition()
+    {
+        var orderId = Guid.NewGuid();
+        var symbol = Symbol.Parse("EURUSD");
+
+        // An open long at 1.1000 with SL at 1.0900. The bar low is 1.0850 — would hit SL.
+        var openPosition = new PositionState(
+            orderId, orderId, symbol, TradeDirection.Long,
+            0.1m, new Price(1.1000m), new Price(1.0900m), new Price(1.1100m),
+            DateTime.UtcNow, "test-strategy", PositionPhase.Open);
+
+        var state = new EngineState(
+            new Dictionary<Guid, PositionState> { [orderId] = openPosition },
+            new GovernorState(GovernorTradingState.Normal, 0, 0, 0, 1.0m, false, "Initial"),
+            DrawdownReducer.CreateInitial(10_000m, "Fixed"),
+            1, ProtectionState.None, AccountView.Flat)
+        {
+            ExitMode = ExitMode.VenueManaged  // cTrader: venue owns exits
+        };
+
+        // Bar low (1.0850) is below SL (1.0900) — would be detected as SL by engine.
+        var barClosed = new BarClosed(symbol, Timeframe.H1,
+            1.0950m, 1.0970m, 1.0850m, 1.0950m, DateTime.UtcNow);
+
+        var decision = EngineReducer.Apply(state, barClosed);
+
+        // The engine must NOT emit a CloseOpenPosition when the venue owns exits.
+        // It waits for the venue's close event with the real reason (SL/TP/…).
+        decision.Effects.OfType<CloseOpenPosition>().Should().BeEmpty(
+            "when ExitMode is VenueManaged the engine never emits CloseOpenPosition — " +
+            "the venue owns exit execution and reports closes with their real reason");
+    }
+
+    [Fact]
+    public void EngineSimulated_StillEmitsCloseOpenPosition()
+    {
+        var orderId = Guid.NewGuid();
+        var symbol = Symbol.Parse("EURUSD");
+
+        var openPosition = new PositionState(
+            orderId, orderId, symbol, TradeDirection.Long,
+            0.1m, new Price(1.1000m), new Price(1.0900m), new Price(1.1100m),
+            DateTime.UtcNow, "test-strategy", PositionPhase.Open);
+
+        var state = new EngineState(
+            new Dictionary<Guid, PositionState> { [orderId] = openPosition },
+            new GovernorState(GovernorTradingState.Normal, 0, 0, 0, 1.0m, false, "Initial"),
+            DrawdownReducer.CreateInitial(10_000m, "Fixed"),
+            1, ProtectionState.None, AccountView.Flat)
+        {
+            ExitMode = ExitMode.EngineSimulated  // legacy: engine owns exits
+        };
+
+        var barClosed = new BarClosed(symbol, Timeframe.H1,
+            1.0950m, 1.0970m, 1.0850m, 1.0950m, DateTime.UtcNow);
+
+        var decision = EngineReducer.Apply(state, barClosed);
+
+        // The engine MUST still emit CloseOpenPosition for EngineSimulated venues.
+        decision.Effects.OfType<CloseOpenPosition>().Should().NotBeEmpty(
+            "when ExitMode is EngineSimulated the engine detects SL/TP and emits CloseOpenPosition");
+    }
+
     [Fact]
     public void RawConfig_LoadsWithEveryLimiterToggleOff()
     {
