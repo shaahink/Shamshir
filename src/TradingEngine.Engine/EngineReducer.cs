@@ -256,19 +256,29 @@ public static class EngineReducer
             var (nextPos, posEffects) = PositionLifecycle.Apply(posState, evt);
             effects.AddRange(posEffects);
 
+            // iter-redesign-ctrader P1: venue-owned exit model.
+            // When the venue owns exits (cTrader, unified replay), the engine NEVER detects SL/TP
+            // hits or emits CloseOpenPosition. The venue sets real broker stops, triggers them
+            // server-side, and reports each close with its reason. The engine only updates
+            // high/low-watermark + applies add-on stop moves (trailing/breakeven) + reconciles its
+            // book to the venue's open set each bar. For EngineSimulated venues the legacy
+            // bar-by-bar detection path is preserved.
             if (nextPos.Phase is PositionPhase.Open or PositionPhase.Reducing)
             {
-                var exit = DetectSlTpExit(nextPos, evt);
-                if (exit is not null)
+                if (state.ExitMode != ExitMode.VenueManaged)
                 {
-                    // Carry the exit reason on the position so the venue close fill (an OrderFilled on an
-                    // Open position) records "SL"/"TP" instead of "FORCE", and carry the stop/target price
-                    // so the close fills there — matching the imperative SimulateBarExitsAsync (K2).
-                    var exitPrice = exit == "TP" && nextPos.TakeProfit is { } tp
-                        ? tp
-                        : nextPos.CurrentStopLoss;
-                    nextPos = nextPos with { CloseReason = exit };
-                    effects.Add(new CloseOpenPosition(nextPos.OrderId, exit, exitPrice));
+                    var exit = DetectSlTpExit(nextPos, evt);
+                    if (exit is not null)
+                    {
+                        // Carry the exit reason on the position so the venue close fill (an OrderFilled on an
+                        // Open position) records "SL"/"TP" instead of "FORCE", and carry the stop/target price
+                        // so the close fills there — matching the imperative SimulateBarExitsAsync (K2).
+                        var exitPrice = exit == "TP" && nextPos.TakeProfit is { } tp
+                            ? tp
+                            : nextPos.CurrentStopLoss;
+                        nextPos = nextPos with { CloseReason = exit };
+                        effects.Add(new CloseOpenPosition(nextPos.OrderId, exit, exitPrice));
+                    }
                 }
             }
 
