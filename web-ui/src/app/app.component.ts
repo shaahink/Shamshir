@@ -1,10 +1,11 @@
 import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { AppStatusComponent } from './core/status/app-status.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AppStatusComponent],
   template: `
     <div class="min-h-screen bg-gray-950 text-gray-100">
       <nav class="border-b border-gray-800 bg-gray-900/50 backdrop-blur">
@@ -76,6 +77,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
             </a>
           </div>
           <div class="ml-auto flex items-center gap-3">
+            <app-status-bar />
             <a href="/scalar/v1" target="_blank" class="text-xs text-gray-500 hover:text-gray-300">API Docs</a>
           </div>
         </div>
