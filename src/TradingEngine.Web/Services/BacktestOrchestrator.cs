@@ -585,9 +585,17 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var store = scope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
         var dbConfigs = await store.GetAllAsync(CancellationToken.None);
 
+        // iter-redesign-ctrader P3.2: load DB risk profiles early so profileIsKnown checks BOTH the JSON
+        // base config AND the DB store. Before this fix, only baseConfig.RiskProfiles was checked; a
+        // "raw" profile seeded into the DB was invisible, so the strategy kept its stored (standard)
+        // profile and the raw prop-firm toggles never loaded.
+        var rpStore = scope.ServiceProvider.GetRequiredService<IRiskProfileStore>();
+        var dbRiskProfiles = await rpStore.GetAllAsync(CancellationToken.None);
+        var riskProfiles = dbRiskProfiles.Count > 0 ? dbRiskProfiles : baseConfig.RiskProfiles;
+
         var chosenProfile = cfg.CustomParams.GetValueOrDefault("RiskProfileId");
         var profileIsKnown = !string.IsNullOrWhiteSpace(chosenProfile)
-            && baseConfig.RiskProfiles.Any(r => r.Id == chosenProfile);
+            && riskProfiles.Any(r => r.Id == chosenProfile);
 
         var strategyConfigs = new List<StrategyConfigEntry>();
         {
@@ -654,10 +662,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 strategyConfigs.Add(c);
             }
         }
-
-        var rpStore = scope.ServiceProvider.GetRequiredService<IRiskProfileStore>();
-        var dbRiskProfiles = await rpStore.GetAllAsync(CancellationToken.None);
-        var riskProfiles = dbRiskProfiles.Count > 0 ? dbRiskProfiles : baseConfig.RiskProfiles;
 
         var pfStore = scope.ServiceProvider.GetRequiredService<IPropFirmRuleSetStore>();
         var dbPropFirms = await pfStore.GetAllAsync(CancellationToken.None);
@@ -1304,6 +1308,17 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var store = scope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
             var storedConfigs = await store.GetAllAsync(CancellationToken.None);
 
+            // iter-redesign-ctrader P3.1: include the resolved risk profile name in the audit config
+            // so the stored EffectiveConfigJson reflects what actually ran — not just strategy overrides.
+            var chosenProfile = cfg.CustomParams.GetValueOrDefault("RiskProfileId");
+            var profileIsKnown = !string.IsNullOrWhiteSpace(chosenProfile)
+                && (await scope.ServiceProvider.GetRequiredService<IRiskProfileStore>()
+                    .GetAllAsync(CancellationToken.None) is { Count: > 0 } dbProf
+                    ? dbProf
+                    : new ConfigLoader(Path.GetFullPath(Path.Combine(
+                        AppContext.BaseDirectory, "..", "..", "..", "..", ".."))).LoadBase().RiskProfiles)
+                .Any(r => r.Id == chosenProfile);
+
             var overrides = ParseOverrides(cfg);
             var resolvedEntries = new List<EffectiveConfigEntry>();
 
@@ -1316,7 +1331,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 var stored = storedConfigs.FirstOrDefault(s => s.Id == sid);
                 if (stored is null) continue;
                 var ovr = overrides.GetValueOrDefault(sid);
-                resolvedEntries.Add(_configResolver.Resolve(stored, ovr));
+
+                // Stamp the chosen risk profile onto the stored config so the audit JSON reflects it.
+                var stamped = profileIsKnown ? stored with { RiskProfileId = chosenProfile! } : stored;
+                resolvedEntries.Add(_configResolver.Resolve(stamped, ovr));
             }
 
             if (resolvedEntries.Count == 0) return null;
