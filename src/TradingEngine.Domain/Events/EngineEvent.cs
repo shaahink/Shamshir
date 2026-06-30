@@ -33,6 +33,13 @@ public record OrderFilled(Guid OrderId, Symbol Symbol, decimal FilledLots, Price
     public decimal? NetProfit { get; init; }
     public decimal? Commission { get; init; }
     public decimal? Swap { get; init; }
+
+    /// <summary>
+    /// Venue-authoritative reason for a close fill (SL / TP / STOPOUT / CLOSED). Carried from the
+    /// <see cref="ExecutionEvent.CloseReason"/> by <see cref="KernelFeedback.FromExecution"/> so the
+    /// position lifecycle records the real reason instead of defaulting to "FORCE". Null for entry fills.
+    /// </summary>
+    public string? CloseReason { get; init; }
 }
 
 public record OrderPartiallyFilled(Guid OrderId, Symbol Symbol, decimal FilledLots, Price FillPrice, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);

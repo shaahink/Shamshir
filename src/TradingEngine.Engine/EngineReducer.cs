@@ -95,6 +95,16 @@ public static class EngineReducer
             return new EngineDecision(state, effects);
         }
 
+        // iter-redesign-ctrader P1.3: when the venue reports a close fill with a reason (SL/TP/STOPOUT/…)
+        // and the position state doesn't already have one, stamp it so PositionLifecycle.HandleOpenFilled
+        // records the real reason instead of defaulting to "FORCE". Both the PositionTracker path
+        // (already does this) and the KernelFeedback path (this) flow through here.
+        if (evt.CloseReason is { } venueReason && posState.CloseReason is null
+            && posState.Phase is PositionPhase.Open or PositionPhase.Reducing)
+        {
+            posState = posState with { CloseReason = venueReason };
+        }
+
         var (nextPos, posEffects) = PositionLifecycle.Apply(posState, evt);
         effects.AddRange(posEffects);
 

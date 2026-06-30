@@ -29,6 +29,7 @@ public static class KernelFeedback
                 NetProfit = e.NetProfit,
                 Commission = e.Commission,
                 Swap = e.Swap,
+                CloseReason = e.CloseReason,
             },
         OrderState.Cancelled =>
             new OrderCancelled(e.OrderId, symbol, e.RejectionReason ?? "CANCELLED", e.TimestampUtc),
