@@ -24,6 +24,13 @@ public sealed record EngineState(
     public ProtectionState Protection { get; init; } = Protection ?? ProtectionState.None;
     public AccountView Account { get; init; } = Account ?? AccountView.Flat;
 
+    /// <summary>
+    /// Which party owns exit execution. Default <see cref="ExitMode.EngineSimulated"/> for backward
+    /// compatibility (the reducer detects SL/TP bar-by-bar). Set to <see cref="ExitMode.VenueManaged"/>
+    /// when the venue owns exits; the reducer skips per-bar exit detection and waits for venue close events.
+    /// </summary>
+    public ExitMode ExitMode { get; init; } = ExitMode.EngineSimulated;
+
     public static EngineState Empty => new(
         new Dictionary<Guid, PositionState>(),
         new GovernorState(GovernorTradingState.Normal, 0, 0, 0, 1.0m, false, "Initial"),

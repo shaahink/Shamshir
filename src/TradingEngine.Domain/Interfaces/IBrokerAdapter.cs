@@ -63,6 +63,21 @@ public interface IBrokerAdapter
     /// <summary>Signal the engine finished a bar (lock-step venues block the feed until this).
     /// The adapter supplies its own sequence; non-lock-step venues are a no-op.</summary>
     Task CompleteBarAsync(CancellationToken ct) => Task.CompletedTask;
+
+    /// <summary>
+    /// Who owns exit execution. <see cref="ExitMode.VenueManaged"/> means the venue holds real broker
+    /// stops and reports closes with a reason — the engine never detects exits bar-by-bar. Default is
+    /// <see cref="ExitMode.EngineSimulated"/> for backward compatibility.
+    /// </summary>
+    ExitMode ExitMode => ExitMode.EngineSimulated;
+
+    /// <summary>
+    /// The venue's authoritative set of currently open position ids. Used for per-bar reconciliation:
+    /// the engine compares its live book to this set and force-resolves any kernel position the venue
+    /// no longer reports as open. Returns an empty set by default (no reconciliation for venues that
+    /// don't support it).
+    /// </summary>
+    IReadOnlySet<Guid> GetOpenPositionIds() => new HashSet<Guid>();
 }
 
 public record AccountState(decimal Balance, decimal Equity, IReadOnlyList<OpenPositionInfo> OpenPositions);
