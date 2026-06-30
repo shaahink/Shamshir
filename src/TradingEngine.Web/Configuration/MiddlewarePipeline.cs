@@ -46,6 +46,16 @@ public static class MiddlewarePipeline
         app.UseDefaultFiles();
         app.UseStaticFiles();
 
+        // WebSocket middleware must run before UseRouting so Kestrel can intercept the
+        // Upgrade: websocket header and hand off to SignalR's transport. Without this,
+        // SignalR falls back to long-polling and the browser DevTools shows negotiate
+        // stuck at "pending" because the fallback-to-file catch-all serves index.html
+        // for /hubs/run/negotiate instead of the SignalR response.
+        app.UseWebSockets(new WebSocketOptions
+        {
+            KeepAliveInterval = TimeSpan.FromSeconds(30),
+        });
+
         app.UseCors();
         app.UseRouting();
         app.MapControllers();
