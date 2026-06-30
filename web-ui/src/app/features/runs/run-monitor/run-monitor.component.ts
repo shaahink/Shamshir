@@ -1,4 +1,4 @@
-import { Component, ElementRef, inject, OnDestroy, OnInit, signal, ViewChild, ChangeDetectionStrategy } from '@angular/core';
+import { Component, DestroyRef, ElementRef, inject, OnDestroy, OnInit, signal, ViewChild, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { interval } from 'rxjs';
@@ -143,6 +143,11 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   private hub = inject(RunHubService);
   private store = inject(RunsStore);
   private api = inject(RunsApiService);
+  // Captured in a field initializer (a valid injection context). ngOnInit is async, and after the
+  // first `await` the ambient injection context is gone — a bare takeUntilDestroyed() there throws
+  // NG0203 and aborts the rest of ngOnInit (no progress subscription → dead live monitor + chart).
+  // Passing this explicit DestroyRef makes the operator independent of the ambient context.
+  private destroyRef = inject(DestroyRef);
 
   runId = signal('');
   // iter-strategy-system P3: multi-pass context shown on the progress bar.
@@ -207,7 +212,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
     const startTime = Date.now();
 
     interval(1000)
-      .pipe(takeUntilDestroyed())
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         const s = Math.floor((Date.now() - startTime) / 1000);
         this.elapsed.set(
@@ -230,7 +235,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
     } catch { /* no equity yet */ }
 
     this.hub.progress$
-      .pipe(takeUntilDestroyed())
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((e: RunProgressEnvelope) => {
         this.status.set('running');
         if (e.currentPass) this.currentPass.set(e.currentPass);
@@ -293,7 +298,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       });
 
     this.hub.completed$
-      .pipe(takeUntilDestroyed())
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((e: RunCompletedEnvelope) => {
         this.status.set(e.status || 'completed');
         if (e.error) {

@@ -22,6 +22,11 @@ export abstract class BaseChartComponent implements OnDestroy {
     afterNextRender(() => {
       if (!isPlatformBrowser(this.platformId)) return;
       this.initChart();
+      // Initial paint: the field-initializer effect already ran once (while the series was still
+      // null → no-op). When the chart is created AFTER its data input is set (e.g. a report whose
+      // chart is gated behind `@if (data.length > 1)`), the data signal never changes again, so the
+      // effect never re-fires. Render the current data once here, now that the series exists.
+      this.updateChart();
     });
   }
 
