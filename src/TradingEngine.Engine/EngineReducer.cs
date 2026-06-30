@@ -403,6 +403,52 @@ public static class EngineReducer
         return state.Positions.Values.FirstOrDefault(p => p.OrderId == orderId);
     }
 
+    /// <summary>
+    /// iter-redesign-ctrader P2.1: reconcile the engine's live book to the venue's authoritative open set.
+    /// For VenueManaged venues the venue owns exit execution — if it closed a position the engine still
+    /// holds as Open, we must force-resolve it. Does NOT emit <see cref="CloseOpenPosition"/> effects
+    /// (the venue already closed; a second close command would be a double-close attempt). Instead,
+    /// removes the position from the live book and journals a RECONCILED_CLOSED decision for the audit
+    /// trail.
+    /// </summary>
+    public static EngineDecision ReconcileToVenue(EngineState state, IReadOnlySet<Guid> venueOpenIds, Price lastKnownPrice)
+    {
+        if (state.ExitMode != ExitMode.VenueManaged)
+            return new EngineDecision(state, []);
+
+        if (venueOpenIds.Count == 0 && state.Positions.Count == 0)
+            return new EngineDecision(state, []);
+
+        var effects = new List<EngineEffect>();
+        var newPositions = new Dictionary<Guid, PositionState>(state.Positions);
+        var openCount = state.OpenPositionCount;
+
+        foreach (var (id, ps) in state.Positions.ToList())
+        {
+            // Venue closed a position the engine still holds as live.
+            if (ps.Phase is PositionPhase.Open or PositionPhase.Reducing
+                && !venueOpenIds.Contains(ps.OrderId))
+            {
+                newPositions.Remove(id);
+                openCount = Math.Max(0, openCount - 1);
+                effects.Add(new RecordDecisionEvent(new DecisionRecord(
+                    RunId: "", SimTimeUtc: DateTime.UtcNow, Seq: 0,
+                    Symbol: ps.Symbol.Value, StrategyId: null,
+                    PhaseBefore: ps.Phase.ToString(), Event: "RECONCILED_CLOSED",
+                    GuardResult: null, PhaseAfter: PositionPhase.Closed.ToString(),
+                    Reason: "Venue closed position not in engine live book",
+                    DetailJson: "{}")));
+            }
+        }
+
+        var nextState = state with
+        {
+            Positions = newPositions,
+            OpenPositionCount = openCount,
+        };
+        return new EngineDecision(nextState, effects);
+    }
+
     private static EngineDecision HandleForceCloseAll(EngineState state, ForceCloseAllRequested evt)
     {
         var effects = new List<EngineEffect>();

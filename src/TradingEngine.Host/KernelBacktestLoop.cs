@@ -143,6 +143,34 @@ public sealed class KernelBacktestLoop
         // mark-to-market account update) before evaluating this bar.
         state = await PumpAsync(state, ct);
 
+        // iter-redesign-ctrader P2.1: reconcile the engine's live book to the venue's open set after
+        // draining feedback. If the venue closed a position the engine still holds Open (e.g. cTrader
+        // server-side SL/TP), force-resolve it so the gate sees the reconciled live set — not a stale
+        // book accumulating leaked positions. Emit journal-only effects (no venue close commands).
+        if (state.ExitMode == ExitMode.VenueManaged)
+        {
+            var venueOpenIds = _venue.GetOpenPositionIds();
+            var lastPrice = bar.Close > 0 ? new Price(bar.Close) : new Price(0m);
+            var rec = EngineReducer.ReconcileToVenue(state, venueOpenIds, lastPrice);
+            if (rec.Effects.Count > 0)
+            {
+                state = rec.State;
+                var step = new StepRecord(
+                    RunId: _runId,
+                    Seq: Interlocked.Increment(ref _seq),
+                    SimTimeUtc: bar.BarOpenTimeUtc,
+                    EventKind: "Reconcile",
+                    EventJson: System.Text.Json.JsonSerializer.Serialize(new { venueOpenIds = venueOpenIds.Count }),
+                    EffectKinds: rec.Effects.Select(e => e.GetType().Name).ToArray(),
+                    EffectsJson: System.Text.Json.JsonSerializer.Serialize(rec.Effects),
+                    Risk: _captureRisk(state),
+                    Regime: null,
+                    DecisionReason: "RECONCILED",
+                    StrategyVerdicts: Array.Empty<StrategyVerdict>());
+                _journal.Append(step);
+            }
+        }
+
         // iter-36 NEW-1 / K-GAP-1: emit the prop-firm day/week/month roll BEFORE evaluating this bar, when
         // its sim-time crosses the reset boundary. The reducer re-bases drawdown to the new period's opening
         // equity (state.Account.Equity — just refreshed by the drain above) and resets the governor + clears
