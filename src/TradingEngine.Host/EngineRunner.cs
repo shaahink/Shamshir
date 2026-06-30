@@ -243,11 +243,18 @@ public sealed class EngineRunner
         // gap-4: persist an equity/DD snapshot from the AUTHORITATIVE EngineState so the Monitor (which polls
         // IAccountSnapshotStore) isn't blank under the kernel engine. Was AccountProcessor's job — now the
         // kernel owns drawdown/equity, so the snapshot is read straight off state (sim-time stamped).
-        _equitySink?.Observe(KernelEquitySnapshot.From(
+        var snap = KernelEquitySnapshot.From(
             state, bar.OpenTimeUtc, _runContext.RunId,
             // iter-38 W-A7: feed the active ruleset's daily-loss limit so the snapshot carries a real
             // distance-to-daily-limit (and the governor band/reason) for the Monitor.
-            (decimal)(_riskManager.ActiveRuleSet?.MaxDailyLossPercent ?? 0d)));
+            (decimal)(_riskManager.ActiveRuleSet?.MaxDailyLossPercent ?? 0d));
+        _equitySink?.Observe(snap);
+
+        // iter-redesign-ctrader P4: publish EquityUpdated so EquityPersistenceHandler persists the snapshot
+        // via the event-driven DB path (defense-in-depth — the FlushBacktestEquityAsync batch-write is the
+        // primary path; this ensures the event-based persistence also fires for replay + cTrader).
+        _ = _eventBus.PublishAsync(new EquityUpdated(
+            EquitySnapshotFlush.ToEquity(snap, _engineMode), null!, bar.OpenTimeUtc, _runContext.RunId), CancellationToken.None);
 
         // iter-37 K-GAP-3: persist the per-run bar so the chart renders for LIVE + non-catalog runs (a
         // backtest over catalog data already has bars; BarQueryService dedups by timestamp, so the extra

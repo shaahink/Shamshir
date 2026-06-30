@@ -1054,6 +1054,51 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             await DisposeHostAsync(innerHost);
         }
 
+        // iter-redesign-ctrader P6.3: after the engine has disposed and the run is done, kill any
+        // remaining ctrader-cli child processes. The ChildProcessReaper arms a job object that kills
+        // on parent-exit, but for a persistent web app the parent lives on — we need explicit cleanup.
+        // The cli.BacktestAsync may have returned but left grandchild processes alive.
+        try
+        {
+            // ctrader-cli.exe may spawn cTrader.Automate.exe or other children.
+            foreach (var proc in System.Diagnostics.Process.GetProcessesByName("ctrader-cli"))
+            {
+                try
+                {
+                    if (!proc.HasExited)
+                    {
+                        _logger.LogInformation("CTRADER|REAP|pid={Pid}|killing orphan ctrader-cli", proc.Id);
+                        proc.Kill(entireProcessTree: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "CTRADER|REAP_FAIL|pid={Pid}", proc.Id);
+                }
+                finally { proc.Dispose(); }
+            }
+            foreach (var proc in System.Diagnostics.Process.GetProcessesByName("cTrader.Automate"))
+            {
+                try
+                {
+                    if (!proc.HasExited)
+                    {
+                        _logger.LogInformation("CTRADER|REAP|pid={Pid}|killing orphan cTrader.Automate", proc.Id);
+                        proc.Kill(entireProcessTree: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "CTRADER|REAP_FAIL|pid={Pid}", proc.Id);
+                }
+                finally { proc.Dispose(); }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CTRADER|REAP_ERR|failed to reap orphan processes");
+        }
+
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] CLI exit code: {cliResult.ExitCode}");
 
