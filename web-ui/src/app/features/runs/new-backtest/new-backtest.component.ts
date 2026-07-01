@@ -180,6 +180,7 @@ const rowKey = (sid: string, sym: string, tf: string) => `${sid}|${sym}|${tf}`;
             <label class="block text-xs font-medium text-gray-400 mb-1">Data Venue</label>
             <select [(ngModel)]="venue" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
               <option value="replay">Stored-bar replay (deterministic)</option>
+              <option value="tape">Fast tape replay (in-process, market data required)</option>
               <option value="ctrader">cTrader live forward-test</option>
             </select>
           </div>
@@ -211,6 +212,11 @@ const rowKey = (sid: string, sym: string, tf: string) => `${sid}|${sym}|${tf}`;
         @if (venue === 'ctrader') {
           <div class="rounded-md bg-amber-900/20 p-2 text-xs text-amber-400">
             cTrader runs the first row only (one CLI session); use replay for the full multi-row plan.
+          </div>
+        }
+        @if (venue === 'tape') {
+          <div class="rounded-md bg-blue-900/20 p-2 text-xs text-blue-400">
+            Tape replay runs in-process against downloaded market data. Faster than cTrader but requires data in the Data Manager.
           </div>
         }
 

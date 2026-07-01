@@ -38,6 +38,10 @@ export const routes: Routes = [
     loadChildren: () => import('./features/ctrader-sessions/ctrader-sessions.routes').then((m) => m.CTRADER_ROUTES),
   },
   {
+    path: 'data-manager',
+    loadComponent: () => import('./features/data-manager/data-manager.component').then((m) => m.DataManagerComponent),
+  },
+  {
     path: 'settings',
     loadComponent: () => import('./features/settings/settings.component').then((m) => m.SettingsComponent),
   },

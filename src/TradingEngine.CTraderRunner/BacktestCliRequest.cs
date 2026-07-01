@@ -34,4 +34,8 @@ public sealed record BacktestCliRequest
     /// <summary>Directory the cBot writes its own report.json + events.json into (passed as the
     /// cBot --ReportPath parameter). Our resilient venue ledger, replacing cTrader's --report-json.</summary>
     public string? ReportDir { get; init; }
+
+    /// <summary>iter-marketdata-tape P2: pass --Record=true so the cBot runs in recorder mode
+    /// (writes NDJSON shards to ReportDir instead of connecting to the engine).</summary>
+    public bool Record { get; init; } = false;
 }

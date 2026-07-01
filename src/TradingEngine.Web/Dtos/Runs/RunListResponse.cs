@@ -20,4 +20,6 @@ public sealed record RunListResponse
     public int WinningTrades { get; init; }
     public double WinRatePct { get; init; }
     public string? ErrorMessage { get; init; }
+    public string? Venue { get; init; }
+    public string? RiskProfileId { get; init; }
 }

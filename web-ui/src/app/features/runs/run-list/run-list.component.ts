@@ -85,6 +85,7 @@ import { formatSymbols } from '../../../shared/symbols.helper';
                 <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500 w-8">#</th>
                 <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Run ID</th>
                 <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Status</th>
+                <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Method</th>
                 <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Symbol</th>
                 <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Net P/L</th>
                 <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Max DD</th>
@@ -112,6 +113,9 @@ import { formatSymbols } from '../../../shared/symbols.helper';
                       [label]="run.status"
                       [variant]="run.status === 'completed' ? 'success' : run.status === 'failed' ? 'error' : 'warning'"
                     />
+                  </td>
+                  <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-500">
+                    {{ venueLabel(run.venue) }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-2 font-mono text-xs">{{ symbolsDisplay(run) }}</td>
                   <td
@@ -162,4 +166,11 @@ export class RunListComponent implements OnInit {
   }
 
   compareRuns = () => this.store.runs().filter((r) => this.selectedRuns().includes(r.runId));
+
+  venueLabel(v: string | null | undefined): string {
+    if (!v) return 'replay';
+    if (v === 'tape') return 'tape';
+    if (v === 'ctrader' || v === 'ctrader-desktop') return 'ctrader';
+    return v;
+  }
 }

@@ -112,6 +112,8 @@ public static class BacktestCli
             sb.Append($" --data-dir=\"{r.DataDir}\"");
         if (r.DataFile is not null)
             sb.Append($" --data-file=\"{r.DataFile}\"");
+        if (r.Record)
+            sb.Append(" --Record=true");
 
         return sb.ToString();
     }

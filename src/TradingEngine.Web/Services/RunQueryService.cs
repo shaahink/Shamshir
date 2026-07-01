@@ -68,6 +68,8 @@ public sealed class RunQueryService : IRunQueryService
                 WinningTrades = r.WinningTrades,
                 WinRatePct = r.WinRatePct,
                 ErrorMessage = r.ErrorMessage,
+                Venue = r.Venue,
+                RiskProfileId = r.RiskProfileId,
             })
             .ToListAsync(ct);
 

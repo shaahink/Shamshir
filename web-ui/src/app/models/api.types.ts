@@ -20,6 +20,7 @@ export interface RunSummary {
   parentRunId?: string | null;
   datasetId?: string | null;
   configSetId?: string | null;
+  venue?: string | null;
 }
 
 export interface RunDetail {
