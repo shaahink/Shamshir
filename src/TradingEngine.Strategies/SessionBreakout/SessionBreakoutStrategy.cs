@@ -1,7 +1,10 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Strategies.SessionBreakout;
 
+[StrategyId("session-breakout")]
 public sealed class SessionBreakoutStrategy : IStrategy
 {
     private readonly SessionBreakoutConfig _config;
@@ -13,7 +16,8 @@ public sealed class SessionBreakoutStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
+    public Timeframe EntryTimeframe => Timeframe.H1;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
     public int RequiredBarCount => _config.Parameters.AtrPeriod + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats { get; private set; } = new(0, 0, 0, 0);
@@ -34,13 +38,7 @@ public sealed class SessionBreakoutStrategy : IStrategy
     {
         try
         {
-            if (!_config.Symbols.Contains(context.Symbol.Value))
-            {
-                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
-                return null;
-            }
-
-            var h1Bars = context.Bars.GetValueOrDefault(_config.Timeframe);
+            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
             if (h1Bars is null || h1Bars.Count < RequiredBarCount)
             {
                 _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
@@ -52,8 +50,23 @@ public sealed class SessionBreakoutStrategy : IStrategy
 
             if (now >= p.RangeStartUtc && now < p.RangeEndUtc)
             {
-                _rangeHigh = h1Bars.Max(b => b.High);
-                _rangeLow = h1Bars.Min(b => b.Low);
+                // C8 (iter-35 B2): range = TODAY's session window only. Filter to the current session
+                // day AND the [RangeStartUtc, RangeEndUtc) time-of-day window — keying on time-of-day
+                // alone contaminated the range with every prior day's session bars in the buffer.
+                var sessionDay = context.EngineTimeUtc.Date;
+                var sessionBars = h1Bars
+                    .Where(b =>
+                    {
+                        if (b.OpenTimeUtc.Date != sessionDay) return false;
+                        var barTime = TimeOnly.FromDateTime(b.OpenTimeUtc);
+                        return barTime >= p.RangeStartUtc && barTime < p.RangeEndUtc;
+                    })
+                    .ToList();
+                if (sessionBars.Count > 0)
+                {
+                    _rangeHigh = sessionBars.Max(b => b.High);
+                    _rangeLow = sessionBars.Min(b => b.Low);
+                }
                 return null;
             }
 
@@ -102,5 +115,21 @@ public sealed class SessionBreakoutStrategy : IStrategy
         _rangeHigh = null;
         _rangeLow = null;
         Stats = new StrategyStats(0, 0, 0, 0);
+    }
+
+    public static SessionBreakoutStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new SessionBreakoutConfig(
+            entry.Id, entry.DisplayName, entry.Enabled,
+            entry.RiskProfileId,
+            StrategyFactoryHelper.DeserializeParams<SessionBreakoutParameters>(entry.Parameters))
+        {
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+        };
+        return new SessionBreakoutStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<SessionBreakoutStrategy>>());
     }
 }

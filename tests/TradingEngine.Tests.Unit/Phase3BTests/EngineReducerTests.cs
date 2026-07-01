@@ -98,7 +98,7 @@ public sealed class EngineReducerTests
             DrawdownReducer.CreateInitial(100_000),
             0);
 
-        var evt = new EquityObserved(98_000, DateTime.UtcNow);
+        var evt = new EquityObserved(98_000, 98_000, 0, DateTime.UtcNow);
         var result = EngineReducer.Apply(state, evt);
 
         result.State.Drawdown.CurrentDailyDrawdown.Should().Be(0.02m);

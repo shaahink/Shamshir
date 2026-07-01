@@ -2,7 +2,7 @@ namespace TradingEngine.Domain;
 
 public interface IStrategyBank
 {
-    IReadOnlyList<IStrategy> GetActive(Symbol symbol, Timeframe timeframe, MarketRegime regime);
+    IReadOnlyList<IStrategy> GetActive(Symbol symbol, Timeframe timeframe, MarketRegime regime, bool ignoreRegime = false);
     IReadOnlyList<IStrategy> GetAll();
     void Enable(string strategyId);
     void Disable(string strategyId);

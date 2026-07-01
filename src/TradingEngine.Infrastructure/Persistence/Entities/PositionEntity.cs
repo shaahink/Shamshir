@@ -1,7 +1,10 @@
 namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class PositionEntity
+public sealed class PositionEntity : IAuditableEntity
 {
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
+
     public Guid Id { get; set; }
     public Guid OrderId { get; set; }
     public string Symbol { get; set; } = "";

@@ -1,4 +1,9 @@
-using System.Threading.Channels;
+using TradingEngine.Engine;
+using Microsoft.Extensions.DependencyInjection;
+using TradingEngine.Infrastructure.Adapters;
+using TradingEngine.Risk.Filters;
+using TradingEngine.Services;
+using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Host;
 
@@ -6,10 +11,14 @@ namespace TradingEngine.Host;
 /// The engine's run logic, independent of the hosting model. <see cref="EngineWorker"/> is a thin
 /// <c>BackgroundService</c> that just calls <see cref="RunAsync"/>; tests can call it directly.
 ///
-/// It owns the four collaborators it composes — <see cref="IndicatorSnapshotService"/>,
-/// <see cref="MarketEventSource"/>, <see cref="AccountProcessor"/> and <see cref="TradingLoop"/> —
-/// and keeps as fields only the dependencies its own methods touch; everything else is consumed
-/// locally during composition. (Previously EngineWorker held ~28 injected fields, five of them dead.)
+/// iter-36 K4 — THE CUTOVER: this now drives the <b>kernel</b> for both live and backtest. Bars arrive on
+/// <see cref="IBrokerAdapter.BarStream"/> (fed by the replay adapter or the cTrader adapter), the
+/// <see cref="BarEvaluator"/> turns each into <c>OrderProposed</c> events, the pure kernel gates/sizes
+/// them, the <see cref="IEffectExecutor"/> reaches the venue, and the venue feedback (fills/account)
+/// re-enters as kernel events — all through <see cref="KernelBacktestLoop"/> with <see cref="EngineState"/>
+/// as the single authority. The old imperative loop (TradingLoop + AccountProcessor + SimulateBarExits +
+/// the OrderGate dispatch) is gone from the production path; those classes survive only as the test
+/// regression oracle behind golden-snapshot.json.
 /// </summary>
 public sealed class EngineRunner
 {
@@ -17,31 +26,27 @@ public sealed class EngineRunner
     private readonly IRiskManager _riskManager;
     private readonly IReadOnlyList<IStrategy> _strategies;
     private readonly IEngineClock _clock;
-    private readonly DataFeedService? _dataFeed;
-    private readonly ISignalGate? _signalGate;
     private readonly EngineMode _engineMode;
     private readonly EngineRunContext _runContext;
+    private readonly ISymbolInfoRegistry _symbolRegistry;
+    private readonly Func<string, string, decimal> _crossRate;
     private readonly CrossRateStore _crossRateStore;
+    private readonly IRiskProfileResolver _riskProfileResolver;
+    private readonly SizingPolicyOptions _sizingPolicy;
+    private readonly ISignalGate? _signalGate;
+    private readonly IEffectExecutor _effects;
+    private readonly IEventBus _eventBus;
     private readonly IProgress<BacktestProgressEvent>? _progress;
-    private readonly PositionTracker _positionTracker;
-    private readonly IEnginePacer _pacer;
+    private readonly IEquitySink? _equitySink;
+    private readonly IServiceScopeFactory? _scopeFactory;
+    private readonly IJournalWriter _journal;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
 
     private readonly IndicatorSnapshotService _indicatorSnapshot;
-    private readonly MarketEventSource _marketEvents;
-    private readonly AccountProcessor _accountProcessor;
-    private readonly TradingLoop _tradingLoop;
+    private readonly BarEvaluator _evaluator;
+    private readonly KernelTrailingEvaluator _trailing;
 
-    private readonly Channel<ExecutionEvent> _executionEventChannel =
-        Channel.CreateBounded<ExecutionEvent>(new BoundedChannelOptions(1000)
-        {
-            FullMode = BoundedChannelFullMode.Wait,
-            SingleWriter = true,
-            SingleReader = true
-        });
-
-    private EquitySnapshot _currentEquity = new(DateTime.MinValue, 0, 0, 0, 0, 0, 0, 0, EngineMode.Backtest);
-    private long _tickCount;
+    private long _barCount;
 
     public EngineRunner(
         EngineWorkerDependencies deps,
@@ -52,47 +57,37 @@ public sealed class EngineRunner
         _riskManager = deps.Risk.RiskManager;
         _strategies = deps.Strategies.Strategies.ToList();
         _clock = deps.Market.Clock;
-        _dataFeed = deps.Market.DataFeed;
-        _signalGate = deps.Strategies.SignalGate;
         _engineMode = deps.Market.EngineMode;
         _runContext = runContext;
+        _symbolRegistry = deps.Market.SymbolRegistry;
+        _crossRate = deps.Risk.CrossRateProvider;
         _crossRateStore = deps.Market.CrossRateStore;
+        _riskProfileResolver = deps.Risk.RiskProfileResolver;
+        _sizingPolicy = deps.Risk.SizingPolicy;
+        _signalGate = deps.Strategies.SignalGate;
+        _effects = deps.Persistence.EffectExecutor
+            ?? throw new InvalidOperationException("EffectExecutor is required for the kernel engine (iter-36 K4).");
+        _eventBus = deps.Persistence.EventBus;
         _progress = deps.Persistence.Progress;
-        _positionTracker = deps.Strategies.PositionTracker;
-        _pacer = deps.Market.EngineMode == EngineMode.Backtest
-            ? new BarSteppedPacer()
-            : new AsyncStreamPacer();
+        _equitySink = deps.Persistence.EquitySink;
+        _scopeFactory = deps.Persistence.ScopeFactory;
+        _journal = deps.Persistence.StepJournal ?? new NullJournalWriter();
         _logger = logger;
 
         _indicatorSnapshot = new IndicatorSnapshotService(deps.Market.Indicators, _strategies);
-        _marketEvents = new MarketEventSource(_broker, _executionEventChannel, logger);
-        _accountProcessor = new AccountProcessor(
-            _riskManager, _positionTracker, deps.Risk.SizingPolicy, deps.Persistence.EventBus,
-            _clock, _engineMode, _crossRateStore, deps.Persistence.EquitySink,
-            e => Volatile.Write(ref _currentEquity, e), logger,
-            progress: _progress, runId: runContext.RunId);
-        _tradingLoop = new TradingLoop(
-            _broker, _indicatorSnapshot, deps.Strategies.OrderDispatcher, _positionTracker,
-            deps.Strategies.StrategyBank, deps.Strategies.RegimeDetector, _signalGate,
-            deps.Market.SymbolRegistry, deps.Persistence.EventBus, _clock, runContext,
-            _crossRateStore.Convert,
-            () => Volatile.Read(ref _currentEquity), _progress, deps.Persistence.Journal,
-            deps.Strategies.EntryPlanner, logger);
-    }
-
-    private void ResetState()
-    {
-        _indicatorSnapshot.Reset();
-        _tradingLoop.Reset();
-        Volatile.Write(ref _currentEquity, new EquitySnapshot(DateTime.MinValue, 0, 0, 0, 0, 0, 0, 0, _engineMode));
-        Interlocked.Exchange(ref _tickCount, 0);
-        _logger.LogInformation("Engine state reset for new connection");
+        _evaluator = new BarEvaluator(
+            _indicatorSnapshot, deps.Strategies.StrategyBank, deps.Strategies.RegimeDetector, _signalGate,
+            deps.Strategies.EntryPlanner, _symbolRegistry, _crossRate,
+            deps.Risk.NewsFilter, deps.Risk.SessionFilter, _riskManager, _riskProfileResolver,
+            deps.Risk.Governor, logger, deps.Market.Indicators);
+        _trailing = new KernelTrailingEvaluator(
+            deps.Strategies.PositionManager, _symbolRegistry, _indicatorSnapshot, _strategies,
+            new TradingEngine.Services.AddOns.AddOnResolver(), deps.Market.Indicators);
     }
 
     public async Task RunAsync(CancellationToken ct)
     {
-        _logger.LogInformation("Engine starting. Mode={Mode} Strategies={Count}",
-            _engineMode, _strategies.Count);
+        _logger.LogInformation("Kernel engine starting. Mode={Mode} Strategies={Count}", _engineMode, _strategies.Count);
 
         if (_signalGate is not null)
         {
@@ -100,34 +95,25 @@ public sealed class EngineRunner
                 _signalGate.RegisterStrategy(s.Config);
         }
 
-        _broker.RegisterConnectedHandler(ResetState);
-
-        // V1/V2 — when the venue reports its open positions (connect + every reconnect), seed the
-        // tracker so the engine can manage/trail/force-close positions that already exist at the
-        // venue after a restart. Idempotent: SeedOpenPositions skips positions already tracked.
+        _broker.RegisterConnectedHandler(() => { _indicatorSnapshot.Reset(); _evaluator.Reset(); _trailing.Reset(); });
         _broker.RegisterReconcileHandler(state =>
         {
-            if (state.Balance > 0)
-            {
-                _riskManager.UpdateEquityLevels(state.Equity);
-            }
-            _positionTracker.SeedOpenPositions(state.OpenPositions, _strategies);
+            // Keep the RiskManager's risk-amount tracker's equity level fresh (the kernel owns DD/protection).
+            if (state.Balance > 0) _riskManager.UpdateEquityLevels(state.Equity);
         });
-
-        // V3 — write venue-confirmed SL/TP modifications back onto the tracked position.
-        _broker.RegisterStopModifiedHandler((orderId, sl, tp) =>
-            _positionTracker.ConfirmStopLoss(orderId, sl, tp));
 
         await _broker.ConnectAsync(ct);
 
+        decimal initialBalance = _riskManager.InitialBalance > 0 ? _riskManager.InitialBalance : 10_000m;
         try
         {
             var accountState = await _broker.GetAccountStateAsync(ct);
             if (accountState.Balance > 0)
             {
+                initialBalance = accountState.Balance;
                 _riskManager.UpdateEquityLevels(accountState.Equity);
-                _logger.LogInformation("Startup reconciliation: Balance={Balance} Equity={Equity} OpenPositions={Count}",
-                    accountState.Balance, accountState.Equity, accountState.OpenPositions.Count);
+                _logger.LogInformation("Startup reconciliation: Balance={Balance} Equity={Equity}",
+                    accountState.Balance, accountState.Equity);
             }
         }
         catch (Exception ex)
@@ -137,167 +123,225 @@ public sealed class EngineRunner
 
         await _indicatorSnapshot.WarmUpIndicatorsAsync(ct);
 
-        await _pacer.PaceAsync(this, ct);
+        // Build the kernel loop now — RiskManager constraints/ruleset are set by WireRiskRules during the
+        // connect/warmup window above, so they're populated by here.
+        var loop = BuildKernelLoop(initialBalance);
+        var initialState = BuildInitialState(initialBalance);
 
-        _logger.LogInformation("Engine stopped. Ticks={Ticks} Bars={Bars}",
-            Interlocked.Read(ref _tickCount), _tradingLoop.BarCount);
+        EngineState finalState;
+        try
+        {
+            finalState = await loop.RunFromBrokerAsync(initialState, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            FlushTimingReport(loop);
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            FlushTimingReport(loop);
+            _logger.LogInformation("Kernel engine: bar stream ended, tail-drain triggered OCE — treating as normal completion");
+            finalState = initialState;
+        }
+
+        await FlushBacktestEquityAsync(ct);
+        FlushTimingReport(loop);
+
+        _logger.LogInformation("Kernel engine stopped. Bars={Bars} OpenPositions={Open}",
+            Interlocked.Read(ref _barCount), finalState.Positions.Count);
     }
 
-    internal async Task ProcessTicksAsync(CancellationToken ct)
+    private void FlushTimingReport(KernelBacktestLoop loop)
+    {
+        if (loop.TimingReport is { } timing)
+        {
+            WriteTimingReport(timing);
+        }
+    }
+
+    // iter-37 K-GAP-2: at the end of a backtest, flush the in-memory BufferedEquitySink to the
+    // EquitySnapshots table in one batched write so GET /api/runs/{id}/equity (which reads the table) is no
+    // longer empty for a finished backtest. Live runs use PersistentEquitySink (per-bar), so this is a no-op.
+    private async Task FlushBacktestEquityAsync(CancellationToken ct)
+    {
+        if (_engineMode != EngineMode.Backtest || _scopeFactory is null) return;
+        if (_equitySink is not BufferedEquitySink buffered) return;
+
+        var snapshots = buffered.GetSnapshots();
+        if (snapshots.Count == 0) return;
+
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IEquityRepository>();
+            await EquitySnapshotFlush.FlushAsync(snapshots, repo, _engineMode, _runContext.RunId, ct);
+            _logger.LogInformation("Flushed {Count} backtest equity snapshots to EquitySnapshots", snapshots.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to flush backtest equity snapshots");
+        }
+    }
+
+    private void WriteTimingReport(TimingReport timing)
     {
         try
         {
-            _logger.LogDebug("Tick processor started");
-            // Lean hot path: translate ticks only. Execution fills are handled by the dedicated
-            // ConsumeExecutionsAsync consumer — the tick loop never touches PositionTracker.
-            await foreach (var tick in _broker.TickStream.ReadAllAsync(ct))
-            {
-                Interlocked.Increment(ref _tickCount);
-
-                if (_dataFeed is not null)
-                {
-                    _broker.OnTickObserved(tick);
-                }
-
-                if (_logger.IsEnabled(LogLevel.Trace))
-                {
-                    _logger.LogTrace("TICK|{Symbol}|{Bid:F5}|{Ask:F5}|{Total}",
-                        tick.Symbol.Value, tick.Bid, tick.Ask, Interlocked.Read(ref _tickCount));
-                }
-            }
+            var profilingDir = Path.Combine(
+                Path.GetTempPath(), "shamshir-profiling");
+            Directory.CreateDirectory(profilingDir);
+            var path = Path.Combine(profilingDir, $"{_runContext.RunId}.json");
+            var json = System.Text.Json.JsonSerializer.Serialize(timing,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(path, json);
         }
-        catch (OperationCanceledException) { }
-        _logger.LogDebug("Tick processor stopped");
-    }
-
-    internal async Task ProcessBarsAsync(CancellationToken ct)
-    {
-        _logger.LogDebug("Bar processor started");
-        try
+        catch (Exception ex)
         {
-            await foreach (var bar in _broker.BarStream.ReadAllAsync(ct))
-            {
-                try
-                {
-                    await _tradingLoop.ProcessBarAsync(bar, ct);
-                    // Live venues fill SL/TP server-side; manage breakeven/trailing for open positions
-                    // each bar so the venue stop is ratcheted up.
-                    await _tradingLoop.UpdateTrailingStopsAsync(bar, ct);
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "BAR_PROC_ERR|{Symbol}|{OpenTime}", bar.Symbol, bar.OpenTimeUtc);
-                }
-            }
+            _logger.LogWarning(ex, "Failed to write timing report for run {RunId}", _runContext.RunId);
         }
-        catch (OperationCanceledException) { }
-        _logger.LogDebug("Bar processor stopped");
     }
 
-    internal async Task RunBacktestLoopAsync(CancellationToken ct)
+    private KernelBacktestLoop BuildKernelLoop(decimal initialBalance)
     {
-        var initAcct = await _broker.AccountStream.ReadAsync(ct);
-        await _accountProcessor.HandleAsync(initAcct);
+        var profile = ResolveActiveProfile();
+        var ruleSet = _riskManager.ActiveRuleSet ?? DefaultRuleSet();
+        var constraints = _riskManager.Constraints ?? ConstraintSet.Resolve(profile, ruleSet);
 
-        _logger.LogDebug("Backtest loop started");
-        try
-        {
-            await foreach (var bar in _broker.BarStream.ReadAllAsync(ct))
-            {
-                try
-                {
-                    _broker.OnBarObserved(bar);
+        var config = new KernelConfig(
+            constraints, profile, _sizingPolicy,
+            ResolveSymbol: _symbolRegistry.Get,
+            ProjectOpenPositions: ProjectOpenPositions,
+            Seed: 42);
 
-                    UpdateCrossRates(bar);
+        var kernel = new Kernel(config);
+        var queue = new InMemoryEngineEventQueue();
 
-                    // Pump every account update through the same processor the live path uses,
-                    // so equity, the breach watchdog and daily/weekly/monthly resets all run.
-                    while (_broker.AccountStream.TryRead(out var acctUpdate))
-                        await _accountProcessor.HandleAsync(acctUpdate);
-
-                    await _tradingLoop.ProcessBarAsync(bar, ct);
-
-                    // Entry fills: the loop no longer drains internally, so drain this bar's
-                    // dispatched executions before evaluating SL/TP exits.
-                    await _marketEvents.DrainExecutionStreamAsync(_positionTracker, _strategies, _progress, _runContext.RunId, _clock);
-
-                    // Venue concern: a live broker fills SL/TP server-side; in backtest we
-                    // simulate it against the bar range, then drain the resulting fills.
-                    await SimulateBarExitsAsync(bar, ct);
-
-                    // Manage still-open positions (breakeven/trailing) AFTER the exit check, so a moved
-                    // stop only affects the next bar (no intrabar look-ahead).
-                    await _tradingLoop.UpdateTrailingStopsAsync(bar, ct);
-
-                    await _broker.CompleteBarAsync(ct);
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "BAR_PROC_ERR|{Symbol}|{OpenTime}", bar.Symbol, bar.OpenTimeUtc);
-                }
-            }
-
-            // F1 (iter-26): the last bar's exits emit account updates that the top-of-loop drain
-            // never reaches (the foreach has ended). Drain them so the final trade's realized
-            // PnL/drawdown reaches the processor and the equity curve closes on the true balance.
-            while (_broker.AccountStream.TryRead(out var tail))
-                await _accountProcessor.HandleAsync(tail);
-        }
-        catch (OperationCanceledException) { }
-        _logger.LogDebug("Backtest loop stopped");
+        return new KernelBacktestLoop(
+            kernel, _evaluator, _effects, _broker, queue, _journal,
+            advanceVenue: bar => { UpdateCrossRates(bar); _broker.OnBarObserved(bar); },
+            initialBalance, _runContext.RunId, _logger,
+            captureRisk: RiskSnapshots.Capture,
+            realizedEquity: null,                // production = mark-to-market via the venue AccountStream
+            onBarProcessed: ReportBar,
+            onEvent: ReportEvent,              // iter-38 B1: feed live-monitor counters
+            evaluateTrailing: _trailing.Evaluate,
+            // iter-36 K-GAP-1: drive the prop-firm day/week/month resets off the active ruleset's reset clock
+            // so multi-day runs re-base drawdown + reset the governor (C4/H7). Single-day golden never crosses.
+            resetConfig: ResetConfig.FromRuleSet(ruleSet.DailyResetTimeUtc, ruleSet.DailyResetTimezone),
+            diagnosticsEnabled: _runContext.DiagnosticsEnabled);
     }
 
-    internal async Task SimulateBarExitsAsync(Bar bar, CancellationToken ct)
+    // iter-38 B1: feed the live-monitor counters (Signals/Orders/Fills/Rejections/Breaches) from the
+    // authoriative kernel event stream. The kernel engine only fired BAR + CLOSE progress events before,
+    // leaving the other counters permanently at 0 on the SignalR monitor (OPEN-ISSUES O1/T7a).
+    private void ReportEvent(EngineEvent evt)
     {
-        foreach (var (orderId, pos) in _positionTracker.OpenPositions.ToList())
+        // iter-strategy-system P3: build a descriptive line for the live journal. The kernel events carry the
+        // strategy/symbol/side/price/size — the old code threw them away (empty message), which is why the
+        // Monitor journal read as bare event types with no "who did what".
+        var (type, message) = evt switch
         {
-            if (pos.Symbol != bar.Symbol) continue;
-            string? reason = null;
-            Price exitPrice = pos.CurrentStopLoss;
-            if (pos.Direction == TradeDirection.Long)
-            {
-                if (bar.Low <= pos.CurrentStopLoss.Value) { reason = "SL"; exitPrice = pos.CurrentStopLoss; }
-                else if (pos.TakeProfit is not null && bar.High >= pos.TakeProfit.Value.Value) { reason = "TP"; exitPrice = pos.TakeProfit.Value; }
-            }
-            else
-            {
-                if (bar.High >= pos.CurrentStopLoss.Value) { reason = "SL"; exitPrice = pos.CurrentStopLoss; }
-                else if (pos.TakeProfit is not null && bar.Low <= pos.TakeProfit.Value.Value) { reason = "TP"; exitPrice = pos.TakeProfit.Value; }
-            }
-
-            if (reason is not null)
-            {
-                _logger.LogInformation("BAR_EXIT|{Id}|{Symbol}|reason={Reason}|sl={SL:F5}|tp={TP}|low={Low:F5}|high={High:F5}",
-                    orderId, pos.Symbol, reason, pos.CurrentStopLoss.Value,
-                    pos.TakeProfit?.Value ?? 0, bar.Low, bar.High);
-                // Stamp WHY before asking the venue to close, so the close fill records the real
-                // exit reason (SL/TP) in the journal/ledger instead of the generic "FORCE".
-                _positionTracker.SetCloseReason(orderId, reason);
-                // F2/D3: fill at the stop/target price, not the bar close.
-                await _broker.ClosePositionAtAsync(orderId, exitPrice, ct);
-            }
-        }
-
-        await _marketEvents.DrainExecutionStreamAsync(_positionTracker, _strategies, _progress, _runContext.RunId, _clock);
+            OrderProposed p => ("SIGNAL",
+                $"{p.StrategyId} {p.Symbol.Value} {p.Direction} signal @ {p.SignalPriceMid:F5} "
+                + $"(SL {p.StopLoss.Value:F5}{(p.TakeProfit is { } tp ? $", TP {tp.Value:F5}" : "")})"),
+            OrderSubmitted s => ("ORDER",
+                $"{s.StrategyId} {s.Symbol.Value} {s.Direction} {s.Lots:0.##} lots order"),
+            OrderFilled f => ("EXEC",
+                $"{f.Symbol.Value} filled {f.FilledLots:0.##} lots @ {f.FillPrice.Value:F5}"),
+            OrderPartiallyFilled f => ("EXEC",
+                $"{f.Symbol.Value} partial fill {f.FilledLots:0.##} lots @ {f.FillPrice.Value:F5}"),
+            OrderRejected r => ("REJECTED", $"{r.Symbol.Value} rejected: {r.Reason}"),
+            DrawdownBreached => ("BREACH", "Drawdown limit breached"),
+            _ => ((string?)null, string.Empty),
+        };
+        if (type is not null)
+            _progress?.Report(new BacktestProgressEvent(_runContext.RunId, type, message, evt.OccurredAtUtc));
     }
 
-    internal Task ProcessAccountUpdatesAsync(CancellationToken ct)
-        => _marketEvents.ProcessAccountUpdatesAsync(ct);
+    private void ReportBar(Bar bar, EngineState state)
+    {
+        Interlocked.Increment(ref _barCount);
+        _progress?.Report(new BacktestProgressEvent(
+            _runContext.RunId, "BAR",
+            $"Bar {bar.OpenTimeUtc:yyyy-MM-dd HH:mm} | close={bar.Close:F5} | total={Interlocked.Read(ref _barCount)}",
+            _clock.UtcNow));
 
-    internal Task ProcessExecutionEventsAsync(CancellationToken ct)
-        => _marketEvents.ProcessExecutionEventsAsync(ct);
+        // gap-4: persist an equity/DD snapshot from the AUTHORITATIVE EngineState so the Monitor (which polls
+        // IAccountSnapshotStore) isn't blank under the kernel engine. Was AccountProcessor's job — now the
+        // kernel owns drawdown/equity, so the snapshot is read straight off state (sim-time stamped).
+        var snap = KernelEquitySnapshot.From(
+            state, bar.OpenTimeUtc, _runContext.RunId,
+            // iter-38 W-A7: feed the active ruleset's daily-loss limit so the snapshot carries a real
+            // distance-to-daily-limit (and the governor band/reason) for the Monitor.
+            (decimal)(_riskManager.ActiveRuleSet?.MaxDailyLossPercent ?? 0d));
+        _equitySink?.Observe(snap);
 
-    internal Task ConsumeExecutionsAsync(CancellationToken ct)
-        => _marketEvents.ConsumeExecutionsAsync(ct, _positionTracker, _strategies, _progress, _runContext.RunId, _clock);
+        // iter-redesign-ctrader P4: publish EquityUpdated so EquityPersistenceHandler persists the snapshot
+        // via the event-driven DB path (defense-in-depth — the FlushBacktestEquityAsync batch-write is the
+        // primary path; this ensures the event-based persistence also fires for replay + cTrader).
+        _ = _eventBus.PublishAsync(new EquityUpdated(
+            EquitySnapshotFlush.ToEquity(snap, _engineMode), null!, bar.OpenTimeUtc, _runContext.RunId), CancellationToken.None);
 
-    internal Task ProcessAccountQueueAsync(CancellationToken ct)
-        => _marketEvents.ProcessAccountQueueAsync(ct, _accountProcessor.HandleAsync);
+        // iter-37 K-GAP-3: persist the per-run bar so the chart renders for LIVE + non-catalog runs (a
+        // backtest over catalog data already has bars; BarQueryService dedups by timestamp, so the extra
+        // per-run copy is harmless). BarPersistenceHandler (wired via WireEventHandlers) enqueues to the
+        // BufferedBarWriter → IBarRepository. The old imperative TradingLoop published this; the kernel
+        // path didn't, leaving live charts blank.
+        _ = _eventBus.PublishAsync(new BarIngested(_runContext.RunId, bar), CancellationToken.None);
+
+        // iter-36 K5: the per-strategy verdicts are folded onto the BarClosed StepRecord (the single
+        // journal) by KernelBacktestLoop.BuildStepRecord — the old BarEvaluated → BarEvaluationHandler →
+        // BarEvaluations path is gone. iter-37 F2's per-bar "why" funnel reads the StepRecord journal.
+    }
+
+    private IReadOnlyList<ProjectedPosition> ProjectOpenPositions(EngineState state)
+    {
+        var result = new List<ProjectedPosition>();
+        foreach (var (_, ps) in state.Positions)
+        {
+            if (ps.Phase != PositionPhase.Open) continue;
+            var si = _symbolRegistry.Get(ps.Symbol);
+            var slPips = Math.Abs(ps.EntryPrice.Value - ps.CurrentStopLoss.Value) / si.PipSize;
+            var pipValue = PipCalculator.PipValuePerLot(si, ps.EntryPrice.Value, _crossRate);
+            result.Add(new ProjectedPosition(slPips, ps.Lots, pipValue));
+        }
+        return result;
+    }
+
+    private RiskProfile ResolveActiveProfile()
+    {
+        var profileId = _strategies
+            .Select(s => s.Config.RiskProfileId)
+            .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id)) ?? "standard";
+        return _riskProfileResolver.Resolve(profileId);
+    }
+
+    private EngineState BuildInitialState(decimal initialBalance)
+    {
+        var drawdownType = _riskManager.ActiveRuleSet?.DrawdownType ?? "Fixed";
+        return new EngineState(
+            new Dictionary<Guid, PositionState>(),
+            new GovernorState(GovernorTradingState.Normal, 0, 0, 0, 1.0m, false, "Initial"),
+            DrawdownReducer.CreateInitial(initialBalance, drawdownType),
+            0,
+            ProtectionState.None,
+            new AccountView(initialBalance, initialBalance, 0m))
+        {
+            // iter-redesign-ctrader P1: the venue determines who owns exit execution.
+            // VenueManaged (cTrader, unified replay) → engine never detects SL/TP; EngineSimulated → legacy.
+            ExitMode = _broker.ExitMode,
+        };
+    }
 
     private void UpdateCrossRates(Bar bar)
     {
         if (bar.Symbol.Value == "GBPUSD") _crossRateStore.GbpUsdRate = bar.Close;
         else if (bar.Symbol.Value == "USDJPY") _crossRateStore.UsdJpyRate = bar.Close;
     }
+
+    private static PropFirmRuleSet DefaultRuleSet() => new(
+        "none", "None", "Fixed", 0.05, 0.10, 0.10, 0,
+        "BalancePlusFloating", "22:00:00", "UTC", false, "High", 0, 0,
+        false, "21:00:00", "20:00:00", "NextTradingDay", false);
 }

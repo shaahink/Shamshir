@@ -18,10 +18,8 @@ public sealed record StrategyConfigEntry(
     string Id,
     string DisplayName,
     bool Enabled,
-    IReadOnlyList<string> Symbols,
     string RiskProfileId,
-    JsonElement Parameters,
-    string Timeframe = "H1")
+    JsonElement Parameters)
 {
     public RegimeFilterOptions? RegimeFilter { get; init; }
     public OrderEntryOptions? OrderEntry { get; init; }

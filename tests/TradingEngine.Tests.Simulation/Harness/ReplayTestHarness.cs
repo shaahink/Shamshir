@@ -67,6 +67,17 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                         TradingAllowed = false, InProtectionMode = false,
                         DailyDrawdownUsed = 0m, MaxDrawdownUsed = 0m,
                     });
+                // iter-36 K4: the kernel path reads these off the RiskManager (the imperative
+                // Validate/CalculateLotSize above are dead now). Without them the evaluator NREs and
+                // silently faults the worker, leaving the bar stream undrained (a hang).
+                var replayRuleSet = new PropFirmRuleSet(
+                    "ftmo-standard", "ftmo-standard", "Fixed", 0.05, 0.10, 0.10, 0,
+                    "BalancePlusFloating", "22:00:00", "UTC", false, "High", 0, 0,
+                    false, "21:00:00", "20:00:00", "NextTradingDay", false);
+                riskManager.ActiveRuleSet.Returns(replayRuleSet);
+                riskManager.Drawdown.Returns(TradingEngine.Engine.DrawdownReducer.CreateInitial(10_000m, "Fixed"));
+                riskManager.CheckComplianceBlock(Arg.Any<TradeIntent>(), Arg.Any<RiskProfile>())
+                    .Returns((string?)null);
                 var governor = Substitute.For<ITradingGovernor>();
                 governor.Evaluate(Arg.Any<GovernorContext>())
                     .Returns(new GovernorDecision(true, 1.0m, GovernorTradingState.Normal, "OK"));
@@ -98,11 +109,16 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                     o.UseSqlite($"Data Source={dbPath}"));
                 services.AddScoped<ITradeRepository, SqliteTradeRepository>();
                 services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+                // iter-36 K5: wire the single lossless StepRecord journal so the in-host replay produces
+                // JournalEntries (the per-bar "why" + decisions now live here, not the deleted BarEvaluations).
+                services.AddScoped<IStepRecordSink, SqliteStepRecordSink>();
+                services.AddSingleton<TradingEngine.Domain.IJournalWriter>(sp =>
+                    new TradingEngine.Engine.ChannelJournalWriter(
+                        new ScopedStepRecordSink(sp.GetRequiredService<Microsoft.Extensions.DependencyInjection.IServiceScopeFactory>())));
                 services.AddSingleton<PersistenceService>();
 
                 services.AddSingleton<IEventBus, TypedEventBus>();
                 services.AddSingleton<TradePersistenceHandler>();
-                services.AddSingleton<BarEvaluationHandler>();
                 services.AddSingleton<EquityPersistenceHandler>();
 
                 services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
@@ -121,6 +137,16 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
                 services.AddSingleton<IPositionManager, PositionManager>();
+
+                // iter-36 K4: the kernel EngineRunner needs these (the old imperative wiring resolved them
+                // elsewhere). Register the evaluator's external-verdict filters + the EffectExecutor it drives.
+                services.AddSingleton<INewsFilter>(_ => Substitute.For<INewsFilter>());
+                services.AddSingleton<SessionFilter>();
+                services.AddSingleton<EngineRunContext>(_ => new EngineRunContext("replay-test"));
+                services.AddSingleton<IProgress<BacktestProgressEvent>>(_ => new Progress<BacktestProgressEvent>(_ => { }));
+                services.AddSingleton<TradingEngine.Services.EntryPlanner>();
+                services.AddSingleton<IReadOnlyList<IStrategy>>(sp => sp.GetRequiredService<IEnumerable<IStrategy>>().ToList());
+                services.AddSingleton<EffectExecutor>();
 
                 services.AddSingleton<EngineWorkerDependencies>(sp => new EngineWorkerDependencies
                 {
@@ -141,23 +167,27 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                         CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
                         Governor = sp.GetRequiredService<ITradingGovernor>(),
                         SizingPolicy = new SizingPolicyOptions(),
+                        NewsFilter = sp.GetRequiredService<INewsFilter>(),
+                        SessionFilter = sp.GetRequiredService<SessionFilter>(),
                     },
                     Strategies = new StrategyServices
                     {
                         Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
                         StrategyBank = sp.GetRequiredService<IStrategyBank>(),
                         RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
-                        OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                         PositionTracker = sp.GetRequiredService<PositionTracker>(),
                         EntryPlanner = sp.GetRequiredService<TradingEngine.Services.EntryPlanner>(),
+                        PositionManager = sp.GetRequiredService<IPositionManager>(),
                         SignalGate = sp.GetRequiredService<ISignalGate>(),
                     },
                     Persistence = new PersistenceServices
                     {
                         EventBus = sp.GetRequiredService<IEventBus>(),
                         Persistence = sp.GetRequiredService<PersistenceService>(),
+                        EffectExecutor = sp.GetRequiredService<EffectExecutor>(),
                         Progress = null,
                         Journal = null,
+                        StepJournal = sp.GetRequiredService<TradingEngine.Domain.IJournalWriter>(),
                     },
                 });
                 services.AddSingleton<EngineWorker>();
@@ -176,8 +206,6 @@ public sealed class ReplayTestHarness : IAsyncDisposable
             host.Services.GetRequiredService<EquityPersistenceHandler>());
         eventBus.Subscribe<TradeClosed>(
             host.Services.GetRequiredService<TradePersistenceHandler>());
-        eventBus.Subscribe<BarEvaluated>(
-            host.Services.GetRequiredService<BarEvaluationHandler>());
 
         return new ReplayTestHarness(host, dbPath);
     }
@@ -200,7 +228,9 @@ public sealed class ReplayTestHarness : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await _host.StopAsync();
+        // RunAsync already stops the host in its finally; a second StopAsync on an already-stopped host
+        // throws inside the generic host (Reverse(null)). Guard it so disposal is idempotent.
+        try { await _host.StopAsync(); } catch { /* already stopped */ }
         _host.Dispose();
 
         for (var i = 0; i < 10 && File.Exists(_dbPath); i++)

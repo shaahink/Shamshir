@@ -1,9 +1,15 @@
 namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class TradeResultEntity
+public sealed class TradeResultEntity : IAuditableEntity
 {
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
+
     public Guid Id { get; set; }
     public Guid PositionId { get; set; }
+    // Venue-facing clientOrderId (originating order). Equals the cBot ledger's clientOrderId — the
+    // exact per-trade reconciliation join key. Distinct from the engine-internal PositionId.
+    public Guid OrderId { get; set; }
     public string Symbol { get; set; } = "";
     public string Direction { get; set; } = "";
     public decimal Lots { get; set; }
@@ -29,6 +35,7 @@ public sealed class TradeResultEntity
     public string StrategyId { get; set; } = "";
     public string RiskProfileId { get; set; } = "";
     public string Mode { get; set; } = "";
+    public string OrderEntryMethod { get; set; } = "";
     public double DurationSeconds { get; set; }
     public string? RunId { get; set; }
 }

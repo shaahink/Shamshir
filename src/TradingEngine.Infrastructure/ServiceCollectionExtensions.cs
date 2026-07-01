@@ -11,7 +11,10 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services, string connectionString)
     {
         services.AddDbContext<TradingDbContext>(options =>
-            options.UseSqlite(connectionString));
+        {
+            options.UseSqlite(connectionString);
+            options.AddInterceptors(new AuditStampInterceptor());
+        });
 
         services.AddDbContext<ReportingDbContext>(options =>
             options.UseSqlite(connectionString));
@@ -21,6 +24,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
         services.AddScoped<IEventLogRepository, SqliteEventLogRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
+        services.AddScoped<IDatasetRepository, SqliteDatasetRepository>();
+        services.AddScoped<IConfigSetRepository, SqliteConfigSetRepository>();
         services.AddScoped<IDataProvider, SqliteDataProvider>();
 
         services.AddScoped(_ =>

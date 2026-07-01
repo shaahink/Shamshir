@@ -7,6 +7,7 @@ public sealed class TradePersistenceHandler : IEventHandler<TradeClosed>, IAsync
 {
     private readonly PersistenceService _persistence;
     private readonly ILogger<TradePersistenceHandler> _logger;
+    private readonly IRunDataCache? _cache;
     private readonly Channel<(TradeResult Trade, string RunId)> _channel =
         Channel.CreateBounded<(TradeResult, string)>(new BoundedChannelOptions(1_000)
         {
@@ -16,10 +17,11 @@ public sealed class TradePersistenceHandler : IEventHandler<TradeClosed>, IAsync
     private readonly Task _flushTask;
     private readonly CancellationTokenSource _cts = new();
 
-    public TradePersistenceHandler(PersistenceService persistence, ILogger<TradePersistenceHandler> logger)
+    public TradePersistenceHandler(PersistenceService persistence, ILogger<TradePersistenceHandler> logger, IRunDataCache? runDataCache = null)
     {
         _persistence = persistence;
         _logger = logger;
+        _cache = runDataCache;
         _flushTask = DrainAsync(_cts.Token);
     }
 
@@ -35,6 +37,7 @@ public sealed class TradePersistenceHandler : IEventHandler<TradeClosed>, IAsync
             try
             {
                 await _persistence.SaveTradeAsync(trade, runId, ct);
+                _cache?.AppendTrade(runId, trade);
                 _logger.LogDebug("TRADE_SAVED|{TradeId}|RunId={RunId}", trade.Id, runId);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

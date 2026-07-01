@@ -74,18 +74,13 @@ public sealed class StrategyConfigSeeder
             var parameters = root.TryGetProperty("parameters", out var p) && p.ValueKind != JsonValueKind.Undefined
                 ? p.Clone()
                 : default;
-            var timeframe = root.TryGetProperty("timeframe", out var tf) ? tf.GetString()! : "H1";
 
             results.Add(new StrategyConfigEntry(
                 root.GetProperty("id").GetString()!,
                 root.GetProperty("displayName").GetString()!,
                 root.TryGetProperty("enabled", out var en) && en.GetBoolean(),
-                root.TryGetProperty("symbols", out var syms)
-                    ? syms.EnumerateArray().Select(s => s.GetString()!).ToList()
-                    : [],
                 root.TryGetProperty("riskProfileId", out var rp) ? rp.GetString()! : "standard",
-                parameters,
-                timeframe)
+                parameters)
             {
                 RegimeFilter = ParseFromJson<RegimeFilterOptions>(root, "regimeFilter", jsonOpts),
                 OrderEntry = ParseFromJson<OrderEntryOptions>(root, "orderEntry", jsonOpts),

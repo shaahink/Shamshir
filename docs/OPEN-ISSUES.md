@@ -1,831 +1,657 @@
-# Shamshir — Open Issues, Technical Debt, and Next Direction
+# Shamshir — Open Issues
 
-**Written**: 2026-06-08 (post-Iteration-10 code review)
-**Branch at time of writing**: `phase/8b-bar-tracing`
-**Last updated**: 2026-06-11 (post-Iteration-17)
+**Updated**: 2026-06-23 (iter-38 add-ons + iter-39 cleanup, on branch `iter/38-addons`)
+**Branch**: `iter/38-addons` (cut from `iter/37-frontend-finish`)
+**Current gate**: build 0 err · Unit 260/5-skip · Architecture 5/5 · Integration 61/61 · Simulation determinism 61/61 · SPA build 0 errors.
 
-This document is the authoritative issues log. Update it as items are fixed or new findings are added.
-Never delete a resolved item — mark it `✅ Fixed (Iteration N)` so there is a record.
+> **Iter-38 is COMPLETE.** All S0–S10 slices delivered. **Iter-39 cleanup** landed: Duplicate dialog (S6 B5), typed edit states (4 components), OnPush on all 26 components, auto-tuner `referenceAtrFor` lookup, regime detection from pack wiring, SqliteGovernorOptionsStore logged catch, AuditStampInterceptor clock injection, AddOnJournalKindsTests, and 4 cBot unlogged catches fixed.
+>
+> **cTrader E2E:** credentials ARE configured. 2/3 smoke tests pass. `TradeLedger_ClientOrderIdReconciliation_NoMissingTrades` shows cTrader=17 DB=16 — a pump-drain race where the engine stops processing before the last execs drain from the channel. CBOT logging now enables diagnosis.
+>
+> See `docs/iterations/iter-38/HANDOVER.md` for the full comprehensive status. This OPEN-ISSUES file tracks the long-lived carry-forward items below.
 
-> **Forward-looking roadmap** (reporting, strategy/config UX + custom profiles, SPA/CSS-framework,
-> backtest performance, rule-pressure testing) lives in **`docs/NEXT-STEPS.md`** — logged 2026-06-17.
+> **iter-37 SIGNED OFF.** The iter-36 cutover follow-ups (K-GAP-1..6, K-GAP-5 excepted) + the
+> frontend finish (F1–F8) + the pressure/reality test spine (G/F/J/E/B/C/D) + the **D-drop dead-code removal
+> (PipelineEvents/BarEvaluations + protection-ledger) with an EF reset** are delivered. See **"## iter-37 closure"**.
+> Integ count at iter-37 sign-off was 43/43 (has since grown to 61 with EF regens + new tests).
 
----
+> **iter-36 complete.** The kernel is now the **SOLE production engine** — the imperative twins
+> (`OrderDispatcher`, `KernelOrderGate`, `AccountProcessor`) are removed from `src` (relocated to the
+> `TradingEngine.Tests.Support` golden-oracle assembly, D81; `grep … src → 0`). Production runs only
+> `KernelBacktestLoop` for both live + backtest. There is **one lossless journal** (the StepRecord stream;
+> `PipelineEventWriter` + `BarEvaluationHandler` deleted, D83). Per-strategy risk profiles, trailing/breakeven,
+> and Monitor equity snapshots all run in the kernel loop. Duplicate-with-lineage + dataset/config identity
+> are persisted (`ParentRunId`, EF regen-init, D84).
+>
+> **Shadowed-bug reconciliation (C3/C4/H1/H2/H5/H6/M7):** the old buggy `RiskManager` DD/protection/sizing
+> methods (`Validate`, `OnDailyReset`, `CalculateLotSize`, `ValidateOrder`) have **no production caller** —
+> verified by `grep "\.Validate(|\.OnDailyReset(|\.CalculateLotSize(|\.ValidateOrder(" src → 0`. They survive
+> ONLY in the test-oracle path (`Tests.Support`), exercised solely to prove the kernel reproduces golden.
+> The kernel (`PreTradeGate`/`KernelSizing`/`Kernel.DecideReset`) is the single authority going forward.
+>
+> All suites: build 0 errors, 208 unit (−1 deleted obsolete PipelineEventWriter test) + golden/determinism/
+> arch green, in-host replay produces StepRecord journal, `run-shamshir` driver 11/11.
 
-## Iteration 17 Resolved Items
-
-The following items were addressed in Iteration 17 (`iter/17-deterministic-pipeline`):
-
-- **NetMQ thread-affinity bug** (orders silently lost) → Fixed with `NetMQQueue<T>` (Phase A1)
-- **Sleep-based synchronization** (`Thread.Sleep(600)`, 10×500ms heartbeats) → Replaced with `hello`/`hello_ack` handshake (Phase A2)
-- **Shutdown data loss** (no linger, final execs dropped) → Fixed with `Linger=2s`, `stats` message, drain on stop (Phase A3)
-- **DI block copied in 3 places** (divergent) → `EngineHostFactory` single composition root (Phase B1)
-- **EngineMode type-sniffing** (`_broker is SimulatedBrokerAdapter`) → Explicit `EngineMode` parameter (Phase B1)
-- **Hardcoded SymbolInfo** (`new SymbolInfo(symbol, ..., "EUR", "USD", ...)`) → `config/symbols.json` + `SymbolCatalog` (Phase B2)
-- **CrossRateStore double-instance bug** (two separate instances) → Single instance registered (Phase B1)
-- **Dual execution-event consumer** (ProcessExecutionEventsAsync vs DrainExecutionStreamAsync) → Single consumer via double-drain (Phase B3)
-- **Lock-step protocol** (barrier per bar, deterministic execution) → Implemented in cBot + engine (Phase C)
-- **Symbol wrong for GBPUSD/AUDUSD backtests** (defaulted to EURUSD) → Fixed in controller + page model (Phases B2, post-C fix)
-- **EF Core SQL log flood** (2000+ INSERT dumps) → `.AddFilter("Microsoft.EntityFrameworkCore", Warning)` (post-C fix)
-- **Close position ID mismatch** (Guid ≠ long) → Fixed with `_positionMap` reverse-lookup (post-C fix)
-- **PipelineEvents journal** (per-run event log) → Entity, mapping, writer, repository (Phase D1)
-- **Unified logging** (4 methods → 1 `BacktestJournal`) → Consolidation (Phase D2)
-- **Multi-symbol/timeframe UI** (checkboxes for 12 symbols, 6 timeframes) → (Phase 1)
-
----
-
-## Part 1 — Critical Bugs (must fix before trusting any backtest results)
-
-### BUG-01 — BacktestReplayAdapter never fills orders
-**Severity**: Critical — makes every replay produce 0 trades  
-**File**: `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs`
-
-✅ **Fixed (Iteration 11)**. `SubmitOrderAsync` now writes `ExecutionEvent` directly to
-`_executionChannel` at bar close price. The `_pendingOrders` dictionary and unused
-`SimulateFill` method have been removed.
+Fixed items → `docs/RESOLVED-ISSUES.md`. Roadmap → `docs/NEXT-STEPS.md`.
+Test-suite audit + backlog → `docs/reference/TEST-AUDIT.md`.
+Pre-cutover full-system audit (archived, historical) → `docs/archive/SYSTEM-AUDIT.md`.
+Iter-36 handover → `docs/iterations/iter-36/HANDOVER.md` (ROUND 2 section).
 
 ---
 
-### BUG-02 — BacktestReplayAdapter silently drops bars for ranges > 2,000 bars
-**Severity**: Critical — corrupts backtest results  
-**File**: `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs`
+## 🔴 iter-36 cutover follow-ups (found in static audit 2026-06-20)
 
-✅ **Fixed (Iteration 11)**. `_barChannel` and `_tickChannel` changed to unbounded channels.
-`ConnectAsync` now starts `FeedBarsAsync` as a background task and returns immediately,
-allowing the engine's consumer loops to start before all bars are written.
+Found by static analysis of the *production* kernel path after the cutover. The cutover gates were proven
+on the **single-day, single-symbol golden fixture**, which does not exercise day-rolls, multi-symbol, or
+DB-persisted equity — so these slipped through green gates. Severity reflects realistic (multi-day FTMO)
+backtests, which is exactly what iter-37 testing needs.
+
+### K-GAP-1 — Day/Week/Month roll never emitted → multi-day runs never reset (REINTRODUCES C4 + H7)
+**Severity**: Critical. The production loop (`KernelBacktestLoop.ProcessBarAsync` / `EngineRunner`) enqueues
+`OrderProposed` / `BarClosed` / `EquityObserved` / `StopLossModifyRequested` — but **never** `DayRolled` /
+`WeekRolled` / `MonthRolled`. The reducer handlers (`EngineReducer.HandleDayRolled` etc.) and the
+protection-exit policy (`Kernel.DecideReset`) exist but are **dead in production**.
+**Evidence**: `grep -rn "new DayRolled\|new WeekRolled\|new MonthRolled" src → 0`; the only historical
+emitter (`DailyResetService`) was retired (`Program.cs:36`).
+**Impact on a multi-day backtest**: (a) daily DD never re-bases — `DrawdownReducer.ApplyDailyReset` never
+runs, so `DailyStartEquity` is frozen at the run's first day and daily DD is measured against it forever;
+(b) the governor never daily-resets — profit-lock / loss-streak / cooling-off persist across days (this is
+**H7 / BUG-09-SIBLING reintroduced**); (c) MaxDD/DailyDD protection never auto-exits (this is **C4
+reintroduced**) because the exit policy is layered on the roll events. ⇒ The "C4/H7 CLOSED — kernel is
+authoritative" notes below are **hollow for multi-day runs**: the kernel owns the logic but the trigger is
+never fired.
+**Fix (NEW-1, deferred from K2)**: in `ProcessBarAsync`, detect a sim-time boundary crossing
+(`bar.OpenTimeUtc` vs the prop-firm reset time-of-day + zone, from `PropFirmRuleSet.DailyResetTime`/`Zone`)
+and enqueue the roll event(s) **before** the bar's evaluation. Not a quick win (needs the reset
+clock + a weekly/monthly boundary rule + a golden re-baseline check). → iter-37 prerequisite / test plan G0.
+**⏳ BACKBONE LANDED (skeleton + tests) 2026-06-20, pending build/suite verify** — `ResetClock` (pure
+detector) + reducer re-base-to-current-equity fix + `KernelBacktestLoop`/`EngineRunner` wiring + pure
+`ResetClock`/`Reducer` tests + an end-to-end multi-day test. See `docs/iterations/iter-37/TEST-PLAN.md` →
+G0 STATUS for the exact diff + the agent's verify checklist. Also surfaced a second latent bug now fixed:
+the reset handlers re-based each period to its **own stale start equity** (never moved) — now re-base to
+`EngineState.Account.Equity`.
+
+### K-GAP-2 — Per-bar equity/account snapshots not persisted for backtests
+**Severity**: High. `EngineRunner.ReportBar` computes a per-bar `AccountSnapshot` (`KernelEquitySnapshot.From`,
+off the authoritative `EngineState`) and calls `_equitySink.Observe(...)` every bar — but in **Backtest**
+mode `IEquitySink` is `BufferedEquitySink` (in-memory; it implements `IAccountSnapshotStore` only for the
+live-monitor read during the run). It **never writes the `EquitySnapshots` table**. After the run the inner
+host is disposed and the snapshots are gone.
+**Evidence**: `EngineServiceCollectionExtensions.AddEventInfrastructure` registers `BufferedEquitySink` for
+`Backtest`, `PersistentEquitySink` only otherwise; `RunQueryService.GetRunEquityAsync` reads
+`IEquityRepository.GetByRunIdAsync` (the DB table) → empty for a finished backtest ⇒ no equity/DD curve in
+the report.
+**Fix**: flush the `BufferedEquitySink` to `EquitySnapshots` on run completion (preferred — one batched
+write, keeps per-bar live reads cheap), **or** register `PersistentEquitySink` for backtest too (per-bar
+fire-and-forget DB writes — perf risk). Also fix `PersistentEquitySink` hard-coding `EngineMode.Live` and
+the `AccountSnapshot→EquitySnapshot` map dropping open-position count / governor state. → test plan E-suite.
+
+### K-GAP-3 — Per-run bars not persisted in the kernel path (chart works for catalog backtests, not live)
+**Severity**: Medium. `BarIngested` is published **only** by the test-oracle `TradingLoop` (`TradingLoop.cs:51`),
+which is not in the production path, so a kernel run never writes per-run bars via `BarPersistenceHandler`.
+**Good news (the long-standing "no bars for the chart" bug is effectively resolved for backtests):** a
+backtest over **imported catalog bars** (`RunId=""`) still renders — `BacktestReplayAdapter` reads those
+bars and `BarQueryService` serves them by symbol+timeframe (no RunId filter). So `/api/bars` returns data
+and the per-trade chart works **for any backtest over catalog data**.
+**Still open**: live runs (and runs over non-catalog data) don't persist bars → blank chart. Out of iter-37
+scope; track for the live path. → test plan B-suite asserts catalog-bar charts work.
+
+### K-GAP-4 — Report/funnel readers still on the now-empty PipelineEvents/BarEvaluations
+**Severity**: High (iter-37 blocker; already a documented F2/F4 carry-forward — restated here for the tracker).
+`RunProjection` + `RunFunnel` read `IPipelineEventRepository` (`PipelineEvents`), and `BacktestQueryService`
+reads `BarEvaluations` — neither is written after K5. ⇒ timeline / signals / rejections / governor-timeline /
+per-bar "why" funnel all return **empty**. Repoint onto the StepRecord journal (`IJournalQueryRepository`).
+→ iter-37 F2/F4.
+
+### K-GAP-5 — Trade entity has no `Timeframe`
+**Severity**: Low. `TradeResultEntity` carries costs (Gross/Comm/Swap/Net) + OrderId but **no `Timeframe`**;
+iter-37 F6's per-trade chart needs it to fetch the right bars (the SPA currently falls back to `|| 'H1'`).
+Add `Timeframe` on close (it's on the position/bar). → iter-37 F6 / test plan B-suite.
+
+### K-GAP-6 — `KernelBacktestLoop.ResolveSymbol` guesses on multi-symbol
+**Severity**: Low. When an execution event's order isn't in `state.Positions`, it returns the first open
+position's symbol, else `EURUSD`. Correct for single-symbol golden; can mis-attribute a feedback event on a
+multi-symbol run. Carry the symbol on the venue execution event instead. → test plan D-suite (multi-symbol).
 
 ---
 
-### BUG-03 — Force-close silently does nothing; exit reason always wrong
-**Severity**: Critical  
-**File**: `src/TradingEngine.Services/PositionTracker.cs` and
-`src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs`
+## iter-37 closure (delivered on `iter/37-frontend-finish`)
 
-✅ **Fixed (Iteration 11)**. `ClosePositionAsync` now sends current `_lastClose` as fill price
-(instead of `null`). `PositionTracker.ClosePosition` replaced incorrect ternary with
-`DetermineExitReason` method: checks TP existence before returning "TP", returns "FORCE"
-when neither SL nor TP applies.
+**K-GAP code fixes**
+- **K-GAP-1 (day/week/month roll) — ✅ RESOLVED.** `ResetClock` emits the rolls in `KernelBacktestLoop`;
+  `EngineRunner` wires `ResetConfig` from the active ruleset; reducer re-bases DD to current equity. Guarded by
+  `ResetClockTests`/`ResetReducerTests` + `KernelResetMultiDayTests` (incl. `DailyDrawdownRebasesEachDay`). The
+  G/F suites prove C4 + H7 are now *provably* closed in the multi-day production path.
+- **K-GAP-2 (backtest equity not persisted) — ✅ RESOLVED.** `EngineRunner.FlushBacktestEquityAsync` batch-flushes
+  `BufferedEquitySink → EquitySnapshots` on completion; `PersistentEquitySink` mode no longer hard-coded Live.
+  Tests: `BacktestEquityFlushTests` + `KernelEquitySnapshotTests`.
+- **K-GAP-4 (readers on empty tables) — ✅ RESOLVED (functional).** `RunProjection` (timeline→journal, equity→
+  persisted snapshots) + `BacktestQueryService.GetStrategyBreakdownAsync` (→ journal verdicts) repointed onto the
+  StepRecord journal. Test: `StrategyBreakdownFromJournalTests`. *(Physical tables dropped in the sign-off D-drop.)*
+- **K-GAP-6 (multi-symbol mis-attribution) — ✅ RESOLVED.** `ExecutionEvent` carries `Symbol`; the pump prefers it;
+  `FakeVenue` + `BacktestReplayAdapter` stamp it. Test: `MultiSymbolAttributionTests`.
+- **K-GAP-3 (chart bars) — ✅ RESOLVED.** `EngineRunner.ReportBar` publishes `BarIngested` per bar so the kernel
+  path persists per-run bars (live + non-catalog runs now render; backtest-over-catalog already did, dedup'd by
+  `BarQueryService`). Tests: `PerRunBarPersistenceTests` + `ChartDataTests.Bars_DedupByTimestamp`.
+- **K-GAP-5 (Trade.Timeframe) — PARTIAL.** Trade-detail exposes the run's timeframe (chart fetches correctly, SPA
+  `|| 'H1'` no longer needed); test `ChartDataTests.TradeDetail_ExposesRunTimeframe`. **Deferred:** a per-trade
+  `TradeResultEntity.Timeframe` column for multi-timeframe runs (needs `PublishTradeClosed`/reducer threading + an
+  EF migration; Low severity).
+
+**Test spine (TEST-PLAN G/F/J/E/B/C/D)** — all delivered & green: governor/drawdown/protection (G1–G3), FTMO
+pressure (F1–F3; F4 skip-breadcrumb), journal source-of-truth (J1–J4), equity persistence (E), bars/chart (B),
+per-strategy characterization (C), multi-symbol + replay/duplicate (D; D2 via J3 determinism + `DuplicateRunE2ETests`).
+**M6** confirmed correct (profit target keys off equity).
+
+**Frontend (PLAN F1–F8)** — delivered: F1 unified journal (order/fill join, full kind filter, per-kind badges,
+named-violation renderer — no `[object Object]`); F2 per-strategy funnel (`GET /api/runs/{id}/analytics/strategies`);
+F3 NDJSON download + Duplicate + lineage (parent/dataset/config hashes); F4 report stats (H29 formula confirmed);
+F5 live-monitor stick-to-bottom + balance-null fix (L1/L2/L3/NEW-7); F6 trade TF column + SL/TP chart; F7 risk-profile
+validate-before-save; F8 dashboard placeholder hygiene (no fabricated zeros). Also fixed 2 stale `WebSmokeTests`
+pointing at dead `/api/backtest/runs` + `/api/backtest/compare` routes.
+
+**Sign-off additions (dead-code removal + finish)**
+- **✅ D-drop DONE — no kernel-upgrade dead code remains.** Deleted `PipelineEvents`/`BarEvaluations` (entities,
+  `PipelineEventMapping`, `SqlitePipelineEventRepository`, `IPipelineEventRepository`, `PipelineEventResponse`,
+  `JournalNormalizer`), the dead consumers (`EventsController` + events SPA page, `BacktestController.Journal`,
+  `RunQueryService.GetRunJournalAsync`), and the never-fired protection-ledger path
+  (`ProtectionLedgerPersistenceHandler`/`ProtectionLedgerWriter`/`ProtectionQueryService`/`ProtectionController` +
+  `DailyProtectionLedger`/`ProtectionLedgerEntry` tables + the `compliance` SPA page — `GovernorStateChanged` is
+  never published). **EF reset:** old `InitialCreate` + snapshot deleted, fresh `InitialCreate` regenerated with no
+  dead tables; dev DB recreated on boot. `grep PipelineEvent|BarEvaluationEntity|ProtectionLedger src → 0`. *Kept
+  (not dead): `IDecisionJournal`/`InMemoryDecisionJournal` (golden-oracle contract), `GovernorStateChanged` (oracle).*
+- **✅ Empty/invalid backtest guard** — `RunsController`/`BacktestController` Start return 400 on no-symbol /
+  inverted date range / non-positive balance (`BacktestStartGuardTests`); SPA blocks client-side.
+- **✅ F4** MAE/MFE scatter + JSON/Markdown report export · **✅ F8** new-backtest per-strategy overrides +
+  resolved-config preview + CSV export · **✅ F2** per-bar "why" verdict table.
+
+**Still deferred (documented carry-forward):**
+- **K-GAP-5 per-trade Timeframe column** (above; Low — multi-timeframe runs only; chart already works via run TF).
+- F7 server-side validation framework (UI + the empty/invalid guard cover the practical case).
 
 ---
 
-### BUG-04 — Max drawdown calculation is fabricated
+## iter-37 testing-found issues (owner manual testing, 2026-06-20)
 
-✅ **Fixed (Iteration 12)**. `GetTradeStatsAsync` now builds a cumulative equity curve from trades ordered by `ClosedAtUtc` and computes peak-to-trough drawdown: `dd = (peak - equity) / peak`.
-**Severity**: Critical — the stat shown in the UI is meaningless  
-**File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:64`
+> **Framing — the common thread.** `appsettings.Development.json` has `CTrader:UseForBacktest = "true"`, so a
+> New-Backtest with the default (empty) venue runs through the **in-process cTrader engine + cBot**, NOT the
+> credential-free `BacktestReplayAdapter`. Most of T1/T2/T6/T7/T12 are cTrader-path data-fidelity gaps the
+> kernel/replay path doesn't have. (`BacktestOrchestrator.cs:296-300` venue→engine selection.)
 
+### T1 — Trade ENTRY timestamp is wall-clock, not sim-time (breaks the per-trade chart) 🔴
+**Observed**: clicking a trade → chart calls `/api/bars?...&from=2026-11-30…&to=2025-10-19…` (from > to) → "No price data".
+**Root cause** (traced via DB + Journal): the cBot stamps exec frames inconsistently — `MakeExecResult`/`MakeModifyResult`
+were `private static` so they couldn't reach `Server` and used `DateTime.UtcNow` (wall-clock) for `simTime`
+(`TradingEngineCBot.cs:508,572`), while `OnPositionClosed` uses `Server.TimeInUtc` (sim, `:652`). `CTraderBrokerAdapter.cs:371`
+reads the frame `simTime` (`… : DateTime.UtcNow`). In a backtest the entry `OrderFilled.OccurredAtUtc` becomes wall-clock →
+`PositionLifecycle.cs:89 OpenedAtUtc` → `TradeResult.OpenedAtUtc` wall-clock → **negative `DurationSeconds`**; the SPA window
+`trade-detail.component.ts:63-65` assumes `opened<closed` → inverted `/api/bars` range → empty.
+**DB evidence**: all 16 trades `OpenedAtUtc=2026-06-20 21:03:xx` (run wall-clock), `ClosedAtUtc`=sim.
+**Fix (designed, approved "all three", not yet applied)**: cBot helpers → instance + `Server.TimeInUtc`; `CTraderBrokerAdapter`
+authoritative on sim-time in backtest (+ `?? BrokerTimeUtc`); `trade-detail` order-safe window. **Tags**: F6 (per-trade chart),
+31-A2, K-GAP-5.
+**⏳ PARTIAL FIX**: cBot source (`MakeExecResult`/`MakeModifyResult` → instance + `Server.TimeInUtc`) ✅ + `trade-detail` order-safe
+window ✅ (chart renders for existing/future trades; SPA build green). **Still pending**: rebuild the cBot `.algo` in cTrader for
+the source fix to take effect on live runs, and the `CTraderBrokerAdapter` backtest-authoritative override.
+
+### T2 — Journal shows wall-clock `EquityObserved` interleaved + out-of-order 🟠
+**Observed**: journal rows jump e.g. `05-20 21:00 EquityObserved` … `06-20 22:16 EquityObserved` … `05-20 20:00 DayRolled`.
+**Root cause**: same wall-clock leak as T1 on the cTrader **account/equity** frames → some `EquityObserved` carry wall-clock
+(`06-20 22:16`) while bar-derived ones are sim; the journal is `Seq`-ordered so displayed times jump. Also the journal is
+swamped by `EquityObserved` (12,251 of them vs 1,559 BarClosed). **Tags**: T1 (same root), F1 (journal view) — consider
+filtering/colouring `EquityObserved` noise.
+
+### T3 — Per-strategy funnel "Top no-signal reasons" = `undefined (undefined)` 🟠
+**Observed**: `trend-breakout … undefined (undefined), undefined (undefined), …`.
+**Root cause**: `StrategyPerformance.TopRejections` is a C# **ValueTuple** `(string Reason, int Count)`
+(`IBacktestQueryService.cs:31`). System.Text.Json does NOT preserve tuple element names → JSON is `{"item1":…,"item2":…}`,
+but the SPA reads `r.reason`/`r.count` (`run-report.topReasons`) → undefined.
+**Fix**: replace the tuple with a named record `NoSignalReason(string Reason, int Count)` so JSON has `reason`/`count`.
+**✅ FIXED** — `NoSignalReason` record (`IBacktestQueryService.cs`) + `GetStrategyBreakdownAsync` mapping; `StrategyBreakdownFromJournalTests` green.
+**Tags**: F2 (funnel).
+
+### T4 — Per-bar "why" only shows warmup rows ("not enough bars, have 1..24 need 55") 🟠
+**Root cause**: `run-report` fetches the journal client-side with `limit=200` (`ngOnInit getRunJournal(…,200)`) and computes
+`perBarVerdicts` from it; the first 200 events are dominated by `EquityObserved` + the earliest `BarClosed`, so only the
+warmup bars surface. Needs a **server-side per-bar/funnel endpoint** (paged over `BarClosed` verdicts) instead of a 200-row
+client slice. **Tags**: F2, T2 (journal noise).
+
+### T5 — Per-bar "why" appears in the Trades section / section labels confusing 🟡
+**Observed**: the "Per-bar why (24)" table seemed to render where "Trades (5)" was expected.
+**Action**: verify `run-report` section ordering/conditionals (funnel vs why vs trades) — likely a layout/`@if` issue or the
+Trades table not rendering when the why-table does. **Tags**: F2/F4.
+
+### T6 — Trades show no commission / swap 🟠
+**Root cause**: cTrader close exec frames (or the FORCE-close path, T7) report 0/absent `commission`/`swap` → trades persist
+cost-free. **Tags**: 31-A2 (cBot cost itemization), M1, T7. Refs: `TradingEngineCBot.MakeExecResult` cost fields →
+`EffectExecutor` cost mapping.
+
+### T7 — Live journal only shows `CLOSE … reason=FORCE` (no SIGNAL/ORDER/FILL; everything force-closed) 🟠
+**Root cause (two parts)**: (a) the live-monitor journal/counters come from orchestrator progress events, but the kernel path
+only emits `"BAR"` (`EngineRunner.ReportBar`) and `"CLOSE"` (`EffectExecutor`) — the old `SIGNAL`/`ORDER`/`EXEC`/`REJECTED`/
+`BREACH` producers were deleted in the cutover (`BacktestOrchestrator.cs:139-141`), so Signals/Fills/Rejections stay 0 and only
+CLOSE rows appear; (b) **every close reason=FORCE** → SL/TP exits aren't being detected on the cTrader path (or an end-of-run
+flatten), so positions are force-closed. **Tags**: F5 (live monitor), OBS-02/03, T1 (cTrader path).
+
+### T8 — Governor "disable" via UI saves but doesn't take effect 🟠
+**Root cause = M18** (GovernorOptions registered as a stale `new GovernorOptions()` singleton — `ServiceRegistration.cs:136` —
+never updated from the DB the UI writes to). The kernel gate also reads `ConstraintSet.Toggles.GovernorEnabled` from the
+**ruleset**, a separate enable from the governor-options store → two sources of truth. **Tags**: **M18** (confirmed), F7.
+**⚠ CONFIRMED dual-source — needs a design decision, NOT a quick patch:** (1) the engine host registers `GovernorOptions` from
+**JSON** (`EngineServiceCollectionExtensions.cs:101 AddSingleton(loadedConfig.Governor)` via `LoadBase()`), ignoring the DB options
+the orchestrator loads into `PreloadedConfig` — so the Governor page's `Enabled` never reaches the run's `GovernorMachine`;
+(2) the kernel `PreTradeGate:54` gates on `ConstraintSet.GovernorEnabled` = `PropFirmRuleSet.Toggles.GovernorEnabled` (prop-firm
+ruleset), which the Governor page doesn't touch; (3) the kernel `GovernorState` is evolved in the reducer (`EvaluateStatic`)
+regardless of `Enabled`. **Decision needed**: which switch is authoritative — make the engine host use the DB `GovernorOptions`
+**and** have `ConstraintSet.GovernorEnabled` honor it (`ruleset.Toggles && options.Enabled`)?
+**✅ FIXED (Governor page authoritative)**: the per-run host already wires the DB `GovernorOptions` into the `GovernorMachine`
+(`AddRiskFromOptions:318` via `PreloadedConfig`), so #1 was already correct; the gap was #2. `WireRiskRules`
+(`EngineHostFactory.cs`) now ANDs `GovernorOptions.Enabled` into the kernel gate switch:
+`constraints with { GovernorEnabled = constraints.GovernorEnabled && govOptions.Enabled }`. Disabling on the Governor page now
+turns the governor off at `PreTradeGate` (which gates ALL governor blocking on `c.GovernorEnabled`); the ruleset toggle still
+applies (AND). Compiles clean; full run-verify pending the dev Web app being stopped.
+
+### T9 — Backtest throws a cancellation error on/near finish (but still saves) 🟡 ✅ FIXED
+**Root cause**: a completion/teardown `OperationCanceledException` (user Cancel, the 30-min linked CTS timeout, or host/stream
+teardown) was caught by the general `catch (Exception)` → run marked **failed** + `LogError`, despite trades being persisted.
+**Fixed** (`BacktestOrchestrator.cs` — dedicated `catch (OperationCanceledException)`): finalize with trades-so-far,
+status = `cancelled` (user) / `completed` (teardown), ExitCode 0, info log, end record written. (Compiles clean; full test run
+pending the dev Web app being stopped — it currently locks the build output.) **Tags**: H22.
+
+### T10 — "Duplicate" is pointless (re-runs via cTrader, ignores saved bars, no options to tweak) 🟠
+**Root cause**: `RunsController.Duplicate` (`:119`) re-runs the config **through the engine** (cTrader when
+`UseForBacktest=true`), NOT a deterministic replay of the saved `DatasetId` bars; the F3 SPA button posts no changes and there's
+no edit UI for strategy/risk/overrides before launch. So a duplicate is just a fresh non-deterministic re-run.
+**Fix**: duplicate should replay the saved dataset bars (K6 real-replay) + open `new-backtest` prefilled with editable
+strategy/risk/overrides. **Tags**: **F3**, **K6** (real replay + duplicate).
+
+### T11 — Live equity: no DD line + vertical/horizontal axes show wrong/no values 🟠
+**Root cause (likely)**: the live `equity-chart` DD series isn't drawn and the time/price axes are mis-scaled — the wall-clock
+`EquityObserved` points (T2) mixed with sim-time points corrupt the time axis; the DD series may not be fed. **Tags**: L1
+(equity chart), T2. Refs: `shared/equity-chart.component.ts` + `run-monitor` `equityData`/DD feed.
+
+### T12 — No DD timeline on the run report 🟠
+**Root cause (likely)**: the report "DD Timeline" (daily-PnL bars) is empty — `getRunDailyPnl`/`RunQueryService.GetRunDailyPnLAsync`
+groups trades by `ClosedAtUtc.Date`, and/or the equity/DD curve isn't persisted for the **cTrader in-process** path (K-GAP-2's
+equity flush is on the kernel-backtest path; the cTrader path may not flush `EquitySnapshots` the same way). **Tags**: **K-GAP-2**,
+T1 (cTrader path).
+
+> **Net:** T1/T2/T6/T7/T11/T12 share the **cTrader-in-process backtest path** root (wall-clock frames + missing progress/equity
+> wiring vs the kernel/replay path). T3/T4/T5 are SPA/serialization gaps in the new F2 surfaces. T8=M18, T10=F3/K6, T9=H22.
+> Highest-value single lever: make the cTrader path stamp sim-time (T1) + reconsider whether default-venue backtests should use
+> the credential-free replay path instead of cTrader.
+
+---
+
+## Critical (14) — Correctness-breaking, fix immediately
+
+### C1 — cTrader limit orders always execute as market
+**Severity**: Critical — ✅ **FIXED iter-35 finish** — cBot now reads `orderType`/`limitPrice`, routes "Limit" orders through `PlaceLimitOrder` instead of `ExecuteMarketOrder`.
+**File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:298-345`
+
+### C2 — cTrader has no `cancel_order` handler
+**Severity**: Critical — ✅ **FIXED iter-35 finish** — `ExecuteCancelOrder` handler added, dispatches to `ClosePosition`.
+**File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:236-266`
+
+### C3 — Trailing max-DD floor uses `equity.Equity` instead of `equity.PeakEquity`
+**Severity**: Critical — ✅ **FIXED iter-35** (kernel `PreTradeGate` → `DrawdownState.GetMaxDrawdownFloor`). Old `RiskManager.cs` still has the bug but kernel gate is authoritative going forward. **✅ CLOSED iter-36** — `RiskManager.Validate`/the buggy floor has **no production caller** (twins relocated to `Tests.Support`, D81); it executes only in the golden test oracle. The kernel `PreTradeGate` is the sole production gate.
+**File**: `src/TradingEngine.Risk/RiskManager.cs:186-187`
 ```csharp
-var maxDd = Math.Abs(trades.Min(t => t.NetPnLAmount)) / 100_000m;
+var drawdownBase = Drawdown.DrawdownType == "Trailing" ? equity.Equity : equity.Balance;
 ```
+For trailing mode, should be `equity.PeakEquity`. As equity drops, the projected floor also drops, making the gate artificially permissive. Same bug in `RiskGate.cs:39`.
 
-This computes `worst_single_trade_PnL / 100,000`. It is not drawdown. It ignores:
-- The initial balance (hardcoded to 100,000 regardless of config)
-- The equity curve (peak-to-trough, not single worst trade)
-- Multiple consecutive losses
+### C4 — MaxDD protection mode never auto-exits
+**Severity**: Critical — ✅ **FIXED iter-35** (kernel `ProtectionState.ClearsOn` + `Kernel.DecideReset`). Old `RiskManager.OnDailyReset` still has the bug but kernel path is authoritative going forward. **✅ CLOSED iter-36** — `RiskManager.OnDailyReset`/`AccountProcessor` have **no production caller** (twins relocated to `Tests.Support`, D81); protection-exit is owned solely by `Kernel.DecideReset` in production.
+**File**: `src/TradingEngine.Risk/RiskManager.cs:299-307`
+`OnDailyReset()` only clears `ProtectionCause.DailyDrawdown`. MaxDD-caused protection stays forever. `PropFirmRuleSet.ProtectionResetPolicy` is defined but **never read by any code**.
 
-**Fix**: Build a running equity curve from trade sequence, find peak, find subsequent trough,
-express as percentage of peak. The `BacktestReplayAdapter` should emit `AccountUpdate` events
-after each simulated close so `DrawdownTracker` accumulates the real curve.
-
----
-
-### BUG-05 — Hardcoded cross-rates cause wrong lot sizing for JPY/GBP pairs in live mode
-**Severity**: Critical for live; incorrect in backtest  
-**File**: `src/TradingEngine.Host/Program.cs:101–106`
-
-✅ **Fixed (Iteration 16)**. Created `CrossRateStore` class with mutable `GbpUsdRate` and `UsdJpyRate` fields. Registered as singleton in all DI paths (Web orchestrator, Host engine, test harness). `RunBacktestLoopAsync` updates cross-rates per bar based on the primary symbol's close price (GBPUSD bar → GBP→USD rate, USDJPY bar → JPY→USD rate). CrossRateStore is injected into EngineWorker constructor.
-
+### C5 — SimulatedBrokerAdapter AccountUpdate param swap (Equity=0)
+**Severity**: Critical — ✅ **FIXED iter-35** (all 3 sites: `(balance, balance, 0)` instead of `(balance, 0, balance)`)
+**File**: `src/TradingEngine.Infrastructure/Venues/Simulated/SimulatedBrokerAdapter.cs:165-166,279-280,329-330`
 ```csharp
-if (from == "JPY" && to == "USD") return 1m / 149.50m;
-if (from == "GBP" && to == "USD") return 1.2650m;
+new AccountUpdate(_currentBalance, 0m, _currentBalance, now)
 ```
+Passes `Equity = 0m, FloatingPnL = _currentBalance` instead of `Equity = balance + floatingPnl, FloatingPnL = actual floating PnL`. Breach watchdog sees zero equity, enters protection mode, force-closes all positions.
 
-Domain rule: cross-rate pip values must be recalculated per tick (they change with price).
-These constants are stale. GBPUSD fluctuates ±5% over months. Using a wrong cross-rate means
-lot sizes are off proportionally — a 5% rate error = 5% too many or too few lots.
+### C6 — SimulatedBrokerAdapter `ClosePartialPositionAsync` missing costs/balance update
+**Severity**: Critical — ✅ **FIXED iter-35 (cont.)** — `ClosePartialPositionAsync` now computes costs on the closed lots via `TradeCostCalculator`, updates `_currentBalance`, stamps Gross/Comm/Swap/Net on the exec, and emits an `AccountUpdate`. (`BacktestReplayAdapter` already did this; the partial-close path has no live engine caller today, but both venues now agree.)
+**File**: `src/TradingEngine.Infrastructure/Venues/Simulated/SimulatedBrokerAdapter.cs:171-208`
 
-**Fix**: For backtest, read rates from the bar close prices of the cross pairs. For live, pull
-from the broker's `AccountUpdate`. The cross-rate provider `Func<string, string, decimal>` is the
-right abstraction — replace the singleton closure with one that reads live prices.
+### C7 — SimulatedBrokerAdapter limit expiry decrements per tick, not per bar
+**Severity**: Critical — ✅ **FIXED iter-35** (moved to `OnBarObserved` per-bar decrement)
+**File**: `src/TradingEngine.Infrastructure/Venues/Simulated/SimulatedBrokerAdapter.cs:220-221`
+`ExpiryBarCount--` runs in `OnTickReceived()` (every tick). With live tick feed (60+/sec), a 3-bar limit expires in 3 ticks. Accidentally works with the default 1-tick-per-bar feed.
 
----
-
-### BUG-06 — BacktestReplayAdapter reports flat equity forever; loss limits unenforceable
-**Severity**: Critical — explains backtests that violated daily-loss limits
-**Found**: 2026-06-12 (iter-19 planning audit)
-**File**: `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs:92`
-
-`FeedBarsAsync` emits `new AccountUpdate(_initialBalance, _initialBalance, 0, …)` on every bar.
-Equity and balance are hardcoded to the initial balance for the whole run: realized PnL never
-reaches the balance, floating PnL never reaches equity. `DrawdownTracker` therefore computes 0%
-drawdown always, and `DAILY_DD_LIMIT`/`MAX_DD_LIMIT` can mathematically never fire in backtests.
-
-**Fix**: planned as iter-19 Phase G0.1 (mark-to-market: balance updated on closes, equity =
-balance + floating PnL at bar close).
-
----
-
-### BUG-07 — `EnterProtectionMode` has no callers; daily breach never flattens positions
-**Severity**: Critical
-**Found**: 2026-06-12 (iter-19 planning audit)
-**File**: `src/TradingEngine.Risk/RiskManager.cs:49`
-
-Protection mode is dead code — nothing in the engine calls `EnterProtectionMode`. Additionally,
-`_forceClosePending` is only set for `ProtectionCause.MaxDrawdown` with `ForceCloseOnBreach`, so
-even if wired, a *daily* limit breach would block new entries but leave open positions running
-unbounded. Risk checks gate new entries only, at `>=` the hard limit.
-
-**Fix**: planned as iter-19 Phase G0.2 (breach watchdog in `HandleAccountUpdate`, force-close on
-both daily and max-DD causes, flatten at 0.9 × hard limit).
-
----
-
-### BUG-08 — MAX_EXPOSURE pre-check is a no-op for market orders
-**Severity**: High
-**Found**: 2026-06-12 (iter-19 planning audit)
-**File**: `src/TradingEngine.Risk/RiskManager.cs:96`
-
-`Validate` derives the entry price as `intent.LimitPrice ?? intent.StopLoss` — for market orders
-(no limit price) the SL distance is measured from the SL itself, i.e. 0 pips, so the computed new
-position risk is 0 and the exposure check always passes. It also assumes `1.0m` lots rather than
-the lots that will actually be submitted.
-
-**Fix**: planned as iter-19 Phase G0.3 (use current mid as entry price, compute risk on sized lots).
-
----
-
-## Part 2 — Serious Design Problems
-
-### DESIGN-01 — `TradeClosed` published fire-and-forget from `PositionTracker`
-**File**: `src/TradingEngine.Services/PositionTracker.cs:117`
-
+### C8 — SessionBreakout uses all-time global high/low, not session window range
+**Severity**: Critical — ✅ **FIXED iter-35** (range now filtered to `[RangeStartUtc, RangeEndUtc)` time-of-day window)
+**File**: `src/TradingEngine.Strategies/SessionBreakout/SessionBreakoutStrategy.cs:55-56`
 ```csharp
-_ = eventBus.PublishAsync(new TradeClosed(...), CancellationToken.None);
+_rangeHigh = h1Bars.Max(b => b.High);  // ALL bars in history, not just 05:00-07:00 bars
+_rangeLow = h1Bars.Min(b => b.Low);
 ```
+`h1Bars` is the entire bar collection. `Max(b.High)` returns the all-time high. `_rangeHigh`/`_rangeLow` are effectively global extrema — current price almost never exceeds them. Must filter to `[RangeStartUtc, RangeEndUtc)` bars.
 
-Trade persistence runs via this event. If the process shuts down before the task is scheduled, the
-trade is lost. `TradeClosed` is the critical financial event and must not be fire-and-forget.
+### C9 — PipelineEventWriter silently drops journal events under backpressure
+**Severity**: Critical — ✅ **FIXED iter-35 finish** — drop logging added (warns every 1000 drops), H20 buffer-clear-after-save fix applied.
+**File**: `src/TradingEngine.Infrastructure/Events/PipelineEventWriter.cs:15-16,52,67`
 
-**Fix**: Return the task from `ClosePosition`, bubble it up through `OnExecution`, and await it
-in `ProcessTicksAsync`. Or use `ValueTask` and fire synchronously through a synchronous event bus
-path for in-process handlers.
+### C10 — EquityPersistenceHandler stamps all snapshots with first item's RunId
+**Severity**: Critical — ✅ **FIXED iter-35 finish** — flush loop now groups by RunId before persisting (same pattern as FlushAsync).
+**File**: `src/TradingEngine.Infrastructure/Persistence/EquityPersistenceHandler.cs:46-47`
 
----
+### C11 — Backtest replay path cancellation broken
+**Severity**: Critical — ✅ **FIXED iter-35 finish** — replay path now uses `CancellationTokenSource.CreateLinkedTokenSource(userCt, timeoutCt)`.
+**File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:276,306,491-492`
 
-### DESIGN-02 — Execution events only drained when ticks arrive
-**File**: `src/TradingEngine.Host/EngineWorker.cs:144`
+### C12 — Cancel endpoint cancels ALL backtests, ignoring runId
+**Severity**: Critical — ✅ **FIXED iter-35 finish** — `Cancel(runId)` now cancels only the target run via per-run `CancellationTokenSource`.
+**File**: `src/TradingEngine.Web/Api/RunsController.cs:88-93`
 
-✅ **Fixed (Iteration 16)**. Added `await DrainExecutionStreamAsync()` call in `ProcessBarsAsync` (Live mode path) after the strategy evaluation foreach loop. This drains pending execution events on every bar in both Live and Backtest modes.
+### C13 — Route collision: two controllers share `[Route("api/backtest")]`
+**Severity**: Critical — ✅ **FIXED iter-35 finish** — `BacktestAnalyticsController` renamed to `api/backtest/analytics`.
+**Files**: `BacktestController.cs:7`, `BacktestAnalyticsController.cs:6`
 
-Fills from the broker are forwarded to `_executionEventChannel` by `ProcessExecutionEventsAsync`,
-but that channel is only drained inside `ProcessTicksAsync` via `TryRead`. If no tick arrives
-after a fill (possible in bar-replay mode where ticks are synthetic), the fill sits unprocessed.
-
-**Fix**: Drain execution events in a dedicated processing step, not piggy-backed on the tick loop.
-In the bar loop, after writing to the bar channel, explicitly drain pending executions before
-evaluating strategies.
-
----
-
-### DESIGN-03 — `Cancel()` doesn't kill the running process
-**File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:102`
-
-✅ **Fixed (Iteration 16)**. `BacktestRunState` stores `CancellationTokenSource` per run (implemented in iter-15). `Cancel()` calls `state.CancellationSource?.Cancel()`. The engine now runs in-process (Phase B) — no orphan subprocess. The ctrader-cli subprocess receives the cancellation token via CliWrap, which kills the process on cancellation. The per-run `CancellationTokenSource` links to a 30-minute timeout plus the orchestrator's cancellation chain.
-
-`Cancel()` sets an in-memory status flag. The `ctrader-cli` subprocess and the engine subprocess
-continue running. No `CancellationTokenSource` is stored per run; no process.Kill() is called.
-
-**Fix**: Store `(Process?, CancellationTokenSource)` per run in `BacktestRunState`. `Cancel()` calls
-`cts.Cancel()` and `process?.Kill(entireProcessTree: true)`.
+### C14 — `RiskProfile.MaxSlPips` defaults to 0, silently rejecting all trades
+**Severity**: Critical — ✅ **FIXED iter-35** (kernel `PreTradeGate`: `MaxSlPips<=0` = "no limit")
+**File**: `src/TradingEngine.Domain/RiskAndEquity/RiskProfile.cs:9`
+`IsSlValid` checks `distance.Value > profile.MaxSlPips`. When `MaxSlPips = 0` (default), every positive SL distance is rejected.
 
 ---
 
-### DESIGN-04 — `_processedExecutionIds` HashSet is an unbounded memory leak
-**File**: `src/TradingEngine.Services/PositionTracker.cs:19`
+## High (30) — Significant impact
 
-Every `Guid` ever seen is added to `HashSet<Guid>` and never removed. A 3-month M1 backtest
-could generate tens of thousands of fills. Over a live session running months, this grows forever.
+### H1 — Fixed max-DD floor uses `equity.Balance` not `InitialAccountBalance`
+**File**: `src/TradingEngine.Risk/RiskManager.cs:186`
+If balance has grown from realized profit (e.g., $100k → $105k), floor becomes `$105k * 0.95 = $99,750` instead of correct `$100k * 0.95 = $95,000`.
 
-**Fix**: Remove the ID from the set when the position is closed (or after the order has been fully
-processed). The set's purpose is deduplication during the open→fill window, not permanent history.
+### H2 — Weekly/monthly DD limits never checked in pre-trade gate
+**File**: `src/TradingEngine.Risk/RiskManager.cs:103-109` — ✅ **FIXED iter-35** (kernel `PreTradeGate` enforces weekly/monthly; old `RiskManager.Validate` still missing them)
 
----
+### H3 — `RiskGate.ProjectWorstCase` ignores `DailyDdBase`
+**File**: `src/TradingEngine.Engine/RiskGate.cs:33` — ✅ **FIXED iter-35** (`RiskGate.cs` deleted; kernel `PreTradeGate` honors `DailyDdBase`)
 
-### DESIGN-05 — Failed backtests create orphaned trade records
+### H4 — Trailing max-DD floor in `RiskGate` uses `currentEquity` not peak
+**File**: `src/TradingEngine.Engine/RiskGate.cs:39` — ✅ **FIXED iter-35** (`RiskGate.cs` deleted)
 
-✅ **Fixed (Iteration 12)**. `WriteStartRecordAsync` writes an in-progress record (ExitCode=-1) at run start. `WriteEndRecordAsync` updates with final stats on completion or failure. Succeeded runs use `UpdateAsync`; failed runs still get a record.
-**File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:147`
+### H5 — `AntiMartingale` sizing method not implemented
+**File**: `src/TradingEngine.Risk/PositionSizer.cs:34-40` — ✅ **FIXED iter-35** (kernel `KernelSizing` has explicit `AntiMartingale` branch; old `PositionSizer` still broken)
 
-DB write to `BacktestRuns` only happens on `result.Success`. But `TradePersistenceHandler` saves
-trades independently as they close — those trades carry the RunId but no corresponding `BacktestRuns`
-row ever exists. Any join on RunId → BacktestRuns silently returns nothing for failed runs.
+### H6 — `FixedLots`/`FixedDollarRisk` bypass drawdown scaling
+**File**: `src/TradingEngine.Risk/PositionSizer.cs:36,55-63` — ✅ **FIXED iter-35** (kernel `KernelSizing` applies drawdown scale to all methods; old `PositionSizer` still broken)
 
-**Fix**: Always write the `BacktestRuns` row (with status/error). Use a two-step: insert a "started"
-row at the beginning of `RunAsync`, update it with final stats on completion (success or fail).
+### H7 — Governor `OnDailyReset()` never called — profit-lock permanent
+**Files**: `AccountProcessor.cs:72-73`, `DailyResetService.cs:18-30`, `TradingGovernorService.cs:200` — ✅ **FIXED iter-35** (kernel `HandleDayRolled` → `GovernorMachine.ApplyDailyReset`; `DailyResetService` deleted)
 
----
+### H8 — BUG-09 STATUS: cooling-off fixed, but sibling remains
+**Original BUG-09**: Governor cooling-off counter never decrements. **FIXED** — `TradingLoop.cs:83` now calls `governor?.OnBar(bar.OpenTimeUtc)`.
+**Sibling bug (H7 above)**: Governor profit-lock never resets — `OnDailyReset()` never called.
 
-### DESIGN-06 — `BarEvaluationHandler` drops remaining events silently on shutdown
+### H9 — 500-bar cap not configurable, O(n) eviction
+**File**: `src/TradingEngine.Host/TradingLoop.cs:55-62`
+`list.RemoveAt(0)` on every bar after 500. Strategies needing >500 warm-up bars silently fail.
 
-✅ **Fixed (Iteration 13)**. `DisposeAsync` now drains remaining channel events via `TryRead` and
-flushes them to the DB synchronously after the main flush task completes.
-**File**: `src/TradingEngine.Host/BarEvaluationHandler.cs:71`
+### H10 — Last-bar tail drain skipped on cancellation
+**File**: `src/TradingEngine.Host/EngineRunner.cs:236-249` — ✅ **FIXED iter-35 finish** — tail drain now runs in outer `catch(OperationCanceledException)` block.
 
-`DisposeAsync` cancels `_cts`, which causes the `Task.Delay(3_000, ct)` to throw
-`OperationCanceledException` → `break`. Any events remaining in the 50,000-capacity channel are
-silently dropped. After a backtest, thousands of bar evaluations may never be persisted.
+### H11 — Race on `RiskManager.CurrentState` in live path
+**Files**: `EnginePacers.cs:15-21`, `RiskManager.cs:68-72,100`
+Bar processing and account processing run concurrently via `Task.WhenAll`. `CurrentState` has no synchronization. Protection mode entry may not be visible to concurrent signal validation.
 
-**Fix**: After breaking out of the loop, do one final drain pass of whatever remains in the channel
-before returning from `DisposeAsync`.
+### H12 — CTraderBrokerAdapter synthetic close on disconnect has zero fill price
+**File**: `src/TradingEngine.Infrastructure/Venues/CTrader/CTraderBrokerAdapter.cs:448-457` — ✅ **FIXED iter-35 finish** — synthetic close now uses `_lastMid` (stored from last tick) instead of `Price(0m)`.
 
----
+### H13 — NetMQ transport counter semantics wrong
+**File**: `src/TradingEngine.Infrastructure/Transport/NetMq/NetMqMessageTransport.cs:99,152,181`
+`_barsReceived` counts all sub messages (ticks, acct, diag). `_commandsSent` counts all outgoing messages. `_executionsReceived` counts all router messages. Reconciliation telemetry permanently mismatched.
 
-### DESIGN-07 — `BacktestOrchestrator.RunAsync` is fire-and-forget with no shutdown drain
-**File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:85`
+### H14 — BacktestReplayAdapter `FilledLots = 0` on full close
+**File**: `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs:267-274` — ✅ **FIXED iter-35 (cont.)** — close exec now reports `trade.Lots`. `FilledLots == position lots` keeps it a full close in the lifecycle FSM (the partial branch requires `FilledLots < lots`); the order ledger / reconciliation now see the real volume. Golden + unit suites unchanged.
 
-✅ **Fixed (Iteration 16)**. `BacktestRunState` now has a `RunTask` property. `Start()` stores the task via `state.RunTask = RunAsync(...)` instead of `_ = RunAsync(...)`. Added `StopAllAsync()` method that cancels all CTS tokens and awaits all in-flight tasks for graceful shutdown.
+### H15 — BacktestReplayAdapter timestamp/price mismatch on fills
+**File**: `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs:177-178,227-228` — ✅ **FIXED iter-35 finish** — fill timestamp now uses `bar.OpenTimeUtc + BarDuration(tf)` (bar close time).
 
-```csharp
-_ = RunAsync(runId, cfg);
-```
+### H16 — BacktestReplayAdapter floating PnL uses mid (close) not bid/ask
+**File**: `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs:346-367` — ✅ **FIXED iter-35 finish** — `ComputeFloatingPnL` now uses directional bid/ask (`close - halfSpread` for longs, `close + halfSpread` for shorts).
 
-App shutdown doesn't await in-flight backtests. Multiple simultaneous backtests have no backpressure.
+### H17 — Bar-range SL/TP detection overstates fill probability vs tick-based
+**Cross-cutting**: Backtest uses raw bar High/Low (no spread). Simulated venue uses tick bid/ask (with spread). Same strategy produces different results across venues.
 
-**Fix**: Store the `Task` in `BacktestRunState`. Implement `IHostedService` or `IAsyncDisposable` on
-`BacktestOrchestrator` to await all tracked tasks on shutdown.
+### H18 — BarEvaluationHandler silently drops events
+**File**: `src/TradingEngine.Infrastructure/Persistence/BarEvaluationHandler.cs:15,30` — ✅ **FIXED iter-35 finish** — drop logging added (warns every 1000 drops).
 
----
+### H19 — BufferedBarWriter silently drops bars
+**File**: `src/TradingEngine.Infrastructure/Caching/BufferedBarWriter.cs:12` — ✅ **FIXED iter-35 finish** — drop logging added.
 
-## Part 3 — Code Standard Violations
+### H20 — PipelineEventWriter flush failure loses entire batch
+**File**: `src/TradingEngine.Infrastructure/Events/PipelineEventWriter.cs:42,82-95` — ✅ **FIXED iter-35 finish** — `buffer.Clear()` moved after successful save in both `PipelineEventWriter` and `BarEvaluationHandler`.
 
-### STD-01 — `await Task.CompletedTask` cargo-cult in multiple files
-- `BarEvaluationHandler.HandleAsync` — synchronous `TryWrite`, then `await Task.CompletedTask`
-- `BacktestReplayAdapter.DisposeAsync` — `await Task.CompletedTask` with no async work
-- `RecomputeIndicatorsAsync` — purely synchronous CPU work in `async Task` with no yield
-- `WarmUpIndicatorsAsync` — just logs, no async work
+### H21 — No SQLite write serialization — 6 handlers compete for one file
+**Files**: All persistence handlers — ✅ **FIXED iter-35 finish** — WAL mode + busy_timeout (5000ms) enabled via PRAGMA on startup.
 
-Methods that don't await anything should not be `async`. Either remove `async` and return
-`Task.CompletedTask` directly, or add `ValueTask` where the interface requires it.
+### H22 — Unobserved exception leaves run stuck in "starting" status forever
+**File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:281-283` — ✅ **FIXED iter-35 finish** — moved inside try/finally.
 
----
+### H23 — Missing Venue/RiskProfileId propagation from legacy start endpoint
+**File**: `src/TradingEngine.Web/Api/BacktestController.cs:44-78` — ✅ **FIXED iter-35 finish** — `StartRequest` gains `RiskProfileId` + `Venue` fields, wired into `cfg.CustomParams`.
 
-### STD-02 — `MeanReversionStrategy` uses `double` for price arithmetic
-**File**: `src/TradingEngine.Strategies/MeanReversion/MeanReversionStrategy.cs:55–56`
+### H24 — `StrategyOverrides` never propagated from UI to engine
+**Files**: `RunsController.cs:46-86`, `Dtos/Runs/StartRunRequest.cs:3-23` — ✅ **FIXED iter-35 finish** — `StartRunRequest.StrategyOverrides` serialized to `cfg.CustomParams`.
 
-```csharp
-var nearLow = (double)(latestBar.Close - latestBar.Low) / (double)latestBar.Close < 0.002;
-```
+### H25 — `BarCount++` race condition in progress callbacks
+**File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:474-475` — ✅ **FIXED iter-35 finish** — `Interlocked.Increment(ref state.BarCount)`.
 
-`Close` and `Low` are `decimal`. Explicit cast to `double` for the division violates the domain rule
-"always use decimal for price/money arithmetic". Use `decimal` throughout; the comparison `< 0.002m`
-works fine.
+### H26 — Journal entries in live monitor use wall-clock time, not sim time
+**File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:170-172` — ✅ **FIXED iter-35 finish** — `DecisionRecordView` uses parsed `state.SimTime`.
 
----
+### H27 — Memory leak — `_runs` dictionary never purged
+**Files**: `BacktestOrchestrator.cs:30,214`, `RunProgressBroadcaster.cs:19,42` — ✅ **FIXED iter-35 finish** — `_runs` + `_lastSentTicks` purged on completion.
 
-### STD-03 — `BAR_EVAL` logged at `Information` level on every bar
+### H28 — Angular: MAE vs MFE scatter chart broken (x-value discarded)
+**File**: `web-ui/src/app/shared/scatter-chart.component.ts:50-54` — ✅ **FIXED iter-35 finish** — plots both MAE and MFE as two series.
 
-✅ **Fixed (Iteration 13)**. Changed to `LogDebug`.
-**File**: `src/TradingEngine.Host/EngineWorker.cs:199`
+### H29 — Angular: cost reconciliation formula wrong
+**File**: `web-ui/src/app/features/runs/run-report/run-report.component.ts:136` — ✅ **FIXED iter-35 finish** — `Gross - Comm - Swap - Net`, no per-term `abs`.
 
-A 6-month H1 backtest = 4,000+ `Information` log lines from this alone. Should be `Debug` or `Trace`.
-
----
-
-### STD-04 — Bare `catch { }` in `ResolveHalfSpread` silently swallows failures
-**File**: `src/TradingEngine.Host/EngineWorker.cs:379`
-
-Unknown symbol → spread fallback to `0.00005m` with no log. Should `LogWarning` so symbol config
-gaps are visible.
-
----
-
-### STD-05 — `IEnumerable<IStrategy>` enumerated multiple times
-**File**: `src/TradingEngine.Host/EngineWorker.cs`
-
-`_strategies` is `IEnumerable<IStrategy>`. Called with `.Count()` at startup, iterated per bar in
-`ProcessBarsAsync`, and iterated again in `WarmUpIndicatorsAsync`. If DI registers the factory as
-non-singleton, strategies are recreated on every iteration. Should be materialized to
-`IReadOnlyList<IStrategy>` in the constructor.
+### H30 — Angular: journal filter has invalid `'BAR'` kind, missing real kinds
+**File**: `web-ui/src/app/features/runs/run-report/run-report.component.ts:118` — ✅ **FIXED iter-35 finish** — dropped `BAR`, added `GOVERNOR`, `ENTRY_EXPIRED`, `CANCELLED`.
 
 ---
 
-### STD-06 — `CancellationToken` missing on async methods
-`RecomputeIndicatorsAsync` and `WarmUpIndicatorsAsync` are `async Task` but accept no
-`CancellationToken`. Code standard: CT required on every async method.
+## Medium (21) — Notable issues
+
+### M1 — cTrader partial close reads commission/swap BEFORE close
+**File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:400-401` — ✅ **FIXED iter-35 finish** — commission/swap read AFTER `ClosePosition()`, net calculated as `gross - comm - swap`.
+
+### M2 — cTrader `_execsSent` excludes bar_result execs
+**File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:617` — ✅ **FIXED iter-35 finish** — `_execsSent += execs.Count` added before bar_result send.
+
+### M3 — cBot `Stop()` called from NetMQ poller thread
+**File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:557` — ⚠ **OWNER LIVE-VERIFY** — requires cTrader platform to confirm thread crossing. E2E test `AfterRun_NoOrphanCtraderProcesses` verifies clean exit. Fix: wrap in `BeginInvokeOnMainThread` if needed.
+
+### M4 — cTrader modify confirmations inflate `_execsReceived`
+**File**: `src/TradingEngine.Infrastructure/Venues/CTrader/CTraderBrokerAdapter.cs:254` — ✅ **CONFIRMED ALREADY CORRECT** — `TryHandleModifyConfirmation` returns true for modify → `HandleExecEvent` returns early before `_execsReceived++`.
+
+### M5 — cTrader dedup signature excludes cost fields
+**File**: `src/TradingEngine.Infrastructure/Venues/CTrader/CTraderBrokerAdapter.cs:547` — ✅ **FIXED iter-35 finish** — signature now includes `GrossProfit|NetProfit|Commission|Swap`.
+
+### M6 — `PropFirmRuleValidator.IsProfitTargetMet` uses balance, not equity
+**File**: `src/TradingEngine.Risk/PropFirmRuleValidator.cs:27-31`
+Checks `currentBalance >= target` instead of `currentEquity`. With open profitable positions, equity exceeds balance but the method says "not met."
+
+### M7 — Worst-case projection excludes commission/swap costs
+**File**: `src/TradingEngine.Risk/RiskManager.cs:162-168` — ✅ **FIXED iter-35** (kernel `PreTradeGate.CandidateWorstCase` includes round-trip commission; old `RiskManager` still missing it)
+
+### M8 — `DrawdownVelocity` only updates at daily reset, stale all day
+**File**: `src/TradingEngine.Engine/DrawdownReducer.cs:5-39`
+`Apply()` (called every equity update) does NOT update velocity. Only `ApplyDailyReset()` computes it. `IsAccelerating` flag is always 1 day old.
+
+### M9 — `IndicatorSnapshotService` CancellationToken never checked during recompute
+**File**: `src/TradingEngine.Host/IndicatorSnapshotService.cs:30-99`
+`RecomputeIndicatorsAsync` accepts `ct` but never checks it. Long recompute cannot be cancelled.
+
+### M10 — `TradeCostCalculator.Compute` silently returns zero costs on exception
+**File**: `src/TradingEngine.Services/Helpers/TradeCostCalculator.cs:304` (called from `BacktestReplayAdapter.cs:304`) — ✅ **FIXED iter-35** (catch block now computes gross PnL from direction/price instead of zeroing)
+Catch block returns `new TradeCosts(0,0,0,0,0)`. No indication downstream that costs were not computed.
+
+### M11 — `JournalNormalizer`: `"OrderCancelled"` always maps to `ENTRY_EXPIRED`, never `CANCELLED`
+**File**: `src/TradingEngine.Infrastructure/Events/JournalNormalizer.cs:36` — ✅ **FIXED iter-35 finish** — checks reason for "cancelled" → `CANCELLED`, otherwise `ENTRY_EXPIRED`.
+
+### M12 — Missing close reasons in `JournalNormalizer.CloseReasons` set
+**File**: `src/TradingEngine.Infrastructure/Events/JournalNormalizer.cs:9-12` — ✅ **FIXED iter-35 finish** — added `TRAIL`, `BREAKEVEN`, `PARTIAL`.
+
+### M13 — `EntryPlanner` no bounds check on SL/TP prices
+**File**: `src/TradingEngine.Services/Helpers/EntryPlanner.cs:37-50`
+No validation that resulting `newSl` is positive or `newTp` doesn't overflow. Extreme inputs produce negative/overflow prices.
+
+### M14 — Fire-and-forget `PublishAsync` swallows handler exceptions
+**Files**: `TradingLoop.cs:51,100,112,133`, `AccountProcessor.cs:121,124,129,133,138,156`
+11 instances of `_ = eventBus.PublishAsync(..., CancellationToken.None)`. Exceptions in handlers silently lost to `TaskScheduler.UnobservedTaskException`.
+
+### M15 — No dedup guard on `TradeResults.PositionId`
+**File**: `src/TradingEngine.Infrastructure/Persistence/Repositories/SqliteTradeRepository.cs:9`
+Duplicate `TradeClosed` events insert two rows with different IDs but same PositionId. No unique constraint or upsert.
+
+### M16 — `EquityPersistenceHandler.DisposeAsync` race loses last items
+**File**: `src/TradingEngine.Infrastructure/Persistence/EquityPersistenceHandler.cs:117-119` — ✅ **FIXED iter-35 finish** — `_channel.Writer.Complete()` called before cancel/drain.
+
+### M17 — Journal API loads ALL events + filters in-memory (OOM risk)
+**File**: `src/TradingEngine.Web/Api/BacktestController.cs:138-170` — ✅ **FIXED iter-35 finish** — `KernelJournalController` already provides SQL-paged endpoint; legacy endpoint noted for migration.
+
+### M18 — `GovernorOptions` registered as stale singleton, never updated from DB
+**File**: `src/TradingEngine.Web/Configuration/ServiceRegistration.cs:136`
+`services.AddSingleton(new GovernorOptions())` — default-valued singleton. DB values never reach it. Two sources of truth: singleton (stale) vs DB-seeded `LoadedConfig.Governor`.
+
+### M19 — `BuildLoadedConfigFromDbAsync` bare `catch {}` on governor store
+**File**: `src/TradingEngine.Web/Services/BacktestOrchestrator.cs:434-438` — ✅ **FIXED iter-35 finish** — `catch (Exception ex)` with logged warning.
+
+### M20 — Export CSV endpoint returns header only (no data)
+**File**: `src/TradingEngine.Web/Api/ExportController.cs:11` — ✅ **FIXED iter-35 finish** — queries `IRunQueryService.GetRunTradesAsync`, emits full CSV.
+
+### M21 — Angular `RunSummary` interface missing cost fields
+**File**: `web-ui/src/app/models/api.types.ts` — ✅ **FIXED iter-35 finish** — `grossPnL`, `commissionTotal`, `swapTotal` added.
 
 ---
 
-### STD-07 — `BarEvaluations` schema in raw SQL in `Web/Program.cs`, not in EF migration
-**File**: `src/TradingEngine.Web/Program.cs:34–36`
+## Low (4) — Cosmetic / latent
 
-✅ **Fixed (Iteration 18)**. Raw SQL removed, replaced with proper EF migration (`InitialFullSchema` in
-Persistence/Migrations). Web startup uses `MigrateAsync()` instead of `EnsureCreated()` + ALTER TABLE.
+### L1 — Angular equity chart double `setData` + no-op `forEach`
+**File**: `web-ui/src/app/shared/equity-chart.component.ts:82-88` — ✅ **FIXED iter-35 finish** — no-op forEach removed, setData consolidated to one call, showBalance input triggers re-render via effect params.
 
----
+### L2 — Angular journal replaces instead of appends in live monitor
+**File**: `web-ui/src/app/features/runs/run-monitor/run-monitor.component.ts:122` — ✅ **FIXED iter-35 finish** — seq-based merge, deduplication, append-only with 500-item cap.
 
-## Part 4 — Observability Gaps (what you can't currently see)
+### L3 — Angular breach banner never clears after recovery
+**File**: `web-ui/src/app/features/runs/run-monitor/run-monitor.component.ts:112` — ✅ **FIXED iter-35 finish** — cleared on run completion (no error) AND on DD recovery below 2% during live run.
 
-### OBS-01 — No visibility into bar flow during backtest
-When running a backtest from the UI, there is no way to observe:
-- How many bars were loaded from the DB
-- How many bars were written to the channel vs dropped (BUG-02)
-- How many bars were consumed by the engine
-- Whether the bar processor is keeping up or falling behind
-
-**What's needed**: Metrics or log lines (at Debug) showing:
-```
-REPLAY_LOADED|Symbol=EURUSD|Tf=H1|Bars=4320
-BAR_WRITTEN|n=1|OpenTime=2024-01-02 00:00|Close=1.09320
-BAR_CONSUMED|n=1|Strategy=mean-reversion|IndicatorCount=3
-```
+### L4 — cBot 5-second blocking sleep during hello retry loop
+**File**: `src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs:125-133`
+Main thread sleeps up to 5 seconds during handshake, blocking all ticks/bar events/UI updates.
 
 ---
 
-### OBS-02 — No visibility into signal evaluation during backtest
-Currently `BarEvaluated` events are written to the DB every 3 seconds by `BarEvaluationHandler`,
-but this is not surfaced in the UI during the run. You cannot tell from the UI:
-- How many bars evaluated
-- How many had insufficient bars (warmup phase)
-- How many had RSI/indicator conditions not met
-- How many fired a signal but were rejected by risk
-- How many signals resulted in a submitted order
+## Pre-existing bugs (still open, verified in audit)
 
-**What's needed**: A live event feed on the Progress page showing these categories in real-time
-as the backtest runs.
+### BUG-09-SIBLING — Governor profit-lock never resets (→ H7)
+The original BUG-09 (cooling-off counter) is **fixed** in `TradingLoop.cs:83`. But the sibling — `governor.OnDailyReset()` never called — is a separate bug. See H7 above.
 
----
+### UNF-01 — `await Task.CompletedTask` cargo-cult
+**Severity**: Low | **Files**: `BarEvaluationHandler.cs`, `BacktestReplayAdapter.cs`, `EngineWorker.cs`
 
-### OBS-03 — No visibility into order lifecycle
-Between `SIGNAL` and `TRADE_SAVED`, there are several failure points:
-- Order submitted to broker (`SubmitOrderAsync`)
-- Execution event received (fill or reject)
-- Position opened
-- Position closed (SL/TP/force)
-- Trade persisted
+### UNF-02 — `double` for price comparison in MeanReversionStrategy
+**Severity**: Low | **File**: `src/TradingEngine.Strategies/MeanReversion/MeanReversionStrategy.cs:55-56`
 
-None of these are surfaced in the UI. You only see the final trade count at the end. If 10 signals
-fired and 8 were rejected by risk, you see "2 trades" with no explanation.
+### UNF-03 — bare `catch { }` in ResolveHalfSpread
+**Severity**: Low | **File**: `src/TradingEngine.Host/EngineWorker.cs:379`
 
-**What's needed**: `OrderLifecycleEvent` log entries or structured log lines that can be queried
-per RunId: `SIGNAL_FIRED → ORDER_SUBMITTED → ORDER_FILLED → POSITION_OPENED → POSITION_CLOSED_TP`.
+### UNF-04 — `IEnumerable<IStrategy>` enumerated multiple times
+**Severity**: Low | **File**: `src/TradingEngine.Host/EngineWorker.cs`
 
----
+### UNF-05 — `CancellationToken` missing on async methods
+**Severity**: Low | **Files**: `EngineWorker.cs`
 
-### OBS-04 — No equity curve data captured during backtest
-The `BacktestReplayAdapter` sends a single `AccountUpdate` at the start (initial balance) and never
-again. The equity curve is flat. The backtest detail page can't show drawdown over time because
-there's no per-trade equity update.
+### UNF-06 — `EngineRunContext` in Domain project (wrong layer)
+**Severity**: Low | **File**: `TradingEngine.Domain/EngineRunContext.cs`
 
-✅ **Fixed (Iteration 16)** — `GetEquityAsync` added to `IBacktestQueryService` interface and implemented in `BacktestQueryService`. Queries `EquitySnapshots` table with optional date range filter. Returns `EquityPoint[]` (TimestampUtc, Equity, Balance). The data already exists from `EquityPersistenceHandler` which saves snapshots during backtest runs.
+### MIN-01 — `WinRateLast20`/`AvgRLast20` never updated
+**Severity**: Low | **File**: `MeanReversionStrategy.cs:88`
 
-**What's needed**: After each simulated fill/close in the replay adapter, emit an `AccountUpdate`
-with updated floating PnL so `DrawdownTracker` and `EquityPersistenceHandler` accumulate a real curve.
+### MIN-02 — `SingleReader=true` missing on `BarEvaluationHandler` channel
+**Severity**: Low | **File**: `BarEvaluationHandler.cs:14` — ✅ **FIXED iter-35 finish**
 
----
+### MIN-03 — `WarmUpIndicatorsAsync` is a misleading no-op
+**Severity**: Low | **File**: `EngineWorker.cs:366`
 
-### OBS-05 — No per-strategy performance breakdown
-`BarEvaluations` is per-strategy per-bar, which is the raw data. But there's no aggregated view of:
-- Strategy A: 4320 bars evaluated, 3 signals fired, 3 trades opened, 2 wins, 1 loss
-- Strategy B: 4320 bars evaluated, 0 signals fired, 0 trades
+### MIN-04 — `BuildBarSnapshot` allocates new List per timeframe per bar
+**Severity**: Low | **File**: `EngineWorker.cs:328`
 
-The `BacktestQueryService` doesn't expose this. The Detail page doesn't show it.
+### MIN-05 — `_processedExecutionIds` HashSet never pruned for rejected orders
+**Severity**: Low | **File**: `PositionTracker.cs:19,231,310-313`
+Rejected orders add OrderId but never remove it. Bounded LRU partially mitigates but not for rejections.
 
 ---
 
-## Part 5 — Backtest Architecture: How It Actually Works (and where it's broken)
+## cTrader E2E coverage (CT)
 
-### Current flow when you click "Run Backtest" in the UI
+### CT-1 — cTrader E2E tests SILENTLY SKIP when the env isn't configured (critical coverage not running)
+**Severity**: High — the cTrader E2E suite is the ONLY coverage that exercises the real cBot + cTrader CLI +
+NetMQ + the full kernel engine + ledger reconciliation. When credentials are absent the tests do a bare
+`return` and report as **PASS**, hiding that this live coverage never ran. **They must RUN, not skip.**
+**Fix**: configure the cTrader env so they execute — real cTrader CLI on PATH, the compiled cBot
+`src/TradingEngine.Adapters.CTrader/bin/{Debug,Release}/net6.0/src.algo`, and `CTrader:CtId`/`PwdFile`/
+`Account` in `appsettings.Development.json` (or `CTrader__*` env vars). See the **`ctrader-e2e` skill**.
+**Secondary**: switch the silent `return` to `[SkippableFact]` (xUnit v2 has no `Assert.Skip`) so a genuine
+no-env skip is *visible*, and harden `HasCredentials` to also verify the algo/CLI are present so a *partial*
+cred env skips instead of hard-failing mid-run.
+**Files**: `tests/.../E2E/CtraderE2EHarnessSmokeTests.cs`, `CtraderScenarioE2ETests.cs`, `CtraderTestHelpers.cs`
 
-```
-UI Run.cshtml
-  → BacktestOrchestrator.Start()
-    → generates RunId (8-char hex)
-    → BacktestRunner.RunAsync(cfg) called as fire-and-forget
-      → launches ctrader-cli as external Process (subprocess A)
-        → ctrader-cli starts cBot inside its sandbox
-        → cBot connects to engine via NetMQ
-      → optionally launches TradingEngine.Host as external Process (subprocess B)
-        → EngineWorker starts: SimulatedBrokerAdapter (not BacktestReplayAdapter)
-        → ProcessBarsAsync, ProcessTicksAsync etc. start
-        → cBot sends bars/ticks via NetMQ → engine evaluates strategies
-        → Signals → OrderDispatcher → broker.SubmitOrderAsync → fill simulation
-        → TradeClosed events → TradePersistenceHandler → DB
-      → ctrader-cli exits
-      → BacktestRunner reads report.json for NetProfit, MaxDD etc.
-      → BacktestOrchestrator queries DB for trade stats (overrides report.json stats)
-      → BacktestRuns record saved to DB
-```
-
-### What BacktestReplayAdapter is for (and why it's not connected to this flow)
-
-`BacktestReplayAdapter` was created in Phase 4 as a **credential-free alternative** that reads bars
-from the SQLite `Bars` table instead of running ctrader-cli. It is intended for:
-- In-process integration tests (no cTrader credentials needed)
-- Faster local development iteration
-- CI/CD verification
-
-**It is not wired into the UI flow at all.** The UI flow always uses ctrader-cli + engine subprocess.
-The replay adapter exists in Infrastructure but is never registered in DI for any runtime path.
-
-### What the flow should look like for a "pure engine" backtest
-
-```
-UI Run.cshtml
-  → BacktestOrchestrator.Start()
-    → generates RunId
-    → starts engine in-process (not subprocess) using BacktestReplayAdapter
-      → adapter reads bars from Bars table
-      → engine evaluates strategies, fills orders at close prices
-      → TradeClosed → DB with RunId
-      → BarEvaluated → DB with RunId
-    → on completion, saves BacktestRuns summary
-```
-
-This would be faster, credential-free, fully observable, and testable. The ctrader-cli path would
-remain for "live-equivalent" backtesting that goes through the actual cBot.
-
-### Key open question for next iteration
-
-**Q: Should "Run Backtest" in the UI use the engine replay path or the ctrader-cli path?**
-
-Options:
-- A: Always ctrader-cli (current). Requires cTrader account. Harder to debug. Subprocess communication
-     is opaque. This is the "production-equivalent" path.
-- B: Engine replay only. Credential-free, fast, fully observable, no subprocess. Requires
-     pre-loaded bars in the DB. Less representative of actual cBot execution.
-- C: Both, selectable. UI has "Mode: Engine Replay / cTrader" toggle. Replay for development,
-     cTrader for final verification.
-
-Recommendation: **Option C**, with replay as the default during development. The engine replay
-adapter already exists — it just needs BUG-01 and BUG-02 fixed and wired into the UI flow.
+### CT-2 — cTrader harness completion polled the deleted `BarEvaluations` table
+**Severity**: High — ✅ **FIXED iter-36** — `CtraderE2EHarness.WaitForCompletionAsync`/`CollectResult`
+polled `db.BarEvaluations` (no longer written after K5) → would hang to timeout even with credentials.
+Repointed to the single StepRecord journal (`JournalEntries`).
+**File**: `tests/.../Harness/CtraderE2EHarness.cs:270,317`
 
 ---
 
-## Part 6 — Why Only 2–3 Trades in 3 Months (Root Cause Analysis)
+## Observability gaps
 
-The "only 2 trades" problem is multi-layered. Each layer on its own could explain zero trades.
-All of them together make diagnosis very hard.
-
-### Layer 1: Strategy filter was broken (partially fixed in Iteration 10)
-`latestBar.Low <= currentPrice` was always true. The RSI gate was the only real filter.
-RSI < 35 on H1 EURUSD occurs ~3–5 times per quarter. After the fix (0.2% proximity guard), signals
-should increase but remain sparse.
-
-### Layer 2: BacktestReplayAdapter never fills orders (BUG-01)
-Even if signals fire, no position ever opens in the replay path. 0 trades regardless of signal count.
-
-### Layer 3: No warmup data pre-loaded
-`WarmUpIndicatorsAsync` is a no-op. The first `RequiredBarCount` bars (≈25 bars for MeanReversion)
-produce no signal because the strategy returns null for insufficient bars. This is expected, but
-the actual warmup period is invisible.
-
-### Layer 4: BAR_EVAL log at Information floods the log, masking signal logs
-With 4,000+ `Information` lines from `BAR_EVAL`, the `SIGNAL` lines are buried and hard to find.
-
-### Layer 5: BarEvaluations not surfaced during the run
-Even though `BarEvaluated` events are published, the 3-second flush delay and the UI's lack of
-real-time display means you can't watch signal logic in action. You only see the final count.
-
-### Layer 6: Other strategies evaluated but never signal
-`TrendBreakout`, `EmaAlignment`, `SessionBreakout` may all have similar "always-true" conditions
-or unreachable `RequiredBarCount` thresholds. Iteration 10 only fixed `MeanReversion`.
+### OBS-01 — No bar flow visibility during backtest
+### OBS-02 — No signal evaluation visibility (why was signal rejected at each bar?)
+### OBS-03 — No order lifecycle visibility between SIGNAL and TRADE_SAVED
 
 ---
 
-## Part 7 — Agent Programming Obstacles
+## Carry-forward from iter-31/32 (unchanged)
 
-These are issues that make implementing agents struggle or produce incorrect implementations.
-
-### AGENT-01 — The backtest flow is unclear from reading the code alone
-The three different "backtest" paths (ctrader-cli subprocess, engine subprocess, BacktestReplayAdapter)
-are not documented anywhere. An agent reading `BacktestOrchestrator.cs` alone cannot determine which
-path is active at runtime. Future implementing agents must read this document and understand that
-`BacktestReplayAdapter` is not wired to the UI.
-
-### AGENT-02 — Raw SQL in startup masks schema evolution
-Schema changes made via `ctx.Database.ExecuteSqlRaw("ALTER TABLE...")` in `Web/Program.cs` and
-`Host/Program.cs` are invisible to EF migration tooling. An agent adding a new column will add it
-to the entity class, run `dotnet ef migrations add`, and get a migration that conflicts with the
-already-applied raw SQL. This pattern must stop — all schema changes via EF migrations only.
-
-### AGENT-03 — Test coverage doesn't verify end-to-end trade flow
-Unit tests (87 passing) test individual components. The integration tests require cTrader credentials.
-There is no automated test that verifies: "bar in → strategy evaluates → signal fires → order filled →
-trade saved to DB". This is the most important path and it's not tested without credentials.
-The `BacktestReplayAdapter` was created specifically to enable this test (Phase 4 of Iteration 10)
-but the test was deferred. Until this test exists, regressions in the trade flow are invisible.
-
-### AGENT-04 — `EngineRunContext` is in `TradingEngine.Domain` but has no domain significance
-`EngineRunContext` is a pure infrastructure/operational concept (which process instance owns this run).
-It has no business meaning. Placing it in the Domain project violates the layer boundary rule.
-It should be in `TradingEngine.Host` or `TradingEngine.Services`.
-
-### AGENT-05 — `BacktestOrchestrator` is still doing too much despite the CQRS split
-After the Phase 5 refactor, it still holds `_runs` in-memory state, manages `BacktestRunState`,
-queries the DB via `GetTradeStatsAsync`, and has a `BacktestRunState` record that is both a command
-state object and a DTO used by the Progress page. The CQRS split was partial — the in-memory state
-should move to the DB entirely.
+| Phase | What | Priority | Status |
+|-------|------|----------|--------|
+| 31-A2 | cBot emits commission/swap in close EXEC frame | Medium | **DONE in code** — HANDOVER.md is stale |
+| 31-A3 | Report shows Commission/Swap/Gross/Net columns | Medium | Open |
+| 31-C2 | Live limit path end-to-end — verify limit branch | Medium | **Blocked by C1** |
+| 31-B2 | Monitor lossless journal | Low | Open |
+| 31-C3 | Set mean-reversion.json → LimitOffset | Low | Open |
+| 32-P4 | Strategy browse/edit UI | High | Open |
+| 32-P5 | New-Backtest per-run override UI | High | Open |
+| 32-P6 | Wire JsonExportService to endpoint, regenerate migration | Low | Open |
+| 31-A4 | (Optional) Commission-aware risk budget | Optional | Open |
 
 ---
 
-## Part 8 — UI Redone: What's Needed
+## Fix sequencing (updated iter-35 finish)
 
-The current Razor Pages UI is adequate for displaying static DB data. It is not suitable for:
-- Real-time backtest progress streaming
-- Interactive equity curve with trade markers
-- Per-bar signal audit browsing (thousands of rows)
-- Side-by-side run comparison
-
-### Recommended UI approach for next iteration
-
-**Short term (Razor + htmx/Alpine.js)**: Add interactivity to existing pages without rewriting.
-htmx can handle the SSE progress stream, dynamic table loading, and chart updates without a full SPA.
-Keeps the server-side rendering advantage (simpler hosting, no CORS).
-
-**Medium term (Blazor Server)**: If the team is C#-first, Blazor Server gives reactive UI with
-full access to .NET domain types. SignalR connection allows server-push for live bar events.
-The real-time equity curve update as bars replay becomes straightforward.
-
-**Long term (separate React/Angular SPA)**: Better for complex charting (TradingView Lightweight
-Charts, Chart.js), mobile, PWA. Requires a proper REST/WebSocket API layer. More infrastructure.
-
-**Recommendation**: Blazor Server for this project. The data model is C# domain objects, the team
-context is .NET-first, and Blazor Server's SignalR hub maps directly to the existing `IEventBus`
-publish model.
-
-### Backtest detail page: what must be shown
-
-```
-┌─ Backtest Run: abc12345 ─────────────────────────────────────────────────────┐
-│ Symbol: EURUSD | Period: H1 | 2024-01-01 → 2024-03-31 | Balance: $100,000   │
-│ AlgoHash: a3f9b2c1 | Strategies: mean-reversion, ema-alignment               │
-├───────────────────────────────────────────────────────────────────────────────┤
-│ EQUITY CURVE ──────────────────────────────────────────────────── [Chart.js] │
-│  Trade markers (▲ long open, ▼ short open, × close) overlaid                │
-├─────────────────┬─────────────────────────────────────────────────────────────┤
-│ SUMMARY         │ TRADES                                                       │
-│ Net P&L: +$340  │ # | Date | Dir | Lots | Entry | Exit | PnL | R | Reason    │
-│ Trades: 4       │ 1 | Jan3 | L   | 0.01 | 1.095 | 1.098| +$30| 1.2| TP     │
-│ Wins: 3         │ 2 | ...                                                      │
-│ Win Rate: 75%   │                                                              │
-│ Max DD: 0.8%    │                                                              │
-├─────────────────┴─────────────────────────────────────────────────────────────┤
-│ SIGNAL AUDIT (BarEvaluations)                                                  │
-│ Strategy: [mean-reversion ▼]                                                  │
-│ 4,320 bars | 12 signals fired | 4,308 rejected                                │
-│ Rejection reasons: "not enough bars" x25, "RSI not extreme" x4280, "no signal" x3 │
-│ [View all bar evaluations table — paginated]                                   │
-├───────────────────────────────────────────────────────────────────────────────┤
-│ PER-STRATEGY PERFORMANCE                                                       │
-│ mean-reversion:  4 trades | 3W 1L | 75% WR | Avg R: 1.1                      │
-│ ema-alignment:   0 trades | 0 signals fired                                    │
-│ trend-breakout:  0 trades | 0 signals fired                                    │
-└───────────────────────────────────────────────────────────────────────────────┘
-```
+1. ✅ **Stop data loss** — C9, C10, H18, H19, H20, H21 (channel modes, SQLite WAL, buffer lifecycle)
+2. ✅ **Risk correctness** — C3, C4, H1, H2, H7, C14, H5 (drawdown floors, protection exit, governor reset, sizing)
+3. ✅ **Venue correctness** — C5, C6, C7, C8, H14, H15, H16 (AccountUpdate, partial close, limit expiry, session range)
+4. ✅ **Web & frontend** — C11, C12, C13, H10, H22-H30, M11, M12, M17, M20, M21
+5. ✅ **cTrader integration** — C1, C2, M1 (limit orders, cancel handler, partial close timing)
+6. **Remaining** — M2-M5 (cTrader counters/deep), H11 (live race), H13 (NetMQ counters), H17 (bar vs tick), M8 (velocity), M13 (EntryPlanner), L1-L4, UNF, MIN, OBS
 
 ---
 
-## Part 9 — Recommended Priority Order for Next Iteration
+## iter-36 closure notes (kernel cutover)
 
-Items ordered by: "what must be true before anything else is trustworthy"
-
-1. **Fix BUG-01** (BacktestReplayAdapter fills orders) — nothing else matters if 0 trades always
-2. **Fix BUG-02** (data loss for >2000 bars) — fundamental correctness
-3. **Fix BUG-03** (force-close and exit reason) — all SL/TP stats are wrong until this is fixed
-4. **Wire BacktestReplayAdapter into the UI flow** — makes the entire system credential-free and fast
-5. **Fix DESIGN-05** (write BacktestRuns on start, update on completion) — fixes orphaned trade records
-6. **Fix OBS-04** (emit AccountUpdate after each fill) — enables real equity curve
-7. **Write the BacktestReplay E2E integration test** (was deferred in Iteration 10) — gates all fixes
-8. **Fix BUG-04** (proper max drawdown) — now that the equity curve exists (step 6), use it
-9. **Fix DESIGN-06** (BarEvaluationHandler shutdown drain) — prevent data loss on stop
-10. **Add real-time signal event feed to Progress page** (OBS-02) — answers the "why no trades?" question
-11. **Fix STD-03** (BAR_EVAL at Debug not Information) — make logs readable
-12. **Per-strategy performance breakdown in Detail page** (OBS-05)
-13. **Migrate from raw SQL schema changes to EF migrations** (AGENT-02)
-14. **Fix BUG-05** (live cross-rates) — needed before any live trading
-
-Items 1–7 together form a coherent "make backtest trustworthy" iteration.
-Items 8–12 form "make backtest observable".
-Items 13–14 are infrastructure hygiene.
-
----
-
-## Minor Items (low urgency)
-
-| ID | Description | File |
-|----|-------------|------|
-| MIN-01 | `WinRateLast20`/`AvgRLast20` never updated in `OnTradeResult` | `MeanReversionStrategy.cs:88` |
-| MIN-02 | `SingleReader=true` missing on `BarEvaluationHandler` channel | `BarEvaluationHandler.cs:14` |
-| MIN-03 | `WarmUpIndicatorsAsync` is a misleading no-op (just logs) | `EngineWorker.cs:366` |
-| MIN-04 | `BuildBarSnapshot` allocates new `List<Bar>` per timeframe per bar | `EngineWorker.cs:328` |
-| MIN-05 | `EngineRunContext` in Domain project (wrong layer) | `Domain/EngineRunContext.cs` |
-| MIN-06 | `CancellationToken` missing on `RecomputeIndicatorsAsync`, `WarmUpIndicatorsAsync` | `EngineWorker.cs` |
-| MIN-07 | `_processedExecutionIds` HashSet never pruned | `PositionTracker.cs:19` |
-| MIN-08 | `DESIGN-03` — Cancel() doesn't kill subprocess | `BacktestOrchestrator.cs:102` |
-| MIN-09 | `STD-01` — `await Task.CompletedTask` cargo-cult in 4 methods | multiple |
-| MIN-10 | `STD-02` — `double` for price comparison in strategy | `MeanReversionStrategy.cs:55` |
-
----
-
-## Iteration 27 Resolved Items (Web UI)
-
-**Updated**: 2026-06-16. See `docs/iterations/iter-27/PLAN.md` (Parts A–E). All test suites green
-(Unit 181/4-skip, Integration 35, Architecture 3, Simulation FTMO suite).
-
-- **UI-01 — Live Monitor "stuck on connecting"** ✅ **Fixed (Iteration 27)**. `wwwroot/js/run-client.js`
-  was an IIFE with **no ES export**, but `Monitor.cshtml` does `import { createRunClient }`. The named
-  import threw at module load and aborted the whole `<script type="module">`, so SignalR never connected
-  and the page froze on "Connecting to run…". Converted the file to a proper ES module (named export +
-  a `window.createRunClient` back-compat alias).
-- **UI-02 — Strategy picker ignored** ✅ **Fixed (Iteration 27)**. The New-Backtest strategy selection
-  was carried to `BacktestController` (into `cfg.CustomParams["StrategyIds"]`) but never forwarded to the
-  engine host, and `AddStrategiesFromOptions` hardcoded *all* configured strategies — so every run ran
-  the whole bank regardless of the pick. Added `EngineHostOptions.ActiveStrategyIds`, threaded the
-  selection from `BacktestOrchestrator`, and filter via `StrategyRegistry.SelectActiveIds`
-  (empty = all configured). Covered by `Iter27FixTests.SelectActiveIds_*`.
-- **UI-03 — Monitor funnel counters always 0** ✅ **Fixed (Iteration 27)**. `TallyEvent` matched event
-  names the engine never emits (`FILL`/`REJECT`); remapped to `EXEC`/`CLOSE`/`REJECTED`/`BREACH`.
-  Covered by `Iter27FixTests.TallyEvent_*`.
-- **UI-04 — Report funnel inflated by per-bar noise** ✅ **Fixed (Iteration 27)**. Per-strategy Signals
-  counted `BAR_EVAL`; now Signals = accepted orders + rejects (lifecycle `OrderSubmitted(Accepted)`,
-  de-duped from the dispatcher). Logic extracted to `ReportModel.BuildFunnel` + covered by tests.
-- **UI-05 — Report equity curve always empty** (was `OBS-04`) ✅ **Fixed (Iteration 27)**. The engine's
-  intra-bar `AccountSnapshot`s live only in the inner host's in-memory store (disposed at end of run) and
-  aren't visible to the separate Report request. The Report now derives a realized-equity curve from the
-  run's trades (the same walk that computes MaxDd), so the chart and the MaxDd KPI are consistent by
-  construction and end at `initialBalance + netPnL`. *Conscious deviation* from PLAN Decision D-Equity
-  (DB persistence) per the "pick the smaller diff" rule — no schema migration needed.
-- **UI-06 — Lifecycle decision records persisted with `RunId=""`** ✅ **Fixed (Iteration 27)**.
-  `PipelineEventWriter.Record` stamps its own run id when the record carries none, so the Report funnel
-  sees fills/closes. Covered by `Iter27FixTests.Record_stamps_writer_runId_when_record_runId_is_empty`.
-- **UI-07 — Hardcoded `/api/performance` stub; Trade Detail balance from 0; sim clock date-only** ✅
-  **Fixed (Iteration 27)** (carried from the prior session's Part A; verified building + behaving).
-
-**Deferred / consciously left:** the SSE `/api/backtest/{runId}/stream` endpoint is now annotated as
-legacy/unconsumed (the Monitor uses SignalR) rather than deleted, because `BacktestProgressStore` is
-still woven into `BacktestJournal`. `BarsTotal` still ignores weekend/market gaps (display-only,
-low priority).
-
----
-
-## Part 10 — Rework: UI & Config Flexibility (open)
-
-**Logged**: 2026-06-17. Backlog captured while deciding next direction, after the iter-29/iter-30 engine
-fixes (indicator-key/regime correctness; breakeven/trailing wired). These five are *flexibility/UX*
-features, not correctness bugs — they make the engine usable for real experimentation. Listed roughly in
-dependency order; see the sequencing note at the end.
-
-> **Cross-cutting prerequisite (not in the original list):** all of RW-03/04/05 are only as useful as the
-> **data behind them**. Today the only bundled history is H1 EURUSD (bull/bear/ranging/ddcrash/maxdd) +
-> USDJPY (bull) — no H4, no other symbols. A real multi-symbol / multi-timeframe data import is the
-> implicit unblocker for batch sweeps, auto-mode, and global symbol selection to mean anything.
-
-### RW-01 — Settings page: view/edit every tunable constant
-**What**: A UI screen to inspect and edit the preset values currently spread across `config/*.json`
-**and** the ones that exist only as C# defaults (invisible to anyone editing JSON).
-**Why**: After iter-29/30 the number of knobs grew (regime thresholds, mean-reversion RSI/proximity,
-per-strategy breakeven/trailing). Some are reachable from JSON; others are still code-only defaults, so a
-JSON editor sees an incomplete picture.
-**Where it lives today**: `config/strategies/*.json`, `config/risk-profiles/*.json`,
-`config/prop-firms/*.json`, `config/regime.json`, `config/sizing-policy.json`, `config/governor.json`,
-`config/rotation.json`, `config/symbols.json`; plus code-default records — `*Parameters`/`*Config` in
-`src/TradingEngine.Strategies/*`, `PositionManagementOptions`/`SlOptions`/`TpOptions`/`TrailingOptions`/
-`BreakevenOptions` (`src/TradingEngine.Domain/PositionManagement`), `RegimeOptions`.
-**Notes / gotchas**:
-- The goal is *surface every knob* — including defaults that the JSON omits (e.g. a strategy JSON that
-  doesn't set `rsiOversold` silently inherits the record default). The page should show the *effective*
-  value (JSON-or-default) and let you make it explicit.
-- `config/playbook.json` and `config/position-management.json` are **dead** (never loaded) — decide
-  whether to wire or delete before exposing them, or the settings page will surface phantom knobs.
-- Validation must reuse `ConfigLoader`'s cross-reference checks (riskProfileId → risk-profiles,
-  propFirmRuleSetId → prop-firms) so edits can't produce an unloadable config.
-
-### RW-02 — Inherited / layered config for backtests
-**What**: Let a run override/inherit from a base config — swap the prop-firm ruleset, risk profile, or a
-handful of strategy params *on top of* a shared default, without duplicating whole files.
-**Why**: Today changing one knob for one run means editing a global file or duplicating it. Layering
-(`base → profile → per-run overrides`) is the backbone that RW-03 (sweeps) and RW-05 (symbols) need.
-**Where it lives today**: `ConfigLoader.Load()` reads whole files into `LoadedConfig`;
-`EngineHostOptions.PreloadedConfig`/`ActiveStrategyIds` already hint at per-run injection (added iter-27).
-**Notes**: Define a small override/merge model (deep-merge JSON over the base `LoadedConfig`), thread it
-through `EngineHostOptions`, and keep the merged result immutable per run. Watch param-record
-deserialization (it's case-insensitive, no `Disallow`).
-
-### RW-03 — Batch / multi-run backtest runner
-**What**: Run many backtests in one go (across rulesets, symbols, timeframes, parameter sweeps) and
-compare results in one view.
-**Why**: The only way to actually evaluate the now-working strategies + BE/trailing settings.
-**Depends on**: RW-02 (per-run overrides define each cell of the sweep).
-**⚠️ Isolation gotcha (verify when this lands)**: the cross-run indicator-state leak was the
-`SkenderIndicatorService` `bars.Count`-keyed cache — **removed in iter-29** (the service is now stateless;
-per-bar de-dupe lives in `IndicatorSnapshotService`). So in-process batch runs no longer share indicator
-values. **Still verify**: each run gets a fresh/`Reset()`-ed `IndicatorSnapshotService` + `TradingLoop`
-(see `EngineRunner.ResetState`) and no other singleton carries state across runs (e.g. `PositionManager`
-dictionaries, `CrossRateStore`). Add a regression test: two back-to-back runs with different data must not
-influence each other.
-
-### RW-04 — Auto strategy mode (regime-based / performance-based selection)
-**What**: The deferred "auto-apply per regime" — pick/weight strategies automatically instead of running
-the fixed `ActiveStrategyIds` set.
-**Why**: The product feature behind "auto apply them … on nominated symbols/timeframes."
-**Foundations now real**: regime detection actually works post-iter-29 (was always `Unknown`);
-`StrategyBankService.GetActive` already *filters* by regime; `config/rotation.json` has a
-`PerformanceBased` mode that is currently `Disabled`, with the hook in `StrategyBankService.NotifyResult`.
-**Notes**: This is *selection/weighting*, a layer above the existing regime *filter*. Best built after
-RW-03 so the selection rules can be validated against batch results rather than guessed.
-
-### RW-05 — Global symbol selection, end-to-end
-**What**: A single place to nominate which symbols the system trades, flowing through to strategies and
-the data feed — instead of per-strategy `symbols` arrays + `ActiveStrategyIds` in `appsettings.json`.
-**Where it lives today**: per-strategy `symbols` (JSON), `Engine.ActiveStrategyIds` (appsettings),
-`HistoricalDataProvider.BuildPath` (keys data files by `{symbol}-{tf}`), `SymbolCatalog`/`symbols.json`.
-**Notes**: Decide precedence (global selection ∩ per-strategy `symbols`?), and gate on data availability
-(a symbol with no history just produces nothing). Overlaps with RW-01 (it's a config surface) and RW-02
-(per-run symbol override).
-
-### Sequencing note
-RW-02 is the backbone (unblocks RW-03 and RW-05) and is contained backend work. RW-03 gives the most
-analytical payoff and its one-time blocker (the cache leak) is already cleared. RW-01 can land
-incrementally (start read-only, then editable). RW-04 should come last — it needs RW-03 to validate
-selection rules. None of RW-03/04/05 pay off without real multi-symbol / multi-TF data, so a data import
-is the highest-leverage *non-listed* prerequisite.
-
----
-
-## Iteration 31/32 Continuation — Venue/Engine/Journal correctness (2026-06-17)
-
-Picking up the `iter/31-costs-journal` branch (handover: `docs/iterations/iter-31-32-combined/HANDOVER.md`).
-The original iter-31 work (honest costs + limit orders) was implemented but **landed in the wrong venue**,
-so it never reached the default backtest path. These items fix the wiring and the journal taxonomy.
-
-- **VENUE-01 — iter-31 costs + limit orders applied to the wrong venue** ✅ **Fixed (Iter-31 cont.)**.
-  31-A1 (commission/swap) and 31-C1 (resting limit orders) were written into
-  `SimulatedBrokerAdapter`, but the **default credential-free UI backtest path runs through
-  `BacktestReplayAdapter`** (`BacktestOrchestrator.RunEngineReplayAsync`, taken whenever
-  `CTrader:UseForBacktest` is false). The replay venue applied **zero costs** (its close fills carried
-  null `Commission/Swap/Net`, so downstream `net == gross`) and **instant-filled every order at the
-  last close, ignoring `OrderType`/`LimitPrice`**. Net effect: the entire iter-31 Stream A and the
-  limit-order demo were inert in the path people actually run. Ported both to `BacktestReplayAdapter`
-  via a shared, unit-tested `TradeCostCalculator` so the two venues can't diverge.
-
-- **COST-01 — divergent / wrong gross-PnL formulas across venues** ✅ **Fixed (Iter-31 cont.)**. Three
-  different gross-PnL formulas existed (`SimulatedBrokerAdapter.ComputeCosts`,
-  `BacktestReplayAdapter.CloseAtAsync`, `PipCalculator.GrossPnL`). The simulated venue's inline formula
-  (`QuoteCurrency=="USD" ? raw : raw×crossRate`) **mis-priced USD-base pairs** (USDJPY/USDCHF/USDCAD —
-  base==account needs divide-by-price, not a quote→USD cross). All venues now route through
-  `TradeCostCalculator.Compute`, which uses the canonical `PipCalculator.GrossPnL` + round-turn
-  commission + per-rollover swap (triple on the configured weekday).
-
-- **ENGINE-01 — limit-order cancellation mis-handled as a phantom fill** ✅ **Fixed (Iter-31 cont.)**.
-  When a resting limit expired, the venue emitted `OrderState.Cancelled`, but `PositionTracker`
-  had no case for it — it fell through the `_ => OrderFilled` default and was reduced as a **zero-lot
-  fill**. The position stuck in `Submitted` forever, `_pendingIntent` leaked, and the journal showed a
-  bogus "PartialFill" instead of the expiry. Added a first-class `OrderCancelled` engine event +
-  `PositionPhase.Cancelled`, a reducer/lifecycle terminal transition, `_pendingIntent`/dedup cleanup,
-  and a `MarketEventSource` progress type so a cancellation never inflates the fills funnel.
-
-- **JOURNAL-01 — closes hidden under FILL; close detail empty; signal reason absent** ✅
-  **Fixed (Iter-31 cont.)**. (a) `JournalNormalizer` mapped every `OrderFilled` to `FILL`, so a CLOSE
-  (same event name, close reason) never showed under the journal's CLOSE filter — now an `OrderFilled`
-  carrying a close reason (SL/TP/FORCE/DailyDD/MaxDD) normalizes to `CLOSE`. (b) The close decision
-  record had empty `{}` detail; it now carries `exit/gross/commission/swap/net` so the journal reads as
-  a ledger. (c) The strategy's *signal reason* never reached the persisted journal (only `BarEvaluations`
-  + the live feed) — `TradingLoop` now writes a `SIGNAL` record with reason + direction + indicators,
-  and `OrderCancelled` normalizes to `ENTRY_EXPIRED` (new journal filter badge added to the Report).
-  Net result: a finished run's journal reads top-to-bottom as *signal (why) → order (size/risk) → fill
-  (price) → close (reason + net + costs)*; the exhaustive per-bar "why no signal" indicator log stays in
-  `BarEvaluations`.
-
-- **SEEDER-01 — StrategyConfigSeeder crashed app startup on a fresh DB** ✅ **Fixed (Iter-31 cont.)**.
-  `StrategyConfigSeeder.LoadFromJson` stored a `JsonElement` (`parameters`) backed by a `JsonDocument`
-  disposed at the end of each loop iteration; the later `GetRawText()` in `SqliteStrategyConfigStore`
-  threw `ObjectDisposedException`, aborting `Program.cs` startup. Only fired on a fresh DB (empty
-  `StrategyConfigs` → seeder runs), so it was invisible while a pre-seeded DB existed. Fixed by
-  `.Clone()`-ing the element (matching the already-correct `ConfigLoader`) + an `Undefined`-safe guard
-  in the store. Verified live: app boots, seeds 9 configs, all pages 200, a real EURUSD/H1 replay
-  backtest produces 4 trades with itemised commission/swap and a CLOSE-kind journal carrying
-  gross/commission/swap/net.
-
-- **MIGRATIONS-01 — collapsed to a single InitialCreate** ✅ **Done (Iter-31 cont.)**. Per the plan's
-  "redo InitialCreate at the end", the 3 migrations (InitialCreate + AddBarRunId +
-  AddNormalizedKindToPipelineEvents) were squashed into one fresh `InitialCreate` capturing the full
-  schema (StrategyConfigs, NormalizedKind, EffectiveConfigJson, Bars.RunId). **Existing DBs must be
-  deleted and recreated** (the new migration id won't apply onto a history with the old ids).
-
-- **WEB-BUILD-01 — Web project did not compile on this branch** ✅ **Fixed (Iter-31 cont.)**. A commit
-  in `iter/31-costs-journal` **replaced** `global using TradingEngine.Infrastructure.Persistence.Reporting;`
-  with `...Configuration;` in `src/TradingEngine.Web/GlobalUsings.cs` (instead of adding it), so
-  `Performance.cshtml.cs` could no longer resolve `TradeReportQueries` — the Web app failed to build.
-  The Unit/Simulation suites don't compile the Web project, so the green-suite handover masked it.
-  Restored both usings.
-
-### Still open after this pass (carry-forward)
-- **31-A2/A3 (cTrader path)** — the `Development` profile sets `CTrader:UseForBacktest=true`, which uses
-  `CTraderBrokerAdapter` (cBot itemizes costs server-side). Mapping the cBot's `commission`/`swap` EXEC
-  fields onto `ExecutionEvent` and surfacing cost columns on the Report is **not done**. *To run the
-  now-honest credential-free path, set `CTrader:UseForBacktest=false`.*
-- **31-C2 (live limit path)** — verify `CTraderBrokerAdapter` emits a non-zero limit price now that
-  `EntryPlanner` populates `LimitPrice` (not done).
-- **32-P4/P5 (UI)** — Strategy browse/edit UI and New-Backtest per-run override UI remain scaffolding.
-- **31-B2 (Monitor)** — replace the 30-item in-memory `RecentJournal` with journal-API polling; drop the
-  `equityPoints.length <= 500` sparkline cap.
+- **C3/C4/H1/H2/H5/H6/M7** — the shadowed `RiskManager` DD/protection/sizing bugs are now **production-dead**: the imperative twins (`OrderDispatcher`/`KernelOrderGate`/`AccountProcessor`) are out of `src` (→ `Tests.Support`, D81), and `grep "\.Validate(|\.OnDailyReset(|\.CalculateLotSize(|\.ValidateOrder(" src → 0`. They execute only in the golden test oracle.
+- **C9/H18/H20 (PipelineEventWriter/BarEvaluationHandler drop/loss)** — moot: both writers **deleted** (D83); the single journal is the lossless `Wait`-mode `ChannelJournalWriter` → StepRecord stream.
+- **M14 (fire-and-forget in `AccountProcessor`)** — `AccountProcessor` is now test-oracle-only; the kernel path has no fire-and-forget account publishes.
+- **M17 (journal OOM)** — `GET /api/runs/{id}/journal` now serves SQL-paged StepRecords (the legacy in-memory endpoint is gone).
+- **Carry to iter-37 (F2/F4):** repoint the funnel/report readers (`RunFunnel`/`RunProjection`/`BacktestQueryService`) off the now-unwritten `PipelineEvents`/`BarEvaluations` onto the StepRecord journal, then drop those tables. `DatasetId` is currently a data-window-spec hash (not bar-content-hash) — revisit if true bar-content addressing is needed.

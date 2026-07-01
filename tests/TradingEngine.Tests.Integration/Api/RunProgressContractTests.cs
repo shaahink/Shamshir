@@ -58,7 +58,9 @@ public sealed class RunProgressContractTests
             "equity", "balance", "openPositions",
             "dailyDdPct", "maxDdPct", "distanceToDailyLimit",
             "governorState", "governorReason",
-            "counters", "recentJournal"
+            "counters", "recentJournal",
+            // iter-strategy-system P3: multi-pass context.
+            "currentPass", "passIndex", "passTotal"
         ];
 
         foreach (var field in required)

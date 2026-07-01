@@ -1,12 +1,17 @@
 namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class BacktestRunEntity
+public sealed class BacktestRunEntity : IAuditableEntity
 {
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
+
     public string RunId { get; set; } = "";
     public DateTime StartedAtUtc { get; set; }
     public DateTime CompletedAtUtc { get; set; }
     public string Symbol { get; set; } = "";
     public string Period { get; set; } = "";
+    public string Symbols { get; set; } = "[]";
+    public string Periods { get; set; } = "[]";
     public DateTime BacktestFrom { get; set; }
     public DateTime BacktestTo { get; set; }
     public decimal InitialBalance { get; set; }
@@ -14,6 +19,9 @@ public sealed class BacktestRunEntity
     public string StrategyParamsJson { get; set; } = "{}";
     public string? EffectiveConfigJson { get; set; }
     public decimal NetProfit { get; set; }
+    public decimal GrossPnL { get; set; }
+    public decimal CommissionTotal { get; set; }
+    public decimal SwapTotal { get; set; }
     public decimal MaxDrawdownPct { get; set; }
     public int TotalTrades { get; set; }
     public int WinningTrades { get; set; }
@@ -21,4 +29,24 @@ public sealed class BacktestRunEntity
     public int ExitCode { get; set; }
     public string? ErrorMessage { get; set; }
     public string? ReportJsonPath { get; set; }
+    public string? DatasetId { get; set; }
+    public string? ConfigSetId { get; set; }
+    public int Seed { get; set; }
+    public string? ParentRunId { get; set; }
+
+    // iter-strategy-system P2 (D5): persist the run's full selection so the report shows exactly what was
+    // run. RunPlanJson is the array of rows (strategy, symbol, timeframe, pack); the rest are the run-level
+    // choices the builder sends (D4).
+    public string RunPlanJson { get; set; } = "[]";
+    public string? Venue { get; set; }
+    public string? RiskProfileId { get; set; }
+    public bool GovernorEnabled { get; set; } = true;
+    public bool RegimeEnabled { get; set; } = true;
+    public double CommissionPerMillion { get; set; }
+    public double SpreadPips { get; set; }
+
+    // P9: run profiling
+    public long WallElapsedMs { get; set; }
+    public double BarsPerSec { get; set; }
+    public int TotalBars { get; set; }
 }

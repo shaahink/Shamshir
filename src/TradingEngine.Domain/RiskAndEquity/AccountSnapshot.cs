@@ -10,4 +10,7 @@ public sealed record AccountSnapshot(
     decimal DailyDrawdown,
     decimal MaxDrawdown,
     int OpenPositions,
-    string RunId = "");
+    string RunId = "",
+    string GovernorState = "",
+    string GovernorReason = "",
+    decimal DistanceToDailyLimit = 0m);

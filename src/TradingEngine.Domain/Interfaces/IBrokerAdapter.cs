@@ -52,6 +52,11 @@ public interface IBrokerAdapter
     /// position state (V3 — trailing). No-op for fire-and-forget venues.</summary>
     void RegisterStopModifiedHandler(Action<Guid, Price, Price?> handler) { }
 
+    /// <summary>Register a callback fired when the venue reports a session handshake with metadata
+    /// (symbol, period, mode, date range). Used by listen-mode capture (iter-ctrader-capture) to
+    /// mint a RunId from a desktop-cTrader-launched session. No-op for venues that don't support it.</summary>
+    void RegisterSessionStartedHandler(Action<SessionInfo> handler) { }
+
     /// <summary>Observe each processed tick. A simulated venue uses this to drive fills against
     /// resting orders; live/replay venues ignore it.</summary>
     void OnTickObserved(Tick tick) { }
@@ -63,6 +68,21 @@ public interface IBrokerAdapter
     /// <summary>Signal the engine finished a bar (lock-step venues block the feed until this).
     /// The adapter supplies its own sequence; non-lock-step venues are a no-op.</summary>
     Task CompleteBarAsync(CancellationToken ct) => Task.CompletedTask;
+
+    /// <summary>
+    /// Who owns exit execution. <see cref="ExitMode.VenueManaged"/> means the venue holds real broker
+    /// stops and reports closes with a reason — the engine never detects exits bar-by-bar. Default is
+    /// <see cref="ExitMode.EngineSimulated"/> for backward compatibility.
+    /// </summary>
+    ExitMode ExitMode => ExitMode.EngineSimulated;
+
+    /// <summary>
+    /// The venue's authoritative set of currently open position ids. Used for per-bar reconciliation:
+    /// the engine compares its live book to this set and force-resolves any kernel position the venue
+    /// no longer reports as open. Returns an empty set by default (no reconciliation for venues that
+    /// don't support it).
+    /// </summary>
+    IReadOnlySet<Guid> GetOpenPositionIds() => new HashSet<Guid>();
 }
 
 public record AccountState(decimal Balance, decimal Equity, IReadOnlyList<OpenPositionInfo> OpenPositions);
@@ -88,6 +108,11 @@ public record ExecutionEvent(
     public decimal? Commission { get; init; }
     public decimal? Swap { get; init; }
 
+    /// <summary>The instrument this execution belongs to (iter-37 K-GAP-6). Carried by the venue so the
+    /// feedback bridge attributes fills/closes to the CORRECT symbol on a multi-symbol run instead of the
+    /// old first-open-position / EURUSD guess. Null = unknown (the kernel falls back to resolving by id).</summary>
+    public Symbol? Symbol { get; init; }
+
     /// <summary>Venue-authoritative reason a position was closed (SL / TP / STOPOUT / CLOSED),
     /// for venue-initiated (server-side SL/TP) closes the engine didn't request. Null for fills,
     /// rejections, and engine-requested closes (the engine already knows those reasons).</summary>
@@ -100,4 +125,9 @@ public record OrderRequest(
     Symbol Symbol,
     TradeDirection Direction,
     OrderType Type,
-    Price? LimitPrice);
+    Price? LimitPrice,
+    // The engine's own order id (= kernel PositionId). When set, a venue uses it as the order/position id
+    // instead of minting its own, so the kernel's SubmitOrder/CloseOpenPosition/feedback all key off ONE id
+    // (iter-36 K2 — the kernel is the authority for position identity; PositionId == OrderId). Null = the
+    // venue mints its own id (the legacy imperative path, which captures the returned id).
+    Guid? ClientOrderId = null);

@@ -17,10 +17,13 @@ public sealed class EngineHarnessBuilder
     private readonly List<IStrategy> _strategies = [];
     private decimal _flattenAtFraction = 0.9m;
     private bool _enableBreachWatchdog = true;
+    private bool _useKernelGate;
     private readonly List<(Symbol Symbol, TradeDirection Direction, decimal EntryPrice, decimal Lots, decimal SlPrice, decimal? TpPrice)> _seedPositions = [];
 
     public EngineHarnessBuilder WithFlattenAtFraction(decimal fraction) { _flattenAtFraction = fraction; return this; }
     public EngineHarnessBuilder WithoutBreachWatchdog() { _enableBreachWatchdog = false; return this; }
+    /// <summary>Route the order gate through the kernel (KernelOrderGate) instead of the legacy OrderDispatcher (iter-35 AF2).</summary>
+    public EngineHarnessBuilder WithKernelGate() { _useKernelGate = true; return this; }
 
     public EngineHarnessBuilder WithSymbol(Symbol symbol) { _symbol = symbol; return this; }
     public EngineHarnessBuilder WithInitialBalance(decimal balance) { _initialBalance = balance; return this; }
@@ -51,7 +54,14 @@ public sealed class EngineHarnessBuilder
 
         Func<string, string, decimal> crossRate = (_, _) => 1.0m;
         var clock = new ManualClock();
-        clock.UtcNow = DateTime.UtcNow;
+        // Sim-time, NOT wall-clock. The order gate's weekend/news filters read clock.UtcNow, so pinning
+        // it to the real current time made the golden oracle DATE-DEPENDENT: on a Saturday/Sunday every
+        // order is WEEKEND_RESTRICTION-rejected, so golden produces zero trades and the gate goes red —
+        // a flaky, hollow gate. Anchor to the fixture's first bar so the gate sees deterministic sim-time.
+        // (Per-bar clock advance is a follow-up; the cutover carries sim-time on each event — iter-36 K1.)
+        clock.UtcNow = _bars.Count > 0
+            ? _bars[0].OpenTimeUtc
+            : new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         var newsFilter = Substitute.For<INewsFilter>();
         var sessionFilter = new SessionFilter();
@@ -139,6 +149,14 @@ public sealed class EngineHarnessBuilder
             riskManager, riskProfileResolver, symbolRegistry, crossRate,
             decisionJournal, runContext, NullLogger<OrderDispatcher>.Instance);
 
+        // AF2: the same harness can drive either gate so an equivalence test can prove they match.
+        IOrderGate orderGate = _useKernelGate
+            ? new KernelOrderGate(
+                riskManager, riskProfileResolver, symbolRegistry, crossRate,
+                decisionJournal, runContext, sizingPolicy, newsFilter, sessionFilter, clock,
+                NullLogger<KernelOrderGate>.Instance)
+            : dispatcher;
+
         var indicatorSnapshot = new IndicatorSnapshotService(indicators, strategies);
 
         var strategyBank = Substitute.For<IStrategyBank>();
@@ -150,8 +168,8 @@ public sealed class EngineHarnessBuilder
             .ReturnsForAnyArgs(MarketRegime.Trending);
 
         var tradingLoop = new TradingLoop(
-            fakeVenue, indicatorSnapshot, dispatcher, positionTracker,
-            strategyBank, regimeDetector, signalGate: null, symbolRegistry,
+            fakeVenue, indicatorSnapshot, orderGate, positionTracker,
+            strategyBank, regimeDetector, signalGate: null, governor: null, symbolRegistry,
             eventBus, clock, runContext,
             getCrossRate: crossRate,
             currentEquity: () => equity.Value,

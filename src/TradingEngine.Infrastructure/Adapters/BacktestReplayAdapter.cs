@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Engine;
 using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Infrastructure.Adapters;
@@ -34,12 +35,20 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
     private Task _feedTask = Task.CompletedTask;
     private CancellationTokenSource? _feedCts;
 
-    private sealed record OpenTrade(TradeDirection Direction, decimal EntryPrice, decimal Lots, DateTime OpenedAtUtc);
+    private sealed record OpenTrade(
+        TradeDirection Direction,
+        decimal EntryPrice,
+        decimal Lots,
+        DateTime OpenedAtUtc,
+        Price StopLoss,
+        Price? TakeProfit);
     private sealed class PendingLimit
     {
         public required TradeDirection Direction { get; init; }
         public required decimal Lots { get; init; }
         public required decimal LimitPrice { get; init; }
+        public required Price StopLoss { get; init; }
+        public Price? TakeProfit { get; init; }
         public int BarsRemaining { get; set; }
     }
 
@@ -50,6 +59,12 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
     public ChannelReader<ExecutionEvent> ExecutionStream => _executionChannel.Reader;
     public int BarCount { get; private set; }
     public DateTime BrokerTimeUtc { get; private set; }
+
+    // iter-redesign-ctrader P1.4: the replay adapter owns exit detection (same model as cTrader).
+    // The engine no longer runs DetectSlTpExit for any venue — the adapter detects SL/TP hits against
+    // each bar's OHLC and emits reasoned close execution events, exactly like cTrader does.
+    public ExitMode ExitMode => ExitMode.VenueManaged;
+    public IReadOnlySet<Guid> GetOpenPositionIds() => _openTrades.Keys.ToHashSet();
 
     public BacktestReplayAdapter(
         IBarRepository barRepo,
@@ -146,7 +161,13 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
 
     public Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
-        var orderId = Guid.NewGuid();
+        // Use the engine's order id (= kernel PositionId) when supplied, so the venue's open-trade book,
+        // execution events and close all key off the SAME id the kernel uses (iter-36 K2). Falls back to a
+        // fresh id for the legacy imperative path (which captures the returned id).
+        var orderId = request.ClientOrderId ?? Guid.NewGuid();
+
+        var sl = request.Intent.StopLoss;
+        var tp = request.Intent.TakeProfit;
 
         // Resting limit order: hold it until a later bar's range reaches the limit price, or until it
         // expires. Market orders (and limits with no price) fill instantly at the last close.
@@ -157,6 +178,8 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
                 Direction = request.Direction,
                 Lots = request.Lots,
                 LimitPrice = limit.Value,
+                StopLoss = sl,
+                TakeProfit = tp,
                 BarsRemaining = request.Intent.Entry?.LimitOrderExpiryBars ?? 3,
             };
             _logger.LogDebug("BacktestReplay: limit rest {Id} at {Price:F5} dir={Dir} lots={Lots} expiry={Bars}b",
@@ -165,17 +188,17 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         }
 
         var fillPrice = new Price(_lastClose > 0 ? _lastClose : 1m);
-        FillEntry(orderId, request.Direction, fillPrice.Value, request.Lots);
+        FillEntry(orderId, request.Direction, fillPrice.Value, request.Lots, sl, tp);
         _logger.LogDebug("BacktestReplay: instant fill {Id} at {Price:F5} dir={Dir} lots={Lots}",
             orderId, fillPrice.Value, request.Direction, request.Lots);
         return Task.FromResult(orderId);
     }
 
-    private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots)
+    private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
     {
         _executionChannel.Writer.TryWrite(
-            new ExecutionEvent(orderId, OrderState.Filled, new Price(fillPrice), lots, null, BrokerTimeUtc));
-        _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc);
+            new ExecutionEvent(orderId, OrderState.Filled, new Price(fillPrice), lots, null, BrokerTimeUtc) { Symbol = _symbol });
+        _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc, sl, tp);
     }
 
     // Match resting limit orders against the bar that just became current. A buy limit fills when the
@@ -195,7 +218,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             if (reached)
             {
                 _pendingLimits.Remove(orderId);
-                FillEntry(orderId, limit.Direction, limit.LimitPrice, limit.Lots);
+                FillEntry(orderId, limit.Direction, limit.LimitPrice, limit.Lots, limit.StopLoss, limit.TakeProfit);
                 _logger.LogDebug("BacktestReplay: limit fill {Id} at {Price:F5} dir={Dir}",
                     orderId, limit.LimitPrice, limit.Direction);
                 continue;
@@ -206,14 +229,23 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             {
                 _pendingLimits.Remove(orderId);
                 _executionChannel.Writer.TryWrite(new ExecutionEvent(
-                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc));
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
                 _logger.LogDebug("BacktestReplay: limit expired {Id} at {Price:F5}", orderId, limit.LimitPrice);
             }
         }
     }
 
     public Task ModifyOrderAsync(Guid orderId, Price newStopLoss, Price? newTakeProfit, CancellationToken ct)
-        => Task.CompletedTask;
+    {
+        if (_openTrades.TryGetValue(orderId, out var trade))
+        {
+            _openTrades[orderId] = trade with { StopLoss = newStopLoss, TakeProfit = newTakeProfit };
+#if DEBUG
+            _logger.LogDebug("BacktestReplay: SL modified {Id} → {Sl:F5} tp={Tp}", orderId, newStopLoss.Value, newTakeProfit?.Value);
+#endif
+        }
+        return Task.CompletedTask;
+    }
 
     public Task CancelOrderAsync(Guid orderId, CancellationToken ct)
         => Task.CompletedTask;
@@ -222,12 +254,55 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
     // we advance the venue clock/price, match any resting limit orders against the bar's range, AND
     // publish the per-bar mark-to-market equity so the breach watchdog and the equity curve see the
     // real open book (F1 iter-26).
+    //
+    // iter-redesign-ctrader P1.4: also detect SL/TP hits against the bar's OHLC here — the venue owns
+    // exit execution, so it emits reasoned close events (CloseReason="SL"/"TP") exactly like cTrader.
     public void OnBarObserved(Bar bar)
     {
         _lastClose = bar.Close;
-        BrokerTimeUtc = bar.OpenTimeUtc;
+        BrokerTimeUtc = bar.OpenTimeUtc + BarDuration(bar.Timeframe);
         ProcessPendingLimits(bar);
-        EmitAccountUpdate(bar.OpenTimeUtc);
+        ProcessSlTpHits(bar);
+        EmitAccountUpdate(BrokerTimeUtc);
+    }
+
+    // iter-redesign-ctrader P1.4: detect SL/TP hits against the bar's OHLC and emit reasoned close
+    // events — same contract as cTrader. Uses the SAME stateless detection as the engine's
+    // (EngineReducer.DetectSlTpExit) so the replay exit behaviour is byte-identical.
+    private void ProcessSlTpHits(Bar bar)
+    {
+        if (_openTrades.Count == 0) return;
+
+        foreach (var (orderId, trade) in _openTrades.ToList())
+        {
+            var reason = EngineReducer.DetectSlTpExit(
+                trade.Direction, trade.StopLoss, trade.TakeProfit, bar);
+
+            if (reason is null) continue;
+
+            var fillPrice = reason == "TP" && trade.TakeProfit is { } tp
+                ? tp.Value
+                : trade.StopLoss.Value;
+
+            var costs = ComputeCosts(trade, fillPrice);
+            _balance += costs.NetProfit;
+            _openTrades.Remove(orderId);
+
+            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                orderId, OrderState.Filled, new Price(fillPrice), trade.Lots, null, BrokerTimeUtc)
+            {
+                GrossProfit = costs.GrossProfit,
+                Commission = costs.Commission,
+                Swap = costs.Swap,
+                NetProfit = costs.NetProfit,
+                Symbol = _symbol,
+                CloseReason = reason,  // "SL" or "TP" — sent to the engine for journaling
+            });
+
+            EmitAccountUpdate(BrokerTimeUtc);
+            _logger.LogDebug("BacktestReplay: SL/TP exit {Id} reason={Reason} at {Price:F5} net={Net:F2}",
+                orderId, reason, fillPrice, costs.NetProfit);
+        }
     }
 
     public void SyncToBar(decimal close, DateTime openTimeUtc)
@@ -236,6 +311,19 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         BrokerTimeUtc = openTimeUtc;
         EmitAccountUpdate(openTimeUtc);
     }
+
+    private static TimeSpan BarDuration(Timeframe tf) => tf switch
+    {
+        Timeframe.M1 => TimeSpan.FromMinutes(1),
+        Timeframe.M5 => TimeSpan.FromMinutes(5),
+        Timeframe.M15 => TimeSpan.FromMinutes(15),
+        Timeframe.M30 => TimeSpan.FromMinutes(30),
+        Timeframe.H1 => TimeSpan.FromHours(1),
+        Timeframe.H4 => TimeSpan.FromHours(4),
+        Timeframe.D1 => TimeSpan.FromDays(1),
+        Timeframe.W1 => TimeSpan.FromDays(7),
+        _ => TimeSpan.FromHours(1),
+    };
 
     // Publishes balance + floating PnL of the current open book. Best-effort write (bounded
     // DropOldest channel) so it never blocks the engine loop.
@@ -264,13 +352,17 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
 
             // Stamp the itemised economics on the close fill so the engine ledger (and the DB/report)
             // match the account — net of commission/swap, not a cost-free recompute downstream.
+            // H14 (iter-35 B2): report the closed lot size (was 0). FilledLots == position lots keeps
+            // this a FULL close in the lifecycle FSM (the partial branch needs FilledLots < lots), while
+            // the order ledger / reconciliation now see the real volume instead of zero.
             _executionChannel.Writer.TryWrite(new ExecutionEvent(
-                positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc)
+                positionId, OrderState.Filled, fillPrice, trade.Lots, null, BrokerTimeUtc)
             {
                 GrossProfit = costs.GrossProfit,
                 Commission = costs.Commission,
                 Swap = costs.Swap,
                 NetProfit = costs.NetProfit,
+                Symbol = _symbol,
             });
 
             // F1: surface the realized balance change as an account update so equity/drawdown move.
@@ -283,7 +375,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             // No tracked trade (unknown / already closed) — surface a cost-free fill so the lifecycle
             // FSM can still resolve.
             _executionChannel.Writer.TryWrite(
-                new ExecutionEvent(positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc));
+                new ExecutionEvent(positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc) { Symbol = _symbol });
         }
 
         return Task.CompletedTask;
@@ -300,43 +392,50 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to compute costs for {Symbol}", _symbol);
-            return new TradeCosts(0, 0, 0, 0, 0);
+            _logger.LogWarning(ex, "Failed to compute costs for {Symbol} at exit {ExitPrice} — using gross PnL only", _symbol, exitPrice);
+            // M10 (iter-35 B2): don't swallow gross PnL to zero. Commission/swap may be zero,
+            // but the trade's directional profit is still computable without symbol info.
+            var grossPnl = trade.Direction == TradeDirection.Long
+                ? (exitPrice - trade.EntryPrice) * trade.Lots
+                : (trade.EntryPrice - exitPrice) * trade.Lots;
+            return new TradeCosts(grossPnl, 0, 0, grossPnl, 0);
         }
     }
 
     public Task ClosePartialPositionAsync(Guid positionId, decimal lots, CancellationToken ct)
     {
         var fillPrice = new Price(_lastClose > 0 ? _lastClose : 1m);
-        _executionChannel.Writer.TryWrite(
-            new ExecutionEvent(positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc));
 
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
-            var symbolInfo = _symbolRegistry.Get(_symbol);
-            decimal pnl = 0;
-            try
+            var partialTrade = trade with { Lots = lots };
+            var costs = ComputeCosts(partialTrade, fillPrice.Value);
+            _balance += costs.NetProfit;
+
+            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc)
             {
-                var priceDiff = trade.Direction == TradeDirection.Long
-                    ? fillPrice.Value - trade.EntryPrice
-                    : trade.EntryPrice - fillPrice.Value;
-                var pipValue = PipCalculator.PipValuePerLot(symbolInfo, fillPrice.Value, _crossRateProvider);
-                pnl = (priceDiff / symbolInfo.PipSize) * pipValue * lots;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to compute partial PnL for {PositionId}", positionId);
-            }
-            _balance += pnl;
+                GrossProfit = costs.GrossProfit,
+                Commission = costs.Commission,
+                Swap = costs.Swap,
+                NetProfit = costs.NetProfit,
+                Symbol = _symbol,
+            });
+
             var remaining = trade.Lots - lots;
-            if (remaining <= 0)
+            if (remaining <= 0m)
                 _openTrades.Remove(positionId);
             else
                 _openTrades[positionId] = trade with { Lots = remaining };
             // F1: realized partial PnL must reach the account stream too.
             EmitAccountUpdate(BrokerTimeUtc);
-            _logger.LogDebug("BacktestReplay: partial close {PositionId} lots={Lots} remaining={Remaining} PnL={PnL:F2}",
-                positionId, lots, remaining, pnl);
+            _logger.LogDebug("BacktestReplay: partial close {PositionId} lots={Lots} remaining={Remaining} gross={Gross:F2} net={Net:F2}",
+                positionId, lots, remaining, costs.GrossProfit, costs.NetProfit);
+        }
+        else
+        {
+            _executionChannel.Writer.TryWrite(
+                new ExecutionEvent(positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc) { Symbol = _symbol });
         }
 
         return Task.CompletedTask;
@@ -349,11 +448,15 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         try
         {
             var symbolInfo = _symbolRegistry.Get(_symbol);
+            var halfSpread = symbolInfo.TypicalSpread / 2m;
             var pipValue = PipCalculator.PipValuePerLot(symbolInfo, close, _crossRateProvider);
             var total = 0m;
             foreach (var (_, t) in _openTrades)
             {
-                var diff = t.Direction == TradeDirection.Long ? close - t.EntryPrice : t.EntryPrice - close;
+                // H16: use directional bid/ask instead of mid. For longs the exit is at bid (lower);
+                // for shorts at ask (higher). This prices floating PnL conservatively.
+                var effectiveClose = t.Direction == TradeDirection.Long ? close - halfSpread : close + halfSpread;
+                var diff = t.Direction == TradeDirection.Long ? effectiveClose - t.EntryPrice : t.EntryPrice - effectiveClose;
                 total += (diff / symbolInfo.PipSize) * pipValue * t.Lots;
             }
             return total;

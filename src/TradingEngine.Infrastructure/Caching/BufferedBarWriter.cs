@@ -6,6 +6,7 @@ namespace TradingEngine.Infrastructure.Caching;
 
 public sealed class BufferedBarWriter : IAsyncDisposable
 {
+    private long _droppedCount;
     private readonly Channel<(string RunId, Bar Bar)> _channel =
         Channel.CreateBounded<(string, Bar)>(new BoundedChannelOptions(10_000)
         {
@@ -26,7 +27,15 @@ public sealed class BufferedBarWriter : IAsyncDisposable
         _consumerTask = ConsumeAsync(_cts.Token);
     }
 
-    public bool Enqueue(string runId, Bar bar) => _channel.Writer.TryWrite((runId, bar));
+    public bool Enqueue(string runId, Bar bar)
+    {
+        if (_channel.Writer.TryWrite((runId, bar)))
+            return true;
+        var dropped = Interlocked.Increment(ref _droppedCount);
+        if (dropped % 1000 == 1)
+            _logger?.LogWarning("BufferedBarWriter: channel full — dropped bar. Total drops: {Dropped}", dropped);
+        return false;
+    }
 
     private async Task ConsumeAsync(CancellationToken ct)
     {

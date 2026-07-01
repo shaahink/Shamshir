@@ -119,16 +119,22 @@ public static class PositionLifecycle
     {
         if (evt.FilledLots > 0 && evt.FilledLots < state.Lots - 0.0001m)
         {
-            var reducing = state with
-            {
-                Phase = PositionPhase.Reducing,
-                Lots = state.Lots - evt.FilledLots
-            };
+            // iter-38 A4b: a partial CLOSE of an open position (PartialTp). Keep the REMAINDER open so it
+            // keeps trailing (was Phase=Reducing, which stopped trailing), and publish the closed portion as
+            // a PARTIAL trade. Golden-safe: golden positions close fully (the else branch below).
+            var remaining = state with { Lots = state.Lots - evt.FilledLots };
             var reducingEffects = new List<EngineEffect>
             {
-                Record(state, evt, reducing, "PartialClose")
+                Record(state, evt, remaining, "PartialClose"),
+                new PublishTradeClosed(state.PositionId, state.Symbol, state.Direction, evt.FilledLots,
+                    state.EntryPrice, evt.FillPrice, state.CurrentStopLoss, state.TakeProfit,
+                    state.StrategyId, "PARTIAL", evt.OccurredAtUtc, state.OpenedAtUtc,
+                    OrderId: state.OrderId, OrderEntryMethod: state.OrderEntryMethod,
+                    HighWater: state.HighWater, LowWater: state.LowWater,
+                    GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
+                    Commission: evt.Commission, Swap: evt.Swap)
             };
-            return (reducing, reducingEffects);
+            return (remaining, reducingEffects);
         }
 
         var exitReason = state.CloseReason ?? "FORCE";
@@ -140,7 +146,10 @@ public static class PositionLifecycle
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, closed.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc,
-                HighWater: closed.HighWater, LowWater: closed.LowWater)
+                OrderId: closed.OrderId, OrderEntryMethod: state.OrderEntryMethod,
+                HighWater: closed.HighWater, LowWater: closed.LowWater,
+                GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
+                Commission: evt.Commission, Swap: evt.Swap)
         };
         return (closed, effects);
     }
@@ -205,7 +214,10 @@ public static class PositionLifecycle
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc,
-                HighWater: closed.HighWater, LowWater: closed.LowWater)
+                OrderId: closed.OrderId, OrderEntryMethod: state.OrderEntryMethod,
+                HighWater: closed.HighWater, LowWater: closed.LowWater,
+                GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
+                Commission: evt.Commission, Swap: evt.Swap)
         };
         return (closed, effects);
     }
@@ -236,19 +248,24 @@ public static class PositionLifecycle
             new PublishTradeClosed(closed.PositionId, closed.Symbol, closed.Direction, state.Lots,
                 closed.EntryPrice, evt.FillPrice, closed.CurrentStopLoss, closed.TakeProfit,
                 closed.StrategyId, exitReason, evt.OccurredAtUtc, closed.OpenedAtUtc,
-                HighWater: closed.HighWater, LowWater: closed.LowWater)
+                OrderId: closed.OrderId, OrderEntryMethod: state.OrderEntryMethod,
+                HighWater: closed.HighWater, LowWater: closed.LowWater,
+                GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
+                Commission: evt.Commission, Swap: evt.Swap)
         };
         return (closed, effects);
     }
 
     public static PositionState CreateIntended(
         Guid orderId, Symbol symbol, TradeDirection direction,
-        decimal lots, Price? limitPrice, Price stopLoss, Price? takeProfit, string strategyId)
+        decimal lots, Price? limitPrice, Price stopLoss, Price? takeProfit, string strategyId,
+        OrderType orderType = OrderType.Market)
     {
         return new PositionState(
-            Guid.NewGuid(), orderId, symbol, direction, lots,
+            orderId, orderId, symbol, direction, lots,
             limitPrice ?? stopLoss, stopLoss, takeProfit,
-            DateTime.MinValue, strategyId, PositionPhase.Intended);
+            DateTime.MinValue, strategyId, PositionPhase.Intended,
+            OrderEntryMethod: orderType.ToString());
     }
 
     public static Price? TrailStepPips(PositionState state, decimal bid, decimal ask, Pips stepPips, SymbolInfo symbol)

@@ -35,8 +35,8 @@ public sealed class EntryPlanner(
             : intent.StopLoss.Value - signalPrice;
 
         var newSl = intent.Direction == TradeDirection.Long
-            ? new Price(limitPrice - originalSlDistance)
-            : new Price(limitPrice + originalSlDistance);
+            ? new Price(Math.Max(limitPrice - originalSlDistance, 0.00001m))
+            : new Price(Math.Max(limitPrice + originalSlDistance, 0.00001m));
 
         Price? newTp = null;
         if (intent.TakeProfit is not null)
@@ -44,9 +44,10 @@ public sealed class EntryPlanner(
             var originalTpDistance = intent.Direction == TradeDirection.Long
                 ? intent.TakeProfit.Value.Value - signalPrice
                 : signalPrice - intent.TakeProfit.Value.Value;
-            newTp = intent.Direction == TradeDirection.Long
-                ? new Price(limitPrice + originalTpDistance)
-                : new Price(limitPrice - originalTpDistance);
+            var tpPrice = intent.Direction == TradeDirection.Long
+                ? limitPrice + originalTpDistance
+                : limitPrice - originalTpDistance;
+            newTp = tpPrice > 0 ? new Price(tpPrice) : null;
         }
 
         logger.LogDebug("ENTRY_PLAN|{Strategy}|{Dir}|signal={Signal:F5}|limit={Limit:F5}|offsetPips={Offset}",

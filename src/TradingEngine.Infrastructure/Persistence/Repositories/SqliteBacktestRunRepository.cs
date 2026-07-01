@@ -13,6 +13,8 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             CompletedAtUtc = run.CompletedAtUtc,
             Symbol = run.Symbol,
             Period = run.Period,
+            Symbols = run.Symbols,
+            Periods = run.Periods,
             BacktestFrom = run.BacktestFrom,
             BacktestTo = run.BacktestTo,
             InitialBalance = run.InitialBalance,
@@ -20,12 +22,30 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             StrategyParamsJson = run.StrategyParamsJson,
             EffectiveConfigJson = run.EffectiveConfigJson,
             NetProfit = run.NetProfit,
+            GrossPnL = run.GrossPnL,
+            CommissionTotal = run.CommissionTotal,
+            SwapTotal = run.SwapTotal,
             MaxDrawdownPct = run.MaxDrawdownPct,
             TotalTrades = run.TotalTrades,
             WinningTrades = run.WinningTrades,
             WinRatePct = run.WinRatePct,
             ExitCode = run.ExitCode,
             ErrorMessage = run.ErrorMessage,
+            ReportJsonPath = run.ReportJsonPath,
+            DatasetId = run.DatasetId,
+            ConfigSetId = run.ConfigSetId,
+            Seed = run.Seed,
+            ParentRunId = run.ParentRunId,
+            RunPlanJson = run.RunPlanJson,
+            Venue = run.Venue,
+            RiskProfileId = run.RiskProfileId,
+            GovernorEnabled = run.GovernorEnabled,
+            RegimeEnabled = run.RegimeEnabled,
+            CommissionPerMillion = run.CommissionPerMillion,
+            SpreadPips = run.SpreadPips,
+            WallElapsedMs = run.WallElapsedMs,
+            BarsPerSec = run.BarsPerSec,
+            TotalBars = run.TotalBars,
         };
         db.BacktestRuns.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -37,6 +57,9 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         if (entity is null) return;
         entity.CompletedAtUtc = run.CompletedAtUtc;
         entity.NetProfit = run.NetProfit;
+        entity.GrossPnL = run.GrossPnL;
+        entity.CommissionTotal = run.CommissionTotal;
+        entity.SwapTotal = run.SwapTotal;
         entity.MaxDrawdownPct = run.MaxDrawdownPct;
         entity.TotalTrades = run.TotalTrades;
         entity.WinningTrades = run.WinningTrades;
@@ -44,6 +67,10 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         entity.ExitCode = run.ExitCode;
         entity.ErrorMessage = run.ErrorMessage;
         entity.EffectiveConfigJson = run.EffectiveConfigJson;
+        entity.ReportJsonPath = run.ReportJsonPath;
+        entity.WallElapsedMs = run.WallElapsedMs;
+        entity.BarsPerSec = run.BarsPerSec;
+        entity.TotalBars = run.TotalBars;
         await db.SaveChangesAsync(ct);
     }
 
@@ -68,13 +95,16 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
 
     // A run interrupted after its trades were persisted but before WriteEndRecordAsync leaves the
     // summary at its start-record zeros (0 trades, ExitCode -1, CompletedAtUtc unset). Readers then
-    // show "0 trades / 0 profit / running" for a run that clearly has trades. When the stored summary
-    // shows no trades, recompute the headline stats from the persisted trades (the same equity walk as
-    // the orchestrator's GetTradeStatsAsync) and treat the run as completed at its last trade close.
-    // Healthy runs (TotalTrades already set) return unchanged, with no extra query.
+    // show "0 trades / 0 profit / running" for a run that clearly has trades.
+    // iter-redesign P4.1: also catch runs where trades were written AND counted but the end-record
+    // update failed (TotalTrades > 0, ExitCode -1 / CompletedAtUtc default). Re-derive from trades
+    // table and persist the fix so the self-heal is durable.
     private async Task<BacktestRunSummary> ReconcileAsync(BacktestRunEntity e, CancellationToken ct)
     {
         var net = e.NetProfit;
+        var grossPnL = e.GrossPnL;
+        var commissionTotal = e.CommissionTotal;
+        var swapTotal = e.SwapTotal;
         var maxDd = e.MaxDrawdownPct;
         var total = e.TotalTrades;
         var wins = e.WinningTrades;
@@ -82,12 +112,12 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         var completedAt = e.CompletedAtUtc;
         var exitCode = e.ExitCode;
 
-        if (total == 0)
+        if (total == 0 || exitCode == -1 || completedAt == default)
         {
             var trades = await db.Trades
                 .Where(t => t.RunId == e.RunId)
                 .OrderBy(t => t.ClosedAtUtc)
-                .Select(t => new { t.NetPnLAmount, t.ClosedAtUtc })
+                .Select(t => new { t.NetPnLAmount, t.GrossPnLAmount, t.CommissionAmount, t.SwapAmount, t.ClosedAtUtc })
                 .ToListAsync(ct);
 
             if (trades.Count > 0)
@@ -96,6 +126,9 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
                 wins = trades.Count(t => t.NetPnLAmount > 0);
                 winRate = (double)wins / total;
                 net = trades.Sum(t => t.NetPnLAmount);
+                grossPnL = trades.Sum(t => t.GrossPnLAmount);
+                commissionTotal = trades.Sum(t => t.CommissionAmount);
+                swapTotal = trades.Sum(t => t.SwapAmount);
 
                 var equity = e.InitialBalance;
                 var peak = equity;
@@ -113,14 +146,80 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
 
                 if (completedAt == default) completedAt = trades[^1].ClosedAtUtc;
                 exitCode = 0;
+
+                // P4.1: persist the re-derived values so the self-heal is durable.
+                e.TotalTrades = total;
+                e.WinningTrades = wins;
+                e.WinRatePct = winRate;
+                e.NetProfit = net;
+                e.GrossPnL = grossPnL;
+                e.CommissionTotal = commissionTotal;
+                e.SwapTotal = swapTotal;
+                e.MaxDrawdownPct = maxDd;
+                e.CompletedAtUtc = completedAt;
+                e.ExitCode = exitCode;
+                await db.SaveChangesAsync(ct);
+            }
+        }
+        // P1.2: also reconcile when TotalTrades is nonzero but wrong — cTrader path
+        // writes stats BEFORE all venue trades land (D2). Recompute from ledger.
+        else
+        {
+            var actualCount = await db.Trades
+                .Where(t => t.RunId == e.RunId)
+                .CountAsync(ct);
+
+            if (actualCount > 0 && actualCount != total)
+            {
+                total = actualCount;
+                var trades = await db.Trades
+                    .Where(t => t.RunId == e.RunId)
+                    .OrderBy(t => t.ClosedAtUtc)
+                    .Select(t => new { t.NetPnLAmount, t.GrossPnLAmount, t.CommissionAmount, t.SwapAmount, t.ClosedAtUtc })
+                    .ToListAsync(ct);
+
+                wins = trades.Count(t => t.NetPnLAmount > 0);
+                winRate = (double)wins / total;
+                net = trades.Sum(t => t.NetPnLAmount);
+                grossPnL = trades.Sum(t => t.GrossPnLAmount);
+                commissionTotal = trades.Sum(t => t.CommissionAmount);
+                swapTotal = trades.Sum(t => t.SwapAmount);
+
+                var equity = e.InitialBalance;
+                var peak = equity;
+                maxDd = 0m;
+                foreach (var t in trades)
+                {
+                    equity += t.NetPnLAmount;
+                    if (equity > peak) peak = equity;
+                    if (peak > 0)
+                    {
+                        var dd = (peak - equity) / peak;
+                        if (dd > maxDd) maxDd = dd;
+                    }
+                }
+
+                e.TotalTrades = total;
+                e.WinningTrades = wins;
+                e.WinRatePct = winRate;
+                e.NetProfit = net;
+                e.GrossPnL = grossPnL;
+                e.CommissionTotal = commissionTotal;
+                e.SwapTotal = swapTotal;
+                e.MaxDrawdownPct = maxDd;
+                await db.SaveChangesAsync(ct);
             }
         }
 
         return new BacktestRunSummary(
             e.RunId, e.StartedAtUtc, completedAt,
-            e.Symbol, e.Period, e.BacktestFrom, e.BacktestTo,
+            e.Symbol, e.Period, e.Symbols, e.Periods, e.BacktestFrom, e.BacktestTo,
             e.InitialBalance, e.AlgoHash, e.StrategyParamsJson, e.EffectiveConfigJson,
-            net, maxDd, total, wins, winRate,
-            exitCode, e.ErrorMessage);
+            net, grossPnL, commissionTotal, swapTotal, maxDd, total, wins, winRate,
+            exitCode, e.ErrorMessage, e.ReportJsonPath,
+            e.DatasetId, e.ConfigSetId, e.Seed, e.ParentRunId,
+            e.RunPlanJson, e.Venue, e.RiskProfileId, e.GovernorEnabled, e.RegimeEnabled,
+            e.CommissionPerMillion, e.SpreadPips,
+            e.WallElapsedMs, e.BarsPerSec, e.TotalBars);
     }
 }

@@ -8,7 +8,7 @@ public sealed class EffectExecutor : IEffectExecutor
 {
     private readonly IBrokerAdapter _broker;
     private readonly IEventBus _eventBus;
-    private readonly IDecisionJournal _decisionJournal;
+    private readonly IDecisionJournal? _decisionJournal;
     private readonly IEquitySink? _equitySink;
     private readonly IProgress<BacktestProgressEvent>? _progress;
     private readonly string _runId;
@@ -65,12 +65,15 @@ public sealed class EffectExecutor : IEffectExecutor
                     submit.LimitPrice, submit.StopLoss, submit.TakeProfit,
                     submit.StrategyId, "standard", "", _clock.UtcNow);
                 var orderReq = new OrderRequest(intent, submit.Lots, submit.Symbol, submit.Direction,
-                    submit.LimitPrice is not null ? OrderType.Limit : OrderType.Market, submit.LimitPrice);
+                    submit.LimitPrice is not null ? OrderType.Limit : OrderType.Market, submit.LimitPrice,
+                    // Submit under the kernel's order id (= PositionId) so the venue fill/close + the
+                    // feedback bridge all key off ONE id — no venue-id↔kernel-id translation (K2).
+                    ClientOrderId: submit.OrderId);
                 await _broker.SubmitOrderAsync(orderReq, ct);
                 break;
 
             case ModifyStopLoss modSl:
-                await _broker.ModifyOrderAsync(modSl.PositionId, modSl.NewStopLoss, null, ct);
+                await _broker.ModifyOrderAsync(modSl.PositionId, modSl.NewStopLoss, modSl.TakeProfit, ct);
                 break;
 
             case ModifyTakeProfit modTp:
@@ -81,11 +84,24 @@ public sealed class EffectExecutor : IEffectExecutor
                 // A close REQUEST — not a completed close. The funnel "Closes" counter is incremented
                 // on PublishTradeClosed (the actual fill), so we don't emit a "CLOSE" progress here
                 // (doing so double-counted force-closes, which emit both this and PublishTradeClosed).
-                await _broker.ClosePositionAsync(closePos.OrderId, ct);
+                // An engine-detected SL/TP carries the stop/target price so the close fills there (K2);
+                // a force-close (no price) routes to the normal market close.
+                if (closePos.ExitPrice is { } exitPx)
+                    await _broker.ClosePositionAtAsync(closePos.OrderId, exitPx, ct);
+                else
+                    await _broker.ClosePositionAsync(closePos.OrderId, ct);
+                break;
+
+            case ClosePartialOpenPosition partial:
+                // iter-38 A4b: close part of the position; the venue emits a partial fill that reduces it.
+                await _broker.ClosePartialPositionAsync(partial.OrderId, partial.CloseLots, ct);
                 break;
 
             case RecordDecisionEvent record:
-                _decisionJournal.Record(record.Decision);
+                // iter-36 K5: the gate decision is now journaled losslessly on the StepRecord (DecisionReason),
+                // so the kernel path no longer needs the old IDecisionJournal. Kept optional only for the
+                // golden oracle harness, which still asserts on it; production passes null / a no-op.
+                _decisionJournal?.Record(record.Decision);
                 break;
 
             case PublishTradeClosed tradeClosed:
@@ -115,7 +131,7 @@ public sealed class EffectExecutor : IEffectExecutor
         var gross = effect.GrossProfit is { } g ? new Money(g, currency) : recomputedGross;
         var commission = new Money(effect.Commission ?? 0m, currency);
         var swap = new Money(effect.Swap ?? 0m, currency);
-        var net = effect.NetProfit is { } n ? new Money(n, currency) : gross;
+        var net = effect.NetProfit is { } n ? new Money(n, currency) : gross.Subtract(commission).Subtract(swap);
 
         // Trade analytics, previously hardcoded to zero. Derived from the close geometry so they are
         // always consistent with the prices shown next to them. R uses a pip-distance ratio (reward
@@ -146,7 +162,9 @@ public sealed class EffectExecutor : IEffectExecutor
             effect.Lots, effect.EntryPrice, effect.ExitPrice, effect.StopLoss, effect.TakeProfit,
             effect.OpenedAtUtc, effect.ClosedAtUtc, gross, commission, swap,
             net, pnlPips, rMultiple, maePips, mfePips,
-            effect.ExitReason, effect.StrategyId, effect.RiskProfileId ?? "standard");
+            effect.ExitReason, effect.StrategyId, effect.RiskProfileId ?? "standard",
+            OrderEntryMethod: effect.OrderEntryMethod,
+            OrderId: effect.OrderId);
 
         foreach (var s in _strategies.Where(s => s.Id == effect.StrategyId))
         {

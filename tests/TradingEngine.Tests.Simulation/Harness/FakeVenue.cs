@@ -54,7 +54,9 @@ public sealed class FakeVenue : IBrokerAdapter
 
     public async Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
-        var orderId = Guid.NewGuid();
+        // Honor the engine's order id (= kernel PositionId) so the kernel path's fill/close + feedback
+        // bridge all key off one id (iter-36 K2); mint our own for the legacy path.
+        var orderId = request.ClientOrderId ?? Guid.NewGuid();
         _submittedOrders.Add(request);
         IncrementBarsConsumed();
 
@@ -63,7 +65,10 @@ public sealed class FakeVenue : IBrokerAdapter
 
         var fill = new ExecutionEvent(
             orderId, OrderState.Filled, fillPrice,
-            request.Lots, null, BrokerTimeUtc);
+            request.Lots, null, BrokerTimeUtc)
+        {
+            Symbol = request.Intent.Symbol,
+        };
         await _executionChannel.Writer.WriteAsync(fill, ct);
         return orderId;
     }
@@ -85,6 +90,15 @@ public sealed class FakeVenue : IBrokerAdapter
         await WriteCloseFill(positionId, ct);
     }
 
+    // Close at the caller-supplied exit price (an engine-detected SL/TP fills at the stop/target, not the
+    // bar close). The harness sets it via SetExitPrice before ClosePositionAsync; the kernel path routes
+    // here from the CloseOpenPosition effect's ExitPrice (iter-36 K2).
+    public async Task ClosePositionAtAsync(Guid positionId, Price exitPrice, CancellationToken ct)
+    {
+        SetExitPrice(positionId, exitPrice);
+        await ClosePositionAsync(positionId, ct);
+    }
+
     public async Task ClosePartialPositionAsync(Guid positionId, decimal lots, CancellationToken ct)
     {
         _closeRequests.Add((positionId, BrokerTimeUtc));
@@ -99,10 +113,12 @@ public sealed class FakeVenue : IBrokerAdapter
         decimal? grossProfit = null;
         decimal? netProfit = null;
         var fillLots = 0m;
+        Symbol? closeSymbol = null;
 
         if (_orderEntries.TryGetValue(positionId, out var entry))
         {
             fillLots = partialLots ?? entry.Lots;
+            closeSymbol = entry.Symbol;
             var symbolInfo = _symbolRegistry.Get(entry.Symbol);
             var gross = PipCalculator.GrossPnL(entry.Direction, entry.EntryPrice, exitPrice, fillLots, symbolInfo, _crossRate);
             grossProfit = gross.Amount;
@@ -117,6 +133,7 @@ public sealed class FakeVenue : IBrokerAdapter
             NetProfit = netProfit,
             Commission = 0m,
             Swap = 0m,
+            Symbol = closeSymbol,
         };
         await _executionChannel.Writer.WriteAsync(close, ct);
     }
@@ -145,6 +162,7 @@ public sealed class FakeVenue : IBrokerAdapter
     public Task CompleteBarAsync(CancellationToken ct) => Task.CompletedTask;
 
     public void PostBar(Bar bar) => _barChannel.Writer.TryWrite(bar);
+    public void CompleteBars() => _barChannel.Writer.TryComplete();
     public void PostAccount(AccountUpdate update) => _accountChannel.Writer.TryWrite(update);
 
     public IReadOnlyList<ExecutionEvent> DrainExecutions()

@@ -140,8 +140,11 @@ public sealed class PositionLifecycleTests
     // --- Open phase ---
 
     [Fact]
-    public void Open_PartialClose_TransitionsToReducing()
+    public void Open_PartialClose_StaysOpen_AndPublishesPartialTrade()
     {
+        // iter-38 A4: a partial close of an OPEN position (PartialTp) keeps the REMAINDER open so it keeps
+        // trailing, and publishes the closed portion as a PARTIAL trade. (Reducing is now reached only via
+        // the Closing path — a partial fill of a force-close order.)
         var state = CreateIntended();
         state = PositionLifecycle.Apply(state, new OrderSubmitted(state.OrderId, state.Symbol, state.Direction, 0.1m, null, "test", DateTime.UtcNow)).State;
         state = PositionLifecycle.Apply(state, new OrderFilled(state.OrderId, state.Symbol, 0.1m, new Price(1.0850m), DateTime.UtcNow)).State;
@@ -149,8 +152,12 @@ public sealed class PositionLifecycleTests
         var partialClose = new OrderFilled(state.OrderId, state.Symbol, 0.04m, new Price(1.0860m), DateTime.UtcNow.AddMinutes(1));
         var (next, effects) = PositionLifecycle.Apply(state, partialClose);
 
-        next.Phase.Should().Be(PositionPhase.Reducing);
+        next.Phase.Should().Be(PositionPhase.Open);
         next.Lots.Should().Be(0.06m);
+
+        var trade = effects.OfType<PublishTradeClosed>().Single();
+        trade.ExitReason.Should().Be("PARTIAL");
+        trade.Lots.Should().Be(0.04m);
     }
 
     [Fact]
@@ -212,12 +219,15 @@ public sealed class PositionLifecycleTests
     [Fact]
     public void Reducing_PartialFill_StayReducing()
     {
+        // Reducing is entered via the Closing path (iter-38 A4): force-close, then a partial fill of the
+        // close order reduces while Closing → Reducing. A further partial fill stays Reducing.
         var state = CreateIntended();
         state = PositionLifecycle.Apply(state, new OrderSubmitted(state.OrderId, state.Symbol, state.Direction, 0.1m, null, "test", DateTime.UtcNow)).State;
         state = PositionLifecycle.Apply(state, new OrderFilled(state.OrderId, state.Symbol, 0.1m, new Price(1.0850m), DateTime.UtcNow)).State;
-        state = PositionLifecycle.Apply(state, new OrderFilled(state.OrderId, state.Symbol, 0.04m, new Price(1.0860m), DateTime.UtcNow.AddMinutes(1))).State;
+        state = PositionLifecycle.Apply(state, new CloseRequested(state.PositionId, "Manual", DateTime.UtcNow.AddMinutes(1))).State;
+        state = PositionLifecycle.Apply(state, new OrderFilled(state.OrderId, state.Symbol, 0.04m, new Price(1.0860m), DateTime.UtcNow.AddMinutes(2))).State;
 
-        var more = new OrderFilled(state.OrderId, state.Symbol, 0.02m, new Price(1.0865m), DateTime.UtcNow.AddMinutes(2));
+        var more = new OrderFilled(state.OrderId, state.Symbol, 0.02m, new Price(1.0865m), DateTime.UtcNow.AddMinutes(3));
         var (next, effects) = PositionLifecycle.Apply(state, more);
 
         next.Phase.Should().Be(PositionPhase.Reducing);
@@ -230,9 +240,10 @@ public sealed class PositionLifecycleTests
         var state = CreateIntended();
         state = PositionLifecycle.Apply(state, new OrderSubmitted(state.OrderId, state.Symbol, state.Direction, 0.1m, null, "test", DateTime.UtcNow)).State;
         state = PositionLifecycle.Apply(state, new OrderFilled(state.OrderId, state.Symbol, 0.1m, new Price(1.0850m), DateTime.UtcNow)).State;
-        state = PositionLifecycle.Apply(state, new OrderFilled(state.OrderId, state.Symbol, 0.04m, new Price(1.0860m), DateTime.UtcNow.AddMinutes(1))).State;
+        state = PositionLifecycle.Apply(state, new CloseRequested(state.PositionId, "Manual", DateTime.UtcNow.AddMinutes(1))).State;
+        state = PositionLifecycle.Apply(state, new OrderFilled(state.OrderId, state.Symbol, 0.04m, new Price(1.0860m), DateTime.UtcNow.AddMinutes(2))).State;
 
-        var final = new OrderFilled(state.OrderId, state.Symbol, 0.06m, new Price(1.0870m), DateTime.UtcNow.AddMinutes(2));
+        var final = new OrderFilled(state.OrderId, state.Symbol, 0.06m, new Price(1.0870m), DateTime.UtcNow.AddMinutes(3));
         var (next, effects) = PositionLifecycle.Apply(state, final);
 
         next.Phase.Should().Be(PositionPhase.Closed);

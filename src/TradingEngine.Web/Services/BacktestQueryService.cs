@@ -1,3 +1,4 @@
+using System.Text.Json;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 
@@ -55,17 +56,75 @@ public sealed class BacktestQueryService : IBacktestQueryService
         await using var scope = _scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
 
-        var evals = await db.BarEvaluations
-            .Where(e => e.RunId == runId)
-            .GroupBy(e => new { e.StrategyId, e.Reason, e.SignalFired })
-            .Select(g => new
-            {
-                g.Key.StrategyId,
-                g.Key.Reason,
-                g.Key.SignalFired,
-                Count = g.Count()
-            })
+        // iter-37 K-GAP-4 / F2: the per-strategy "why" funnel now reads the StepRecord journal's per-bar
+        // verdicts. The old BarEvaluations table is no longer written after the iter-36 cutover, so the
+        // breakdown was empty; the BarClosed StepRecords carry one StrategyVerdict per active strategy.
+        var verdictJsons = await db.JournalEntries
+            .Where(e => e.RunId == runId && e.EventKind == "BarClosed")
+            .Select(e => e.VerdictsJson)
             .ToListAsync(ct);
+
+        // Enums (StrategyVerdict.Direction) are persisted as strings by SqliteStepRecordSink → need the
+        // matching converter, else the default number-mode reader throws on the first fired-signal verdict.
+        var opts = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+        };
+        var perStrategy = new Dictionary<string, (int Total, int Signals, Dictionary<string, int> NoSignal)>();
+        foreach (var json in verdictJsons)
+        {
+            var verdicts = JsonSerializer.Deserialize<List<StrategyVerdict>>(json, opts) ?? [];
+            foreach (var v in verdicts)
+            {
+                if (!perStrategy.TryGetValue(v.StrategyId, out var agg))
+                    agg = (0, 0, new Dictionary<string, int>());
+                agg.Total++;
+                if (v.SignalFired)
+                {
+                    agg.Signals++;
+                }
+                else
+                {
+                    var reason = string.IsNullOrEmpty(v.Reason) ? "unknown" : v.Reason;
+                    agg.NoSignal[reason] = agg.NoSignal.GetValueOrDefault(reason) + 1;
+                }
+                perStrategy[v.StrategyId] = agg;
+            }
+        }
+
+        // iter-strategy-system P5: also count gate rejections from the StepRecord journal. When the
+        // pre-trade gate rejects a proposal, the kernel writes an OrderProposed StepRecord with a
+        // non-null DecisionReason (e.g. "WorstCaseDDWouldBreachDaily"). Parse EventJson to extract
+        // the strategy ID so we can attribute the rejection to the correct strategy.
+        var gateRejections = await db.JournalEntries
+            .Where(e => e.RunId == runId && e.EventKind == "OrderProposed" && e.DecisionReason != null)
+            .Select(e => new { e.EventJson, e.DecisionReason })
+            .ToListAsync(ct);
+
+        foreach (var gr in gateRejections)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(gr.EventJson);
+                var root = doc.RootElement;
+                var sid = root.TryGetProperty("strategyId", out var sProp) ? sProp.GetString() : null;
+                if (string.IsNullOrEmpty(sid) || string.IsNullOrEmpty(gr.DecisionReason))
+                    continue;
+
+                if (!perStrategy.ContainsKey(sid))
+                    perStrategy[sid] = (0, 0, new Dictionary<string, int>());
+
+                var agg = perStrategy[sid];
+                var gateReason = "GATE:" + gr.DecisionReason;
+                agg.NoSignal[gateReason] = agg.NoSignal.GetValueOrDefault(gateReason) + 1;
+                perStrategy[sid] = agg;
+            }
+            catch
+            {
+                // best-effort; malformed JSON shouldn't break the whole breakdown
+            }
+        }
 
         var trades = await db.Trades
             .Where(t => t.RunId == runId)
@@ -77,30 +136,25 @@ public sealed class BacktestQueryService : IBacktestQueryService
                 Wins = g.Count(t => t.NetPnLAmount > 0)
             })
             .ToListAsync(ct);
-
         var tradeIndex = trades.ToDictionary(t => t.StrategyId);
-        var strategyIds = evals.Select(e => e.StrategyId).Distinct().ToList();
 
-        return strategyIds.Select(sid =>
+        return perStrategy.Select(kv =>
         {
-            var stratEvals = evals.Where(e => e.StrategyId == sid).ToList();
-            var total   = stratEvals.Sum(e => e.Count);
-            var signals = stratEvals.Where(e => e.SignalFired).Sum(e => e.Count);
-            var noSignal = stratEvals
-                .Where(e => !e.SignalFired)
-                .OrderByDescending(e => e.Count)
-                .Take(5)
-                .Select(e => (e.Reason, e.Count))
+            var (total, signals, noSignal) = kv.Value;
+            var topRejections = noSignal
+                .OrderByDescending(x => x.Value)
+                .Take(10)
+                .Select(x => new NoSignalReason(x.Key, x.Value))
                 .ToList();
 
-            var t = tradeIndex.GetValueOrDefault(sid);
-            var wins   = t?.Wins ?? 0;
+            var t = tradeIndex.GetValueOrDefault(kv.Key);
+            var wins = t?.Wins ?? 0;
             var opened = t?.Total ?? 0;
             var losses = opened - wins;
             var wr = opened > 0 ? (double)wins / opened : 0d;
 
-            return new StrategyPerformance(sid, total, signals, opened, wins, losses, wr,
-                noSignal.AsReadOnly());
+            return new StrategyPerformance(kv.Key, total, signals, opened, wins, losses, wr,
+                topRejections.AsReadOnly());
         }).ToList();
     }
 

@@ -78,7 +78,7 @@ public sealed class SizeModifierPipelineTests
         var ddMod = new DrawdownSizeModifier();
         var pipeline = Make([ddMod]);
 
-        var expected = (double)DrawdownScaler.ComputeScaleFactor(0.08m, (decimal)profile.MaxTotalDrawdownPercent, profile.DrawdownScaleThreshold, profile.DrawdownScaleFloor);
+        var expected = TradingEngine.Engine.KernelSizing.ComputeScaleFactor(0.08m, (decimal)profile.MaxTotalDrawdownPercent, profile.DrawdownScaleThreshold, profile.DrawdownScaleFloor);
         var actual = pipeline.ComputeCombinedScale(ctx);
         actual.Should().BeApproximately(expected, 0.0001);
     }

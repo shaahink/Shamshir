@@ -12,10 +12,8 @@ public sealed class EffectiveConfigResolverTests
         Id: "trend-breakout",
         DisplayName: "Trend Breakout",
         Enabled: true,
-        Symbols: ["EURUSD", "GBPUSD"],
         RiskProfileId: "standard",
-        Parameters: JsonDocument.Parse("""{"atrPeriod": 14, "atrMultiplier": 2.0}""").RootElement,
-        Timeframe: "H1")
+        Parameters: JsonDocument.Parse("""{"atrPeriod": 14, "atrMultiplier": 2.0}""").RootElement)
     {
         PositionManagement = new PositionManagementOptions
         {
@@ -41,7 +39,7 @@ public sealed class EffectiveConfigResolverTests
             },
         };
 
-        var result = _resolver.Resolve(stored, ovr, null);
+        var result = _resolver.Resolve(stored, ovr);
 
         // Overridden
         result.PositionManagement!.TakeProfit.RrMultiple.Should().Be(3.0);
@@ -63,8 +61,6 @@ public sealed class EffectiveConfigResolverTests
         result.DisplayName.Should().Be("Trend Breakout");
         result.Enabled.Should().BeTrue();
         result.RiskProfileId.Should().Be("standard");
-        result.Timeframe.Should().Be("H1");
-        result.Symbols.Should().Equal("EURUSD", "GBPUSD");
 
         // Inherited — OrderEntry
         result.OrderEntry!.Method.Should().Be(OrderEntryMethod.Market);
@@ -101,8 +97,8 @@ public sealed class EffectiveConfigResolverTests
             },
         };
 
-        var resultA = _resolver.Resolve(stored, ovrA, null);
-        var resultB = _resolver.Resolve(stored, ovrB, null);
+        var resultA = _resolver.Resolve(stored, ovrA);
+        var resultB = _resolver.Resolve(stored, ovrB);
 
         // Different TP
         resultA.PositionManagement!.TakeProfit.RrMultiple.Should().Be(3.0);
@@ -138,7 +134,7 @@ public sealed class EffectiveConfigResolverTests
             RiskProfileId = "conservative",
         };
 
-        _ = _resolver.Resolve(stored, ovr, null);
+        _ = _resolver.Resolve(stored, ovr);
 
         // Stored config must not be mutated
         stored.PositionManagement.StopLoss.Method.Should().Be(originalSlMethod);
@@ -150,27 +146,13 @@ public sealed class EffectiveConfigResolverTests
     public void Null_override_returns_stored_default_unchanged()
     {
         var stored = DefaultConfig();
-        var result = _resolver.Resolve(stored, null, null);
+        var result = _resolver.Resolve(stored, null);
 
         result.Id.Should().Be(stored.Id);
         result.DisplayName.Should().Be(stored.DisplayName);
         result.Enabled.Should().Be(stored.Enabled);
         result.RiskProfileId.Should().Be(stored.RiskProfileId);
-        result.Timeframe.Should().Be(stored.Timeframe);
-        result.Symbols.Should().Equal(stored.Symbols);
         result.PositionManagement!.StopLoss.Method.Should().Be(stored.PositionManagement!.StopLoss.Method);
-    }
-
-    [Fact]
-    public void SymbolTimeframePair_overrides_symbols()
-    {
-        var stored = DefaultConfig();
-        var plan = new SymbolTimeframePair("USDJPY", "M15");
-
-        var result = _resolver.Resolve(stored, null, plan);
-
-        result.Symbols.Should().Equal("USDJPY");
-        result.Timeframe.Should().Be("M15");
     }
 
     [Fact]
@@ -180,7 +162,7 @@ public sealed class EffectiveConfigResolverTests
         var overrideParams = JsonDocument.Parse("""{"atrMultiplier": 3.5, "newParam": true}""").RootElement;
         var ovr = new StrategyOverride { Parameters = overrideParams };
 
-        var result = _resolver.Resolve(stored, ovr, null);
+        var result = _resolver.Resolve(stored, ovr);
 
         result.Parameters.TryGetProperty("atrPeriod", out var atrPeriod).Should().BeTrue();
         atrPeriod.GetInt32().Should().Be(14); // inherited
@@ -196,7 +178,7 @@ public sealed class EffectiveConfigResolverTests
         var stored = DefaultConfig();
         var ovr = new StrategyOverride { StrategyId = "custom-id", Enabled = false };
 
-        var result = _resolver.Resolve(stored, ovr, null);
+        var result = _resolver.Resolve(stored, ovr);
 
         result.Id.Should().Be("custom-id");
         result.Enabled.Should().BeFalse();

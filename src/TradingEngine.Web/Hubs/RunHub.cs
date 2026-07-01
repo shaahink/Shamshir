@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using TradingEngine.Web.Services;
 
 namespace TradingEngine.Web.Hubs;
 
@@ -10,10 +11,26 @@ namespace TradingEngine.Web.Hubs;
 /// </summary>
 public sealed class RunHub : Hub
 {
+    private readonly BacktestOrchestrator _orchestrator;
+
+    public RunHub(BacktestOrchestrator orchestrator) => _orchestrator = orchestrator;
+
     public static string Group(string runId) => $"run:{runId}";
 
-    public Task JoinRun(string runId) =>
-        Groups.AddToGroupAsync(Context.ConnectionId, Group(runId));
+    public async Task JoinRun(string runId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, Group(runId));
+
+        // iter-redesign P6.1: snapshot-on-join — a page load / reconnect mid-run gets the CURRENT
+        // progress immediately (direct to the caller, bypassing the throttle) instead of a blank monitor
+        // until the next broadcast. Fixes the "live monitor stopped working / can't self-verify" symptom.
+        var progress = _orchestrator.GetCurrentProgress(runId);
+        if (progress is not null)
+        {
+            var method = progress.Status == "running" ? "RunProgress" : "RunCompleted";
+            await Clients.Caller.SendAsync(method, progress);
+        }
+    }
 
     public Task LeaveRun(string runId) =>
         Groups.RemoveFromGroupAsync(Context.ConnectionId, Group(runId));

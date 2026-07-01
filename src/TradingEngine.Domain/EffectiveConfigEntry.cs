@@ -10,19 +10,14 @@ public sealed record StrategyOverride(
     string? RiskProfileId = null,
     RegimeFilterOptions? RegimeFilter = null,
     ReentryOptions? Reentry = null,
-    bool? Enabled = null,
-    string? Timeframe = null);
-
-public sealed record SymbolTimeframePair(string Symbol, string Timeframe);
+    bool? Enabled = null);
 
 public sealed record EffectiveConfigEntry(
     string Id,
     string DisplayName,
     bool Enabled,
-    IReadOnlyList<string> Symbols,
     string RiskProfileId,
     JsonElement Parameters,
-    string Timeframe,
     PositionManagementOptions? PositionManagement = null,
     OrderEntryOptions? OrderEntry = null,
     RegimeFilterOptions? RegimeFilter = null,
@@ -32,10 +27,8 @@ public sealed record EffectiveConfigEntry(
         s.Id,
         s.DisplayName,
         s.Enabled,
-        s.Symbols,
         s.RiskProfileId,
         s.Parameters,
-        s.Timeframe,
         s.PositionManagement,
         s.OrderEntry,
         s.RegimeFilter,

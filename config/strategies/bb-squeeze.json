@@ -1,31 +1,50 @@
 {
-  "id": "bb-squeeze",
-  "displayName": "Bollinger Squeeze",
-  "enabled": true,
-  "symbols": ["EURUSD", "GBPUSD"],
-  "riskProfileId": "standard",
-  "timeframe": "H1",
-  "regimeFilter": { "allowHighVolatility": false },
-  "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
-  "positionManagement": {
-    "stopLoss": { "method": "SwingPoint", "atrMultiple": 2.0, "maxPips": 300 },
-    "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.5 },
-    "breakeven": { "enabled": true, "triggerRMultiple": 1.0, "offsetPips": 1.0 },
-    "trailing": { "method": "AtrMultiple", "atrMultiple": 2.0 }
-  },
-  "parameters": {
-    "bbPeriod": 20,
-    "bbStdDev": 2.0,
-    "atrPeriod": 14,
-    "squeezeThreshold": 0.8,
-    "cooldownBars": 3,
-    "slBandBuffer": 0.5,
-    "tpRrMultiple": 2.5
-  },
-  "reentry": {
-    "blockWhileSameDirectionOpen": true,
-    "cooldownBarsAfterSl": 5,
-    "cooldownBarsAfterTp": 2,
-    "cooldownBarsAfterEntry": 3
-  }
+    "id":  "bb-squeeze",
+    "displayName":  "Bollinger Squeeze",
+    "enabled":  true,
+    "riskProfileId":  "standard",
+    "regimeFilter":  {
+                         "allowHighVolatility":  false
+                     },
+    "orderEntry":  {
+                       "method":  "Market",
+                       "maxSlippagePips":  2.0
+                   },
+    "positionManagement":  {
+                               "stopLoss":  {
+                                                "method":  "SwingPoint",
+                                                "atrMultiple":  2.0,
+                                                "maxPips":  300
+                                            },
+                               "takeProfit":  {
+                                                  "method":  "RrMultiple",
+                                                  "rrMultiple":  2.5
+                                              },
+                               "breakeven":  {
+                                                 "enabled":  true,
+                                                 "triggerRMultiple":  1.0,
+                                                 "offsetPips":  1.0
+                                             },
+                               "trailing":  {
+                                                "enabled":  true,
+                                                "mode":  "Auto",
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  2.0
+                                            }
+                           },
+    "parameters":  {
+                       "bbPeriod":  20,
+                       "bbStdDev":  2.0,
+                       "atrPeriod":  14,
+                       "squeezeThreshold":  0.8,
+                       "cooldownBars":  3,
+                       "slBandBuffer":  0.5,
+                       "tpRrMultiple":  2.5
+                   },
+    "reentry":  {
+                    "blockWhileSameDirectionOpen":  true,
+                    "cooldownBarsAfterSl":  5,
+                    "cooldownBarsAfterTp":  2,
+                    "cooldownBarsAfterEntry":  3
+                }
 }

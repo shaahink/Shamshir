@@ -33,7 +33,13 @@
       "Bash(node *)",
       "Bash(python3 *)",
       "Bash(sqlite3 /c/code/shamshir/data/trading.db \"SELECT COUNT\\(*\\) FROM Bars;\")",
+<<<<<<< Updated upstream
+      "Bash(sqlite3 *)",
+      "Bash(rm -rf src/TradingEngine.Web/wwwroot/*)",
+      "Bash(npm run *)"
+=======
       "Bash(sqlite3 *)"
+>>>>>>> Stashed changes
     ]
   }
 }

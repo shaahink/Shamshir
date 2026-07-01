@@ -15,6 +15,7 @@ public sealed class PositionManager(
 
     private readonly Dictionary<Guid, (Position Pos, PositionManagementConfig Config, string State)> _tracked = new();
     private readonly HashSet<Guid> _beApplied = new();
+    private readonly HashSet<Guid> _partialApplied = new();
     private readonly Dictionary<Guid, decimal> _highWaterBid = new();
     private readonly Dictionary<Guid, decimal> _lowWaterAsk = new();
     private readonly Dictionary<Guid, decimal> _initialSlDistance = new();
@@ -24,6 +25,7 @@ public sealed class PositionManager(
         _tracked[position.Id] = (position, config, StateActive);
         _highWaterBid[position.Id] = position.EntryPrice.Value;
         _lowWaterAsk[position.Id] = position.EntryPrice.Value;
+        _initialSlDistance[position.Id] = Math.Abs(position.EntryPrice.Value - position.CurrentStopLoss.Value);
         logger.LogInformation("Position state changed. Id={Id} From=None To=Active", position.Id);
     }
 
@@ -35,6 +37,7 @@ public sealed class PositionManager(
         }
         _tracked.Remove(positionId);
         _beApplied.Remove(positionId);
+        _partialApplied.Remove(positionId);
         _highWaterBid.Remove(positionId);
         _lowWaterAsk.Remove(positionId);
         _initialSlDistance.Remove(positionId);
@@ -64,7 +67,31 @@ public sealed class PositionManager(
         _lowWaterAsk[position.Id] = Math.Min(
             _lowWaterAsk.GetValueOrDefault(position.Id, position.EntryPrice.Value), currentTick.Ask);
 
+        var mods = new List<PositionModification>();
+
+        // iter-38 A4 (PartialTp): close a fraction of the position ONCE when it first reaches the trigger
+        // R-multiple. The remainder stays open and keeps trailing. Off (default) ⇒ no partial.
+        if (config.PartialTpEnabled && !_partialApplied.Contains(position.Id))
+        {
+            var initialSlDist = _initialSlDistance.GetValueOrDefault(position.Id);
+            var favorable = position.Direction == TradeDirection.Long
+                ? currentTick.Bid - position.EntryPrice.Value
+                : position.EntryPrice.Value - currentTick.Ask;
+            var currentR = initialSlDist > 0 ? (double)(favorable / initialSlDist) : 0;
+            if (currentR >= config.PartialTpTriggerR)
+            {
+                var step = symbolInfo.LotStep > 0 ? symbolInfo.LotStep : 0.01m;
+                var closeLots = Math.Floor(position.Lots * (decimal)config.PartialTpCloseFraction / step) * step;
+                if (closeLots > 0 && closeLots < position.Lots)
+                {
+                    mods.Add(new PartialClose(position.Id, closeLots, "PARTIAL"));
+                    _partialApplied.Add(position.Id);
+                }
+            }
+        }
+
         Price? candidate = null;
+        var reason = "TRAIL";
         var breakevenTriggered = false;
 
         // Breakeven floor (once).
@@ -75,28 +102,34 @@ public sealed class PositionManager(
                 config.BreakevenTriggerR, config.BreakevenBufferPips, symbolInfo);
             if (beSl.HasValue)
             {
-                candidate = MoreFavorable(candidate, beSl.Value, position.Direction);
+                candidate = beSl.Value;
+                reason = "BREAKEVEN";
                 breakevenTriggered = true;
             }
         }
 
         // Trailing (every bar; independent of breakeven — the monotonic guard ratchets the stop up).
         var trail = ComputeTrail(config, ps, currentTick, recentBars, symbolInfo);
-        if (trail.HasValue)
-            candidate = MoreFavorable(candidate, trail.Value, position.Direction);
-
-        if (candidate is null || !Improves(candidate.Value, position.CurrentStopLoss, position.Direction))
-            return [];
-
-        if (breakevenTriggered) _beApplied.Add(position.Id);
-        var newState = state == StateActive ? (breakevenTriggered ? StateBreakevenSet : StateTrailing) : state;
-        if (newState != state)
+        if (trail.HasValue && (candidate is null || Improves(trail.Value, candidate.Value, position.Direction)))
         {
-            _tracked[position.Id] = (position, config, newState);
-            logger.LogInformation("Position state changed. Id={Id} From={From} To={To}", position.Id, state, newState);
+            candidate = trail.Value;
+            // iter-38 A7c: tag RIDE when the relaxed ATR trail is active this bar, else TRAIL.
+            reason = RideActiveFor(config, recentBars) ? "RIDE" : "TRAIL";
         }
 
-        return [new MoveStopLoss(position.Id, candidate.Value)];
+        if (candidate is not null && Improves(candidate.Value, position.CurrentStopLoss, position.Direction))
+        {
+            if (breakevenTriggered) _beApplied.Add(position.Id);
+            var newState = state == StateActive ? (breakevenTriggered ? StateBreakevenSet : StateTrailing) : state;
+            if (newState != state)
+            {
+                _tracked[position.Id] = (position, config, newState);
+                logger.LogInformation("Position state changed. Id={Id} From={From} To={To}", position.Id, state, newState);
+            }
+            mods.Add(new MoveStopLoss(position.Id, candidate.Value, reason));
+        }
+
+        return mods;
     }
 
     private Price? ComputeTrail(
@@ -113,12 +146,12 @@ public sealed class PositionManager(
                 return PositionLifecycle.TrailAtr(ps,
                     _highWaterBid.GetValueOrDefault(ps.PositionId, ps.EntryPrice.Value),
                     _lowWaterAsk.GetValueOrDefault(ps.PositionId, ps.EntryPrice.Value),
-                    ComputeAtr(recentBars, config, symbolInfo), t.AtrMultiple, symbolInfo);
+                    ComputeAtr(recentBars, config, symbolInfo), EffectiveAtrMultiple(t, recentBars), symbolInfo);
 
             case TrailingMethod.Structure:
                 return PositionLifecycle.TrailStructure(ps, recentBars,
                     t.StructureLookbackBars > 0 ? t.StructureLookbackBars : 10,
-                    ComputeAtr(recentBars, config, symbolInfo), t.AtrMultiple, symbolInfo);
+                    ComputeAtr(recentBars, config, symbolInfo), EffectiveAtrMultiple(t, recentBars), symbolInfo);
 
             case TrailingMethod.SteppedR:
             {
@@ -167,16 +200,32 @@ public sealed class PositionManager(
         string strategyId, PositionManagementOptions opts, decimal initialRiskAmount)
     {
         var tr = opts.Trailing;
+        // iter-38 A1: the Trailing add-on is gated by its universal Enabled toggle (consistent with Breakeven
+        // and every other add-on). A configured Method WITHOUT Enabled is treated as OFF, so the UI / pack
+        // toggle is the single source of truth rather than a Method side-channel. Strategies that should trail
+        // set trailing.enabled=true (Mode=Custom keeps their stored numbers; Mode=Auto ⇒ AddOnResolver tunes).
+        var trailingMethod = tr.Enabled ? ParseTrailingMethod(tr.Method) : TrailingMethod.None;
         var trailing = new TrailingConfig(
-            ParseTrailingMethod(tr.Method), tr.StepPips, tr.AtrMultiple, opts.Breakeven.TriggerRMultiple)
+            trailingMethod, tr.StepPips, tr.AtrMultiple, opts.Breakeven.TriggerRMultiple)
         {
             StructureLookbackBars = tr.StructureLookbackBars,
             SteppedRLevels = tr.SteppedRLevels,
+            // iter-38 A5: Ride relaxes the ATR trail while ADX is strong. opts.Ride is already add-on-resolved
+            // (Auto ⇒ tuner numbers) by the time BuildConfig runs at registration.
+            RideEnabled = opts.Ride?.Enabled ?? false,
+            RideAdxFloor = opts.Ride?.AdxFloor ?? 25,
+            RideRelaxedAtrMultiple = opts.Ride?.RelaxedAtrMultiple ?? tr.AtrMultiple,
         };
         return new PositionManagementConfig(
             strategyId, trailing,
             opts.Breakeven.Enabled, opts.Breakeven.TriggerRMultiple, new Pips(opts.Breakeven.OffsetPips),
-            new Money(initialRiskAmount, "USD"));
+            new Money(initialRiskAmount, "USD"))
+        {
+            // iter-38 A4: opts.PartialTp is already add-on-resolved (Auto ⇒ tuner) at registration.
+            PartialTpEnabled = opts.PartialTp?.Enabled ?? false,
+            PartialTpTriggerR = opts.PartialTp?.TriggerRMultiple ?? 1.0,
+            PartialTpCloseFraction = opts.PartialTp?.CloseFraction ?? 0.5,
+        };
     }
 
     private static TrailingMethod ParseTrailingMethod(string method) => method switch
@@ -197,8 +246,26 @@ public sealed class PositionManager(
             p.OpenedAtUtc, p.StrategyId, PositionPhase.Open, p.Lots);
     }
 
-    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config, SymbolInfo symbolInfo)
+    /// <summary>iter-38 A5 (Ride): while the add-on is enabled and ADX shows a strong trend, widen the ATR
+    /// trailing multiple to the relaxed value so a runner is given more room; otherwise the configured
+    /// multiple stands. Off (RideEnabled=false) ⇒ always the configured multiple ⇒ golden byte-identical.</summary>
+    private double EffectiveAtrMultiple(TrailingConfig t, IReadOnlyList<Bar> recentBars)
     {
+        if (!t.RideEnabled || recentBars.Count < 2) return t.AtrMultiple;
+        var adx = indicatorService.Adx(recentBars, Math.Min(14, recentBars.Count));
+        return adx > t.RideAdxFloor ? t.RideRelaxedAtrMultiple : t.AtrMultiple;
+    }
+
+    // iter-38 A7c: was the Ride relaxation in effect this bar? Used only to tag the journal kind (RIDE vs
+    // TRAIL); the stop value itself is computed by EffectiveAtrMultiple inside ComputeTrail.
+    private bool RideActiveFor(PositionManagementConfig config, IReadOnlyList<Bar> recentBars)
+    {
+        var t = config.TrailingStop;
+        if (!t.RideEnabled || recentBars.Count < 2) return false;
+        return indicatorService.Adx(recentBars, Math.Min(14, recentBars.Count)) > t.RideAdxFloor;
+    }
+
+    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config, SymbolInfo symbolInfo)    {
         var fallback = (double)symbolInfo.PipSize;
         if (recentBars.Count == 0) return config.TrailingStop.AtrMultiple * fallback;
         var atrValue = indicatorService.Atr(recentBars, Math.Min(14, recentBars.Count));

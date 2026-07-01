@@ -39,19 +39,26 @@ public sealed class EngineReducerWiringTests
             nameof(CloseRequested),
             // Force-close — wired via PositionTracker.RequestForceCloseAllAsync
             "ForceCloseAllRequested",
+            // iter-35 (A2): now wired in reducer (drawdown + account fold). Breach is layered in Kernel.
+            nameof(EquityObserved),
+            // iter-35 (A2): reducer branches revived — fed by Kernel.Decide via KernelDriver tape.
+            nameof(BarClosed),
+            nameof(TickReceived),
+            nameof(DayRolled),
+            nameof(WeekRolled),
+            nameof(MonthRolled),
+            // iter-36 (K4 gap-3): trailing/breakeven stop move — wired in the reducer (update stop + emit ModifyStopLoss).
+            nameof(StopLossModifyRequested),
+            // iter-38 (A4b): PartialTp partial-close request — wired in the reducer (emit ClosePartialOpenPosition).
+            nameof(PartialCloseRequested),
+            // iter-38 (A7): ADDON_RESOLVED journal marker — wired as a pure no-op (StepRecord only).
+            nameof(AddOnsResolved),
         };
 
         var unwiredTypes = new HashSet<string>(StringComparer.Ordinal)
         {
-            // UNWIRED — RiskManager is authoritative; see EngineReducer.cs banners
-            nameof(BarClosed),
-            nameof(TickReceived),
-            nameof(EquityObserved),
-            nameof(DayRolled),
-            nameof(WeekRolled),
-            nameof(MonthRolled),
             // EventBus-only events — published via IEventBus, never fed to the reducer
-            "BarIngested",        // iter-26: TradingLoop → IEventBus → BarPersistenceHandler (bar persistence only)
+            "BarIngested",
             "BarEvaluated",
             "TradeClosed",
             "TradeOpened",
@@ -63,6 +70,8 @@ public sealed class EngineReducerWiringTests
             "MonthlyEquitySnapshotTaken",
             "WeeklyEquitySnapshotTaken",
             "PositionPartiallyClosed",
+            // iter-35 (A2): kernel-only event — handled by Kernel.Decide, not the reducer directly
+            "OrderProposed",
         };
 
         // Every EngineEvent type must be in exactly one of these two sets.

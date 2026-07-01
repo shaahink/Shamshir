@@ -229,9 +229,6 @@ public sealed class ExperimentRunner
             var adapter = host.Services.GetRequiredService<IBrokerAdapter>();
             await adapter.BarStream.Completion;
 
-            var barHandler = host.Services.GetRequiredService<BarEvaluationHandler>();
-            await barHandler.FlushRemainingAsync();
-
             await Task.Delay(2_000, ct);
 
             try

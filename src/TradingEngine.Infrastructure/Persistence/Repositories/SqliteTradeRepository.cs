@@ -8,6 +8,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
         {
             Id = trade.Id,
             PositionId = trade.PositionId,
+            OrderId = trade.OrderId,
             Symbol = trade.Symbol.ToString(),
             Direction = trade.Direction.ToString(),
             Lots = trade.Lots,
@@ -33,6 +34,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             StrategyId = trade.StrategyId,
             RiskProfileId = trade.RiskProfileId,
             Mode = trade.Mode.ToString(),
+            OrderEntryMethod = trade.OrderEntryMethod,
             DurationSeconds = trade.DurationSeconds,
             RunId = string.IsNullOrEmpty(runId) ? null : runId,
         };
@@ -74,6 +76,8 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             new Pips(e.PnLPips), e.RMultiple,
             new Pips(e.MaxAdverseExcursion), new Pips(e.MaxFavorableExcursion),
             e.ExitReason, e.StrategyId, e.RiskProfileId,
-            Enum.Parse<EngineMode>(e.Mode));
+            Enum.Parse<EngineMode>(e.Mode),
+            OrderEntryMethod: e.OrderEntryMethod,
+            OrderId: e.OrderId);
     }
 }

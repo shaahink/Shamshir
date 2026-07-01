@@ -1,24 +1,33 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
-public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyConfigStore
+public sealed class SqliteStrategyConfigStore(TradingDbContext db, IMemoryCache? cache = null) : IStrategyConfigStore
 {
+    private const string CacheKey = "strategy_configs_all";
+
     public async Task<IReadOnlyList<StrategyConfigEntry>> GetAllAsync(CancellationToken ct)
     {
+        if (cache?.TryGetValue(CacheKey, out IReadOnlyList<StrategyConfigEntry>? cached) == true && cached is not null)
+            return cached;
+
         var entities = await db.StrategyConfigs
+            .AsNoTracking()
             .OrderBy(e => e.DisplayName)
             .ToListAsync(ct);
 
         var results = new List<StrategyConfigEntry>(entities.Count);
-        foreach (var e in entities)
-            results.Add(ToEntry(e));
-        return results;
+        foreach (var e in entities) results.Add(ToEntry(e));
+            var list = results.AsReadOnly();
+            cache?.Set(CacheKey, list, TimeSpan.FromMinutes(5));
+        return list;
     }
 
     public async Task UpsertAsync(StrategyConfigEntry entry, CancellationToken ct)
     {
+        cache?.Remove(CacheKey);
         var existing = await db.StrategyConfigs.FindAsync([entry.Id], ct);
         if (existing is null)
         {
@@ -28,17 +37,27 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyCo
         {
             existing.DisplayName = entry.DisplayName;
             existing.Enabled = entry.Enabled;
-            existing.DefaultSymbols = JsonSerializer.Serialize(entry.Symbols);
-            existing.Timeframe = entry.Timeframe;
             existing.RiskProfileId = entry.RiskProfileId;
             existing.ParametersJson = RawTextOrEmpty(entry.Parameters);
             existing.PositionManagementJson = SerializeOptional(entry.PositionManagement);
             existing.OrderEntryJson = SerializeOptional(entry.OrderEntry);
             existing.RegimeFilterJson = SerializeOptional(entry.RegimeFilter);
             existing.ReentryJson = SerializeOptional(entry.Reentry);
+            existing.Version++;
             existing.UpdatedAtUtc = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
+    }
+
+    public async Task DeleteAsync(string id, CancellationToken ct)
+    {
+        cache?.Remove(CacheKey);
+        var existing = await db.StrategyConfigs.FindAsync([id], ct);
+        if (existing is not null)
+        {
+            db.StrategyConfigs.Remove(existing);
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     private static StrategyConfigEntity ToEntity(StrategyConfigEntry entry)
@@ -48,8 +67,6 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyCo
             Id = entry.Id,
             DisplayName = entry.DisplayName,
             Enabled = entry.Enabled,
-            DefaultSymbols = JsonSerializer.Serialize(entry.Symbols),
-            Timeframe = entry.Timeframe,
             RiskProfileId = entry.RiskProfileId,
             ParametersJson = RawTextOrEmpty(entry.Parameters),
             PositionManagementJson = SerializeOptional(entry.PositionManagement),
@@ -63,16 +80,13 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db) : IStrategyCo
     private static StrategyConfigEntry ToEntry(StrategyConfigEntity entity)
     {
         var parameters = JsonSerializer.Deserialize<JsonElement>(entity.ParametersJson);
-        var symbols = JsonSerializer.Deserialize<List<string>>(entity.DefaultSymbols) ?? [];
 
         return new StrategyConfigEntry(
             entity.Id,
             entity.DisplayName,
             entity.Enabled,
-            symbols,
             entity.RiskProfileId,
-            parameters,
-            entity.Timeframe)
+            parameters)
         {
             RegimeFilter = DeserializeOptional<RegimeFilterOptions>(entity.RegimeFilterJson),
             OrderEntry = DeserializeOptional<OrderEntryOptions>(entity.OrderEntryJson),

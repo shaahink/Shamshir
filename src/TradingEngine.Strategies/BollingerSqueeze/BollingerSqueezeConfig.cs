@@ -5,9 +5,7 @@ public sealed record BollingerSqueezeConfig : IStrategyConfig
     public string Id { get; init; } = "bb-squeeze";
     public string DisplayName { get; init; } = "Bollinger Squeeze";
     public bool Enabled { get; init; } = true;
-    public IReadOnlyList<string> Symbols { get; init; } = ["EURUSD", "GBPUSD"];
     public string RiskProfileId { get; init; } = "standard";
-    public Timeframe Timeframe { get; init; } = Timeframe.H1;
     public RegimeFilterOptions RegimeFilter { get; init; } = new() { AllowHighVolatility = false };
     public OrderEntryOptions OrderEntry { get; init; } = new();
     public PositionManagementOptions PositionManagement { get; init; } = new();

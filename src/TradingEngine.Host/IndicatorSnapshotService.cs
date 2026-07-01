@@ -29,28 +29,36 @@ public sealed class IndicatorSnapshotService
 
     public Task RecomputeIndicatorsAsync(Symbol symbol, Timeframe tf, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         if (!Bars.TryGetValue(symbol, out var byTf)) return Task.CompletedTask;
         if (!byTf.TryGetValue(tf, out var list)) return Task.CompletedTask;
 
         IReadOnlyList<Bar> bars;
         lock (list) { bars = list.ToList(); }
 
+        // F2: convert bars→SkenderQuote once per bar, share across all indicator calls below.
+        var quotes = SkenderIndicatorService.ToQuotes(bars);
+        var ind = (_indicators as SkenderIndicatorService)!;
+
         // De-dupe across strategies: many strategies request the same indicator (e.g. ATR_14) on the
-        // same symbol/timeframe. Compute each unique signature once per bar — recomputing per strategy
-        // is the (now-removed) reason the indicator service carried a fragile internal cache.
+        // same symbol/timeframe. Compute each unique signature once per bar.
         var computed = new HashSet<string>();
 
         foreach (var strategy in _strategies)
         {
             foreach (var req in strategy.RequiredIndicators)
             {
-                var reqBars = bars;
+                var reqQuotes = quotes;
                 if (req.Timeframe != tf && req.Timeframe != default)
                 {
                     if (byTf.TryGetValue(req.Timeframe, out var reqList))
-                        lock (reqList) { reqBars = reqList.ToList(); }
+                    {
+                        lock (reqList) { reqQuotes = SkenderIndicatorService.ToQuotes(reqList.ToList()); }
+                    }
                     else
+                    {
                         continue;
+                    }
                 }
 
                 var sigKey = IndicatorCache.BuildKey(symbol, req);
@@ -58,22 +66,22 @@ public sealed class IndicatorSnapshotService
                 switch (req.Type)
                 {
                     case IndicatorType.Atr:
-                        IndicatorValues[sigKey] = _indicators.Atr(reqBars, req.Period);
+                        IndicatorValues[sigKey] = ind.Atr(reqQuotes, req.Period);
                         break;
                     case IndicatorType.Ema:
-                        IndicatorValues[sigKey] = _indicators.Ema(reqBars, req.Period);
+                        IndicatorValues[sigKey] = ind.Ema(reqQuotes, req.Period);
                         break;
                     case IndicatorType.Rsi:
-                        IndicatorValues[sigKey] = _indicators.Rsi(reqBars, req.Period);
+                        IndicatorValues[sigKey] = ind.Rsi(reqQuotes, req.Period);
                         break;
                     case IndicatorType.Sma:
-                        IndicatorValues[sigKey] = _indicators.Sma(reqBars, req.Period);
+                        IndicatorValues[sigKey] = ind.Sma(reqQuotes, req.Period);
                         break;
                     case IndicatorType.Adx:
-                        IndicatorValues[sigKey] = _indicators.Adx(reqBars, req.Period);
+                        IndicatorValues[sigKey] = ind.Adx(reqQuotes, req.Period);
                         break;
                     case IndicatorType.BollingerBands:
-                        var (upper, middle, lower) = _indicators.BollingerBands(reqBars, req.Period, req.StdDev);
+                        var (upper, middle, lower) = ind.BollingerBands(reqQuotes, req.Period, req.StdDev);
                         IndicatorValues[sigKey] = middle;
                         IndicatorValues[$"{sigKey}_Upper"] = upper;
                         IndicatorValues[$"{sigKey}_Lower"] = lower;
@@ -82,14 +90,14 @@ public sealed class IndicatorSnapshotService
                         var macdFast = req.Period;
                         var macdSlow = req.Param1 > 0 ? req.Param1 : 26;
                         var macdSig = (int)(req.Param2 > 0 ? req.Param2 : 9);
-                        var macd = _indicators.Macd(reqBars, macdFast, macdSlow, macdSig);
+                        var macd = ind.Macd(reqQuotes, macdFast, macdSlow, macdSig);
                         IndicatorValues[sigKey] = macd.MacdLine;
                         IndicatorValues[$"{sigKey}_Signal"] = macd.Signal;
                         IndicatorValues[$"{sigKey}_Histogram"] = macd.Histogram;
                         break;
                     case IndicatorType.SuperTrend:
                         var stMult = req.Param2 > 0 ? req.Param2 : 3.0;
-                        var st = _indicators.SuperTrend(reqBars, req.Period, stMult);
+                        var st = ind.SuperTrend(reqQuotes, req.Period, stMult);
                         IndicatorValues[sigKey] = st.Line;
                         IndicatorValues[$"{sigKey}_Direction"] = st.Direction;
                         break;

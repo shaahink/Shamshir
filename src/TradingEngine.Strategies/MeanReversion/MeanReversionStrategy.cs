@@ -1,7 +1,10 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Strategies.MeanReversion;
 
+[StrategyId("mean-reversion")]
 public sealed class MeanReversionStrategy : IStrategy
 {
     private readonly MeanReversionConfig _config;
@@ -10,7 +13,8 @@ public sealed class MeanReversionStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
+    public Timeframe EntryTimeframe => Timeframe.H1;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
     public int RequiredBarCount => Math.Max(_config.Parameters.BbPeriod, _config.Parameters.AtrPeriod) + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats { get; private set; } = new(0, 0, 0, 0);
@@ -33,13 +37,7 @@ public sealed class MeanReversionStrategy : IStrategy
     {
         try
         {
-            if (!_config.Symbols.Contains(context.Symbol.Value))
-            {
-                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
-                return null;
-            }
-
-            var h1Bars = context.Bars.GetValueOrDefault(_config.Timeframe);
+            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
             if (h1Bars is null || h1Bars.Count < RequiredBarCount)
             {
                 _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
@@ -104,4 +102,20 @@ public sealed class MeanReversionStrategy : IStrategy
     }
 
     public void Reset() => Stats = new StrategyStats(0, 0, 0, 0);
+
+    public static MeanReversionStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new MeanReversionConfig(
+            entry.Id, entry.DisplayName, entry.Enabled,
+            entry.RiskProfileId,
+            StrategyFactoryHelper.DeserializeParams<MeanReversionParameters>(entry.Parameters))
+        {
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+        };
+        return new MeanReversionStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<MeanReversionStrategy>>());
+    }
 }

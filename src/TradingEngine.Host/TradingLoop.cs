@@ -15,11 +15,12 @@ namespace TradingEngine.Host;
 public sealed class TradingLoop(
     IBrokerAdapter broker,
     IndicatorSnapshotService indicatorSnapshot,
-    OrderDispatcher orderDispatcher,
+    IOrderGate orderGate,
     PositionTracker positionTracker,
     IStrategyBank strategyBank,
     IRegimeDetector regimeDetector,
     ISignalGate? signalGate,
+    ITradingGovernor? governor,
     ISymbolInfoRegistry symbolRegistry,
     IEventBus eventBus,
     IEngineClock clock,
@@ -55,7 +56,7 @@ public sealed class TradingLoop(
         lock (list)
         {
             list.Add(bar);
-            if (list.Count > 500)
+            while (list.Count > 500)
                 list.RemoveAt(0);
             barCount = list.Count;
         }
@@ -79,6 +80,7 @@ public sealed class TradingLoop(
         indicatorSnapshot.BuildSharedIndicatorSnapshot(bar.Symbol);
 
         signalGate?.OnBar(bar.OpenTimeUtc);
+        governor?.OnBar(bar.OpenTimeUtc);
 
         var regime = regimeDetector.Detect(bar.Symbol,
             barSnapshot[bar.Timeframe],
@@ -99,7 +101,7 @@ public sealed class TradingLoop(
                     runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
                     strategy.Id, new Dictionary<string, double>(strategyIndicators),
                     false, null, $"not enough bars (have {totalBars}, need {strategy.RequiredBarCount})",
-                    clock.UtcNow), CancellationToken.None);
+                    clock.UtcNow), CancellationToken.None).ContinueWith(t => logger.LogWarning(t.Exception, "BarEvaluated publish failed"), TaskContinuationOptions.OnlyOnFaulted);
                 continue;
             }
 
@@ -172,7 +174,7 @@ public sealed class TradingLoop(
                 continue;
             }
             var openPositions = MapOpenPositionsToProjected();
-            var orderCtx = await orderDispatcher.DispatchAsync(intent, equity, bar.Close, broker, openPositions, ct);
+            var orderCtx = await orderGate.DispatchAsync(intent, equity, bar.Close, broker, openPositions, ct);
             if (orderCtx is null) continue;
 
             var orderReq = new OrderRequest(intent, orderCtx.Lots, intent.Symbol,

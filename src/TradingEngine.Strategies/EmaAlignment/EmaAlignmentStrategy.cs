@@ -1,8 +1,11 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TradingEngine.Services.Strategy;
 
 namespace TradingEngine.Strategies.EmaAlignment;
 
+[StrategyId("ema-alignment")]
 public sealed class EmaAlignmentStrategy : IStrategy
 {
     private readonly EmaAlignmentConfig _config;
@@ -11,7 +14,8 @@ public sealed class EmaAlignmentStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
+    public Timeframe EntryTimeframe => Timeframe.H1;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
     public int RequiredBarCount => Math.Max(_config.Parameters.SlowPeriod, _config.Parameters.AtrPeriod) + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats { get; private set; } = new(0, 0, 0, 0);
@@ -34,13 +38,7 @@ public sealed class EmaAlignmentStrategy : IStrategy
     {
         try
         {
-            if (!_config.Symbols.Contains(context.Symbol.Value))
-            {
-                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
-                return null;
-            }
-
-            var h1Bars = context.Bars.GetValueOrDefault(_config.Timeframe);
+            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
             if (h1Bars is null || h1Bars.Count < RequiredBarCount)
             {
                 _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
@@ -94,4 +92,20 @@ public sealed class EmaAlignmentStrategy : IStrategy
     }
 
     public void Reset() => Stats = new StrategyStats(0, 0, 0, 0);
+
+    public static EmaAlignmentStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new EmaAlignmentConfig(
+            entry.Id, entry.DisplayName, entry.Enabled,
+            entry.RiskProfileId,
+            StrategyFactoryHelper.DeserializeParams<EmaAlignmentParameters>(entry.Parameters))
+        {
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+        };
+        return new EmaAlignmentStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<EmaAlignmentStrategy>>());
+    }
 }

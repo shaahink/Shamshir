@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Domain;
 
 namespace TradingEngine.Infrastructure.Venues.CTrader;
 
@@ -23,6 +24,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     public Action? OnConnected { get; set; }
     public Action<string, string>? OnStatusChange { get; set; }
+    public ITransportStatusSource? TransportStatus => _transport as ITransportStatusSource;
 
     /// <summary>Fired on every cBot hello (connect + reconnect) with the venue-reported open
     /// positions and account, so the engine can reconcile its position tracker (V1/V2).</summary>
@@ -35,9 +37,20 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     // GetAccountStateAsync so startup/reconnect reconciliation sees real open positions
     // instead of the old (0,0,[]) stub (V1).
     private volatile AccountState _lastKnownState = new(0, 0, []);
+    private decimal _lastMid = 1.0m;
 
     public DateTime BrokerTimeUtc { get; private set; } = DateTime.UtcNow;
     public bool IsConnected => _transport.IsConnected;
+
+    // iter-redesign-ctrader P1: cTrader owns exit execution. The broker holds real SL/TP orders,
+    // triggers them server-side, and the cBot reports closes with reason (SL/TP/STOPOUT/…).
+    // The engine never detects exits bar-by-bar — it reconciles to the venue's open set.
+    public ExitMode ExitMode => ExitMode.VenueManaged;
+
+    // iter-redesign-ctrader P2.1: the venue's authoritative open position set, built from
+    // the cBot's clientOrderId ledger (populated on position open, removed on close).
+    private readonly ConcurrentDictionary<Guid, byte> _openPositionIds = new();
+    public IReadOnlySet<Guid> GetOpenPositionIds() => _openPositionIds.Keys.ToHashSet();
 
     private readonly ConcurrentQueue<object> _pendingCommands = new();
     private readonly List<object> _bufferedCommands = new();
@@ -140,6 +153,13 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                             // V1/V2 — capture the venue's open-position snapshot and reconcile.
                             var state = ParseHelloState(doc.RootElement);
                             _lastKnownState = state;
+
+                            // iter-redesign-ctrader P2.1: sync the open-position-id set from the
+                            // venue-authoritative snapshot so per-bar reconciliation is accurate.
+                            _openPositionIds.Clear();
+                            foreach (var op in state.OpenPositions)
+                                _openPositionIds.TryAdd(op.PositionId, 0);
+
                             if (state.OpenPositions.Count > 0 || state.Balance > 0)
                             {
                                 _logger.LogInformation("CTRADER|RECONCILE_SNAPSHOT|balance={Balance}|equity={Equity}|positions={Count}",
@@ -152,6 +172,25 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                             // (The transport's OnConnected only fires on the first identity, so a
                             // reconnect would otherwise never re-flush.)
                             FlushPendingCommands();
+
+                            // iter-ctrader-capture: parse v=2 session metadata (mode)
+                            // so the listen service can mint a RunId from a desktop-cTrader session.
+                            var mode = doc.RootElement.TryGetProperty("mode", out var md) ? md.GetString() : null;
+                            if (mode is not null)
+                            {
+                                var helloSymbols = doc.RootElement.TryGetProperty("symbols", out var syms)
+                                    ? syms.EnumerateArray().Select(s => s.GetString()!).ToArray() : Array.Empty<string>();
+                                var helloPeriods = doc.RootElement.TryGetProperty("periods", out var pers)
+                                    ? pers.EnumerateArray().Select(p => p.GetString()!).ToArray() : Array.Empty<string>();
+                                var sessionInfo = new SessionInfo(
+                                    helloSymbols, helloPeriods, state.Balance, state.Equity, mode);
+                                _logger.LogInformation(
+                                    "CTRADER|SESSION|mode={Mode}|symbols={Symbols}|periods={Periods}|balance={Balance}",
+                                    mode, string.Join(",", helloSymbols), string.Join(",", helloPeriods),
+                                    state.Balance);
+                                _onSessionStarted?.Invoke(sessionInfo);
+                                _journal?.Write("SESSION_STARTED", null, DateTime.UtcNow);
+                            }
                             break;
 
                         case "bar":
@@ -215,10 +254,12 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         {
             case "tick":
             {
+                var bid = root.GetProperty("bid").GetDecimal();
+                var ask = root.GetProperty("ask").GetDecimal();
+                _lastMid = (bid + ask) / 2m;
                 var tick = new Tick(
                     Symbol.Parse(root.GetProperty("symbol").GetString()!),
-                    root.GetProperty("bid").GetDecimal(),
-                    root.GetProperty("ask").GetDecimal(),
+                    bid, ask,
                     root.GetProperty("time").GetDateTime().ToUniversalTime());
                 BrokerTimeUtc = tick.TimestampUtc;
                 _tickChannel.Writer.TryWrite(tick);
@@ -351,10 +392,10 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             _logger.LogInformation("CTRADER|RECONCILE|{Result}", recLine);
             OnStatusChange?.Invoke("RECONCILE", recLine);
         }
-        catch { }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to format reconcile line"); }
     }
 
-    private static ExecutionEvent ParseExecution(JsonElement ex)
+    private ExecutionEvent ParseExecution(JsonElement ex)
     {
         var orderId = ex.TryGetProperty("clientOrderId", out var oid) && oid.GetString() is { } oidStr
             ? Guid.Parse(oidStr) : Guid.Empty;
@@ -363,7 +404,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         var filledLots = ex.GetProperty("filledLots").GetDecimal();
         var reason = ex.TryGetProperty("reason", out var r) && r.ValueKind == JsonValueKind.String
             ? r.GetString() : null;
-        var time = ex.TryGetProperty("simTime", out var st) ? st.GetDateTime().ToUniversalTime() : DateTime.UtcNow;
+        var time = ex.TryGetProperty("simTime", out var st) ? st.GetDateTime().ToUniversalTime() : BrokerTimeUtc;
         return new ExecutionEvent(orderId, state,
             fillPrice > 0 ? new Price(fillPrice) : null,
             filledLots, reason, time)
@@ -396,7 +437,9 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
 
     public Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
-        var clientOrderId = Guid.NewGuid();
+        // Use the engine's order id (= kernel PositionId) as the venue clientOrderId so cBot fills/closes
+        // and the trade-ledger reconciliation all key off the SAME id the kernel uses (iter-36 K2/K4).
+        var clientOrderId = request.ClientOrderId ?? Guid.NewGuid();
         var connected = IsConnected;
         _logger.LogInformation("CTRADER|SUBMIT_ORDER|id={Id}|symbol={Symbol}|dir={Dir}|lots={Lots}|connected={Connected}",
             clientOrderId, request.Symbol, request.Direction, request.Lots, connected);
@@ -447,7 +490,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         {
             _execChannel.Writer.TryWrite(
                 new ExecutionEvent(positionId, OrderState.Filled,
-                    new Price(0m), 0, "FORCE_CLOSE_ENGINE_SHUTDOWN", BrokerTimeUtc)
+                    new Price(_lastMid), 0, "FORCE_CLOSE_ENGINE_SHUTDOWN", BrokerTimeUtc)
                 {
                     GrossProfit = 0m, NetProfit = 0m, Commission = 0m, Swap = 0m
                 });
@@ -533,6 +576,9 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     public void RegisterReconcileHandler(Action<AccountState> handler) => OnReconcile = handler;
     public void RegisterStopModifiedHandler(Action<Guid, Price, Price?> handler) => OnStopModified = handler;
 
+    private Action<SessionInfo>? _onSessionStarted;
+    public void RegisterSessionStartedHandler(Action<SessionInfo> handler) => _onSessionStarted = handler;
+
     private static decimal? ParseDecimalOrNull(JsonElement element, string propertyName)
     {
         if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.Number)
@@ -540,9 +586,20 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         return null;
     }
 
+    private static DateTime? TryParseUtc(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String)
+        {
+            var s = prop.GetString();
+            if (DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+                return dt.ToUniversalTime();
+        }
+        return null;
+    }
+
     private void TryWriteExec(ExecutionEvent exec)
     {
-        var sig = $"{exec.OrderId}|{exec.NewState}|{exec.FillPrice?.Value ?? 0}|{exec.FilledLots}";
+        var sig = $"{exec.OrderId}|{exec.NewState}|{exec.FillPrice?.Value ?? 0}|{exec.FilledLots}|{exec.GrossProfit}|{exec.NetProfit}|{exec.Commission}|{exec.Swap}";
         lock (_recentExecSigs)
         {
             if (!_recentExecSigs.Add(sig))
@@ -556,6 +613,17 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             if (_recentExecOrder.Count > MaxRecentExecSigs)
                 _recentExecSigs.Remove(_recentExecOrder.Dequeue());
         }
+
+        // iter-redesign-ctrader P2.1: keep the open-position-id set in sync with execution events.
+        // Entry fills add; close fills (carrying CloseReason) remove.
+        if (exec.NewState == OrderState.Filled && exec.FillPrice is not null)
+        {
+            if (exec.CloseReason is not null)
+                _openPositionIds.TryRemove(exec.OrderId, out _);
+            else if (exec.FilledLots > 0)
+                _openPositionIds.TryAdd(exec.OrderId, 0);
+        }
+
         _execChannel.Writer.TryWrite(exec);
     }
 

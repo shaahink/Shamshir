@@ -5,6 +5,7 @@ global using Microsoft.AspNetCore.Mvc.RazorPages;
 global using Microsoft.EntityFrameworkCore;
 global using Microsoft.Data.Sqlite;
 global using TradingEngine.Domain;
+global using TradingEngine.Engine;
 global using TradingEngine.Application;
 global using TradingEngine.Experiments;
 global using TradingEngine.Infrastructure;
@@ -18,7 +19,7 @@ global using TradingEngine.Infrastructure.Persistence.Reporting;
 global using TradingEngine.Infrastructure.Configuration;
 global using TradingEngine.Domain.Experiments;
 global using TradingEngine.Risk;
-global using TradingEngine.Risk.Governor;
+
 global using TradingEngine.Risk.Compliance;
 global using TradingEngine.Host;
 global using TradingEngine.Web.Api;

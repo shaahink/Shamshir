@@ -1,0 +1,34 @@
+{
+  "root": true,
+  "ignorePatterns": ["projects/**/*", "dist/**/*", "wwwroot/**/*", "src/styles.generated.css"],
+  "overrides": [
+    {
+      "files": ["*.ts"],
+      "extends": [
+        "eslint:recommended"
+      ],
+      "parser": "@typescript-eslint/parser",
+      "parserOptions": {
+        "project": ["tsconfig.json", "tsconfig.app.json", "tsconfig.spec.json"],
+        "createDefaultProgram": true
+      },
+      "plugins": [
+        "@typescript-eslint",
+        "@angular-eslint"
+      ],
+      "rules": {
+        "@angular-eslint/component-selector": ["error", { "type": "element", "prefix": "app", "style": "kebab-case" }],
+        "@angular-eslint/no-output-on-prefix": "warn",
+        "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+        "no-console": "warn",
+        "no-debugger": "error"
+      }
+    },
+    {
+      "files": ["*.html"],
+      "extends": [],
+      "rules": {}
+    }
+  ]
+}

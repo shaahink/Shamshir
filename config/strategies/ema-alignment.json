@@ -1,36 +1,49 @@
 {
-  "id": "ema-alignment",
-  "displayName": "EMA Alignment v1",
-  "enabled": true,
-  "symbols": ["EURUSD", "GBPUSD", "USDJPY"],
-  "riskProfileId": "standard",
-  "timeframe": "H1",
-  "regimeFilter": {
-    "allowTrending": true,
-    "allowRanging": true,
-    "allowHighVolatility": true,
-    "allowLowVolatility": true,
-    "allowUnknown": true
-  },
-  "orderEntry": {
-    "method": "Market",
-    "maxSlippagePips": 2.0
-  },
-  "positionManagement": {
-    "stopLoss": { "method": "AtrMultiple", "atrMultiple": 1.5 },
-    "takeProfit": { "method": "RrMultiple", "rrMultiple": 2.0 },
-    "breakeven": { "enabled": true, "triggerRMultiple": 1.0, "offsetPips": 1.0 },
-    "trailing": { "method": "AtrMultiple", "atrMultiple": 2.5 }
-  },
-  "parameters": {
-    "fastPeriod": 20,
-    "slowPeriod": 50,
-    "atrPeriod": 14
-  },
-  "reentry": {
-    "blockWhileSameDirectionOpen": true,
-    "cooldownBarsAfterSl": 5,
-    "cooldownBarsAfterTp": 2,
-    "cooldownBarsAfterEntry": 3
-  }
+    "id":  "ema-alignment",
+    "displayName":  "EMA Alignment v1",
+    "enabled":  true,
+    "riskProfileId":  "standard",
+    "regimeFilter":  {
+                         "allowTrending":  true,
+                         "allowRanging":  true,
+                         "allowHighVolatility":  true,
+                         "allowLowVolatility":  true,
+                         "allowUnknown":  true
+                     },
+    "orderEntry":  {
+                       "method":  "Market",
+                       "maxSlippagePips":  2.0
+                   },
+    "positionManagement":  {
+                               "stopLoss":  {
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  1.5
+                                            },
+                               "takeProfit":  {
+                                                  "method":  "RrMultiple",
+                                                  "rrMultiple":  2.0
+                                              },
+                               "breakeven":  {
+                                                 "enabled":  true,
+                                                 "triggerRMultiple":  1.0,
+                                                 "offsetPips":  1.0
+                                             },
+                               "trailing":  {
+                                                "enabled":  true,
+                                                "mode":  "Auto",
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  2.5
+                                            }
+                           },
+    "parameters":  {
+                       "fastPeriod":  20,
+                       "slowPeriod":  50,
+                       "atrPeriod":  14
+                   },
+    "reentry":  {
+                    "blockWhileSameDirectionOpen":  true,
+                    "cooldownBarsAfterSl":  5,
+                    "cooldownBarsAfterTp":  2,
+                    "cooldownBarsAfterEntry":  3
+                }
 }

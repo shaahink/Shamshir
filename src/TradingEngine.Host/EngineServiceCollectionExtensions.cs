@@ -16,7 +16,6 @@ using TradingEngine.Infrastructure.Venues.Simulated;
 using TradingEngine.Risk;
 using TradingEngine.Risk.Compliance;
 using TradingEngine.Risk.Filters;
-using TradingEngine.Risk.Governor;
 using TradingEngine.Risk.Sizing;
 using TradingEngine.Services;
 
@@ -26,6 +25,9 @@ public static class EngineServiceCollectionExtensions
 {
     public static IServiceCollection AddEngineHost(this IServiceCollection services, EngineHostOptions options)
     {
+        if (options.RunDataCache is not null)
+            services.AddSingleton(options.RunDataCache);
+
         return services
             .AddMarketDataFromOptions(options)
             .AddRiskFromOptions(options)
@@ -35,86 +37,6 @@ public static class EngineServiceCollectionExtensions
             .AddEngineWorkerFromOptions(options);
     }
 
-    // -- Mode-aware overloads (used by Program.cs) --
-
-    public static IServiceCollection AddMarketData(this IServiceCollection services, EngineMode mode, string solutionRoot, double slipPips, IConfiguration config)
-    {
-        services.AddSingleton(new EngineRunContext(config["Engine:RunId"] ?? ""));
-
-        if (mode == EngineMode.Live || mode == EngineMode.Paper)
-        {
-            var dataPort = int.TryParse(config["Engine:Broker:NetMQ:DataPort"], out var dp) ? dp : 15555;
-            var commandPort = int.TryParse(config["Engine:Broker:NetMQ:CommandPort"], out var cp) ? cp : 15556;
-            services.AddSingleton<IBrokerAdapter>(sp =>
-            {
-                var transport = new NetMqMessageTransport(
-                    $"tcp://127.0.0.1:{dataPort}", $"tcp://*:{commandPort}",
-                    sp.GetRequiredService<ILogger<NetMqMessageTransport>>());
-                return new CTraderBrokerAdapter(transport,
-                    sp.GetRequiredService<ILogger<CTraderBrokerAdapter>>());
-            });
-        }
-        else
-        {
-            services.AddSingleton<IBrokerAdapter>(sp =>
-                new SimulatedBrokerAdapter(
-                    sp.GetRequiredService<ISymbolInfoRegistry>(),
-                    sp.GetRequiredService<Func<string, string, decimal>>(),
-                    slippagePips: slipPips));
-        }
-
-        if (mode == EngineMode.Backtest)
-        {
-            var dataDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "tests", "data"));
-            services.AddSingleton<IMarketDataProvider>(_ => new HistoricalDataProvider(dataDir));
-        }
-        else
-        {
-            services.AddSingleton<IMarketDataProvider, LiveMarketDataProvider>();
-        }
-
-        services.AddSingleton<ISymbolInfoRegistry>(sp => LoadSymbolRegistry(solutionRoot));
-
-        var crossRateStore = new CrossRateStore();
-        services.AddSingleton(crossRateStore);
-        services.AddSingleton<Func<string, string, decimal>>(_ => crossRateStore.Convert);
-
-        services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
-        services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
-        services.AddSingleton<IEngineClock, BrokerClock>();
-
-        return services;
-    }
-
-    public static IServiceCollection AddRisk(this IServiceCollection services, string solutionRoot)
-    {
-        var loadedConfig = new ConfigLoader(solutionRoot).LoadBase();
-        services.AddSingleton(loadedConfig);
-
-        services.AddSingleton<INewsFilter>(sp =>
-            new ConfigurableNewsFilter(loadedConfig.NewsWindows));
-        services.AddSingleton<SessionFilter>();
-        services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
-        services.AddSingleton<RiskManager>();
-        services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
-
-        services.AddSingleton(loadedConfig.SizingPolicy);
-        services.AddSingleton(loadedConfig.Governor);
-        services.AddSingleton(loadedConfig.Regime);
-        services.AddSingleton<ITradingGovernor, TradingGovernorService>();
-        services.AddSingleton<ISizeModifier, GovernorSizeModifier>();
-        services.AddSingleton<IRiskProfileResolver>(sp =>
-            new RiskProfileResolver(loadedConfig.RiskProfiles));
-        services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
-        services.AddSingleton<ISizeModifier, DrawdownSizeModifier>();
-        services.AddSingleton<ISizeModifier, AtrRegimeSizeModifier>();
-        services.AddSingleton<ISizeModifier, TimeOfDaySizeModifier>();
-        services.AddSingleton<ISizeModifier, ConfidenceSizeModifier>();
-        services.AddSingleton<SizeModifierPipeline>();
-
-        return services;
-    }
-
     public static IServiceCollection AddPersistence(this IServiceCollection services, string dbPath)
     {
         return services.AddPersistence(dbPath, null);
@@ -122,26 +44,43 @@ public static class EngineServiceCollectionExtensions
 
     public static IServiceCollection AddPersistence(this IServiceCollection services, string dbPath, string? basePath)
     {
-        services.AddDbContext<TradingDbContext>(o =>
-            o.UseSqlite($"Data Source={dbPath}"));
+        services.AddScoped<TradingEngine.Infrastructure.Persistence.AuditStampInterceptor>(sp =>
+        {
+            var clock = sp.GetService<TradingEngine.Domain.IEngineClock>();
+            return clock is not null
+                ? new TradingEngine.Infrastructure.Persistence.AuditStampInterceptor(clock)
+                : new TradingEngine.Infrastructure.Persistence.AuditStampInterceptor();
+        });
+        services.AddSingleton<SqlitePragmaInterceptor>();
+        services.AddDbContext<TradingDbContext>((sp, o) =>
+        {
+            o.UseSqlite($"Data Source={dbPath}");
+            o.AddInterceptors(sp.GetRequiredService<TradingEngine.Infrastructure.Persistence.AuditStampInterceptor>());
+            o.AddInterceptors(sp.GetRequiredService<SqlitePragmaInterceptor>());
+        });
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
-        services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
+        services.AddScoped<IDatasetRepository, SqliteDatasetRepository>();
+        services.AddScoped<IConfigSetRepository, SqliteConfigSetRepository>();
+        services.AddScoped<IStepRecordSink, SqliteStepRecordSink>();
+        services.AddScoped<IJournalQueryRepository, SqliteJournalQueryRepository>();
+        // iter-36 K5: the single, lossless StepRecord journal the kernel engine writes to. Singleton per
+        // (inner) host = per run; drains on host dispose. Scope-per-flush bridge to the scoped SQLite sink.
+        services.AddSingleton<IJournalWriter>(sp => new ChannelJournalWriter(
+            new ScopedStepRecordSink(sp.GetRequiredService<IServiceScopeFactory>())));
         services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
+        services.AddScoped<IAddOnPackStore, SqliteAddOnPackStore>();   // iter-38 PK1
         services.AddSingleton<PersistenceService>();
-        services.AddSingleton<PipelineEventWriter>(sp => new PipelineEventWriter(
-            sp.GetRequiredService<EngineRunContext>().RunId,
-            sp.GetRequiredService<IServiceScopeFactory>(),
-            sp.GetRequiredService<ILogger<PipelineEventWriter>>()));
-        services.AddSingleton<IPipelineJournal>(sp => sp.GetRequiredService<PipelineEventWriter>());
-        services.AddSingleton<IDecisionJournal>(sp => sp.GetRequiredService<PipelineEventWriter>());
+        // iter-36 K5: the StepRecord journal (ScopedStepRecordSink + ChannelJournalWriter, above) is the
+        // single journal writer. The old PipelineEventWriter/BarEvaluationHandler (Wait/DropOldest channels)
+        // are deleted; the few legacy IDecisionJournal/IPipelineJournal consumers bind to no-ops.
+        services.AddSingleton<IPipelineJournal, NullPipelineJournal>();
+        services.AddSingleton<IDecisionJournal, NullDecisionJournal>();
         services.AddSingleton<IPositionManager, PositionManager>();
         services.AddSingleton<IEventBus, TypedEventBus>();
         services.AddSingleton<EquityPersistenceHandler>();
         services.AddSingleton<TradePersistenceHandler>();
-        services.AddSingleton<BarEvaluationHandler>();
-        services.AddSingleton<ProtectionLedgerPersistenceHandler>();
         services.AddSingleton<BarPersistenceHandler>();
         services.AddSingleton<BufferedBarWriter>();
 
@@ -156,133 +95,11 @@ public static class EngineServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddStrategies(this IServiceCollection services)
-    {
-        services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
-            sp.GetRequiredService<StrategyRegistry>(),
-            sp.GetRequiredService<LoadedConfig>().StrategyRotation,
-            sp.GetService<RunPlan>(),
-            sp.GetRequiredService<ILogger<StrategyBankService>>()));
-        services.AddSingleton<OrderDispatcher>();
-        services.AddSingleton<PositionTracker>();
-        services.AddSingleton<EntryPlanner>();
-        services.AddSingleton<EffectExecutor>();
-        services.AddSingleton<IEffectExecutor>(sp => sp.GetRequiredService<EffectExecutor>());
-        services.AddSingleton<ISignalGate, SignalGateService>();
-
-        var registry = new StrategyRegistry();
-        services.AddSingleton(registry);
-        // Expose under both IReadOnlyList<IStrategy> (EffectExecutor) and IEnumerable<IStrategy>
-        // (EngineWorkerDependencies) — see AddStrategiesFromOptions for the same fix.
-        services.AddSingleton<IReadOnlyList<IStrategy>>(sp =>
-        {
-            var reg = sp.GetRequiredService<StrategyRegistry>();
-            var loaded = sp.GetRequiredService<LoadedConfig>();
-            var config = sp.GetRequiredService<IConfiguration>();
-            var activeIds = config.GetValue<string>("Engine:ActiveStrategyIds")
-                ?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-                ?? loaded.StrategyConfigs.Select(c => c.Id).ToArray();
-            return reg.CreateStrategies(activeIds, loaded, sp).ToList();
-        });
-        services.AddSingleton<IEnumerable<IStrategy>>(sp => sp.GetRequiredService<IReadOnlyList<IStrategy>>());
-
-        return services;
-    }
-
-    public static IServiceCollection AddEventInfrastructure(this IServiceCollection services, EngineMode mode)
-    {
-        if (mode == EngineMode.Backtest)
-        {
-            var buffered = new BufferedEquitySink();
-            services.AddSingleton<IEquitySink>(buffered);
-            services.AddSingleton<IAccountSnapshotStore>(buffered);
-        }
-        else
-        {
-            services.AddSingleton<IEquitySink, PersistentEquitySink>();
-        }
-
-        services.AddSingleton<IProgress<BacktestProgressEvent>>(_ =>
-            new Progress<BacktestProgressEvent>(_ => { }));
-
-        return services;
-    }
-
-    public static IServiceCollection AddEngineWorker(this IServiceCollection services, EngineMode mode)
-    {
-        if (mode == EngineMode.Backtest)
-        {
-            var loadedConfig = services.BuildServiceProvider().GetRequiredService<LoadedConfig>();
-            services.AddSingleton<DataFeedService>(sp =>
-            {
-                var symbols = loadedConfig.StrategyConfigs
-                    .SelectMany(c => c.Symbols).Distinct().Select(Symbol.Parse).ToList();
-                return new DataFeedService(
-                    sp.GetRequiredService<IMarketDataProvider>(),
-                    sp.GetRequiredService<IBrokerAdapter>(),
-                    sp.GetRequiredService<ILogger<DataFeedService>>())
-                { Symbols = symbols.Count > 0 ? symbols : [Symbol.Parse("EURUSD")] };
-            });
-            services.AddHostedService<DataFeedService>(sp => sp.GetRequiredService<DataFeedService>());
-        }
-
-        services.AddSingleton<EngineWorkerDependencies>(sp => new EngineWorkerDependencies
-        {
-            Market = new MarketServices
-            {
-                Broker = sp.GetRequiredService<IBrokerAdapter>(),
-                Indicators = sp.GetRequiredService<IIndicatorService>(),
-                SymbolRegistry = sp.GetRequiredService<ISymbolInfoRegistry>(),
-                CrossRateStore = sp.GetRequiredService<CrossRateStore>(),
-                Clock = sp.GetRequiredService<IEngineClock>(),
-                EngineMode = mode,
-                DataFeed = mode == EngineMode.Backtest ? sp.GetService<DataFeedService>() : null,
-            },
-            Risk = new RiskServices
-            {
-                RiskManager = sp.GetRequiredService<IRiskManager>(),
-                RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
-                CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
-                Governor = sp.GetRequiredService<ITradingGovernor>(),
-                SizingPolicy = sp.GetRequiredService<SizingPolicyOptions>(),
-            },
-            Strategies = new StrategyServices
-            {
-                Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
-                StrategyBank = sp.GetRequiredService<IStrategyBank>(),
-                RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
-                OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
-                PositionTracker = sp.GetRequiredService<PositionTracker>(),
-                EntryPlanner = sp.GetRequiredService<EntryPlanner>(),
-                SignalGate = sp.GetRequiredService<ISignalGate>(),
-            },
-            Persistence = new PersistenceServices
-            {
-                EventBus = sp.GetRequiredService<IEventBus>(),
-                Persistence = sp.GetRequiredService<PersistenceService>(),
-                EffectExecutor = sp.GetRequiredService<EffectExecutor>(),
-                EquitySink = sp.GetService<IEquitySink>(),
-                Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
-                Journal = sp.GetRequiredService<IPipelineJournal>(),
-            },
-        });
-
-        services.AddSingleton<EngineWorker>(sp => new EngineWorker(
-            sp.GetRequiredService<EngineWorkerDependencies>(),
-            sp.GetRequiredService<EngineRunContext>(),
-            sp.GetRequiredService<ILogger<EngineWorker>>()));
-        services.AddHostedService<EngineWorker>(sp => sp.GetRequiredService<EngineWorker>());
-
-        return services;
-    }
-
-    // -- Original EngineHostOptions-based overloads (backward compat) --
-
     private static IServiceCollection AddMarketDataFromOptions(this IServiceCollection services, EngineHostOptions options)
     {
         var catalog = new SymbolCatalog(options.SolutionRoot);
         var symbols = catalog.GetAll();
-        services.AddSingleton(new EngineRunContext(options.RunId));
+        services.AddSingleton(new EngineRunContext(options.RunId) { DiagnosticsEnabled = options.DiagnosticsEnabled });
         services.AddSingleton(options.AdapterFactory);
 
         var symbolRegistry = new SymbolInfoRegistry();
@@ -311,7 +128,7 @@ public static class EngineServiceCollectionExtensions
         services.AddSingleton(loadedConfig.SizingPolicy);
         services.AddSingleton(loadedConfig.Governor);
         services.AddSingleton(loadedConfig.Regime);
-        services.AddSingleton<ITradingGovernor, TradingGovernorService>();
+        services.AddSingleton<ITradingGovernor>(sp => new GovernorMachine(sp.GetRequiredService<GovernorOptions>()));
         services.AddSingleton<ISizeModifier, GovernorSizeModifier>();
         services.AddSingleton<IRiskProfileResolver>(sp => new RiskProfileResolver(loadedConfig.RiskProfiles));
         services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
@@ -330,7 +147,6 @@ public static class EngineServiceCollectionExtensions
             sp.GetRequiredService<LoadedConfig>().StrategyRotation,
             options.RunPlan,
             sp.GetRequiredService<ILogger<StrategyBankService>>()));
-        services.AddSingleton<OrderDispatcher>();
         services.AddSingleton<PositionTracker>();
         services.AddSingleton<EntryPlanner>();
         services.AddSingleton<EffectExecutor>();
@@ -397,15 +213,17 @@ public static class EngineServiceCollectionExtensions
                 CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
                 Governor = sp.GetRequiredService<ITradingGovernor>(),
                 SizingPolicy = sp.GetRequiredService<SizingPolicyOptions>(),
+                NewsFilter = sp.GetRequiredService<INewsFilter>(),
+                SessionFilter = sp.GetRequiredService<SessionFilter>(),
             },
             Strategies = new StrategyServices
             {
                 Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
                 StrategyBank = sp.GetRequiredService<IStrategyBank>(),
                 RegimeDetector = sp.GetRequiredService<IRegimeDetector>(),
-                OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                 PositionTracker = sp.GetRequiredService<PositionTracker>(),
                 EntryPlanner = sp.GetRequiredService<EntryPlanner>(),
+                PositionManager = sp.GetRequiredService<IPositionManager>(),
                 SignalGate = sp.GetRequiredService<ISignalGate>(),
             },
             Persistence = new PersistenceServices
@@ -416,6 +234,8 @@ public static class EngineServiceCollectionExtensions
                 EquitySink = sp.GetService<IEquitySink>(),
                 Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
                 Journal = sp.GetRequiredService<IPipelineJournal>(),
+                StepJournal = sp.GetRequiredService<IJournalWriter>(),
+                ScopeFactory = sp.GetRequiredService<IServiceScopeFactory>(),
             },
         });
 
@@ -477,7 +297,6 @@ public static class EngineHostWireExtensions
         var eventBus = app.Services.GetRequiredService<IEventBus>();
         eventBus.Subscribe<EquityUpdated>(app.Services.GetRequiredService<EquityPersistenceHandler>());
         eventBus.Subscribe<TradeClosed>(app.Services.GetRequiredService<TradePersistenceHandler>());
-        eventBus.Subscribe<BarEvaluated>(app.Services.GetRequiredService<BarEvaluationHandler>());
         eventBus.Subscribe<BarIngested>(app.Services.GetRequiredService<BarPersistenceHandler>());
     }
 
@@ -492,10 +311,17 @@ public static class EngineHostWireExtensions
         if (ruleSet is not null)
         {
             rm.SetActiveRuleSet(ruleSet);
+
             var resolvedProfile = activeProfile ?? new RiskProfile(
                 "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,
                 false, activeRuleSetId, LotSizingMethod.PercentRisk, 0.1m, 0m, 0.25, 1.5, 3);
-            rm.SetConstraints(ConstraintSet.Resolve(resolvedProfile, ruleSet));
+            // iter-37 T8 / iter-38 B3: AND the Governor page's Enabled into the kernel gate switch,
+            // same fix already applied in EngineHostFactory.WireRiskRules. Without this the governor
+            // page's disable-toggle has no effect on the extension-method path.
+            var constraints = ConstraintSet.Resolve(resolvedProfile, ruleSet);
+            var govOptions = app.Services.GetRequiredService<GovernorOptions>();
+            constraints = constraints with { GovernorEnabled = constraints.GovernorEnabled && govOptions.Enabled };
+            rm.SetConstraints(constraints);
             var passEstimator = app.Services.GetRequiredService<IPassProbabilityEstimator>();
             var complianceSvc = new PropFirmComplianceService(
                 ruleSet, rm, app.Services.GetRequiredService<IEngineClock>(), passEstimator);

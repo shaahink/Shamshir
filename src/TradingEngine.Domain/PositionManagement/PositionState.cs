@@ -18,4 +18,5 @@ public sealed record PositionState(
     decimal LowWater = 0,
     bool BreakevenApplied = false,
     decimal InitialSlDistance = 0,
-    string? CloseReason = null);
+    string? CloseReason = null,
+    string OrderEntryMethod = "Market");

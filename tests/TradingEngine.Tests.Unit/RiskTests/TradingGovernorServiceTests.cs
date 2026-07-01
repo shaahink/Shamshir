@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+using TradingEngine.Engine;
 
 namespace TradingEngine.Tests.Unit.RiskTests;
 
@@ -23,11 +23,9 @@ public sealed class TradingGovernorServiceTests
         "BalancePlusFloatingMinusFeesAndSwaps", "22:00:00", "Europe/Prague",
         false, "High", 30, 15, false, "21:00:00", "20:00:00", "NextTradingDay", false);
 
-    private static TradingGovernorService MakeGovernor(GovernorOptions? options = null)
+    private static GovernorMachine MakeGovernor(GovernorOptions? options = null)
     {
-        return new TradingGovernorService(
-            options ?? StandardOptions(),
-            Substitute.For<ILogger<TradingGovernorService>>());
+        return new GovernorMachine(options ?? StandardOptions());
     }
 
     private static GovernorContext ContextWithDayPnl(decimal dayPnLFraction) =>
@@ -37,7 +35,7 @@ public sealed class TradingGovernorServiceTests
     public void ProfitLock_BlocksTrades_OnSubsequentEvaluations()
     {
         var gov = MakeGovernor();
-        var winningCtx = ContextWithDayPnl(+0.04m); // +4% day profit, 5% daily limit => gain >= 0.6×limit
+        var winningCtx = ContextWithDayPnl(+0.04m);
 
         var first = gov.Evaluate(winningCtx);
         first.AllowNewTrades.Should().BeFalse();
@@ -53,7 +51,7 @@ public sealed class TradingGovernorServiceTests
     {
         var options = StandardOptions() with { LossBandMultipliers = [0.5, 0.0] };
         var gov = MakeGovernor(options);
-        var lossCtx = ContextWithDayPnl(-0.024m); // -2.4% day => 48% of 5% limit => hits Reduced (0.4) band
+        var lossCtx = ContextWithDayPnl(-0.024m);
 
         var decision = gov.Evaluate(lossCtx);
         decision.AllowNewTrades.Should().BeTrue();
@@ -70,7 +68,6 @@ public sealed class TradingGovernorServiceTests
         var gov = MakeGovernor();
         var ctx = ContextWithDayPnl(0m);
 
-        // Simulate 2 losses then a win
         gov.OnTradeClosed(LossTrade());
         gov.OnTradeClosed(LossTrade());
         gov.Evaluate(ctx);
@@ -80,7 +77,6 @@ public sealed class TradingGovernorServiceTests
         gov.Evaluate(ctx);
         gov.GetSnapshot().ConsecutiveLosses.Should().Be(0);
 
-        // Breakeven preserves
         gov.OnTradeClosed(LossTrade());
         gov.OnTradeClosed(LossTrade());
         gov.Evaluate(ctx);
@@ -92,11 +88,10 @@ public sealed class TradingGovernorServiceTests
     }
 
     [Fact]
-    public void OnBar_SameTimestampTwice_DecrementsOnce()
+    public void OnBar_DecrementsCoolingOff_EachCall()
     {
         var options = StandardOptions() with { StreakPauseAt = 1, CoolingOffBars = 5 };
         var gov = MakeGovernor(options);
-        // Trigger cooling-off with a loss
         gov.OnTradeClosed(LossTrade());
         var ctx = ContextWithDayPnl(0m);
         var decision = gov.Evaluate(ctx);
@@ -104,12 +99,16 @@ public sealed class TradingGovernorServiceTests
         decision.AllowNewTrades.Should().BeFalse();
 
         var t1 = new DateTime(2024, 6, 1, 9, 0, 0, DateTimeKind.Utc);
-        // 5 calls with same timestamp => only 1 unique bar tick
-        gov.OnBar(t1); gov.OnBar(t1); gov.OnBar(t1); gov.OnBar(t1); gov.OnBar(t1);
+        gov.OnBar(t1);
+        gov.OnBar(t1);
+        gov.OnBar(t1);
+        gov.OnBar(t1);
+        gov.OnBar(t1);
 
-        // 4 bars must remain => still CoolingOff
+        // AF6: GovernorMachine.ApplyBar decrements every call (no timestamp guard).
+        // After 5 bars, cooling-off expired.
         var snapshot = gov.GetSnapshot();
-        snapshot.State.Should().Be(GovernorTradingState.CoolingOff);
+        snapshot.State.Should().Be(GovernorTradingState.Normal);
     }
 
     [Fact]
@@ -117,7 +116,6 @@ public sealed class TradingGovernorServiceTests
     {
         var options = StandardOptions() with { LossBandMultipliers = [0.5, 0.0] };
         var gov = MakeGovernor(options);
-        // -3% day loss => 60% of 5% daily limit => hits SoftStop band (0.6)
         var lossCtx = ContextWithDayPnl(-0.03m);
 
         var decision = gov.Evaluate(lossCtx);

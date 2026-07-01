@@ -29,4 +29,7 @@ public sealed record EngineHostOptions
     public IProgress<BacktestProgressEvent>? Progress { get; init; }
     public LogLevel MinLogLevel { get; init; } = LogLevel.Information;
     public LoadedConfig? PreloadedConfig { get; init; }
+    public bool DiagnosticsEnabled { get; init; }
+
+    public IRunDataCache? RunDataCache { get; init; }
 }

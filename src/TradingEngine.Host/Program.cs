@@ -26,14 +26,24 @@ public static class Program
             var dbPath = builder.Configuration.GetValue<string>("Persistence:DbPath") ?? Path.Combine(root, "data", "trading.db");
             Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
             var slip = mode == EngineMode.Backtest ? builder.Configuration.GetValue<double?>("Simulation:SlippagePips") ?? 0.5 : 0.5;
+            var runId = builder.Configuration["Engine:RunId"] ?? "";
+            var activeIds = builder.Configuration.GetValue<string>("Engine:ActiveStrategyIds")
+                ?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                ?? Array.Empty<string>();
 
-            builder.Services.AddMarketData(mode, root, slip, builder.Configuration);
-            builder.Services.AddRisk(root);
-            builder.Services.AddPersistence(dbPath, root);
-            builder.Services.AddStrategies();
-            builder.Services.AddEventInfrastructure(mode);
-            builder.Services.AddEngineWorker(mode);
-            builder.Services.AddHostedService<DailyResetService>();
+            var options = new EngineHostOptions
+            {
+                RunId = runId,
+                Mode = mode,
+                AdapterFactory = sp => BrokerAdapterFactory.Create(mode, slip, builder.Configuration, sp),
+                DbPath = dbPath,
+                SolutionRoot = root,
+                ActiveStrategyIds = activeIds,
+                RunPlan = null,
+                MinLogLevel = Microsoft.Extensions.Logging.LogLevel.Information,
+            };
+
+            builder.Services.AddEngineHost(options);
 
             var app = builder.Build();
             app.Services.GetRequiredService<StrategyConfigSeeder>().SeedAsync().GetAwaiter().GetResult();

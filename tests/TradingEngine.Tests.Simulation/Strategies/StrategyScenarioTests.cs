@@ -6,7 +6,7 @@ public sealed class RsiDivergenceScenarios
     [Fact]
     public void GeneratesAtLeastOneSignal_WithTrendingData()
     {
-        var config = new RsiDivergenceConfig { Symbols = ["EURUSD"] };
+        var config = new RsiDivergenceConfig();
         var registry = new SymbolInfoRegistry();
         registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
         var logger = Substitute.For<ILogger<RsiDivergenceStrategy>>();
@@ -32,7 +32,7 @@ public sealed class BollingerSqueezeScenarios
     [Fact]
     public void DoesNotThrow_DuringEvaluation()
     {
-        var config = new BollingerSqueezeConfig { Symbols = ["EURUSD"] };
+        var config = new BollingerSqueezeConfig();
         var registry = new SymbolInfoRegistry();
         registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
         var logger = Substitute.For<ILogger<BollingerSqueezeStrategy>>();
@@ -52,7 +52,7 @@ public sealed class MacdMomentumScenarios
     [Fact]
     public void DoesNotThrow_DuringEvaluation()
     {
-        var config = new MacdMomentumConfig { Symbols = ["EURUSD"] };
+        var config = new MacdMomentumConfig();
         var registry = new SymbolInfoRegistry();
         registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
         var logger = Substitute.For<ILogger<MacdMomentumStrategy>>();
@@ -72,7 +72,7 @@ public sealed class MtfTrendScenarios
     [Fact]
     public void DoesNotThrow_DuringEvaluation()
     {
-        var config = new MtfTrendConfig { Symbols = ["EURUSD"] };
+        var config = new MtfTrendConfig();
         var registry = new SymbolInfoRegistry();
         registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
         var logger = Substitute.For<ILogger<MtfTrendStrategy>>();
@@ -92,7 +92,7 @@ public sealed class SuperTrendScenarios
     [Fact]
     public void DoesNotThrow_DuringEvaluation()
     {
-        var config = new SuperTrendConfig { Symbols = ["EURUSD"] };
+        var config = new SuperTrendConfig();
         var registry = new SymbolInfoRegistry();
         registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD", 0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
         var logger = Substitute.For<ILogger<SuperTrendStrategy>>();

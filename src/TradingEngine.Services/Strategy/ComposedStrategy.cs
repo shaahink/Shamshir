@@ -8,6 +8,7 @@ public sealed class ComposedStrategy : IStrategy
 
     public string Id { get; }
     public string DisplayName { get; }
+    public Timeframe EntryTimeframe => Timeframe.H1;
     public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
     public int RequiredBarCount => _signal.RequiredBarCount;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => _signal.RequiredIndicators;
@@ -93,9 +94,7 @@ public sealed class ComposedStrategy : IStrategy
 internal sealed record ComposedStrategyConfig(string Id, string DisplayName, ReentryOptions? ReentryOverride = null) : IStrategyConfig
 {
     public bool Enabled => true;
-    public IReadOnlyList<string> Symbols => [];
     public string RiskProfileId => "standard";
-    public Timeframe Timeframe => Timeframe.H1;
     public RegimeFilterOptions RegimeFilter => new();
     public OrderEntryOptions OrderEntry => new();
     public PositionManagementOptions PositionManagement => new();

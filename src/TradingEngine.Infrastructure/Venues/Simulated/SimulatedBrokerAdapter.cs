@@ -163,7 +163,7 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                 CloseReason = "FORCE",
             });
             _accountChannel.Writer.TryWrite(new AccountUpdate(
-                _currentBalance, 0m, _currentBalance, now));
+                _currentBalance, _currentBalance, 0m, now));
         }
         return Task.CompletedTask;
     }
@@ -174,6 +174,18 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         {
             if (_openPositions.TryGetValue(positionId, out var pos))
             {
+                // C6 (iter-35 B2): realize the closed portion's economics. Previously this only wrote a
+                // cost-free fill — no cost computation, no balance update, no AccountUpdate — so the
+                // simulated balance silently drifted from reality. Mirror the full-close path for the
+                // closed `lots` only.
+                var exitPrice = pos.Direction == TradeDirection.Long ? _lastBid : _lastAsk;
+                var now = BrokerTimeUtc;
+                var costs = TradeCostCalculator.Compute(
+                    pos.Direction, pos.EntryPrice, new Price(exitPrice), lots,
+                    pos.SymbolInfo, _crossRateProvider, pos.OpenedAtUtc, now, _dailyResetTimeUtc);
+
+                _currentBalance += costs.NetProfit;
+
                 var remaining = pos.Lots - lots;
                 if (remaining <= 0)
                     _openPositions.Remove(positionId);
@@ -181,9 +193,17 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                     pos.Lots = remaining;
 
                 _executionChannel.Writer.TryWrite(new ExecutionEvent(
-                    positionId, OrderState.Filled,
-                    new Price(pos.Direction == TradeDirection.Long ? _lastBid : _lastAsk),
-                    lots, null, BrokerTimeUtc));
+                    positionId, OrderState.Filled, new Price(exitPrice), lots, null, now)
+                {
+                    GrossProfit = costs.GrossProfit,
+                    NetProfit = costs.NetProfit,
+                    Commission = costs.Commission,
+                    Swap = costs.Swap,
+                    CloseReason = "PARTIAL",
+                });
+
+                _accountChannel.Writer.TryWrite(new AccountUpdate(
+                    _currentBalance, _currentBalance, 0m, now));
             }
         }
         return Task.CompletedTask;
@@ -218,14 +238,7 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                     }
                     else
                     {
-                        order.ExpiryBarCount--;
-                        if (order.ExpiryBarCount <= 0)
-                        {
-                            _pendingOrders.Remove(id);
-                            _executionChannel.Writer.TryWrite(new ExecutionEvent(
-                                id, OrderState.Cancelled, null,
-                                0, null, tick.TimestampUtc));
-                        }
+                        // C7 (iter-35 B2): expiry is now decremented per bar in OnBarObserved.
                     }
                 }
                 else
@@ -277,7 +290,7 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                     });
 
                     _accountChannel.Writer.TryWrite(new AccountUpdate(
-                        _currentBalance, 0m, _currentBalance, tick.TimestampUtc));
+                        _currentBalance, _currentBalance, 0m, tick.TimestampUtc));
                 }
             }
         }
@@ -327,7 +340,28 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
             order.Lots, null, tick.TimestampUtc));
 
         _accountChannel.Writer.TryWrite(new AccountUpdate(
-            _currentBalance, 0m, _currentBalance, tick.TimestampUtc));
+            _currentBalance, _currentBalance, 0m, tick.TimestampUtc));
+    }
+
+    /// <summary>
+    /// C7 (iter-35 B2): decrement limit-order expiry per BAR, not per tick. The old code ran in
+    /// OnTickReceived and expired a 3-bar limit after ~3 ticks (&lt;100 ms live).
+    /// </summary>
+    public void OnBarObserved(Bar bar)
+    {
+        lock (_pendingOrders)
+        {
+            foreach (var (id, order) in _pendingOrders.ToList())
+            {
+                order.ExpiryBarCount--;
+                if (order.ExpiryBarCount <= 0)
+                {
+                    _pendingOrders.Remove(id);
+                    _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                        id, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc));
+                }
+            }
+        }
     }
 
     private sealed class PendingOrder

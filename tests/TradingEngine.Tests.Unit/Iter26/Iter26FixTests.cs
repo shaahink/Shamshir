@@ -32,7 +32,8 @@ public sealed class Iter26FixTests
 
         var close = fc.Effects.OfType<CloseOpenPosition>().Single();
         close.OrderId.Should().Be(orderId, "the venue keys open trades by the order id");
-        close.OrderId.Should().NotBe(internalPositionId, "the internal PositionId must not cross the venue boundary");
+        // AF1 determinism: PositionId now equals OrderId (no Guid.NewGuid), so the IDs ARE the same.
+        // The venue still receives the correct OrderId — no cross-contamination.
     }
 
     [Fact]
@@ -61,10 +62,10 @@ public sealed class Iter26FixTests
             "s", "S", 0.01, 0.04, 0.08, 100, 0.05, 0.5, 0.5, 3, false, "ftmo",
             LotSizingMethod.FixedLots, FixedLots: 0.5m);
 
-        var lots = PositionSizer.Calculate(
-            equity: 100_000m, profile: profile, stopLossDistance: new Pips(20),
-            pipValue: 10m, drawdownScaleFactor: 1m,
-            maxLots: 10m, brokerMinLots: 0.01m, brokerLotStep: 0.01m);
+        var lots = KernelSizing.Calculate(
+            equity: 100_000m, profile: profile, slPips: 20m, pipValuePerLot: 10m,
+            drawdownScale: 1m,
+            maxLots: 10m, minLots: 0.01m, lotStep: 0.01m);
 
         lots.Should().Be(0.5m, "FixedLots must return the configured size, not a percent-risk calc");
     }
@@ -75,19 +76,23 @@ public sealed class Iter26FixTests
         var profile = new RiskProfile(
             "s", "S", 0.01, 0.04, 0.08, 100, 0.05, 0.5, 0.5, 3, false, "ftmo"); // PercentRisk default
 
-        var lots = PositionSizer.Calculate(
-            equity: 100_000m, profile: profile, stopLossDistance: new Pips(20),
-            pipValue: 10m, drawdownScaleFactor: 1m,
-            maxLots: 100m, brokerMinLots: 0.01m, brokerLotStep: 0.01m);
+        var lots = KernelSizing.Calculate(
+            equity: 100_000m, profile: profile, slPips: 20m, pipValuePerLot: 10m,
+            drawdownScale: 1m,
+            maxLots: 100m, minLots: 0.01m, lotStep: 0.01m);
 
         // risk = 100000*0.01 = 1000; rawLots = 1000/(20*10) = 5.0
         lots.Should().Be(5.0m);
     }
 
-    // ---- F10c: monthly reset keeps the monthly baseline (mirrors weekly), not the day-start ----
+    // ---- F10c (SUPERSEDED by iter-36 K-GAP-1): monthly reset re-bases to CURRENT equity ----
+    // iter-26 deferred this: the reducer then had no current-equity input, so MonthRolled deliberately
+    // KEPT the monthly baseline rather than wrongly rebasing to DailyStartEquity. Post-cutover that input
+    // exists (EngineState.Account.Equity, folded by the last EquityObserved), so the kernel now re-bases
+    // monthly DD to current equity — symmetric with the daily/weekly resets (EngineReducer.HandleMonthRolled).
 
     [Fact]
-    public void F10_MonthRolled_keeps_monthly_baseline()
+    public void F10_MonthRolled_rebases_monthly_baseline_to_current_equity()
     {
         var dd = new DrawdownState(
             InitialAccountBalance: 100_000m, PeakEquity: 100_000m,
@@ -95,11 +100,12 @@ public sealed class Iter26FixTests
             CurrentDailyDrawdown: 0m, CurrentMaxDrawdown: 0m, CurrentWeeklyDrawdown: 0m,
             CurrentMonthlyDrawdown: 0.05m, DrawdownVelocity: 0m, DrawdownType: "Fixed");
 
-        var state = EngineState.Empty with { Drawdown = dd };
+        // Current equity is the authoritative input at roll time (98k here, not the 95k day-start).
+        var state = EngineState.Empty with { Drawdown = dd, Account = new AccountView(98_000m, 98_000m, 0m) };
         var r = EngineReducer.Apply(state, new MonthRolled(DateTime.UtcNow));
 
-        r.State.Drawdown.MonthlyStartEquity.Should().Be(100_000m,
-            "monthly baseline is kept; passing DailyStartEquity (95k) would wrongly rebase the month");
+        r.State.Drawdown.MonthlyStartEquity.Should().Be(98_000m,
+            "K-GAP-1: monthly DD re-bases to the authoritative current equity, not the stale baseline or day-start");
         r.State.Drawdown.CurrentMonthlyDrawdown.Should().Be(0m);
     }
 

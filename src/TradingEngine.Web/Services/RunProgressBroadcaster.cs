@@ -32,7 +32,7 @@ public sealed class RunProgressBroadcaster
             return false;
 
         _lastSentTicks[progress.RunId] = DateTime.UtcNow.Ticks;
-        Send("onProgress", progress);
+        Send("RunProgress", progress);
         return true;
     }
 
@@ -40,7 +40,12 @@ public sealed class RunProgressBroadcaster
     public void PublishDone(RunProgress progress)
     {
         _lastSentTicks.TryRemove(progress.RunId, out _);
-        Send("onDone", progress);
+        Send("RunCompleted", progress);
+    }
+
+    public void RemoveRun(string runId)
+    {
+        _lastSentTicks.TryRemove(runId, out _);
     }
 
     // Fire-and-forget, but observe the task so a send/serialization failure is logged rather than

@@ -58,13 +58,6 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     }
 
     [Fact]
-    public async Task EventsPage_Returns200()
-    {
-        var response = await _client.GetAsync("/events");
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-    }
-
-    [Fact]
     public async Task BacktestsPage_Returns200()
     {
         var response = await _client.GetAsync("/backtests");
@@ -79,12 +72,14 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     }
 
     [Fact]
-    public async Task NewBacktestPage_ShowsPreflightAndDataSource()
+    public async Task NewBacktestRoute_ServesSpaShell()
     {
-        var response = await _client.GetAsync("/backtests/new");
+        // The New-Backtest form is now an Angular client route; the server returns the SPA shell for it
+        // (via MapFallbackToFile) and Angular renders the symbol/timeframe/strategy/risk/venue pickers.
+        var response = await _client.GetAsync("/runs/new");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
-        body.Should().Contain("Data source");
+        body.Should().Contain("app-root");
     }
 
     [Fact]
@@ -95,19 +90,19 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     }
 
     [Fact]
-    public async Task ApiBacktestStart_ReturnsRunId()
+    public async Task ApiStartRun_ReturnsRunId()
     {
         var payload = JsonSerializer.Serialize(new
         {
-            symbol = "EURUSD",
-            period = "h1",
+            symbols = new[] { "EURUSD" },
+            periods = new[] { "H1" },
             start = "2024-01-01",
             end = "2024-01-02",
             balance = 100000
         });
 
         var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
-        var response = await _client.PostAsync("/api/backtest/start", content);
+        var response = await _client.PostAsync("/api/runs", content);
         var body = await response.Content.ReadAsStringAsync();
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -121,14 +116,15 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
         var response = await _client.GetAsync("/");
         var body = await response.Content.ReadAsStringAsync();
 
-        body.Should().Contain("sidebar");
+        // SPA shell: Angular bootstraps into <app-root>; nav/sidebar is rendered client-side.
+        body.Should().Contain("app-root");
         body.Should().Contain("Shamshir");
     }
 
     [Fact]
     public async Task AllNavLinks_Return200()
     {
-        var navLinks = new[] { "/", "/trades", "/performance", "/runs", "/events", "/strategies", "/compliance", "/backtests/new" };
+        var navLinks = new[] { "/", "/trades", "/runs", "/strategies", "/risk-profiles", "/prop-firm-rules", "/governor-options", "/settings" };
         foreach (var link in navLinks)
         {
             var linkResponse = await _client.GetAsync(link);
@@ -139,7 +135,7 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     [Fact]
     public async Task ApiRuns_Returns200AndJson()
     {
-        var response = await _client.GetAsync("/api/backtest/runs");
+        var response = await _client.GetAsync("/api/runs");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
         body.Should().StartWith("[");
@@ -166,16 +162,9 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
     [Fact]
     public async Task ApiCompare_Returns200AndJson()
     {
-        var response = await _client.GetAsync("/api/backtest/compare?runIds=test1,test2");
+        var response = await _client.GetAsync("/api/backtest/analytics/compare?runIds=test1,test2");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadAsStringAsync();
         body.Should().StartWith("[");
-    }
-
-    [Fact]
-    public async Task ApiEvents_Returns200()
-    {
-        var response = await _client.GetAsync("/api/events?runId=nonexistent");
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }

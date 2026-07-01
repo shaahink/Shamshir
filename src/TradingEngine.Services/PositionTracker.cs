@@ -58,6 +58,7 @@ public sealed class PositionTracker(
 
             var submitted = new OrderSubmitted(orderId, request.Intent.Symbol, request.Intent.Direction,
                 request.Lots, request.Intent.LimitPrice, request.Intent.StrategyId, clock.UtcNow,
+                OrderType.Market,
                 request.Intent.StopLoss, request.Intent.TakeProfit);
 
             var decision = EngineReducer.Apply(_state, submitted);
@@ -94,7 +95,8 @@ public sealed class PositionTracker(
 
                 var submitted = new OrderSubmitted(
                     info.PositionId, info.Symbol, info.Direction, info.Lots, null,
-                    intent.StrategyId, clock.UtcNow, info.CurrentStopLoss, info.TakeProfit);
+                    intent.StrategyId, clock.UtcNow, OrderType.Market,
+                    info.CurrentStopLoss, info.TakeProfit);
                 _state = EngineReducer.Apply(_state, submitted).State;
 
                 var filled = new OrderFilled(info.PositionId, info.Symbol, info.Lots, info.EntryPrice, clock.UtcNow);
