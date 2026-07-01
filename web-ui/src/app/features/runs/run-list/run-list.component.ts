@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { RouterLink, Router } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { RunsStore } from '../runs.store';
 import { BadgeComponent } from '../../../shared/badge.component';
@@ -16,7 +16,7 @@ import { formatSymbols } from '../../../shared/symbols.helper';
         <div class="flex gap-2">
           @if (selectedRuns().length >= 2) {
             <button
-              (click)="compareOpen.set(!compareOpen())"
+              (click)="openCompare()"
               class="rounded-md border border-emerald-700 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-900/20"
             >
               Compare ({{ selectedRuns().length }})
@@ -29,42 +29,6 @@ import { formatSymbols } from '../../../shared/symbols.helper';
           >
         </div>
       </div>
-
-      @if (compareOpen() && selectedRuns().length >= 2) {
-        <div class="rounded-lg border border-emerald-800 bg-gray-900/50 p-4">
-          <h2 class="mb-2 text-sm font-medium text-emerald-400">Comparison</h2>
-          <div class="overflow-x-auto">
-            <table class="min-w-full text-xs">
-              <thead class="text-gray-500">
-                <tr>
-                  <th class="px-3 py-1 text-left">Run</th>
-                  <th class="px-3 py-1 text-right">Net P/L</th>
-                  <th class="px-3 py-1 text-right">Max DD%</th>
-                  <th class="px-3 py-1 text-right">Trades</th>
-                  <th class="px-3 py-1 text-right">Win Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (r of compareRuns(); track r.runId) {
-                  <tr class="border-t border-gray-800">
-                    <td class="px-3 py-1 font-mono text-gray-400">{{ r.runId.slice(0, 8) }}</td>
-                    <td
-                      class="px-3 py-1 text-right"
-                      [class.text-emerald-400]="r.netProfit > 0"
-                      [class.text-red-400]="r.netProfit < 0"
-                    >
-                      {{ r.netProfit.toFixed(2) }}
-                    </td>
-                    <td class="px-3 py-1 text-right">{{ (r.maxDrawdownPct * 100).toFixed(2) }}%</td>
-                    <td class="px-3 py-1 text-right">{{ r.totalTrades }}</td>
-                    <td class="px-3 py-1 text-right">{{ (r.winRatePct * 100).toFixed(1) }}%</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        </div>
-      }
 
       @if (store.isLoading()) {
         <div class="py-12 text-center text-sm text-gray-500">Loading...</div>
@@ -149,12 +113,21 @@ import { formatSymbols } from '../../../shared/symbols.helper';
 })
 export class RunListComponent implements OnInit {
   readonly store = inject(RunsStore);
+  private router = inject(Router);
   selectedRuns = signal<string[]>([]);
-  compareOpen = signal(false);
   symbolsDisplay = formatSymbols;
 
   ngOnInit(): void {
     this.store.loadRuns();
+  }
+
+  openCompare(): void {
+    const ids = this.selectedRuns();
+    if (ids.length >= 2) {
+      this.router.navigate(['/compare'], {
+        queryParams: { left: ids[0], right: ids[1] },
+      });
+    }
   }
 
   isSelected(runId: string): boolean {
@@ -165,12 +138,10 @@ export class RunListComponent implements OnInit {
     this.selectedRuns.update((a) => (a.includes(runId) ? a.filter((x) => x !== runId) : [...a, runId]));
   }
 
-  compareRuns = () => this.store.runs().filter((r) => this.selectedRuns().includes(r.runId));
-
   venueLabel(v: string | null | undefined): string {
     if (!v) return 'replay';
     if (v === 'tape') return 'tape';
-    if (v === 'ctrader' || v === 'ctrader-desktop') return 'ctrader';
+    if (v === 'ctrader' || v === 'ctrader-desktop') return 'cTrader';
     return v;
   }
 }

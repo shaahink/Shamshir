@@ -111,11 +111,10 @@ public sealed class RunsController : ControllerBase
         // Run-level protection toggles (P5) — default "true" means ruleset defaults apply.
         cfg.CustomParams["DailyDdEnabled"] = req.DailyDdEnabled ? "true" : "false";
         cfg.CustomParams["MaxDdEnabled"] = req.MaxDdEnabled ? "true" : "false";
-        cfg.CustomParams["ForceCloseOnBreachEnabled"] = req.ForceCloseOnBreachEnabled ? "true" : "false";
+            cfg.CustomParams["ForceCloseOnBreachEnabled"] = req.ForceCloseOnBreachEnabled ? "true" : "false";
         if (!string.IsNullOrWhiteSpace(req.RiskProfileId))
             cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
-        if (!string.IsNullOrWhiteSpace(req.Venue))
-            cfg.CustomParams["Venue"] = req.Venue.Trim().ToLowerInvariant();
+        cfg.CustomParams["Venue"] = (!string.IsNullOrWhiteSpace(req.Venue) ? req.Venue!.Trim().ToLowerInvariant() : null) ?? "replay";
         if (req.StrategyOverrides is { Count: > 0 })
             cfg.CustomParams["StrategyOverrides"] = System.Text.Json.JsonSerializer.Serialize(req.StrategyOverrides);
         if (!string.IsNullOrWhiteSpace(req.UsePackId))

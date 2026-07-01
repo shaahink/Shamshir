@@ -42,6 +42,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/data-manager/data-manager.component').then((m) => m.DataManagerComponent),
   },
   {
+    path: 'compare',
+    loadComponent: () => import('./features/compare/compare.component').then((m) => m.CompareComponent),
+  },
+  {
     path: 'settings',
     loadComponent: () => import('./features/settings/settings.component').then((m) => m.SettingsComponent),
   },

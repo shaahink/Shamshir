@@ -1,7 +1,7 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 
 interface MarketDataItem {
   symbol: string;
@@ -15,12 +15,61 @@ interface MarketDataItem {
 @Component({
   selector: 'app-data-manager',
   standalone: true,
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe, FormsModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">
         <h1 class="text-xl font-semibold">Data Manager</h1>
         <div class="text-xs text-gray-500">Market data inventory for tape replay backtests</div>
+      </div>
+
+      <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+        <h2 class="mb-3 text-sm font-medium text-gray-300">Download Market Data</h2>
+        <div class="flex flex-wrap items-end gap-3">
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Symbol</label>
+            <select [(ngModel)]="dlSymbol" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
+              <option value="EURUSD">EURUSD</option>
+              <option value="GBPUSD">GBPUSD</option>
+              <option value="USDJPY">USDJPY</option>
+              <option value="AUDUSD">AUDUSD</option>
+              <option value="USDCAD">USDCAD</option>
+              <option value="NZDUSD">NZDUSD</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Timeframes</label>
+            <div class="flex gap-2">
+              @for (tf of allTfs; track tf.value) {
+                <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
+                  <input type="checkbox" [checked]="dlTfs().includes(tf.value)" (change)="toggleTf(tf.value)" class="rounded" /> {{ tf.label }}
+                </label>
+              }
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Days</label>
+            <select [(ngModel)]="dlDays" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
+              <option [value]="3">3</option>
+              <option [value]="7">7</option>
+              <option [value]="30">30</option>
+              <option [value]="90">90</option>
+              <option [value]="180">180</option>
+            </select>
+          </div>
+          <button (click)="startDownload()" [disabled]="dlLoading()"
+            class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
+            {{ dlLoading() ? 'Downloading...' : 'Download' }}
+          </button>
+        </div>
+        @if (dlResult()) {
+          <div class="mt-2 rounded bg-emerald-900/20 p-2 text-xs text-emerald-400">
+            Downloaded {{ dlResult()?.barsRecorded }} bars for {{ dlResult()?.symbol }} ({{ dlResult()?.tfs?.join(', ') }}) — refresh to see updated inventory.
+          </div>
+        }
+        @if (dlError()) {
+          <div class="mt-2 rounded bg-red-900/20 p-2 text-xs text-red-400">{{ dlError() }}</div>
+        }
       </div>
 
       @if (loading()) {
@@ -30,13 +79,7 @@ interface MarketDataItem {
       } @else if (inventory().length === 0) {
         <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-12 text-center">
           <p class="text-sm text-gray-400 mb-2">No market data available.</p>
-          <p class="text-xs text-gray-500">
-            Run a cTrader backtest with <code class="bg-gray-800 px-1 rounded">--Record=true</code> to download data,
-            or use the recorder cBot to pull history for tape replay.
-          </p>
-          <p class="text-xs text-gray-500 mt-2">
-            Data is stored in <code class="bg-gray-800 px-1 rounded">src/TradingEngine.Web/data/marketdata.db</code>
-          </p>
+          <p class="text-xs text-gray-500">Use the download form above or run a recorder backtest.</p>
         </div>
       } @else {
         <div class="overflow-x-auto rounded-lg border border-gray-800">
@@ -76,8 +119,47 @@ export class DataManagerComponent implements OnInit {
   loading = signal(true);
   error = signal<string | null>(null);
 
+  dlSymbol = 'EURUSD';
+  allTfs = [
+    { value: 'm1', label: 'M1' },
+    { value: 'h1', label: 'H1' },
+    { value: 'h4', label: 'H4' },
+    { value: 'd1', label: 'D1' },
+  ];
+  dlTfs = signal<string[]>(['h1', 'm1']);
+  dlDays = 7;
+  dlLoading = signal(false);
+  dlResult = signal<{ symbol: string; tfs: string[]; barsRecorded: number } | null>(null);
+  dlError = signal<string | null>(null);
+
   ngOnInit(): void {
     this.loadInventory();
+  }
+
+  toggleTf(tf: string): void {
+    this.dlTfs.update(tfs => tfs.includes(tf) ? tfs.filter(t => t !== tf) : [...tfs, tf]);
+  }
+
+  startDownload(): void {
+    this.dlLoading.set(true);
+    this.dlError.set(null);
+    this.dlResult.set(null);
+    this.http.post<{ symbol: string; tfs: string[]; barsRecorded: number }>('/api/data-manager/download', {
+      symbol: this.dlSymbol,
+      tfs: this.dlTfs(),
+      days: this.dlDays,
+    }).subscribe({
+      next: (r) => {
+        this.dlResult.set(r);
+        this.dlLoading.set(false);
+        this.loadInventory();
+      },
+      error: (err) => {
+        this.dlError.set(err?.error?.error ?? err?.message ?? 'Download failed');
+        this.dlLoading.set(false);
+        this.loadInventory();
+      },
+    });
   }
 
   private loadInventory(): void {

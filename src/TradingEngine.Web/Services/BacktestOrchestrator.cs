@@ -81,6 +81,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public string? CurrentPass;
         public int PassIndex;
         public int PassTotal;
+
+        // P4: config fields for memory-first run detail (no DB read while running).
+        public string? Venue;
+        public bool GovernorEnabled = true;
+        public bool RegimeEnabled = true;
+        public double CommissionPerMillion;
+        public double SpreadPips;
     }
 
     public BacktestOrchestrator(
@@ -257,6 +264,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             Symbol = cfg.Symbol,
             Period = cfg.Period,
             BarsTotal = EstimateBarCount(cfg.Start, cfg.End, cfg.Period),
+            Venue = cfg.CustomParams.GetValueOrDefault("Venue") ?? "replay",
+            GovernorEnabled = cfg.CustomParams.GetValueOrDefault("GovernorEnabled") != "false",
+            RegimeEnabled = cfg.CustomParams.GetValueOrDefault("DisableRegime") != "true",
+            CommissionPerMillion = (double)cfg.CommissionPerMillion,
+            SpreadPips = (double)cfg.SpreadPips,
         };
         _runs[runId] = state;
         state.CancellationSource = new CancellationTokenSource();
@@ -539,7 +551,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 ReportJsonPath: null, DatasetId: datasetId, ConfigSetId: configSetId, Seed: 42,
                 ParentRunId: string.IsNullOrWhiteSpace(parentRunId) ? null : parentRunId,
                 RunPlanJson: cfg.CustomParams.GetValueOrDefault("RunRows") ?? "[]",
-                Venue: cfg.CustomParams.GetValueOrDefault("Venue"),
+                Venue: cfg.CustomParams.GetValueOrDefault("Venue") ?? "replay",
                 RiskProfileId: cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
                 GovernorEnabled: cfg.CustomParams.GetValueOrDefault("GovernorEnabled") != "false",
                 RegimeEnabled: cfg.CustomParams.GetValueOrDefault("DisableRegime") != "true",
