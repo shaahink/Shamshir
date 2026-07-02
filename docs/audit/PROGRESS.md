@@ -42,8 +42,9 @@
 | M1.1: Nav consolidation (6 nav areas) | ✅ 2026-07-02 |
 | M1.2/M1.3: Settings page (system info + reset modals) | ✅ 2026-07-02 |
 | M2.1: New-Backtest redesign (two-pane, coverage check, toggle chips) | ✅ 2026-07-02 |
-| M2.2: Monitor redesign (2x2 grid, narrative API polling, terminal CTA) | ✅ 2026-07-02 |
+| M2.2: Monitor redesign (2x2 grid, narrative polling, terminal CTA) | ✅ 2026-07-02 |
 | M2.3: Report tabs (Overview/Trades/Journal/Costs&Risk, column chooser) | ✅ 2026-07-02 |
+| M2.4: Charts (C1 entry/exit arrows, C2 DD bar chart + underwater, C3 unified equity) | ✅ 2026-07-02 |
 | M1.3: DB reset API | ✅ Built |
 | M1.2: System info endpoint | ✅ Built |
 | M3.1: Narrative service | ✅ Built |
