@@ -1,72 +1,96 @@
-import { Component, DestroyRef, ElementRef, inject, OnDestroy, OnInit, signal, ViewChild, ChangeDetectionStrategy } from '@angular/core';
+import { Component, DestroyRef, inject, OnDestroy, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { interval } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RunHubService, type RunProgressEnvelope, type JournalEnvelope, type RunCompletedEnvelope } from '../../../core/signalr/run-hub.service';
+import { RunHubService, type RunProgressEnvelope, type RunCompletedEnvelope } from '../../../core/signalr/run-hub.service';
 import { RunsStore } from '../runs.store';
 import { RunsApiService } from '../runs.service';
-import type { EquityPoint } from '../../../models/api.types';
+import type { EquityPoint, NarrativeEvent, NarrativeResponse } from '../../../models/api.types';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
 import { BacktestTimelineComponent, type TimelineEvent } from '../../../shared/backtest-timeline.component';
+
+const NARRATIVE_POLL_MS = 2000;
+const NARRATIVE_LIMIT = 100;
 
 @Component({
   selector: 'app-run-monitor',
   standalone: true,
   imports: [DatePipe, RouterLink, StatTileComponent, EquityChartComponent, BacktestTimelineComponent],
   template: `
-    <div class="space-y-6">
+    <div class="space-y-4">
+      <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-xl font-semibold">Live Monitor</h1>
           <p class="font-mono text-xs text-gray-500">Run {{ runId() }}</p>
         </div>
         <div class="flex gap-2">
-          <button
-            (click)="cancel()"
-            [disabled]="cancelling()"
-            class="rounded-md border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
-          >
-            {{ cancelling() ? 'Cancelling...' : 'Cancel Run' }}
-          </button>
+          @if (!terminal()) {
+            <button
+              (click)="cancel()"
+              [disabled]="cancelling()"
+              class="rounded-md border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
+            >
+              {{ cancelling() ? 'Cancelling...' : 'Cancel Run' }}
+            </button>
+          }
           <a
             [routerLink]="['/runs', runId()]"
             class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800"
-            >Report</a
+            >View Report</a
           >
         </div>
       </div>
 
       @if (breachBanner()) {
         <div class="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-400">
-          BREACH: {{ breachBanner() }}
+          {{ breachBanner() }}
         </div>
       }
 
+      @if (terminal() && status() === 'completed') {
+        <div class="rounded-lg border border-emerald-800 bg-emerald-900/20 p-4 flex items-center justify-between">
+          <div>
+            <div class="text-sm text-emerald-400">Run completed</div>
+            <div class="text-xs text-gray-500 mt-1">
+              {{ equity().toFixed(0) }} equity &middot; {{ barCount() }} bars &middot; {{ elapsed() }}
+            </div>
+          </div>
+          <a [routerLink]="['/runs', runId()]"
+            class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">
+            View Full Report
+          </a>
+        </div>
+      }
+
+      @if (terminal() && status() === 'failed') {
+        <div class="rounded-lg border border-red-800 bg-red-900/20 p-3 text-sm text-red-400">
+          Run failed. <a [routerLink]="['/runs', runId()]" class="underline">View details</a>
+        </div>
+      }
+
+      <!-- Progress bar (kept) -->
       <div class="rounded-lg border border-gray-800 bg-gray-800/20 p-4">
         <div class="mb-2 flex justify-between text-xs text-gray-400">
           <span>
             Progress
             @if (passTotal() > 1) {
-              <span class="ml-2 rounded bg-gray-700/60 px-1.5 py-0.5 text-gray-300">Pass {{ passIndex() }}/{{ passTotal() }} · {{ currentPass() }}</span>
+              <span class="ml-2 rounded bg-gray-700/60 px-1.5 py-0.5 text-gray-300">Pass {{ passIndex() }}/{{ passTotal() }} &middot; {{ currentPass() }}</span>
             } @else if (currentPass()) {
               <span class="ml-2 text-gray-500">{{ currentPass() }}</span>
             }
           </span>
-          <span>{{ percent().toFixed(1) }}% ({{ barCount() }} / {{ totalBars() || '?' }})</span>
+          <span>{{ percent().toFixed(1) }}% ({{ barCount() }} / {{ totalBars() || '?' }} &#64; {{ barsPerSec().toFixed(0) }} bar/s)</span>
         </div>
         <div class="h-2 overflow-hidden rounded-full bg-gray-700">
-          <div
-            class="h-full rounded-full bg-emerald-500 transition-all duration-500"
-            [style.width]="percent() + '%'"
-          ></div>
+          <div class="h-full rounded-full bg-emerald-500 transition-all duration-500" [style.width]="percent() + '%'"></div>
         </div>
-        <div class="mt-2 grid grid-cols-4 gap-4 text-xs">
-          <span class="text-gray-500">Speed: {{ barsPerSec().toFixed(1) }} bars/s</span
-          ><span class="text-gray-500">ETA: {{ eta() }}</span
-          ><span class="text-gray-500">Elapsed: {{ elapsed() }}</span
-          ><span class="text-gray-500">Sim: {{ simTime() | date: 'yyyy-MM-dd HH:mm' }}</span>
+        <div class="mt-2 flex justify-between text-xs text-gray-500">
+          <span>ETA: {{ eta() }}</span>
+          <span>Elapsed: {{ elapsed() }}</span>
+          <span>Sim: {{ simTime() | date: 'yyyy-MM-dd HH:mm' }}</span>
         </div>
       </div>
 
@@ -81,70 +105,104 @@ import { BacktestTimelineComponent, type TimelineEvent } from '../../../shared/b
         />
       }
 
-      <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <app-stat-tile
-          label="Status"
-          [value]="status()"
-          [positive]="status() === 'completed'"
-          [negative]="status() === 'failed'"
-        />
-        <app-stat-tile label="Equity" [value]="equity().toFixed(0)" />
-        <app-stat-tile label="Balance" [value]="balance().toFixed(0)" />
-        <app-stat-tile label="Open Positions" [value]="openPositions()" />
-        <app-stat-tile
-          label="Daily DD %"
-          [value]="(dailyDdPct() * 100).toFixed(2) + '%'"
-          [negative]="dailyDdPct() > 0.005"
-        />
-        <app-stat-tile label="Max DD %" [value]="(maxDdPct() * 100).toFixed(2) + '%'" [negative]="maxDdPct() > 0.005" />
-        <app-stat-tile label="Governor" [value]="governorState() || '--'" [negative]="governorState() !== 'Normal'" />
-        <app-stat-tile
-          label="Distance to Limit"
-          [value]="(distanceToLimit() * 100).toFixed(1) + '%'"
-          [positive]="distanceToLimit() > 0.5"
-        />
-      </div>
+      <!-- 2x2 grid -->
+      <div class="grid grid-cols-2 gap-4">
+        <!-- Top-left: Equity + DD chart -->
+        <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 min-h-[300px]">
+          <app-equity-chart title="Equity &amp; Drawdown" [data]="equityData()" [showDrawdown]="true" [showBalance]="true" />
+        </div>
 
-      <div class="grid grid-cols-6 gap-2 text-center">
-        @for (c of counterDefs; track c.key) {
-          <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-2">
-            <div class="text-lg font-mono tabular-nums">{{ counters()[c.key] }}</div>
-            <div class="text-xs text-gray-500">{{ c.label }}</div>
+        <!-- Top-right: Risk tiles -->
+        <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
+          <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wider">Risk &amp; Account</h3>
+          <div class="grid grid-cols-2 gap-2">
+            <app-stat-tile label="Equity" [value]="equity().toFixed(0)" />
+            <app-stat-tile label="Balance" [value]="balance().toFixed(0)" />
+            <app-stat-tile
+              label="Daily DD"
+              [value]="(dailyDdPct() * 100).toFixed(2) + '%'"
+              [negative]="dailyDdPct() > 0.005"
+            />
+            <app-stat-tile
+              label="Max DD"
+              [value]="(maxDdPct() * 100).toFixed(2) + '%'"
+              [negative]="maxDdPct() > 0.005"
+            />
+            <app-stat-tile
+              label="Governor"
+              [value]="governorState() || 'Normal'"
+              [negative]="governorState() !== 'Normal'"
+            />
+            <app-stat-tile
+              label="Dist. to Limit"
+              [value]="(distanceToLimit() * 100).toFixed(1) + '%'"
+              [positive]="distanceToLimit() > 0.5"
+            />
+            <app-stat-tile label="Signals" [value]="counters()['signals']" />
+            <app-stat-tile label="Fills" [value]="counters()['fills']" />
+            <app-stat-tile label="Closes" [value]="counters()['closes']" />
+            <app-stat-tile label="Rejections" [value]="counters()['rejections']" [negative]="counters()['rejections'] > 0" />
           </div>
-        }
-      </div>
+        </div>
 
-      @if (equityData().length > 2) {
-        <app-equity-chart title="Live Equity" [data]="equityData()" [showDrawdown]="false" [showBalance]="true" />
-      }
+        <!-- Bottom-left: Live narrative journal -->
+        <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 flex flex-col min-h-[260px]">
+          <div class="mb-2 flex items-center justify-between">
+            <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wider">Narrative</h3>
+            <span class="text-xs text-gray-600">{{ narrativeEntries().length }} events</span>
+          </div>
+          <div class="flex-1 overflow-y-auto space-y-0.5 max-h-[220px]">
+            @for (entry of narrativeEntries(); track entry.seq) {
+              <div class="border-b border-gray-800 py-1 text-xs last:border-0"
+                [class.text-red-400]="entry.severity === 'critical'"
+                [class.text-amber-400]="entry.severity === 'warning'">
+                <span class="text-gray-500">{{ entry.simTime | date: 'HH:mm:ss' }}</span>
+                <span class="ml-1 text-gray-600">{{ entry.category }}</span>
+                <span class="ml-2 font-medium text-gray-300">{{ entry.headline }}</span>
+                @if (entry.detail) {
+                  <span class="ml-1 text-gray-600">- {{ entry.detail }}</span>
+                }
+              </div>
+            }
+            @if (narrativeEntries().length === 0) {
+              <div class="py-4 text-center text-xs text-gray-500">Waiting for events...</div>
+            }
+          </div>
+        </div>
 
-      <div class="relative rounded-lg border border-gray-800 bg-gray-900/50 p-4">
-        <h2 class="mb-2 text-sm font-medium text-gray-400">Journal ({{ journalEntries().length }})</h2>
-        <div #journalScroll (scroll)="onJournalScroll()" class="max-h-80 overflow-y-auto space-y-0.5">
-          @for (entry of journalEntries(); track entry.seq) {
-            <div class="border-b border-gray-800 py-1 text-xs last:border-0">
-              <span class="text-gray-500">{{ entry.simTimeUtc | date: 'HH:mm:ss' }}</span
-              ><span class="ml-2 font-medium text-gray-300">{{ entry.kind }}</span>
-              @if (entry.symbol) {
-                <span class="ml-1 text-gray-600">{{ entry.symbol }}</span>
-              }
-              @if (entry.reason) {
-                <span class="ml-2 text-gray-600">- {{ entry.reason }}</span>
-              }
+        <!-- Bottom-right: Open positions + counters -->
+        <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 flex flex-col min-h-[260px]">
+          <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Positions</h3>
+          @if (openPositions() > 0) {
+            <div class="flex items-center gap-2 mb-3">
+              <span class="rounded-full bg-emerald-900/60 px-2 py-0.5 text-xs text-emerald-400">{{ openPositions() }} open</span>
+              <span class="text-xs text-gray-500">positions active</span>
+            </div>
+          } @else {
+            <div class="text-xs text-gray-500 mb-3">No open positions</div>
+          }
+          @if (terminal()) {
+            <a [routerLink]="['/runs', runId()]"
+              class="mt-auto rounded-md border border-emerald-800 bg-emerald-900/20 px-4 py-2 text-center text-sm text-emerald-400 hover:bg-emerald-900/40">
+              View all trades in report
+            </a>
+          } @else {
+            <div class="mt-auto space-y-1.5 text-xs">
+              <div class="flex justify-between text-gray-500">
+                <span>Breaches</span>
+                <span class="text-gray-300">{{ counters()['breaches'] || 0 }}</span>
+              </div>
+              <div class="flex justify-between text-gray-500">
+                <span>Orders</span>
+                <span class="text-gray-300">{{ counters()['orders'] || 0 }}</span>
+              </div>
+              <div class="flex justify-between text-gray-500">
+                <span>Status</span>
+                <span [class.text-emerald-400]="status() === 'running'" [class.text-gray-300]="status() !== 'running'">{{ status() }}</span>
+              </div>
             </div>
           }
-          @if (journalEntries().length === 0) {
-            <div class="py-4 text-center text-xs text-gray-500">Waiting...</div>
-          }
         </div>
-        @if (!stick()) {
-          <button
-            (click)="jumpToLatest()"
-            class="absolute bottom-3 right-3 rounded-full bg-emerald-700 px-3 py-1 text-xs text-white shadow hover:bg-emerald-600"
-          >
-            ↓ jump to latest
-          </button>
-        }
       </div>
     </div>
   `,
@@ -155,14 +213,9 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   private hub = inject(RunHubService);
   private store = inject(RunsStore);
   private api = inject(RunsApiService);
-  // Captured in a field initializer (a valid injection context). ngOnInit is async, and after the
-  // first `await` the ambient injection context is gone — a bare takeUntilDestroyed() there throws
-  // NG0203 and aborts the rest of ngOnInit (no progress subscription → dead live monitor + chart).
-  // Passing this explicit DestroyRef makes the operator independent of the ambient context.
   private destroyRef = inject(DestroyRef);
 
   runId = signal('');
-  // iter-strategy-system P3: multi-pass context shown on the progress bar.
   currentPass = signal<string | null>(null);
   passIndex = signal(0);
   passTotal = signal(0);
@@ -183,42 +236,14 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   governorState = signal<string | null>(null);
   breachBanner = signal<string | null>(null);
   counters = signal<Record<string, number>>({ signals: 0, orders: 0, fills: 0, closes: 0, rejections: 0, breaches: 0 });
-  journalEntries = signal<JournalEnvelope[]>([]);
   equityData = signal<ChartPoint[]>([]);
   backtestFrom = signal<string | null>(null);
   backtestTo = signal<string | null>(null);
   timelineEvents = signal<TimelineEvent[]>([]);
   cancelling = signal(false);
-  stick = signal(true);
-  @ViewChild('journalScroll') private journalScroll?: ElementRef<HTMLDivElement>;
-  counterDefs = [
-    { key: 'signals', label: 'Signals' },
-    { key: 'orders', label: 'Orders' },
-    { key: 'fills', label: 'Fills' },
-    { key: 'closes', label: 'Closes' },
-    { key: 'rejections', label: 'Rejections' },
-    { key: 'breaches', label: 'Breaches' },
-  ];
-
-  // F5 — stick-to-bottom: auto-scroll only when the user is already near the bottom; otherwise hold
-  // position and show a "jump to latest" affordance (set via the scroll handler).
-  onJournalScroll(): void {
-    const el = this.journalScroll?.nativeElement;
-    if (!el) return;
-    this.stick.set(el.scrollTop + el.clientHeight >= el.scrollHeight - 40);
-  }
-
-  jumpToLatest(): void {
-    this.stick.set(true);
-    this.scrollJournalToBottom();
-  }
-
-  private scrollJournalToBottom(): void {
-    queueMicrotask(() => {
-      const el = this.journalScroll?.nativeElement;
-      if (el) el.scrollTop = el.scrollHeight;
-    });
-  }
+  narrativeEntries = signal<NarrativeEvent[]>([]);
+  private narrativeLatestSeq = 0;
+  terminal = signal(false);
 
   async ngOnInit(): Promise<void> {
     const rid = this.route.snapshot.paramMap.get('runId');
@@ -230,23 +255,18 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         const s = Math.floor((Date.now() - startTime) / 1000);
-        this.elapsed.set(
-          s > 3600 ? Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm' : Math.floor(s / 60) + 'm ' + (s % 60) + 's',
-        );
+        this.elapsed.set(s > 3600 ? Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm' : Math.floor(s / 60) + 'm ' + (s % 60) + 's');
       });
 
     await this.hub.start();
     await this.hub.joinRun(rid);
 
-    // Load run metadata for the timeline.
     try {
       const detail = await this.api.getRun(rid);
       if (detail.backtestFrom) this.backtestFrom.set(detail.backtestFrom);
       if (detail.backtestTo) this.backtestTo.set(detail.backtestTo);
-    } catch { /* metadata not available yet */ }
+    } catch { /* */ }
 
-    // P3: hydrate the equity curve from the persisted snapshots so a refresh / late-join (or reconnect)
-    // shows the curve-so-far instead of a blank chart until the next live frame arrives.
     try {
       const eq = await this.api.getRunEquity(rid);
       if (eq.length > 0) {
@@ -254,7 +274,44 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
           time: new Date(p.timestampUtc).getTime(), value: p.equity, balance: p.balance,
         })));
       }
-    } catch { /* no equity yet */ }
+    } catch { /* */ }
+
+    // Narrative polling (replaces SignalR recentJournal ring)
+    const pollNarrative = async () => {
+      if (this.terminal()) return;
+      try {
+        const res = await this.api.getRunNarrative(rid, this.narrativeLatestSeq);
+        if (res.events.length > 0) {
+          const existingSeqs = new Set(this.narrativeEntries().map(e => e.seq));
+          const fresh = res.events.filter(e => !existingSeqs.has(e.seq));
+          if (fresh.length > 0) {
+            this.narrativeEntries.update(prev => [...prev, ...fresh].slice(-200));
+            this.narrativeLatestSeq = res.latestSeq;
+
+            // Map narrative to timeline events
+            const newTicks: TimelineEvent[] = fresh
+              .filter(e => e.category === 'Entry' || e.category === 'Exit' || e.severity === 'critical')
+              .map(e => ({
+                simTime: e.simTime,
+                label: `${e.category}: ${e.headline}`.trim(),
+                kind: e.category === 'Entry' ? 'entry' as const
+                  : e.severity === 'critical' ? 'breach' as const
+                  : 'exit' as const,
+              }));
+            if (newTicks.length > 0) {
+              this.timelineEvents.update(prev => [...prev, ...newTicks].slice(-200));
+            }
+          }
+        }
+      } catch { /* */ }
+    };
+
+    interval(NARRATIVE_POLL_MS)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => pollNarrative());
+
+    // Initial poll
+    pollNarrative();
 
     this.hub.progress$
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -273,13 +330,9 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
         if (e.simTimeUtc) this.simTime.set(e.simTimeUtc);
         if (e.equity != null) {
           this.equity.set(e.equity);
-          const t = e.simTimeUtc ? new Date(e.simTimeUtc).getTime() : this.equityData().length > 0
-            ? this.equityData()[this.equityData().length - 1].time
-            : Date.now();
-          this.equityData.update((d) => [
-            ...d.slice(-499),
-            { time: t, value: e.equity, balance: e.balance ?? e.equity },
-          ]);
+          const t = e.simTimeUtc ? new Date(e.simTimeUtc).getTime()
+            : this.equityData().length > 0 ? this.equityData()[this.equityData().length - 1].time : Date.now();
+          this.equityData.update((d) => [...d.slice(-499), { time: t, value: e.equity, balance: e.balance ?? e.equity }]);
         }
         if (e.balance != null) this.balance.set(e.balance);
         if (e.openPositions != null) this.openPositions.set(e.openPositions);
@@ -298,44 +351,14 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
             breaches: e.counters.breaches ?? 0,
           });
         }
-        if (Array.isArray(e.recentJournal) && e.recentJournal.length > 0) {
-          const mapped: JournalEnvelope[] = e.recentJournal.map((r: any) => ({
-            runId: this.runId(),
-            seq: r.seq,
-            simTimeUtc: r.simTimeUtc,
-            kind: r.kind ?? r.event,
-            symbol: r.symbol,
-            strategyId: r.strategyId,
-            reason: r.reason,
-            detail: r.detail ?? r.detailJson,
-          }));
-          const existing = this.journalEntries();
-          const existingSeqs = new Set(existing.map((x) => x.seq));
-          const fresh = mapped.filter((m) => !existingSeqs.has(m.seq));
-          if (fresh.length > 0) {
-            this.journalEntries.set([...existing, ...fresh].slice(-500));
-            if (this.stick()) this.scrollJournalToBottom();
-            // P2.2: map fresh journal entries to timeline ticks.
-            const newTicks: TimelineEvent[] = fresh
-              .filter((m) => m.simTimeUtc && (m.kind === 'ENTRY' || m.kind === 'CLOSE' || m.kind === 'BREACH'))
-              .map((m) => ({
-                simTime: m.simTimeUtc!,
-                label: `${m.kind}: ${m.symbol ?? ''} ${m.reason ?? ''}`.trim(),
-                kind: m.kind === 'ENTRY' ? 'entry' as const
-                  : m.kind === 'BREACH' ? 'breach' as const
-                  : 'exit' as const,
-              }));
-            if (newTicks.length > 0) {
-              this.timelineEvents.update((prev) => [...prev, ...newTicks].slice(-200));
-            }
-          }
-        }
       });
 
     this.hub.completed$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((e: RunCompletedEnvelope) => {
         this.status.set(e.status || 'completed');
+        this.terminal.set(true);
+        pollNarrative(); // final poll
         if (e.error) {
           this.breachBanner.set(e.error);
         } else {

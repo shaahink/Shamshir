@@ -490,3 +490,18 @@ export interface InventoryItem {
   lastBar: string;
   barCount: number;
 }
+
+export interface NarrativeEvent {
+  seq: number;
+  simTime: string;
+  severity: string;
+  category: string;
+  headline: string;
+  detail: string;
+}
+
+export interface NarrativeResponse {
+  events: NarrativeEvent[];
+  latestSeq: number;
+  hasMore: boolean;
+}

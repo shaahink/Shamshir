@@ -14,6 +14,7 @@ import type {
   StartRunResponse,
   StrategyPerformance,
   BarNarrative,
+  NarrativeResponse,
 } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
@@ -75,6 +76,13 @@ export class RunsApiService {
     let url = `/api/runs/${runId}/bar-decisions?limit=${limit}`;
     if (afterSeq != null) url += `&afterSeq=${afterSeq}`;
     return firstValueFrom(this.http.get<JournalEntry[]>(url));
+  }
+
+  // M3.1 — server-side narrative projection (cursor-paged, cursor = afterSeq).
+  getRunNarrative(runId: string, afterSeq?: number, limit = 100): Promise<NarrativeResponse> {
+    let url = `/api/runs/${runId}/narrative?limit=${limit}`;
+    if (afterSeq != null) url += `&afterSeq=${afterSeq}`;
+    return firstValueFrom(this.http.get<NarrativeResponse>(url));
   }
 
   // iter-redesign P5: per-bar decision narrative (regime, verdicts, proposals, gate rejections, risk)
