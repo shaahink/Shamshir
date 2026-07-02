@@ -47,4 +47,5 @@ public interface IBacktestRunRepository
     Task UpdateAsync(BacktestRunSummary run, CancellationToken ct);
     Task<IReadOnlyList<BacktestRunSummary>> GetAllAsync(CancellationToken ct);
     Task<BacktestRunSummary?> GetByIdAsync(string runId, CancellationToken ct);
+    Task DeleteAsync(string runId, CancellationToken ct);
 }

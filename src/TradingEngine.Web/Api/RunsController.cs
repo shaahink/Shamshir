@@ -144,6 +144,23 @@ public sealed class RunsController : ControllerBase
         return Ok(new { cancelled = true });
     }
 
+    [HttpPost("delete")]
+    public async Task<IActionResult> DeleteRuns([FromBody] DeleteRunsRequest req, CancellationToken ct)
+    {
+        if (req.RunIds is null or { Length: 0 })
+            return BadRequest(new { error = "At least one runId required." });
+
+        var deleted = 0;
+        foreach (var runId in req.RunIds)
+        {
+            await _runRepo.DeleteAsync(runId, ct);
+            deleted++;
+        }
+
+        _logger.LogInformation("Deleted {Count} runs", deleted);
+        return Ok(new { deleted });
+    }
+
     // iter-36 K6 / iter-37 F3 — "duplicate with changes": re-run over the SAME dataset window with an
     // optionally-changed strategy set / risk profile / overrides. New run keeps the source DatasetId, gets
     // a fresh ConfigSetId, and records ParentRunId = source (lineage). Omitting all fields = deterministic re-run.
@@ -374,4 +391,9 @@ public sealed class RunsController : ControllerBase
 
         return Ok(result);
     }
+}
+
+public sealed record DeleteRunsRequest
+{
+    public string[]? RunIds { get; init; }
 }

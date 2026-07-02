@@ -222,4 +222,14 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             e.CommissionPerMillion, e.SpreadPips,
             e.WallElapsedMs, e.BarsPerSec, e.TotalBars);
     }
+
+    public async Task DeleteAsync(string runId, CancellationToken ct)
+    {
+        await db.Trades.Where(t => t.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.JournalEntries.Where(j => j.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.EquitySnapshots.Where(e => e.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.Bars.Where(b => b.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.BacktestRuns.Where(r => r.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.SaveChangesAsync(ct);
+    }
 }

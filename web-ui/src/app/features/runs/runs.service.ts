@@ -123,6 +123,11 @@ export class RunsApiService {
     return firstValueFrom(this.http.post<StartRunResponse>(`/api/runs/${sourceRunId}/duplicate`, body ?? {}));
   }
 
+  // M4.1: batch delete completed runs (FK-safe cascade).
+  deleteRuns(runIds: string[]): Promise<{ deleted: number }> {
+    return firstValueFrom(this.http.post<{ deleted: number }>('/api/runs/delete', { runIds }));
+  }
+
   // iter-37 F3 — NDJSON download of the lossless StepRecord journal.
   journalExportUrl(runId: string): string {
     return `/api/runs/${runId}/journal/export`;
