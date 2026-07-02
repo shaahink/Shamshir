@@ -392,7 +392,7 @@ export class RunReportComponent implements OnInit {
       const oid = this.orderIdOf(e);
       if (oid && (kind === 'OrderFilled' || kind === 'OrderCancelled' || kind === 'OrderRejected' || kind === 'OrderPartiallyFilled')) {
         const proposal = byOrder.get(oid);
-        if (proposal) { proposal.outcome = kind; continue; }
+        if (proposal && !this.isCloseFill(e)) { proposal.outcome = kind; continue; }
       }
       const row: JournalRow = { ...e };
       if (oid && kind === 'OrderProposed') byOrder.set(oid, row);
@@ -408,6 +408,7 @@ export class RunReportComponent implements OnInit {
 
   kindOf(e: JournalEntry): string { return e.eventKind ?? e.kind ?? '?'; }
   private orderIdOf(e: JournalEntry): string | null { if (!e.eventJson) return null; try { const o = JSON.parse(e.eventJson); return o.OrderId ?? o.orderId ?? null; } catch { return null; } }
+  private isCloseFill(e: JournalEntry): boolean { if (!e.eventJson) return false; try { const o = JSON.parse(e.eventJson); return !!(o.closeReason ?? o.CloseReason); } catch { return false; } }
 
   grossTotal = computed(() => this.trades().reduce((s, t) => s + t.grossPnLAmount, 0));
   commTotal = computed(() => this.trades().reduce((s, t) => s + t.commissionAmount, 0));
