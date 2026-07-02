@@ -11,17 +11,20 @@ public sealed class DataManagerController : ControllerBase
     private readonly IMarketDataStore? _marketDataStore;
     private readonly DownloadJobService? _downloadJobs;
     private readonly ISymbolInfoRegistry? _symbols;
+    private readonly IConfiguration? _config;
     private readonly ILogger<DataManagerController> _logger;
 
     public DataManagerController(
         IMarketDataStore? marketDataStore = null,
         DownloadJobService? downloadJobs = null,
         ISymbolInfoRegistry? symbols = null,
+        IConfiguration? config = null,
         ILogger<DataManagerController>? logger = null)
     {
         _marketDataStore = marketDataStore;
         _downloadJobs = downloadJobs;
         _symbols = symbols;
+        _config = config;
         _logger = logger!;
     }
 
@@ -69,6 +72,10 @@ public sealed class DataManagerController : ControllerBase
         if (_downloadJobs is null)
             return Problem("Download job service not registered.");
 
+        var ctId = _config?.GetValue<string>("CTrader:CtId") ?? "";
+        if (string.IsNullOrWhiteSpace(ctId))
+            return BadRequest(new { error = "cTrader CLI not configured. Set CTrader:CtId in appsettings.json or use the seed-data endpoint to generate sample bars for testing." });
+
         DateTime? from = null, to = null;
         if (req.From is not null) from = DateTime.SpecifyKind(req.From.Value, DateTimeKind.Utc);
         if (req.To is not null) to = DateTime.SpecifyKind(req.To.Value, DateTimeKind.Utc);
@@ -81,6 +88,92 @@ public sealed class DataManagerController : ControllerBase
             tfs = job.Timeframes,
             status = job.Status,
         });
+    }
+
+    [HttpPost("seed")]
+    public async Task<IActionResult> SeedSampleData([FromBody] SeedRequest req, CancellationToken ct)
+    {
+        if (_marketDataStore is null)
+            return Problem("Market data store not registered.");
+        if (string.IsNullOrWhiteSpace(req.Symbol))
+            return BadRequest(new { error = "Symbol required." });
+        if (req.Days <= 0 || req.Days > 365)
+            return BadRequest(new { error = "Days must be 1-365." });
+
+        var sym = Symbol.Parse(req.Symbol);
+        var source = "seed";
+
+        // Check if seed data already exists for this symbol/TF — skip if so
+        var existing = await _marketDataStore.GetInventoryAsync(ct);
+        var h1Exists = existing.Any(e => e.Symbol == req.Symbol && e.Timeframe == Timeframe.H1 && e.Source == source);
+        if (h1Exists)
+            return Ok(new { bars = 0, skipped = true, message = $"Seed data already exists for {req.Symbol}. Delete existing data first to re-seed." });
+
+        var now = DateTime.UtcNow.Date.AddDays(1);
+        var start = now.AddDays(-req.Days);
+        var random = new Random(42);
+
+        // Generate H1 bars with random walk
+        var h1Bars = new List<Bar>();
+        decimal price = sym.Value switch
+        {
+            "EURUSD" => 1.0850m, "GBPUSD" => 1.2700m, "USDJPY" => 155.00m,
+            "XAUUSD" => 2350m, "AUDUSD" => 0.6600m, "USDCHF" => 0.9000m,
+            "USDCAD" => 1.3600m, "NZDUSD" => 0.6100m, "EURGBP" => 0.8550m,
+            "EURJPY" => 168.00m, "GBPJPY" => 197.00m, "XAGUSD" => 29.00m,
+            _ => 1.1000m
+        };
+        var baseSpread = sym.Value == "XAUUSD" ? 0.30m : sym.Value == "USDJPY" ? 0.020m : 0.00010m;
+
+        for (var t = start; t < now; t = t.AddHours(1))
+        {
+            var open = price;
+            var change = (decimal)((random.NextDouble() - 0.5) * 2.0 * (double)baseSpread * 15);
+            price += change;
+            var high = Math.Max(open, price) + (decimal)(random.NextDouble() * (double)baseSpread * 5);
+            var low = Math.Min(open, price) - (decimal)(random.NextDouble() * (double)baseSpread * 5);
+            var close = price;
+
+            h1Bars.Add(new Bar(sym, Timeframe.H1, t, open, high, low, close, 100));
+        }
+
+        // Generate M1 bars interpolated from H1
+        var m1Bars = new List<Bar>();
+        foreach (var h1 in h1Bars)
+        {
+            var segments = 60;
+            for (int i = 0; i < segments; i++)
+            {
+                var frac = (double)i / segments;
+                var m1Time = h1.OpenTimeUtc.AddMinutes(i);
+                var segmentOpen = i == 0 ? h1.Open : m1Bars[^1].Close;
+                var drift = (decimal)((random.NextDouble() - 0.5) * (double)baseSpread * 2);
+                var m1Close = segmentOpen + drift;
+                var m1High = Math.Max(segmentOpen, m1Close) + (decimal)(random.NextDouble() * (double)baseSpread);
+                var m1Low = Math.Min(segmentOpen, m1Close) - (decimal)(random.NextDouble() * (double)baseSpread);
+                var m1Vol = i == 0 ? h1.Volume / 60.0 : 10 + random.NextDouble() * 50;
+
+                m1Bars.Add(new Bar(sym, Timeframe.M1, m1Time,
+                    segmentOpen, m1High, m1Low, m1Close, m1Vol));
+            }
+        }
+
+        var totalBars = h1Bars.Count + m1Bars.Count;
+        var allBars = new List<Bar>();
+        allBars.AddRange(h1Bars.Select(b => b with { }));
+        allBars.AddRange(m1Bars.Select(b => b with { }));
+
+        // Chunked write to avoid memory pressure
+        const int chunkSize = 5000;
+        int written = 0;
+        for (int i = 0; i < allBars.Count; i += chunkSize)
+        {
+            var chunk = allBars.Skip(i).Take(chunkSize).ToList();
+            written += await _marketDataStore.WriteBarsAsync(source, chunk, ct);
+        }
+
+        _logger.LogInformation("Seeded {Bars} bars for {Symbol} (H1 + M1, {Days} days)", written, req.Symbol, req.Days);
+        return Ok(new { bars = written, h1Bars = h1Bars.Count, m1Bars = m1Bars.Count });
     }
 
     // M4.2 — per (symbol, TF) delete range. Null from/to = whole range; null source = all sources. This
@@ -152,5 +245,11 @@ public sealed class DataManagerController : ControllerBase
         public DateTime? From { get; init; }
         public DateTime? To { get; init; }
         public string? Source { get; init; }
+    }
+
+    public sealed record SeedRequest
+    {
+        public string Symbol { get; init; } = "EURUSD";
+        public int Days { get; init; } = 30;
     }
 }

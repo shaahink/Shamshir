@@ -78,7 +78,29 @@ interface MarketDataItem {
       } @else if (inventory().length === 0) {
         <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-12 text-center">
           <p class="text-sm text-gray-400 mb-2">No market data available.</p>
-          <p class="text-xs text-gray-500">Use the download form above or run a recorder backtest.</p>
+          <p class="text-xs text-gray-500 mb-4">Generate sample data to test tape backtests without cTrader CLI.</p>
+          <div class="flex items-center justify-center gap-3">
+            <select [(ngModel)]="seedSymbol" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100">
+              @for (s of dlSymbols.slice(0, 6); track s) { <option [value]="s">{{ s }}</option> }
+            </select>
+            <select [(ngModel)]="seedDays" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100">
+              <option [value]="7">7 days</option>
+              <option [value]="30">30 days</option>
+              <option [value]="90">90 days</option>
+            </select>
+            <button (click)="seedData()" [disabled]="seedLoading()"
+              class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
+              {{ seedLoading() ? 'Generating...' : 'Generate Sample Data' }}
+            </button>
+          </div>
+          @if (seedResult()) {
+            <div class="mt-3 rounded bg-emerald-900/20 p-2 text-xs text-emerald-400">
+              Generated {{ seedResult()!.bars.toLocaleString() }} bars ({{ seedResult()!.h1Bars }} H1 + {{ seedResult()!.m1Bars }} M1) for {{ seedResult()!.symbol }}.
+            </div>
+          }
+          @if (seedError()) {
+            <div class="mt-3 rounded bg-red-900/20 p-2 text-xs text-red-400">{{ seedError() }}</div>
+          }
         </div>
       } @else {
         <!-- Per-symbol storage totals -->
@@ -176,6 +198,12 @@ export class DataManagerComponent implements OnInit {
   dlResult = signal<{ symbol: string; tfs: string[]; jobId?: string } | null>(null);
   dlError = signal<string | null>(null);
 
+  seedSymbol = 'EURUSD';
+  seedDays = 30;
+  seedLoading = signal(false);
+  seedResult = signal<{ symbol: string; bars: number; h1Bars: number; m1Bars: number } | null>(null);
+  seedError = signal<string | null>(null);
+
   ngOnInit(): void {
     this.loadInventory();
   }
@@ -202,6 +230,26 @@ export class DataManagerComponent implements OnInit {
         this.dlError.set(err?.error?.error ?? err?.message ?? 'Download failed');
         this.dlLoading.set(false);
         this.loadInventory();
+      },
+    });
+  }
+
+  seedData(): void {
+    this.seedLoading.set(true);
+    this.seedError.set(null);
+    this.seedResult.set(null);
+    this.http.post<{ bars: number; h1Bars: number; m1Bars: number; skipped?: boolean; message?: string }>('/api/data-manager/seed', {
+      symbol: this.seedSymbol,
+      days: this.seedDays,
+    }).subscribe({
+      next: (r) => {
+        this.seedResult.set({ symbol: this.seedSymbol, bars: r.bars, h1Bars: r.h1Bars, m1Bars: r.m1Bars });
+        this.seedLoading.set(false);
+        this.loadInventory();
+      },
+      error: (err) => {
+        this.seedError.set(err?.error?.error ?? err?.message ?? 'Seed failed');
+        this.seedLoading.set(false);
       },
     });
   }
