@@ -45,20 +45,18 @@
 | Merge plan doc (`docs/iterations/iter-merge-plan/PLAN.md`) | ✅ Written |
 | M1.1: Nav consolidation (6 areas + 2 hub pages) | ✅ Built 2026-07-02 |
 
-## Merged plan — pending
+## Merged plan — remaining
 
-| Phase | Items | Depends on |
-|-------|-------|-----------|
-| M1.1 (nav consolidation) | Angular: 6 nav areas (Live, Runs, Strategies, Risk, Data, Settings) + Risk/Runs hub pages with sub-tabs | ✅ 2026-07-02 |
-| M1.2/M1.3 (settings + reset UI) | Angular: settings page with reset modals | M1.3 API done |
-| M2.1 (New-Backtest redesign) | Angular: two-pane layout, coverage check | Angular |
-| M2.2 (Monitor redesign) | Angular: 2x2 grid, narrative journal | M3.1 API done |
-| M2.3 (Report tabs) | Angular: tab layout, lazy-load | Angular |
-| M2.4 (Charts C1-C3) | Angular: entry/exit markers, SL step-lines, DD bars | Angular |
-| M3.2 (Monitor switch to narrative) | Server + Angular: replace RecentJournal ring | M3.1 API done |
-| M3.3 (Trade narrative columns) | Migration + executor stamping | M3.1 done |
-| M4 (Housekeeping + gaps) | Runs delete, coverage view, F5/F6/F7 | |
-| M5 (cTrader trust) | Owner verified — A1-A3 oracle set + drift alarm | cTrader CLI |
+| # | Phase | Items | Scope |
+|---|-------|-------|-------|
+| 1 | M2.1 | New-Backtest redesign: two-pane layout, data coverage check, toggle-chip protections, field hygiene | Angular |
+| 2 | M2.2 | Monitor redesign: 2x2 grid (equity+DD, risk tiles, narrative journal, open positions) | Angular |
+| 3 | M2.3 | Report tabs: Overview / Trades / Journal / Costs & Risk tabs, 9-col default trade table | Angular |
+| 4 | M2.4 | Charts: C1 trade chart, C2 daily DD bars, C3 unified equity chart | Angular |
+| 5 | M3.2 | Monitor switch to narrative: delete TallyEvent branch, BacktestJournal → error/system only | C# |
+| 6 | M3.3 | Trade narrative columns: EF migration + EntryReason/EntryRegime/EntrySnapshotJson/ExitDetailJson | C# |
+| 7 | M4 | Housekeeping + gaps: multi-select delete, coverage view, F5 commission, F6/F7 document | C# + Angular |
+| — | M5 | cTrader trust: oracle set + drift alarm | **OWNER ONLY** |
 
 ## Speed baseline (informal)
 
