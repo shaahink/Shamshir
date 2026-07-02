@@ -3,6 +3,8 @@ import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
+import { BadgeComponent } from '../../shared/badge.component';
+
 interface MarketDataItem {
   symbol: string;
   timeframe: string;
@@ -10,12 +12,14 @@ interface MarketDataItem {
   firstBar: string;
   lastBar: string;
   barCount: number;
+  m1Overlap?: boolean;
+  spreadPips?: number;
 }
 
 @Component({
   selector: 'app-data-manager',
   standalone: true,
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, BadgeComponent],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">
@@ -102,6 +106,7 @@ interface MarketDataItem {
                 <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">First Bar</th>
                 <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Last Bar</th>
                 <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500"># Bars</th>
+                <th class="px-4 py-2 text-center text-xs font-medium uppercase tracking-wide text-gray-500">Coverage</th>
                 <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500"></th>
               </tr>
             </thead>
@@ -114,6 +119,16 @@ interface MarketDataItem {
                   <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-400">{{ item.firstBar | date:'yyyy-MM-dd HH:mm' }}</td>
                   <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-400">{{ item.lastBar | date:'yyyy-MM-dd HH:mm' }}</td>
                   <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums text-gray-300">{{ item.barCount.toLocaleString() }}</td>
+                  <td class="whitespace-nowrap px-4 py-2 text-center">
+                    <div class="flex items-center justify-center gap-1">
+                      @if (item.timeframe !== 'M1') {
+                        <app-badge [label]="item.m1Overlap ? 'M1 ✓' : 'No M1'" [variant]="item.m1Overlap ? 'success' : 'error'" />
+                      }
+                      @if (item.spreadPips != null) {
+                        <span class="text-xs text-gray-500">{{ item.spreadPips.toFixed(1) }} sp</span>
+                      }
+                    </div>
+                  </td>
                   <td class="whitespace-nowrap px-4 py-2 text-right">
                     <button (click)="deleteRow(item)" [disabled]="deletingKey() === rowKey(item)"
                       class="rounded border border-red-900 px-2 py-0.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50">

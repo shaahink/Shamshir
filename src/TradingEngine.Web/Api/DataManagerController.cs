@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using TradingEngine.Infrastructure.MarketData;
+using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Web.Api;
 
@@ -9,15 +10,18 @@ public sealed class DataManagerController : ControllerBase
 {
     private readonly IMarketDataStore? _marketDataStore;
     private readonly DownloadJobService? _downloadJobs;
+    private readonly ISymbolInfoRegistry? _symbols;
     private readonly ILogger<DataManagerController> _logger;
 
     public DataManagerController(
         IMarketDataStore? marketDataStore = null,
         DownloadJobService? downloadJobs = null,
+        ISymbolInfoRegistry? symbols = null,
         ILogger<DataManagerController>? logger = null)
     {
         _marketDataStore = marketDataStore;
         _downloadJobs = downloadJobs;
+        _symbols = symbols;
         _logger = logger!;
     }
 
@@ -28,14 +32,31 @@ public sealed class DataManagerController : ControllerBase
             return Ok(Array.Empty<object>());
 
         var inventory = await _marketDataStore.GetInventoryAsync(ct);
-        return Ok(inventory.Select(i => new
+        var items = inventory.ToList();
+
+        var nonM1 = items.Where(i => i.Timeframe != Timeframe.M1).ToList();
+        var m1Ranges = new Dictionary<string, (DateTime First, DateTime Last)>();
+        foreach (var m1 in items.Where(i => i.Timeframe == Timeframe.M1))
+            m1Ranges[m1.Symbol] = (m1.FirstOpenUtc, m1.LastOpenUtc);
+
+        return Ok(items.Select(i =>
         {
-            symbol = i.Symbol,
-            timeframe = i.Timeframe.ToString(),
-            source = i.Source,
-            firstBar = i.FirstOpenUtc,
-            lastBar = i.LastOpenUtc,
-            barCount = i.BarCount,
+            var m1Overlap = i.Timeframe != Timeframe.M1
+                && m1Ranges.TryGetValue(i.Symbol, out var m1)
+                && i.FirstOpenUtc <= m1.Last && i.LastOpenUtc >= m1.First;
+            var spreadPips = _symbols?.TryGet(Symbol.Parse(i.Symbol), out var si) == true
+                ? si.TypicalSpread / si.PipSize : (decimal?)null;
+            return new
+            {
+                symbol = i.Symbol,
+                timeframe = i.Timeframe.ToString(),
+                source = i.Source,
+                firstBar = i.FirstOpenUtc,
+                lastBar = i.LastOpenUtc,
+                barCount = i.BarCount,
+                m1Overlap,
+                spreadPips,
+            };
         }));
     }
 
