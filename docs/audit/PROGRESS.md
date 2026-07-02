@@ -1,31 +1,23 @@
 # Progress Metrics
 
-**Updated:** 2026-07-02 (merge review — docs synced from iter/master-plan, stale worktrees removed)
+**Updated:** 2026-07-02 (session close — Groups 1&2 implemented, deep audit completed, 5 audit gaps fixed)
 **Branch:** `iter/merge-plan`
-**Master plans:** `docs/iterations/iter-merge-plan/PLAN.md` (M1–M5, current) + `docs/iterations/iter-master-plan/PLAN.md` (Tracks A–G, reference) + `docs/QUANT-ROADMAP.md` (Q1–Q4, methodology)
+**Worktree:** `C:\Code\shamshir-trust` (ACTIVE)
+**Pinned:** `C:\Code\Shamshir` (iter/tape-trust, do not touch)
+**Master plans:** `docs/iterations/iter-merge-plan/PLAN.md` (M1–M5) + `docs/iterations/iter-master-plan/PLAN.md` (Tracks A–G) + `docs/QUANT-ROADMAP.md` (Q1–Q4)
 
-## Active worktrees
-
-| Path | Branch | Role |
-|------|--------|------|
-| `C:\Code\Shamshir` | `iter/tape-trust` | **PINNED** — do not work here |
-| `C:\Code\shamshir-trust` | `iter/merge-plan` | **ACTIVE** — all work happens here |
-
-*(Stale worktrees `shamshir-master` (iter/master-plan) and `shamshir-mdtape` (iter/marketdata-tape) removed 2026-07-02.)*
-
-## Gates (2026-07-02, final)
+## Gates (2026-07-02)
 
 | Gate | Command | Result |
 |------|---------|--------|
 | Build | `dotnet build` | 0 errors |
 | Unit | `dotnet test tests/TradingEngine.Tests.Unit` | 314 pass / 0 fail / 6 skip |
-| Integration | `dotnet test tests/TradingEngine.Tests.Integration` | 105 pass / 0 fail (+14: narrative projection/query, run-delete cascade, market-data delete) |
+| Integration | `dotnet test tests/TradingEngine.Tests.Integration` | 108 pass / 0 fail |
 | Golden/Determinism | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true&(FullyQualifiedName~Golden\|FullyQualifiedName~Characterization\|FullyQualifiedName~Acceptance\|FullyQualifiedName~Lifecycle\|FullyQualifiedName~Deterministic\|FullyQualifiedName~Equivalence\|FullyQualifiedName~Journal)"` | 63 pass / 0 fail |
-| cTrader E2E | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader=true&FullyQualifiedName!~NetMQBridge"` | BLOCKED — cTrader CLI not installed on this machine. Owner to run. |
+| cTrader E2E | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader=true&FullyQualifiedName!~NetMQBridge"` | BLOCKED — cTrader CLI not installed. Owner to run. |
+| DB Migrations | `dotnet ef database update` | Applied: InitialCreate + AddTradeNarrativeColumns |
 
----
-
-## iter-tape-trust — completed (T0–T5)
+## Completed — iter-tape-trust (T0–T5)
 
 | Phase | Items | Status |
 |-------|-------|--------|
@@ -36,102 +28,130 @@
 | T4 | Compare-both dispatch | ✅ |
 | T5 | Sweep runner, content-address skip, journal thinning (SkipJournal) | ✅ |
 
-### All B1–B11 bugs: ✅ fixed
-### All F1–F4, F8 fidelity gaps: ✅ fixed
-### F5–F7 fidelity gaps: tracked in remaining items below
+### B1–B11 bugs: ✅ all fixed
+### F1–F4, F8 fidelity gaps: ✅ all fixed
 
 ---
 
-## iter-merge-plan — implemented (M1–M4)
+## Completed — iter-merge-plan (M1–M4, Groups 1–2)
+
+### Previously done (before this session)
 
 | Item | Status |
 |------|--------|
 | M1.1: Nav consolidation (6 areas + 2 hub pages) | ✅ |
 | M1.2: System info endpoint + Settings UI | ✅ |
-| M1.3: DB reset API + UI (scope: runs|config|all with type-the-word confirm) | ✅ |
-| M2.1: New-Backtest redesign (two-pane, data coverage, toggle-chips) | ✅ |
+| M1.3: DB reset API + UI (runs\|config\|all) | ✅ |
+| M2.1: New-Backtest redesign (two-pane, data coverage) | ✅ |
 | M2.2: Monitor redesign (2x2 grid, narrative polling) | ✅ |
-| M2.3: Report tabs (Overview/Trades/Journal/Costs&Risk, 9-col trade table) | ✅ |
+| M2.3: Report tabs (Overview/Trades/Journal/Costs&Risk) | ✅ |
 | M2.4: Charts (daily PnL histogram, underwater equity) | ✅ |
-| M3.1: Narrative service (`GET /api/runs/{id}/narrative`), +13 tests | ✅ |
-| M3.2: Monitor switch to narrative (TallyEvent removed) | ✅ |
-| M3.3: Trade narrative columns (EF migration, ExitDetailJson stamping) | ⚠️ Partial — see remaining #1 |
+| M3.1: Narrative service +13 tests | ✅ |
+| M3.2: Monitor→narrative switch (TallyEvent removed) | ✅ |
 | M4.1: Multi-select delete runs + prune keep-last-N | ✅ |
 | M4.2: Data Manager per-(symbol,TF) delete + storage totals | ✅ |
 | M4.3: SkipJournal verified | ✅ |
 
-### Review pass 2026-07-02 (M2/M3 audit + fixes)
+### This session (2026-07-02)
 
-| Fix | Severity | Detail |
-|-----|----------|--------|
-| RunNarrativeService rewrite | **HIGH** | Rewrote to real PascalCase EventJson schema; +13 tests |
-| new-backtest dead link | MED | Missing `RouterLink` import fixed |
-| run-report NG0955 | MED | `track v.strategyId` → `track $index` |
-| monitor poll leak | LOW | `setInterval` cleared on terminal status |
+| Item | Commit | What |
+|------|--------|------|
+| **M3.3 finish** | `4933944` | EntryReason/EntryRegime/EntrySnapshotJson populated at open (threaded OrderProposed→PositionState→PublishTradeClosed→EffectExecutor). "Why entered"/"Why exited" surfaced on trade-detail + report expanded row. Golden 63/63. |
+| **F6 doc** | `ee76211` | F5–F7 registered in RECONCILE-FINDINGS.md; F1–F4,F8 audit trail. |
+| **F7 doc** | `ee76211` | (same commit) |
+| **Data coverage badge** | `dfff4d3` | M1 overlap ✓/✗ + spread-pips per (symbol,TF) in Data Manager inventory. |
+| **Overlap protection** | `26ff6f3` | POST /api/runs returns 409 Conflict if a run is already active. |
+| **Audit fixes A1/A2/B1/E3/F1** | `c6ebdb1` | Download symbols 6→12, M5+M15 TFs added, Start disabled when tape+no M1, RunDetail TS gets exitResolution, download banner shows "queued". |
+| **Docs merge + worktree cleanup** | `8a568fd` | Copied iter-master-plan/PLAN.md, removed stale worktrees, updated AGENTS.md. |
 
 ---
 
-## ALL REMAINING ITEMS — in suggested implementation order
+## Deep audit findings (2026-07-02 — tape backtest flow, end-to-end)
 
-Items are ordered by priority: implement now → implement next → deferred/owner. Skip anything needing cTrader (owner's machine).
+Full audit traced the complete user journey: no data → download → new backtest → tape execution → live monitor → report.
 
-### Group 1: DO NOW (ready, no cTrader, non-golden-sensitive)
+### Fixed in this session
 
-| # | ID | What | Scope | Master-plan track |
-|---|----|------|-------|-------------------|
-| **1** | **M3.3 finish** | Populate `EntryReason`/`EntryRegime`/`EntrySnapshotJson` at position open (thread through OrderProposed→PositionState→PublishTradeClosed→EffectExecutor). Surface "why entered / why exited" on trade-detail page + expanded report row. Golden 63/63 stays (executor stamping is outside kernel reducer). | C# pipeline + API DTOs + Angular UI | B3 |
-| **2** | **F6 doc** | Document limit+SL same-fine-bar ordering in RECONCILE-FINDINGS.md and TapeReplayAdapter code. `ProcessPendingLimits` runs before `ProcessSlTpHits` per fine bar → limit filled on bar k gets SL-checked on same bar k. Intra-bar ordering unknowable at M1; conservative (SL-before-TP). Minor impact. | `.md` doc only | iter-tape-trust M4 |
-| **3** | **F7 doc** | Document fine bars in decision-TF gaps in RECONCILE-FINDINGS.md. Fine bars in missing H1 windows consumed by `_exitIndex++` + warmup skip without exit checks. SL/TP exits in gaps never fire → optimistic bias. Mitigation: noted for future gap-exit-detection pass. | `.md` doc only | iter-tape-trust M4 |
+| ID | Where | Finding | Remedy |
+|----|-------|---------|--------|
+| A1 | Data Manager | Download form listed 6 symbols; backtest builder has 12 | Expanded to 12 (match new-backtest ALL_SYMBOLS) |
+| A2 | Data Manager | M5, M15 timeframes missing from download form | Added M5, M15 to allTfs |
+| B1 | New-Backtest | Start not disabled when tape venue + no M1 data | `tapeM1Gap` computed disables button with tooltip |
+| E3 | api.types.ts | TypeScript RunDetail missing ExitResolution field | Added `exitResolution?: string` |
+| F1 | Data Manager | Download banner showed "undefined barsRecorded" on fire-and-forget | Changed to "Download queued — refresh to see" |
 
-### Group 2: DO NEXT (ready, no cTrader, low risk)
+### Known / documented (not blocking)
 
-| # | ID | What | Scope | Master-plan track |
-|---|----|------|-------|-------------------|
-| **4** | **Data coverage badge** | Per-(symbol,TF) m1 overlap badge in Data Manager. Show coverage % + green/yellow/red chip. Feeds M2.1's pre-start data-coverage check. | C# API + Angular | T1 (iter-tape-trust) |
-| **5** | **A6 — UX glitches** | Equity curve flicker (diff/throttle updates), cancel-button on active runs, overlap protection (no second run while first draining), progress% accounts for market gaps, DD timeline label corrected. | Angular + C# (cancel) | — |
-| **6** | **A4 — Journal completeness** | Verify violations render readable strings (not `[object Object]`), verify commission/swap flow through close path, verify order+fill join in journal view. | C# validation + Angular | — |
-| **7** | **D2 — Hardcoded values audit** | Audit timeframe defaults, symbol defaults, balance defaults, magic numbers in UI→engine config path. Fix any that bypass user selection. | C# audit | — |
-| **8** | **D1 — DB fragmentation** | Unify `trading.db` to single configurable path. Clean up test artifacts. Document the canonical location. | C# config + EF | — |
+| ID | Severity | Finding | Reason not fixing yet | Remedy when ready |
+|----|----------|---------|----------------------|-------------------|
+| C1 | CRITICAL | Short entries miss half-spread cost in BOTH TapeReplayAdapter and BacktestReplayAdapter. Systematic optimistic bias for short trades. | Part of F1 fidelity gap; requires golden-safe venue-side fix. Golden 63/63 constrains touching fill-price logic. | Fix `SubmitOrderAsync` spread direction: `direction==Long ? mid+half : mid-half`. Verify golden survives. |
+| A3 | LOW | Download fire-and-forget — client doesn't poll job status. Banner says "queued; refresh to see" (now fixed to not lie). | Cosmetic; inventory refresh resolves it. | Add polling interval for active jobs in Data Manager. |
+| B2 | LOW | StartRunRequest lacks `exitTimeframe` field; backend hardcodes M1. | M1 is the correct default 99% of the time. | Add optional exitTimeframe to UI if owner needs non-M1 exits. |
+| C2 | LOW | Tape venue pushes only close-price tick per bar; tick-based strategies unsupported. | No tick-based strategies exist today. | Add per-bar tick synthesis if needed later. |
+| D1 | LOW | Monitor gets run detail but discards it. | Harmless; metadata goes unused. | Remove or reuse for status bar info. |
+| E2 | LOW | Journal tab shows raw StepRecord; narrative events are a different API. | Both views useful (raw journal for audit, narrative for reading). | Document the difference; both are correct. |
 
-### Group 3: LATER (features, no cTrader)
+---
 
-| # | ID | What | Scope | Master-plan track |
-|---|----|------|-------|-------------------|
-| **9** | **Track F1 — Portfolio entity** | New `Portfolio` config (DB-seeded): strategy rows + risk budget fractions + activation rule. New-Backtest gets "Run portfolio <name>" one-click. Report shows per-row contribution table. Golden untouched (composition via `EffectiveConfigResolver` deep-merge). | C# Domain + EF migration + API + Angular | F1 |
-| **10** | **Track G1 — Symbol scorecard** | `GET /api/symbols/scorecard` — for every symbol with data in `marketdata.db`, compute costPerAtrPct (spread÷ATR), m1 coverage%, data range, gap frequency. Sortable table in Data Manager with "nominate" star. | C# API + Angular | G1 |
-| **11** | **Q1 — Excursion recorder** | Venue-side per-trade excursion path recorder (per-exit-TF-bar high/low vs entry) for exploration mode. Foundation for exit calibration grid (QUANT-ROADMAP §4). | C# (TapeReplayAdapter + EffectExecutor) | Q1 |
-| **12** | **C1 — Venue status bar** | Page/status-bar showing live venue: connected/disconnected, bars received, last tick time, NetMQ port state. Today buried in logs. | Angular + SignalR | — |
-| **13** | **D3 — Perf profiling** | Profile tape backtest path end-to-end. Suspects: per-bar indicator recompute, EF change-tracking on bulk inserts, 5s settle delays. Measure bars/sec first. | C# profiling | — |
+## ALL REMAINING GAPS — with reasons + remedies
 
-### Group 4: LATER (features, needs cTrader data)
+Items the OWNER can pick up or delegate. Ordered by owner effort (lowest effort first).
 
-| # | ID | What | Scope | Master-plan track |
-|---|----|------|-------|-------------------|
-| **14** | **Track F2 — Correlation evidence** | Pairwise daily-PnL correlation (22:00 roll) from multiple runs. Matrix heatmap in Compare/Portfolio view. Prereq: real multi-strategy runs on downloaded data. | C# API + Angular | F2 |
-| **15** | **Track F3 — Regime-gated portfolio** | Elevate regime filter to portfolio level. Activation rule per row (trend rows only in Trending). Validate ON vs OFF with evidence. | C# config + kernel (opt-in, golden-safe) | F3 |
-| **16** | **Track G2 — Symbol-fit exploration** | For nominated symbol: run exploration sweep of surviving strategies. Scorecard page links "explore fit" → pre-filled sweep. | C# SweepRunner extension + Angular | G2 |
-| **17** | **Q2 — Walk-forward harness** | Window splitter + per-window config freeze + stitched OOS curve. P(pass) as first-class sweep metric (wire `PassProbabilityEstimator`). | C# Orchestrator + Angular | Q2 |
-| **18** | **Q3 — Portfolio assembly + per-bar spread** | Correlation-aware exposure groups (config: symbol→group map, per-group open-risk cap in PreTradeGate). Per-bar recorded spread (recorder captures `Symbol.Spread` at bar close). | C# + cBot rebuild | Q3 + A3 |
-| **19** | **Q4 — Stress** | Bar-level block bootstrap (synthetic tapes by resampling). News/weekend flattening validation. | C# + sweep | Q4 |
+### Tier 1: Quick wins (minutes–hours, no cTrader, no golden risk)
 
-### Group 5: DEFERRED (needs owner sign-off or golden re-baseline)
+| # | ID | What | Reason it's not done | Remedy |
+|---|----|------|---------------------|--------|
+| **1** | **A4** | Verify violations render readable strings (not `[object Object]`), verify commission/swap flow through close path, verify order+fill join in journal view. | Needs a driven run with trades to observe actual journal output. | Run tape backtest with trend-breakout strategy, inspect journal entries for close/fill events in report. |
+| **2** | **D2** | Audit hardcoded defaults: timeframe hardcodes, symbol hardcodes, balance defaults, magic numbers in UI→engine config path. | Time-intensive static audit; low-risk fixes. | Grep for `EURUSD\|H1\|10000` literal defaults in src/ and web-ui/. Replace with config-derived values where safe. |
+| **3** | **D1** | DB fragmentation — unify `trading.db` to single configurable path. Multiple paths exist: `src/TradingEngine.Web/data/trading.db`, `data/trading.db`, test artifacts in random folders. | Config-only; harmless unless someone commits a large DB. | Single env-var `TRADING_DB_PATH` defaulting to `data/trading.db` relative to working dir. |
 
-| # | ID | What | Reason |
-|---|----|------|--------|
-| **20** | **F5 deferred** | Commission half-at-open (split `ComputeCosts`: half at entry, half at exit). Shifts intra-trade equity that the golden journal captures byte-for-byte. **Golden must be re-baselined** — forbidden without owner sign-off. Net P&L unchanged either way. | Golden re-baseline required |
-| **21** | **Coverage fidelity chip** | Show "Fidelity: verified YYYY-MM-DD ✓" chip on Data page + tape run report header. Needs A2 oracle artifacts from owner's cTrader runs. | Owner must run A1 oracle set first |
+### Tier 2: Features (hours–days, no cTrader, no golden risk)
 
-### Group 6: OWNER ONLY (cTrader CLI + cBot build)
+| # | ID | What | Reason it's not done | Remedy |
+|---|----|------|---------------------|--------|
+| **4** | **Track F1** | Portfolio entity — named config with strategy rows + risk budgets. New-Backtest "Run portfolio <name>" one-click. Report per-row contribution table. | Feature not scoped in merge-plan M1-M5; defined in iter-master-plan. | New Domain entity + EF migration + API endpoints + Angular UI. Golden-safe (composition via EffectiveConfigResolver). |
+| **5** | **Track G1** | Symbol scorecard — for every symbol with data, compute costPerAtrPct, m1 coverage%, gap frequency. Sortable table in Data Manager with "nominate" star. | Feature not scoped in merge-plan. | New API endpoint + Angular table. Reuse ISymbolInfoRegistry + PipCalculator for ATR math. |
+| **6** | **Q1** | Excursion recorder — per-trade per-exit-TF-bar excursion path (high/low vs entry). Foundation for exit calibration grid (QUANT-ROADMAP §4). | Research feature, not in merge-plan. | Venue-side: while scanning exit bars, append (barTime, highVsEntry, lowVsEntry) per open position. Persist on close. |
+| **7** | **C1** | Venue status bar/page — live venue: connected/disconnected, bars received, last tick time, NetMQ port state. | Out of merge-plan scope. | Angular component + SignalR hub for live status. |
+
+### Tier 3: cTrader-dependent features (owner's machine, hours–days)
+
+| # | ID | What | Reason it's not done | Remedy |
+|---|----|------|---------------------|--------|
+| **8** | **Track F2** | Correlation evidence — pairwise daily-PnL correlation from multiple runs. Matrix heatmap in Compare/Portfolio view. | Needs real multi-strategy runs on downloaded data. | Run ≥2 strategies on same symbols/window, compute Spearman ρ on daily PnL (22:00 roll). |
+| **9** | **Track F3** | Regime-gated portfolio — activation rule per row (trend rows only in Trending). Validate ON vs OFF with evidence. | Needs Tracks F1+F2 first. | Compare tape runs with regime-gating ON vs OFF; report net/DD/P(pass). |
+| **10** | **Track G2** | Symbol-fit exploration — for nominated symbol, run exploration sweep of surviving strategies. | Needs T5 sweeps + Q1 excursion data. | Pre-filled sweep from scorecard page → SweepRunnerService. |
+| **11** | **Q2** | Walk-forward harness — window splitter + per-window config freeze + stitched OOS curve. P(pass) as first-class sweep metric. | Quant methodology feature. | Orchestrator-level loop over (train,test) windows reusing SweepRunner. |
+
+### Tier 4: Deferred (golden-sensitive or needs owner decision)
+
+| # | ID | What | Reason it's not done | Remedy |
+|---|----|------|---------------------|--------|
+| **12** | **F5** | Commission half-at-open — split ComputeCosts: half at entry, half at exit. | Shifts intra-trade equity that golden journal captures byte-for-byte. **Golden must be re-baselined.** Net P&L unchanged. | Owner signs off → re-baseline golden snapshot → implement split in ComputeCosts. |
+| **13** | **C1 (short spread)** | Short entries miss half-spread cost in TapeReplayAdapter + BacktestReplayAdapter. | Part of F1; fixing it changes golden fill prices. | Fix direction-aware spread in SubmitOrderAsync, re-baseline golden. |
+
+### Tier 5: Owner-only (cTrader CLI + cBot build)
 
 | # | ID | What | Notes |
 |---|----|------|-------|
-| **22** | **M5.1 / A1** | Oracle set — download EURUSD H1+M1, run 3–5 oracle configs on cTrader, commit `shamshir-report.json` artifacts. Define tolerance contract. | Owner runs on cTrader machine |
-| **23** | **M5.2 / A2** | Drift alarm — committed-artifact test (`[RequiresCTrader=false]`) reads oracle artifacts, runs tape vs stored report, asserts within contract. UI fidelity chip. | Infra ready; owner commits artifacts |
-| **24** | **M5.3 / A3** | Per-bar recorded spread — cBot captures `Symbol.Spread` at bar close → NDJSON schema extension. Tape venue uses per-bar spread when present. | cBot rebuild + cTrader E2E |
-| **25** | **iter-tape-trust V2–V5** | V2 owner's working set download, V3 speed baseline, V4 tape vs cTrader reconcile, V5 engine-DB vs cTrader report | cTrader CLI |
-| **26** | **cBot E2E tests** | `RequiresCTrader=true` E2E suite (cBot rebuilt, `.algo` fresh) | cTrader CLI + NetMQ |
+| **14** | **V2–V5** | Owner downloads EURUSD H1+M1, runs speed baseline, runs tape vs cTrader reconcile, runs engine-DB vs cTrader report. | cTrader CLI on owner's machine. |
+| **15** | **M5.1 / A1** | Oracle set — run 3–5 oracle configs on cTrader, commit shamshir-report.json artifacts. Define tolerance contract. | Owner runs, commits artifacts. |
+| **16** | **M5.2 / A2** | Drift alarm — committed-artifact test (`[RequiresCTrader=false]`) reads oracle artifacts, runs tape vs stored report. UI fidelity chip. | Infra ready; needs owner's artifacts. |
+| **17** | **M5.3 / A3** | Per-bar recorded spread — cBot captures Symbol.Spread at bar close → NDJSON schema extension. | cBot rebuild + cTrader E2E. |
+| **18** | **cBot E2E** | `RequiresCTrader=true` E2E suite (cBot rebuilt, .algo fresh). | cTrader CLI + NetMQ. |
 
 ---
+
+## Session commits (2026-07-02)
+
+```
+c6ebdb1 A1/A2/B1/E3/F1: audit fixes
+26ff6f3 A6: run overlap protection
+dfff4d3 M4.2: data coverage badge
+ee76211 docs: register F5-F7 fidelity gaps
+4933944 M3.3: populate EntryReason/EntryRegime/EntrySnapshotJson
+8a568fd docs: merge review — sync iter-master-plan/PLAN.md
+```
 
 ## Speed baseline (informal)
 
