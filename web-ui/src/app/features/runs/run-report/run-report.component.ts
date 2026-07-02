@@ -21,6 +21,10 @@ type JournalRow = JournalEntry & { outcome?: string | null };
 
 type Tab = 'overview' | 'trades' | 'journal' | 'risk';
 
+function safeJson(raw: string): Record<string, unknown> | null {
+  try { return JSON.parse(raw) as Record<string, unknown>; } catch { return null; }
+}
+
 @Component({
   selector: 'app-run-report',
   standalone: true,
@@ -126,8 +130,22 @@ type Tab = 'overview' | 'trades' | 'journal' | 'risk';
               <div class="space-y-4">
                 <!-- Trade detail expand -->
                 @if (expandedTradeId()) {
-                  <div class="mb-4">
-                    <button (click)="expandedTradeId.set(null)" class="mb-2 text-xs text-gray-500 hover:text-gray-300">← Close trade detail</button>
+                  <div class="mb-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
+                    <button (click)="expandedTradeId.set(null)" class="mb-1 text-xs text-gray-500 hover:text-gray-300">&larr; Close trade detail</button>
+                    @if (expandedTradeNarrative(); as tn) {
+                      <div class="flex gap-6">
+                        <div class="flex-1">
+                          <h3 class="mb-1 text-xs font-medium text-gray-500">Why entered</h3>
+                          <p class="text-sm text-gray-300">{{ tn.entryReason || '—' }}</p>
+                          @if (tn.entryRegime) { <p class="text-xs text-gray-500">Regime: {{ tn.entryRegime }}</p> }
+                        </div>
+                        <div class="flex-1">
+                          <h3 class="mb-1 text-xs font-medium text-gray-500">Why exited</h3>
+                          <p class="text-sm text-gray-300">{{ tn.exitReason }}</p>
+                          @if (tn.exitDetail) { <p class="text-xs text-gray-500">Exit at {{ $any(tn.exitDetail).exitPrice }}, net {{ $any(tn.exitDetail).netAmt?.toFixed(2) }}, R {{ $any(tn.exitDetail).rMultiple?.toFixed(2) }}</p> }
+                        </div>
+                      </div>
+                    }
                     <app-trade-chart-card [tradeId]="expandedTradeId()!" />
                   </div>
                 }
@@ -292,6 +310,7 @@ export class RunReportComponent implements OnInit {
     { key: 'maxAdverseExcursion', label: 'MAE', format: 'number' },
     { key: 'maxFavorableExcursion', label: 'MFE', format: 'number' },
     { key: 'entryType', label: 'Type' },
+    { key: 'entryReason', label: 'Why entered' },
   ];
 
   defaultTradeCols = ['symbol', 'direction', 'entryPrice', 'exitPrice', 'netPnLAmount', 'rMultiple', 'pnLPips', 'exitReason', 'strategyId', 'durationSeconds'];
@@ -322,6 +341,14 @@ export class RunReportComponent implements OnInit {
 
   trades = signal<TradeSummary[]>([]);
   expandedTradeId = signal<string | null>(null);
+  expandedTradeNarrative = computed(() => {
+    const id = this.expandedTradeId();
+    if (!id) return null;
+    const t = this.trades().find(x => x.id === id);
+    if (!t) return null;
+    const exitDetail = t.exitDetailJson ? safeJson(t.exitDetailJson) : null;
+    return { entryReason: t.entryReason || null, entryRegime: t.entryRegime || null, exitReason: t.exitReason, exitDetail };
+  });
   journal = signal<JournalEntry[]>([]);
   barDecisions = signal<JournalEntry[]>([]);
   runBars = signal<BarNarrative[]>([]);

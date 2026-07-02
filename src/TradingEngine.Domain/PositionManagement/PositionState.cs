@@ -19,4 +19,6 @@ public sealed record PositionState(
     bool BreakevenApplied = false,
     decimal InitialSlDistance = 0,
     string? CloseReason = null,
-    string OrderEntryMethod = "Market");
+    string OrderEntryMethod = "Market",
+    string? EntryReason = null,
+    string? EntryRegime = null);

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
@@ -6,6 +6,12 @@ import { TradeChartCardComponent } from '../../../shared/trade-chart-card.compon
 import type { TradeDetail } from '../../../models/api.types';
 import { TradesApiService } from '../trades.service';
 import { formatDuration } from '../../../shared/format.helper';
+
+function safeParse(raw: string): Record<string, unknown> | null {
+  try { return JSON.parse(raw) as Record<string, unknown>; } catch { return null; }
+}
+
+interface EntrySnapshot { reason: string | null | undefined; regime: string | null | undefined; snapshot: Record<string, unknown> | null; }
 
 @Component({
   selector: 'app-trade-detail',
@@ -43,8 +49,29 @@ import { formatDuration } from '../../../shared/format.helper';
           <app-stat-tile label="Opened" [value]="t.openedAtUtc | date: 'MM-dd HH:mm'" />
           <app-stat-tile label="Closed" [value]="t.closedAtUtc | date: 'MM-dd HH:mm'" />
         </div>
-        <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
-          <h2 class="mb-1 text-sm font-medium text-gray-400">Exit: {{ t.exitReason }}</h2>
+        <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
+          @if (entryNarrative(); as en) {
+            <div>
+              <h2 class="mb-1 text-sm font-medium text-gray-400">Why entered</h2>
+              <p class="text-xs text-gray-300">{{ en.reason || '—' }}</p>
+              @if (en.regime) { <p class="text-xs text-gray-500">Regime: {{ en.regime }}</p> }
+              @if (en.snapshot) {
+                <div class="mt-1 flex flex-wrap gap-1.5">
+                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">Entry {{ $any(en.snapshot).entryPrice }}</span>
+                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">SL {{ $any(en.snapshot).stopLoss }}</span>
+                  @if ($any(en.snapshot).takeProfit) { <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">TP {{ $any(en.snapshot).takeProfit }}</span> }
+                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">{{ $any(en.snapshot).lots }} lots</span>
+                </div>
+              }
+            </div>
+          }
+          @if (exitNarrative(); as xn) {
+            <div>
+              <h2 class="mb-1 text-sm font-medium text-gray-400">Why exited</h2>
+              <p class="text-xs text-gray-300">{{ t.exitReason }}</p>
+              @if ($any(xn).exitPrice) { <p class="text-xs text-gray-500">Exit at {{ $any(xn).exitPrice }}, net {{ $any(xn).netAmt?.toFixed(2) }}, R {{ $any(xn).rMultiple?.toFixed(2) }}</p> }
+            </div>
+          }
           <p class="text-xs text-gray-500">Strategy: {{ t.strategyId }}</p>
         </div>
 
@@ -69,4 +96,18 @@ export class TradeDetailComponent implements OnInit {
   }
 
   fmtDuration = formatDuration;
+
+  entryNarrative = computed((): EntrySnapshot | null => {
+    const t = this.trade();
+    if (!t) return null;
+    const snapshot = t.entrySnapshotJson ? safeParse(t.entrySnapshotJson) : null;
+    return { reason: t.entryReason, regime: t.entryRegime, snapshot };
+  });
+
+  exitNarrative = computed(() => {
+    const t = this.trade();
+    if (!t) return null;
+    if (!t.exitDetailJson) return null;
+    return safeParse(t.exitDetailJson);
+  });
 }

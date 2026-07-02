@@ -24,4 +24,8 @@ public sealed record TradeSummaryResponse
     public required string StrategyId { get; init; }
     public double DurationSeconds { get; init; }
     public string? EntryType { get; init; }
+    public string? EntryReason { get; init; }
+    public string? EntryRegime { get; init; }
+    public string? EntrySnapshotJson { get; init; }
+    public string? ExitDetailJson { get; init; }
 }

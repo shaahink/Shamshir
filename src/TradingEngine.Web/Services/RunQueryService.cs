@@ -216,6 +216,8 @@ public sealed class RunQueryService : IRunQueryService
                     MaxAdverseExcursion = t.MaxAdverseExcursion.Value, MaxFavorableExcursion = t.MaxFavorableExcursion.Value,
                     ExitReason = t.ExitReason, StrategyId = t.StrategyId,
                     DurationSeconds = t.DurationSeconds, EntryType = t.OrderEntryMethod,
+                    EntryReason = t.EntryReason, EntryRegime = t.EntryRegime,
+                    EntrySnapshotJson = t.EntrySnapshotJson, ExitDetailJson = t.ExitDetailJson,
                 }).ToList();
             }
         }
@@ -250,6 +252,10 @@ public sealed class RunQueryService : IRunQueryService
                 StrategyId = t.StrategyId,
                 DurationSeconds = t.DurationSeconds,
                 EntryType = t.OrderEntryMethod,
+                EntryReason = t.EntryReason,
+                EntryRegime = t.EntryRegime,
+                EntrySnapshotJson = t.EntrySnapshotJson,
+                ExitDetailJson = t.ExitDetailJson,
             })
             .ToListAsync(ct);
     }

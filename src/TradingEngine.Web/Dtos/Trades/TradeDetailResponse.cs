@@ -29,4 +29,8 @@ public sealed record TradeDetailResponse
     /// <summary>The run's timeframe (e.g. "H1"), so the trade-detail chart queries bars at the right
     /// resolution instead of guessing.</summary>
     public string Timeframe { get; init; } = "H1";
+    public string? EntryReason { get; init; }
+    public string? EntryRegime { get; init; }
+    public string? EntrySnapshotJson { get; init; }
+    public string? ExitDetailJson { get; init; }
 }

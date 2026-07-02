@@ -95,6 +95,10 @@ export interface TradeSummary {
   entryType?: string | null;
   stopLoss?: number;
   takeProfit?: number | null;
+  entryReason?: string | null;
+  entryRegime?: string | null;
+  entrySnapshotJson?: string | null;
+  exitDetailJson?: string | null;
 }
 
 // iter-38 A4 / W-A1 + W-D3: the trade-detail endpoint (/api/trades/{id}) returns TradeDetailResponse — a richer,
@@ -126,6 +130,10 @@ export interface TradeDetail {
   strategyId: string;
   durationSeconds: number;
   timeframe: string;
+  entryReason?: string | null;
+  entryRegime?: string | null;
+  entrySnapshotJson?: string | null;
+  exitDetailJson?: string | null;
 }
 
 // iter-36 K5: the journal is now the lossless StepRecord stream (GET /api/runs/{id}/journal). eventKind

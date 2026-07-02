@@ -59,6 +59,10 @@ public sealed class TradesController : ControllerBase
                 StrategyId = t.StrategyId,
                 DurationSeconds = t.DurationSeconds,
                 EntryType = t.Mode,
+                EntryReason = t.EntryReason,
+                EntryRegime = t.EntryRegime,
+                EntrySnapshotJson = t.EntrySnapshotJson,
+                ExitDetailJson = t.ExitDetailJson,
             })
             .ToListAsync(ct);
 
@@ -103,6 +107,10 @@ public sealed class TradesController : ControllerBase
             ExitReason = t.ExitReason,
             StrategyId = t.StrategyId,
             DurationSeconds = t.DurationSeconds,
+            EntryReason = t.EntryReason,
+            EntryRegime = t.EntryRegime,
+            EntrySnapshotJson = t.EntrySnapshotJson,
+            ExitDetailJson = t.ExitDetailJson,
         });
     }
 

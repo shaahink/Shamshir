@@ -165,6 +165,18 @@ public sealed class EffectExecutor : IEffectExecutor
             effect.ExitReason, effect.StrategyId, effect.RiskProfileId ?? "standard",
             OrderEntryMethod: effect.OrderEntryMethod,
             OrderId: effect.OrderId,
+            EntryReason: effect.EntryReason,
+            EntryRegime: effect.EntryRegime,
+            EntrySnapshotJson: System.Text.Json.JsonSerializer.Serialize(new
+            {
+                reason = effect.EntryReason,
+                regime = effect.EntryRegime,
+                direction = effect.Direction.ToString(),
+                entryPrice = effect.EntryPrice.Value,
+                stopLoss = effect.StopLoss.Value,
+                takeProfit = effect.TakeProfit?.Value,
+                lots = effect.Lots
+            }),
             ExitDetailJson: System.Text.Json.JsonSerializer.Serialize(new
             {
                 exitReason = effect.ExitReason,

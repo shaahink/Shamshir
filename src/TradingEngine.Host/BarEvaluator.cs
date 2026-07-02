@@ -89,6 +89,9 @@ public sealed class BarEvaluator(
         // run-level switch here, and the golden path (all strategies detect-on) stays byte-identical.
         var regime = regimeDetector.Detect(symbol, barSnapshot[tf], indicatorSnapshot.ReusableIndicatorDict);
         var activeStrategies = strategyBank.GetActive(symbol, tf, regime);
+        var regimeLabel = activeStrategies.Count > 0 && activeStrategies.All(s => !s.Config.RegimeFilter.DetectionEnabled)
+            ? "Bypassed"
+            : regime.ToString();
 
         var proposals = new List<OrderProposed>();
         var verdicts = new List<StrategyVerdict>();
@@ -184,7 +187,8 @@ public sealed class BarEvaluator(
                 DeterministicOrderId(Interlocked.Increment(ref _orderSeq)),
                 intent.Symbol, intent.Direction, intent.OrderType,
                 intent.LimitPrice, intent.StopLoss, intent.TakeProfit, intent.StrategyId,
-                entryPrice.Value, slPips, pipValuePerLot, simTime, external, resolvedProfile);
+                entryPrice.Value, slPips, pipValuePerLot, simTime, external, resolvedProfile,
+                EntryReason: intent.Reason, EntryRegime: regimeLabel);
 
             proposals.Add(proposal);
             verdicts.Add(new StrategyVerdict(strategy.Id, HadEnoughBars: true, SignalFired: true,
@@ -194,13 +198,6 @@ public sealed class BarEvaluator(
                 strategy.Id, symbol.Value, intent.Direction, slPips, entryPrice.Value);
         }
 
-        // iter-38 R1 / D3: surface "Bypassed" in the per-bar journal / live monitor when every active strategy
-        // has regime detection turned off (per-strategy, or via the run-master). Trading is unaffected — this is
-        // a pure observability label so the "why" view shows detection is off rather than a regime nobody gated
-        // on. With all strategies detect-on (the golden/default path) the detected regime is reported as before.
-        var regimeLabel = activeStrategies.Count > 0 && activeStrategies.All(s => !s.Config.RegimeFilter.DetectionEnabled)
-            ? "Bypassed"
-            : regime.ToString();
         return Latest = new BarEvaluation(regimeLabel, proposals, verdicts);
     }
 
