@@ -1,9 +1,9 @@
 # AGENTS.md — Session Startup Guide
 
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `develop` (active)
+**Branch:** `iter/tape-trust` (active)
 **Created:** 2026-06-18
-**Updated:** 2026-07-01 (iter-cache-reads merged)
+**Updated:** 2026-07-02 (iter-tape-trust started — fixing tape venue truthfulness + trust loop)
 
 ---
 
@@ -19,15 +19,19 @@ At the start of every session:
 6. **`DECISIONS.md`** — All resolved decisions (D1–D80)
 7. **`docs/OPEN-ISSUES.md`** — Active bugs, design problems, carry-forward tasks
 8. **`docs/NEXT-STEPS.md`** — Roadmap backlog
-9. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
-10. **`docs/RESOLVED-ISSUES.md`** — Audit trail of all fixed issues (reference only)
+9. **`docs/iterations/iter-tape-trust/PLAN.md`** — Current iteration plan (T0–T5)
+10. **`docs/iterations/iter-marketdata-tape/HANDOVER-REVIEW.md`** — Bug/gap IDs B1–B11, F1–F8 defined here
+11. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology
+12. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
+13. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
 
 ## Build and test
 
 ```powershell
 dotnet build                                 # Full build
-dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (~207 pass)
+dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (~314 pass)
 dotnet test tests/TradingEngine.Tests.Simulation  # Simulation/FTMO tests
+dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (91)
 ```
 
 ## Architecture at a glance
@@ -43,14 +47,16 @@ src/
   TradingEngine.Host/            # EngineWorker, DI wiring, Program.cs
   TradingEngine.Web/             # Razor Pages, API controllers, SSE/SignalR
   TradingEngine.Adapters.CTrader/ # C# 6 cBot (cTrader integration)
+  TradingEngine.Engine/          # Kernel engine (EngineReducer, EngineState)
 tests/
   TradingEngine.Tests.Unit/      # xUnit, isolated
   TradingEngine.Tests.Simulation/ # End-to-end backtest
+  TradingEngine.Tests.Integration/ # EF Core + SQLite integration tests
 ```
 
 ## Key facts
 
-- **Two venue paths:** `BacktestReplayAdapter` (credential-free, default) and `SimulatedBrokerAdapter` (synthetic). cTrader path requires credentials.
+- **Three venue paths:** `BacktestReplayAdapter` (credential-free, per-run bars from DB), `TapeReplayAdapter` (fast, from `marketdata.db`), and `CTraderBrokerAdapter` (cTrader NetMQ). Default is replay.
 - **All money math in `decimal`** — `double` only at Skender indicator boundaries.
 - **Lot sizing uses `Math.Floor`, never `Math.Round`.**
 - **Schema via EF migrations only** — no raw SQL `ALTER TABLE`.
@@ -58,19 +64,19 @@ tests/
 - **`BoundedChannelFullMode.Wait`** for order/trade channels; `DropOldest` only for analytics.
 - **`IEngineClock`** for all time — never `DateTime.UtcNow` directly.
 
-## Current state (iter-31/32)
+## Current state (iter-tape-trust)
 
-- Costs (commission/swap) are computed by `TradeCostCalculator` and applied in both venues
-- `EntryPlanner` supports limit orders with resting/expiry semantics
-- Journal taxonomy: `SIGNAL → ORDER → FILL → CLOSE` with itemized costs
-- Config seeded from JSON to DB (`IStrategyConfigStore`)
-- `EffectiveConfigResolver` for per-run overrides via deep-merge
-- `RunPlan` for per-run symbol/timeframe selection
+- Tape venue runs but always reports `failed` (B1) — cast at `BacktestOrchestrator.cs:929` targets `BacktestReplayAdapter` instead of a common interface
+- Memory-served run detail drops metadata (B2) — `BuildRunDetailFromState` omits Venue, RiskProfileId, balance, time range
+- Data Manager downloads are synchronous fire-and-pray (B4)
+- Trust gate (V4 reconcile: tape vs cTrader) has never run
+- `LedgerReconciler.Compare` exists and is unit-tested; mapper from DB entities → `ReconcileLedger` does not exist yet
+- No spread cost on entry/exit fills in either replay venue (F1 — systematic optimistic bias)
 
 ## What's NOT done
 
-See `docs/iterations/iter-31-32-combined/HANDOVER.md` for the carry-forward list.
-Key items: 31-A2 (cBot cost itemization), 31-C2 (live limit path), 32-P4/P5 (config UI), 31-B2 (lossless live journal).
+See `docs/iterations/iter-tape-trust/PLAN.md` for the full T0–T5 plan.
+Key items: B1–B11 bug fixes, F1–F8 fidelity gaps, T2 reconcile trust gate, T4 compare mode UI, T5 sweep runner.
 
 ## Rules you must not break
 
@@ -79,4 +85,5 @@ Key items: 31-A2 (cBot cost itemization), 31-C2 (live limit path), 32-P4/P5 (con
 3. Schema changes via EF migrations only
 4. No `Console.WriteLine` — Serilog message templates only
 5. Don't touch `aspire/AppHost` (NU1903)
-6. Keep Unit + Simulation suites green — stop-the-line on red
+6. Keep Unit + Simulation + Integration suites green — stop-the-line on red
+7. Golden must stay 63/63 byte-identical (kernel untouched)
