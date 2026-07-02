@@ -396,12 +396,15 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             BacktestResult result;
 
-            // Venue is selectable per run (New-Backtest page). iter-38 D6: the default (and any unknown
-            // selection) now routes to the credential-free REPLAY venue; cTrader is EXPLICIT opt-in only
-            // (venue == "ctrader"). This kills the symptom of T1/T2/T6/T7/T11/T12 for default dev runs,
-            // which previously fell through to the wall-clock-buggy in-process cTrader path.
             var useCtader = ResolveUseCtrader(cfg.CustomParams.GetValueOrDefault("Venue"));
-            if (useCtader)
+            var compareBoth = string.Equals(cfg.CustomParams.GetValueOrDefault("Compare"), "both", StringComparison.OrdinalIgnoreCase);
+
+            if (compareBoth)
+            {
+                var comparePairId = Guid.NewGuid().ToString("N")[..8];
+                result = await RunCompareBothAsync(runId, cfg, comparePairId, state.LogLines, ct);
+            }
+            else if (useCtader)
             {
                 EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
                 result = await RunEngineNetMqAsync(runId, cfg, state.LogLines, ct);
@@ -777,6 +780,69 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             SizingPolicy = baseConfig.SizingPolicy,
             Regime = baseConfig.Regime,
         };
+    }
+
+    private async Task<BacktestResult> RunCompareBothAsync(
+        string runId, BacktestConfig cfg, string comparePairId, ConcurrentQueue<string> logLines, CancellationToken ct)
+    {
+        EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] Compare mode — running tape first...");
+
+        // Tag the parent with the pair id
+        if (!cfg.CustomParams.ContainsKey("ComparePairId"))
+            cfg.CustomParams["ComparePairId"] = comparePairId;
+
+        // Step 1: tape run
+        var tapeCfg = cfg;
+        tapeCfg.CustomParams["Venue"] = "tape";
+        var tapeResult = await RunEngineReplayAsync(runId, tapeCfg, logLines, ct);
+
+        if (!tapeResult.Success)
+        {
+            EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] Tape run failed — skipping cTrader compare leg.");
+            return tapeResult;
+        }
+
+        // Step 2: cTrader run — new runId, same config, tagged with the pair
+        var ctraderRunId = Guid.NewGuid().ToString("N")[..8];
+        var ctraderCfg = cfg with
+        {
+            RunId = ctraderRunId,
+            CustomParams = new Dictionary<string, string>(cfg.CustomParams)
+            {
+                ["Venue"] = "ctrader",
+                ["ComparePairId"] = comparePairId,
+                ["ParentRunId"] = runId,
+            },
+        };
+
+        var ctraderState = Start(ctraderCfg);
+        EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] Compare mode — running cTrader leg {ctraderRunId}...");
+
+        // Run cTrader path in-process (the RunAsync task will handle it)
+        ctraderState.Status = "running";
+        EnqueueLog(ctraderRunId, ctraderState.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
+        var ctraderResult = await RunEngineNetMqAsync(ctraderRunId, ctraderCfg, ctraderState.LogLines, ct);
+
+        var tradeStats = await GetTradeStatsAsync(ctraderRunId, cfg.Balance);
+        ctraderResult = ctraderResult with
+        {
+            NetProfit = tradeStats.NetProfit,
+            MaxDrawdownPct = tradeStats.MaxDrawdownPct,
+            TotalTrades = tradeStats.TotalTrades,
+            WinningTrades = tradeStats.WinningTrades,
+            WinRatePct = tradeStats.WinRatePct,
+        };
+
+        ctraderState.Result = ctraderResult;
+        ctraderState.Error = ctraderResult.ErrorMessage;
+        ctraderState.Status = ctraderResult.Success ? "completed" : "failed";
+
+        await WriteEndRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, ctraderResult, tradeStats, null);
+
+        EnqueueLog(runId, logLines,
+            $"[{DateTime.UtcNow:HH:mm:ss}] Compare complete. Tape={runId} ({tapeResult.TotalBars} bars) / cTrader={ctraderRunId} ({ctraderResult.TotalBars} bars / {ctraderResult.TotalTrades}t) — reconcile: GET /api/backtest/analytics/reconcile?left={runId}&right={ctraderRunId}");
+
+        return tapeResult;
     }
 
     private async Task<BacktestResult> RunEngineReplayAsync(
