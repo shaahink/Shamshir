@@ -62,8 +62,13 @@ interface MarketDataItem {
           </button>
         </div>
         @if (dlResult()) {
-          <div class="mt-2 rounded bg-emerald-900/20 p-2 text-xs text-emerald-400">
-            Download queued: {{ dlResult()?.symbol }} ({{ dlResult()?.tfs?.join(', ') }}). Refresh to see updated inventory.
+          <div class="mt-2 rounded p-2 text-xs" [class]="dlResult()!.status === 'failed' ? 'bg-red-900/20 text-red-400' : dlResult()!.status === 'done' ? 'bg-emerald-900/20 text-emerald-400' : 'bg-blue-900/20 text-blue-400'">
+            {{ dlResult()!.symbol }} ({{ dlResult()!.tfs?.join(', ') || '—' }}) — {{ dlResult()!.status }}
+            @if (dlResult()!.barsRecorded! > 0) { · {{ dlResult()!.barsRecorded!.toLocaleString() }} bars }
+            @if (dlResult()!.status === 'done') { · refresh to see updated inventory }
+            @if (dlResult()!.error) {
+              <div class="mt-1 font-mono">{{ dlResult()!.error }}</div>
+            }
           </div>
         }
         @if (dlError()) {
@@ -78,29 +83,7 @@ interface MarketDataItem {
       } @else if (inventory().length === 0) {
         <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-12 text-center">
           <p class="text-sm text-gray-400 mb-2">No market data available.</p>
-          <p class="text-xs text-gray-500 mb-4">Generate sample data to test tape backtests without cTrader CLI.</p>
-          <div class="flex items-center justify-center gap-3">
-            <select [(ngModel)]="seedSymbol" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100">
-              @for (s of dlSymbols.slice(0, 6); track s) { <option [value]="s">{{ s }}</option> }
-            </select>
-            <select [(ngModel)]="seedDays" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100">
-              <option [value]="7">7 days</option>
-              <option [value]="30">30 days</option>
-              <option [value]="90">90 days</option>
-            </select>
-            <button (click)="seedData()" [disabled]="seedLoading()"
-              class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
-              {{ seedLoading() ? 'Generating...' : 'Generate Sample Data' }}
-            </button>
-          </div>
-          @if (seedResult()) {
-            <div class="mt-3 rounded bg-emerald-900/20 p-2 text-xs text-emerald-400">
-              Generated {{ seedResult()!.bars.toLocaleString() }} bars ({{ seedResult()!.h1Bars }} H1 + {{ seedResult()!.m1Bars }} M1) for {{ seedResult()!.symbol }}.
-            </div>
-          }
-          @if (seedError()) {
-            <div class="mt-3 rounded bg-red-900/20 p-2 text-xs text-red-400">{{ seedError() }}</div>
-          }
+          <p class="text-xs text-gray-500">Download data using the form above. Requires cTrader CLI configured.</p>
         </div>
       } @else {
         <!-- Per-symbol storage totals -->
@@ -195,14 +178,9 @@ export class DataManagerComponent implements OnInit {
   dlTfs = signal<string[]>(['h1', 'm1']);
   dlDays = 7;
   dlLoading = signal(false);
-  dlResult = signal<{ symbol: string; tfs: string[]; jobId?: string } | null>(null);
+  dlResult = signal<{ symbol: string; tfs: string[]; status: string; barsRecorded?: number; error?: string } | null>(null);
   dlError = signal<string | null>(null);
-
-  seedSymbol = 'EURUSD';
-  seedDays = 30;
-  seedLoading = signal(false);
-  seedResult = signal<{ symbol: string; bars: number; h1Bars: number; m1Bars: number } | null>(null);
-  seedError = signal<string | null>(null);
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
     this.loadInventory();
@@ -216,42 +194,40 @@ export class DataManagerComponent implements OnInit {
     this.dlLoading.set(true);
     this.dlError.set(null);
     this.dlResult.set(null);
-    this.http.post<{ symbol: string; tfs: string[]; barsRecorded: number }>('/api/data-manager/download', {
+    this.http.post<{ jobId: string; symbol: string; tfs: string[]; status: string }>('/api/data-manager/download', {
       symbol: this.dlSymbol,
       tfs: this.dlTfs(),
       days: this.dlDays,
     }).subscribe({
       next: (r) => {
-        this.dlResult.set(r);
         this.dlLoading.set(false);
-        this.loadInventory();
+        this.dlResult.set({ symbol: r.symbol, tfs: r.tfs, status: r.status });
+        this.pollJob(r.jobId);
       },
       error: (err) => {
         this.dlError.set(err?.error?.error ?? err?.message ?? 'Download failed');
         this.dlLoading.set(false);
-        this.loadInventory();
       },
     });
   }
 
-  seedData(): void {
-    this.seedLoading.set(true);
-    this.seedError.set(null);
-    this.seedResult.set(null);
-    this.http.post<{ bars: number; h1Bars: number; m1Bars: number; skipped?: boolean; message?: string }>('/api/data-manager/seed', {
-      symbol: this.seedSymbol,
-      days: this.seedDays,
-    }).subscribe({
-      next: (r) => {
-        this.seedResult.set({ symbol: this.seedSymbol, bars: r.bars, h1Bars: r.h1Bars, m1Bars: r.m1Bars });
-        this.seedLoading.set(false);
-        this.loadInventory();
-      },
-      error: (err) => {
-        this.seedError.set(err?.error?.error ?? err?.message ?? 'Seed failed');
-        this.seedLoading.set(false);
-      },
-    });
+  private pollJob(jobId: string): void {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = setInterval(() => {
+      this.http.get<{ status: string; barsRecorded?: number; error?: string }>(`/api/data-manager/jobs/${jobId}`).subscribe({
+        next: (j) => {
+          const cur = this.dlResult();
+          if (cur) this.dlResult.set({ ...cur, status: j.status, barsRecorded: j.barsRecorded, error: j.error });
+          if (j.status === 'done') { this.stopPoll(); this.loadInventory(); }
+          if (j.status === 'failed') this.stopPoll();
+        },
+        error: () => this.stopPoll(),
+      });
+    }, 1500);
+  }
+
+  private stopPoll(): void {
+    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
   }
 
   deleteRow(item: MarketDataItem): void {
