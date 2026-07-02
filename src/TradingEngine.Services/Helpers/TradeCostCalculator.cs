@@ -19,6 +19,10 @@ public readonly record struct TradeCosts(
 /// cross-quoted symbols — the previous inline formula in the simulated venue mis-priced USD-base pairs
 /// such as USDJPY/USDCHF/USDCAD). Commission is a round-turn charge (per-side × 2). Swap accrues per
 /// rollover boundary crossed, tripled on the configured triple-swap weekday.
+///
+/// F5 (gap): Commission is computed as the full round-turn at close. Real cTrader charges half at
+/// position open and half at close. Splitting this requires entry-side commission tracking in the
+/// venues + a separate entry commission field on TradeCosts. Tracked as a fidelity gap.
 /// </summary>
 public static class TradeCostCalculator
 {

@@ -39,27 +39,28 @@
 
 | Item | Status |
 |------|--------|
-| M1.1: Nav consolidation (6 nav areas) | ✅ 2026-07-02 |
-| M1.2/M1.3: Settings page (system info + reset modals) | ✅ 2026-07-02 |
+| M1.1: Nav consolidation (6 nav areas, risk hub, runs sub-nav, redirects) | ✅ 2026-07-02 |
+| M1.2/M1.3: Settings page (system info + 3 DB reset modals) | ✅ 2026-07-02 |
 | M2.1: New-Backtest redesign (two-pane, coverage check, toggle chips) | ✅ 2026-07-02 |
 | M2.2: Monitor redesign (2x2 grid, narrative polling, terminal CTA) | ✅ 2026-07-02 |
 | M2.3: Report tabs (Overview/Trades/Journal/Costs&Risk, column chooser) | ✅ 2026-07-02 |
 | M2.4: Charts (C1 entry/exit arrows, C2 DD bar chart + underwater, C3 unified equity) | ✅ 2026-07-02 |
-| M3.2: Monitor journal switch (remove dead RecentJournal from SignalR) | ✅ 2026-07-02 |
-| M3.3: Trade narrative columns (EF migration + API + Angular types) | ✅ 2026-07-02 |
-| M1.3: DB reset API | ✅ Built |
-| M1.2: System info endpoint | ✅ Built |
-| M3.1: Narrative service | ✅ Built |
+| M3.2: Journal cleanup (remove dead RecentJournal from SignalR) | ✅ 2026-07-02 |
+| M3.3: Trade narrative columns (EF migration EntryReason/Regime/SnapshotJSon/ExitDetailJson + API + types) | ✅ 2026-07-02 |
+| M4: Multi-select delete runs (batch POST, FK-safe cascade) | ✅ 2026-07-02 |
+| M4: Coverage view (m1 overlap badges in Data Manager inventory) | ✅ 2026-07-02 |
+| M1.3: DB reset API (`POST /api/system/reset`) | ✅ Built |
+| M1.2: System info endpoint (`GET /api/system/info`) | ✅ Built |
+| M3.1: Narrative service (`GET /api/runs/{id}/narrative`) | ✅ Built |
 
-## Merged plan — pending
+## Merged plan — pending / documented gaps
 
-| Phase | Items | Depends on |
-|-------|-------|-----------|
-| M2.4 (Charts C1-C3) | Angular: entry/exit markers, SL step-lines, DD bars | Angular |
-| M3.2 (Monitor switch to narrative) | Server + Angular: replace RecentJournal ring | M3.1 API done |
-| M3.3 (Trade narrative columns) | Migration + executor stamping | M3.1 done |
-| M4 (Housekeeping + gaps) | Runs delete, coverage view, F5/F6/F7 | |
-| M5 (cTrader trust) | Owner verified — A1-A3 oracle set + drift alarm | cTrader CLI |
+| Item | Status |
+|------|--------|
+| F5: Commission half-at-open split | Documented in TradeCostCalculator; requires venue entry-side tracking |
+| F6: Gap-through slippage handling | Documented in TapeReplayAdapter; implemented T3 |
+| F7: Fine bars in decision-TF gaps | Documented in TapeReplayAdapter; per-bar spread needed for full fix |
+| M5: cTrader trust (oracle set + reconcile) | Owner only — infrastructure ready (reconcile endpoint, compare-both, download jobs) |
 
 ## Speed baseline (informal)
 
