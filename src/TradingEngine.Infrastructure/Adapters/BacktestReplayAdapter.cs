@@ -191,7 +191,9 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
             return Task.FromResult(orderId);
         }
 
-        var fillPrice = new Price(_lastClose > 0 ? _lastClose : 1m);
+        var midPrice = _lastClose > 0 ? _lastClose : 1m;
+        var halfSpread = GetHalfSpread();
+        var fillPrice = new Price(request.Direction == TradeDirection.Long ? midPrice + halfSpread : midPrice);
         FillEntry(orderId, request.Direction, fillPrice.Value, request.Lots, sl, tp);
         _logger.LogDebug("BacktestReplay: instant fill {Id} at {Price:F5} dir={Dir} lots={Lots}",
             orderId, fillPrice.Value, request.Direction, request.Lots);
@@ -202,6 +204,12 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     {
         if (!_executionChannel.Writer.TryWrite(evt))
             _logger.LogError("BacktestReplay: execution channel full — event dropped; orderId={OrderId}", evt.OrderId);
+    }
+
+    private decimal GetHalfSpread()
+    {
+        try { return _symbolRegistry.Get(_symbol).TypicalSpread / 2m; }
+        catch { return 0.00005m; }
     }
 
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
@@ -219,11 +227,13 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     {
         if (_pendingLimits.Count == 0) return;
 
+        var halfSpread = GetHalfSpread();
+
         foreach (var (orderId, limit) in _pendingLimits.ToList())
         {
             var reached = limit.Direction == TradeDirection.Long
                 ? bar.Low <= limit.LimitPrice
-                : bar.High >= limit.LimitPrice;
+                : bar.High + halfSpread >= limit.LimitPrice;
 
             if (reached)
             {
@@ -283,16 +293,37 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     {
         if (_openTrades.Count == 0) return;
 
+        var halfSpread = GetHalfSpread();
+
         foreach (var (orderId, trade) in _openTrades.ToList())
         {
+            var checkBar = bar;
+            if (trade.Direction == TradeDirection.Short)
+            {
+                checkBar = new Bar(bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
+                    bar.Open + halfSpread, bar.High + halfSpread,
+                    bar.Low + halfSpread, bar.Close + halfSpread, bar.Volume);
+            }
+
             var reason = EngineReducer.DetectSlTpExit(
-                trade.Direction, trade.StopLoss, trade.TakeProfit, bar);
+                trade.Direction, trade.StopLoss, trade.TakeProfit, checkBar);
 
             if (reason is null) continue;
 
             var fillPrice = reason == "TP" && trade.TakeProfit is { } tp
                 ? tp.Value
                 : trade.StopLoss.Value;
+
+            if (trade.Direction == TradeDirection.Short)
+                fillPrice += halfSpread;
+
+            if (reason == "SL")
+            {
+                if (trade.Direction == TradeDirection.Long && checkBar.Open <= trade.StopLoss.Value)
+                    fillPrice = checkBar.Open;
+                else if (trade.Direction == TradeDirection.Short && checkBar.Open >= trade.StopLoss.Value)
+                    fillPrice = checkBar.Open;
+            }
 
             var costs = ComputeCosts(trade, fillPrice);
             _balance += costs.NetProfit;
@@ -306,7 +337,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
                 Swap = costs.Swap,
                 NetProfit = costs.NetProfit,
                 Symbol = _symbol,
-                CloseReason = reason,  // "SL" or "TP" — sent to the engine for journaling
+                CloseReason = reason,
             });
 
             EmitAccountUpdate(BrokerTimeUtc);
@@ -345,7 +376,16 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     }
 
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
-        => CloseAtAsync(positionId, new Price(_lastClose > 0 ? _lastClose : 1m), ct);
+    {
+        var halfSpread = GetHalfSpread();
+        var mid = _lastClose > 0 ? _lastClose : 1m;
+        if (_openTrades.TryGetValue(positionId, out var trade))
+        {
+            var exitPrice = trade.Direction == TradeDirection.Long ? mid - halfSpread : mid + halfSpread;
+            return CloseAtAsync(positionId, new Price(exitPrice), ct);
+        }
+        return CloseAtAsync(positionId, new Price(mid), ct);
+    }
 
     // F2/D3 (iter-26): an engine-detected SL/TP exit closes at the stop/target price, not the bar
     // close, so backtest PnL reflects what the stop actually cost.

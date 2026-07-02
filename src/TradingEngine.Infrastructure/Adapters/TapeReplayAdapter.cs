@@ -54,6 +54,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     // Finer-resolution bars for exit detection, plus a monotonic cursor consumed by OnBarObserved.
     private IReadOnlyList<Bar> _exitBars = [];
     private int _exitIndex;
+    private DateTime _lastDecisionBarTime = DateTime.MinValue;
 
     private sealed record OpenTrade(
         TradeDirection Direction, decimal EntryPrice, decimal Lots, DateTime OpenedAtUtc, Price StopLoss, Price? TakeProfit);
@@ -180,31 +181,38 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     // exits — at finer resolution when finer bars are available (dual-resolution), else on the decision bar.
     public void OnBarObserved(Bar decisionBar)
     {
+        var isNewDecisionBar = decisionBar.OpenTimeUtc != _lastDecisionBarTime;
+        if (isNewDecisionBar)
+            _lastDecisionBarTime = decisionBar.OpenTimeUtc;
+
         if (_exitBars.Count == 0)
         {
             _lastClose = decisionBar.Close;
             BrokerTimeUtc = decisionBar.OpenTimeUtc + _decisionInterval;
-            ProcessPendingLimits(decisionBar);
+            ProcessPendingLimits(decisionBar, decrementExpiry: isNewDecisionBar);
             ProcessSlTpHits(decisionBar);
             EmitAccountUpdate(BrokerTimeUtc);
             return;
         }
 
         var windowEnd = decisionBar.OpenTimeUtc + _decisionInterval;
+        var minEquity = _balance;
         while (_exitIndex < _exitBars.Count && _exitBars[_exitIndex].OpenTimeUtc < windowEnd)
         {
             var fine = _exitBars[_exitIndex];
             _exitIndex++;
-            if (fine.OpenTimeUtc < decisionBar.OpenTimeUtc) continue; // pre-window (warmup) — skip
+            if (fine.OpenTimeUtc < decisionBar.OpenTimeUtc) continue;
             _lastClose = fine.Close;
             BrokerTimeUtc = fine.OpenTimeUtc + _exitInterval;
-            ProcessPendingLimits(fine);
+            ProcessPendingLimits(fine, decrementExpiry: false);
             ProcessSlTpHits(fine);
+            var floatingEquity = _balance + ComputeFloatingPnL(fine.Close);
+            if (floatingEquity < minEquity) minEquity = floatingEquity;
         }
 
         _lastClose = decisionBar.Close;
         BrokerTimeUtc = windowEnd;
-        EmitAccountUpdate(BrokerTimeUtc);
+        EmitAccountUpdate(BrokerTimeUtc, minEquity);
     }
 
     public Task DisconnectAsync(CancellationToken ct)
@@ -241,7 +249,9 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             return Task.FromResult(orderId);
         }
 
-        var fillPrice = _lastClose > 0 ? _lastClose : 1m;
+        var midPrice = _lastClose > 0 ? _lastClose : 1m;
+        var halfSpread = GetHalfSpread();
+        var fillPrice = request.Direction == TradeDirection.Long ? midPrice + halfSpread : midPrice;
         FillEntry(orderId, request.Direction, fillPrice, request.Lots, sl, tp);
         return Task.FromResult(orderId);
     }
@@ -250,6 +260,12 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     {
         if (!_executionChannel.Writer.TryWrite(evt))
             _logger.LogError("TapeReplay: execution channel full — event dropped; orderId={OrderId}", evt.OrderId);
+    }
+
+    private decimal GetHalfSpread()
+    {
+        try { return _symbolRegistry.Get(_symbol).TypicalSpread / 2m; }
+        catch { return 0.00005m; }
     }
 
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
@@ -263,15 +279,17 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     // the limit price. Unfilled orders burn one decision bar of life and expire with ENTRY_EXPIRED. Note:
     // BarsRemaining is decremented per FINER bar in dual-resolution mode, so expiry counts sub-bars — the
     // engine's own re-proposal cadence still governs strategy behaviour; this only bounds a resting fill.
-    private void ProcessPendingLimits(Bar bar)
+    private void ProcessPendingLimits(Bar bar, bool decrementExpiry = true)
     {
         if (_pendingLimits.Count == 0) return;
+
+        var halfSpread = GetHalfSpread();
 
         foreach (var (orderId, limit) in _pendingLimits.ToList())
         {
             var reached = limit.Direction == TradeDirection.Long
                 ? bar.Low <= limit.LimitPrice
-                : bar.High >= limit.LimitPrice;
+                : bar.High + halfSpread >= limit.LimitPrice;
 
             if (reached)
             {
@@ -279,6 +297,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 FillEntry(orderId, limit.Direction, limit.LimitPrice, limit.Lots, limit.StopLoss, limit.TakeProfit);
                 continue;
             }
+
+            if (!decrementExpiry) continue;
 
             limit.BarsRemaining--;
             if (limit.BarsRemaining <= 0)
@@ -297,12 +317,32 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     {
         if (_openTrades.Count == 0) return;
 
+        var halfSpread = GetHalfSpread();
+
         foreach (var (orderId, trade) in _openTrades.ToList())
         {
-            var reason = EngineReducer.DetectSlTpExit(trade.Direction, trade.StopLoss, trade.TakeProfit, bar);
+            var checkBar = bar;
+            if (trade.Direction == TradeDirection.Short)
+            {
+                checkBar = new Bar(bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
+                    bar.Open + halfSpread, bar.High + halfSpread,
+                    bar.Low + halfSpread, bar.Close + halfSpread, bar.Volume);
+            }
+
+            var reason = EngineReducer.DetectSlTpExit(trade.Direction, trade.StopLoss, trade.TakeProfit, checkBar);
             if (reason is null) continue;
 
             var fillPrice = reason == "TP" && trade.TakeProfit is { } tp ? tp.Value : trade.StopLoss.Value;
+            if (trade.Direction == TradeDirection.Short)
+                fillPrice += halfSpread;
+
+            if (reason == "SL")
+            {
+                if (trade.Direction == TradeDirection.Long && checkBar.Open <= trade.StopLoss.Value)
+                    fillPrice = checkBar.Open;
+                else if (trade.Direction == TradeDirection.Short && checkBar.Open >= trade.StopLoss.Value)
+                    fillPrice = checkBar.Open;
+            }
             var costs = ComputeCosts(trade, fillPrice);
             _balance += costs.NetProfit;
             _openTrades.Remove(orderId);
@@ -331,7 +371,18 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     public Task CancelOrderAsync(Guid orderId, CancellationToken ct) => Task.CompletedTask;
 
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
-        => CloseAtAsync(positionId, new Price(_lastClose > 0 ? _lastClose : 1m));
+    {
+        var halfSpread = GetHalfSpread();
+        var mid = _lastClose > 0 ? _lastClose : 1m;
+        // Default close: longs exit at bid (mid - halfSpread in floating PnL model), shorts at ask (mid + halfSpread).
+        // We compute half-spread-adjusted mid so the exit price aligns with the directional fill model.
+        if (_openTrades.TryGetValue(positionId, out var trade))
+        {
+            var exitPrice = trade.Direction == TradeDirection.Long ? mid - halfSpread : mid + halfSpread;
+            return CloseAtAsync(positionId, new Price(exitPrice));
+        }
+        return CloseAtAsync(positionId, new Price(mid));
+    }
 
     public Task ClosePositionAtAsync(Guid positionId, Price exitPrice, CancellationToken ct)
         => CloseAtAsync(positionId, exitPrice);
@@ -414,10 +465,10 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         }
     }
 
-    private void EmitAccountUpdate(DateTime ts)
+    private void EmitAccountUpdate(DateTime ts, decimal? minEquity = null)
     {
         var floatingPnL = ComputeFloatingPnL(_lastClose);
-        var equity = _balance + floatingPnL;
+        var equity = minEquity ?? (_balance + floatingPnL);
         _accountChannel.Writer.TryWrite(new AccountUpdate(_balance, equity, floatingPnL, ts));
     }
 
