@@ -93,6 +93,26 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         return await ReconcileAsync(e, ct);
     }
 
+    public async Task<int> DeleteRunsAsync(IReadOnlyCollection<string> runIds, CancellationToken ct)
+    {
+        if (runIds.Count == 0) return 0;
+        var ids = runIds.ToHashSet();
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        // FK-safe: delete run-scoped children first, then the run header. NEVER touch shared
+        // Datasets/ConfigSets (duplicate runs reuse them) or the separate marketdata.db.
+        await db.Trades.Where(t => t.RunId != null && ids.Contains(t.RunId)).ExecuteDeleteAsync(ct);
+        await db.JournalEntries.Where(j => ids.Contains(j.RunId)).ExecuteDeleteAsync(ct);
+        await db.EquitySnapshots.Where(s => s.RunId != null && ids.Contains(s.RunId)).ExecuteDeleteAsync(ct);
+        await db.Bars.Where(b => ids.Contains(b.RunId)).ExecuteDeleteAsync(ct);
+        await db.VenueSessions.Where(v => ids.Contains(v.RunId)).ExecuteDeleteAsync(ct);
+        var deleted = await db.BacktestRuns.Where(r => ids.Contains(r.RunId)).ExecuteDeleteAsync(ct);
+
+        await tx.CommitAsync(ct);
+        return deleted;
+    }
+
     // A run interrupted after its trades were persisted but before WriteEndRecordAsync leaves the
     // summary at its start-record zeros (0 trades, ExitCode -1, CompletedAtUtc unset). Readers then
     // show "0 trades / 0 profit / running" for a run that clearly has trades.

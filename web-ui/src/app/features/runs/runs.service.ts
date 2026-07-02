@@ -58,6 +58,16 @@ export class RunsApiService {
     return firstValueFrom(this.http.delete<{ cancelled: boolean }>(`/api/runs/${runId}`));
   }
 
+  // M4.1 (E2) — multi-select delete. FK-safe cascade; refuses active runs (409).
+  deleteRuns(runIds: string[]): Promise<{ deleted: number }> {
+    return firstValueFrom(this.http.post<{ deleted: number }>('/api/runs/delete', { runIds }));
+  }
+
+  // M4.1 (E2) — keep the newest N runs, delete the rest.
+  pruneRuns(keep: number): Promise<{ deleted: number; kept: number }> {
+    return firstValueFrom(this.http.post<{ deleted: number; kept: number }>('/api/runs/prune', { keep }));
+  }
+
   async getRunTrades(runId: string): Promise<TradeSummary[]> {
     const r = await firstValueFrom(this.http.get<TradeListResponse>(`/api/runs/${runId}/trades`));
     return r.trades;

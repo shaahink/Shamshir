@@ -2,6 +2,7 @@ import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@ang
 import { RouterLink, Router } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { RunsStore } from '../runs.store';
+import { RunsApiService } from '../runs.service';
 import { BadgeComponent } from '../../../shared/badge.component';
 import { formatSymbols } from '../../../shared/symbols.helper';
 
@@ -20,6 +21,15 @@ import { formatSymbols } from '../../../shared/symbols.helper';
               class="rounded-md border border-emerald-700 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-900/20"
             >
               Compare ({{ selectedRuns().length }})
+            </button>
+          }
+          @if (selectedRuns().length >= 1) {
+            <button
+              (click)="deleteSelected()"
+              [disabled]="deleting()"
+              class="rounded-md border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
+            >
+              {{ deleting() ? 'Deleting…' : 'Delete (' + selectedRuns().length + ')' }}
             </button>
           }
           <a
@@ -114,7 +124,9 @@ import { formatSymbols } from '../../../shared/symbols.helper';
 export class RunListComponent implements OnInit {
   readonly store = inject(RunsStore);
   private router = inject(Router);
+  private api = inject(RunsApiService);
   selectedRuns = signal<string[]>([]);
+  deleting = signal(false);
   symbolsDisplay = formatSymbols;
 
   ngOnInit(): void {
@@ -127,6 +139,22 @@ export class RunListComponent implements OnInit {
       this.router.navigate(['/runs/compare'], {
         queryParams: { left: ids[0], right: ids[1] },
       });
+    }
+  }
+
+  async deleteSelected(): Promise<void> {
+    const ids = this.selectedRuns();
+    if (ids.length === 0 || this.deleting()) return;
+    if (!confirm(`Delete ${ids.length} run(s) and all their trades, journal, equity and recorded bars? This cannot be undone.`)) return;
+    this.deleting.set(true);
+    try {
+      await this.api.deleteRuns(ids);
+      this.selectedRuns.set([]);
+      this.store.loadRuns();
+    } catch {
+      alert('Delete failed. A selected run may still be running — cancel it first.');
+    } finally {
+      this.deleting.set(false);
     }
   }
 

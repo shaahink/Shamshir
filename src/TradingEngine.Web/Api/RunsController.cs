@@ -15,6 +15,7 @@ public sealed class RunsController : ControllerBase
     private readonly IBacktestRunRepository _runRepo;
     private readonly BacktestOrchestrator _orchestrator;
     private readonly RunNarrativeService? _narrative;
+    private readonly IRunDataCache? _cache;
     private readonly ILogger<RunsController> _logger;
 
     public RunsController(
@@ -25,7 +26,8 @@ public sealed class RunsController : ControllerBase
         IBacktestRunRepository runRepo,
         BacktestOrchestrator orchestrator,
         ILogger<RunsController> logger,
-        RunNarrativeService? narrative = null)
+        RunNarrativeService? narrative = null,
+        IRunDataCache? cache = null)
     {
         _query = query;
         _command = command;
@@ -34,6 +36,7 @@ public sealed class RunsController : ControllerBase
         _runRepo = runRepo;
         _orchestrator = orchestrator;
         _narrative = narrative;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -142,6 +145,45 @@ public sealed class RunsController : ControllerBase
     {
         _orchestrator.Cancel(runId);
         return Ok(new { cancelled = true });
+    }
+
+    // M4.1 (E2): multi-select delete. FK-safe cascade removes each run's trades/journal/equity/bars/
+    // sessions/header. Refuses to delete a run that is still running/starting.
+    [HttpPost("delete")]
+    public async Task<IActionResult> DeleteRuns([FromBody] DeleteRunsRequest? req, CancellationToken ct)
+    {
+        var ids = req?.RunIds?.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList() ?? [];
+        if (ids.Count == 0)
+            return BadRequest(new { error = "No run ids supplied." });
+
+        var active = ids.Where(id => _orchestrator.GetState(id)?.Status is "running" or "starting").ToList();
+        if (active.Count > 0)
+            return Conflict(new { error = $"{active.Count} run(s) are still active — cancel them first.", activeRunIds = active });
+
+        var deleted = await _runRepo.DeleteRunsAsync(ids, ct);
+        foreach (var id in ids) _cache?.Evict(id);
+        _logger.LogInformation("Deleted {Requested} run(s); {Deleted} headers removed.", ids.Count, deleted);
+        return Ok(new { deleted });
+    }
+
+    // M4.1 (E2): auto-prune — keep the newest N runs, delete the rest. Active runs are always kept.
+    [HttpPost("prune")]
+    public async Task<IActionResult> Prune([FromBody] PruneRunsRequest? req, CancellationToken ct)
+    {
+        var keep = Math.Max(0, req?.Keep ?? 20);
+        var all = await _runRepo.GetAllAsync(ct);
+        var ordered = all.OrderByDescending(r => r.StartedAtUtc).ToList();
+        var toDelete = ordered.Skip(keep)
+            .Where(r => _orchestrator.GetState(r.RunId)?.Status is not ("running" or "starting"))
+            .Select(r => r.RunId).ToList();
+
+        if (toDelete.Count == 0)
+            return Ok(new { deleted = 0, kept = ordered.Count });
+
+        await _runRepo.DeleteRunsAsync(toDelete, ct);
+        foreach (var id in toDelete) _cache?.Evict(id);
+        _logger.LogInformation("Pruned {Deleted} run(s), kept newest {Keep}.", toDelete.Count, keep);
+        return Ok(new { deleted = toDelete.Count, kept = ordered.Count - toDelete.Count });
     }
 
     // iter-36 K6 / iter-37 F3 — "duplicate with changes": re-run over the SAME dataset window with an
