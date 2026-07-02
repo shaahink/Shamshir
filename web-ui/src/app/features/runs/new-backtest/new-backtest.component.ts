@@ -539,8 +539,14 @@ export class NewBacktestComponent implements OnInit {
       stripAddOns: this.stripAddOns ? true : undefined,
     };
     this.saveSetup();
-    const runId = await this.store.startBacktest(req);
-    this.router.navigate(['/runs', runId, 'monitor']);
+    try {
+      const runId = await this.store.startBacktest(req);
+      if (!runId) { this.error.set('Run did not start (no run id returned).'); return; }
+      this.router.navigate(['/runs', runId, 'monitor']);
+    } catch (e: unknown) {
+      const httpErr = e as { error?: { error?: string; message?: string }; message?: string };
+      this.error.set(httpErr?.error?.error ?? httpErr?.error?.message ?? httpErr?.message ?? 'Failed to start backtest.');
+    }
   }
 
   private readonly SETUP_STORAGE_KEY = 'shamshir-backtest-setups';

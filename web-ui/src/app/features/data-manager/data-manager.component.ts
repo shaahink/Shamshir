@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -47,15 +47,36 @@ interface MarketDataItem {
             </div>
           </div>
           <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Days</label>
-            <select [(ngModel)]="dlDays" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
-              <option [value]="3">3</option>
-              <option [value]="7">7</option>
-              <option [value]="30">30</option>
-              <option [value]="90">90</option>
-              <option [value]="180">180</option>
-            </select>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Range</label>
+            <div class="flex rounded-md border border-gray-700 overflow-hidden text-xs">
+              <button type="button" (click)="dlMode.set('days')"
+                [class]="dlMode() === 'days' ? 'bg-emerald-600 text-white px-3 py-1.5' : 'bg-gray-800 text-gray-400 px-3 py-1.5 hover:text-gray-200'">Last N days</button>
+              <button type="button" (click)="dlMode.set('range')"
+                [class]="dlMode() === 'range' ? 'bg-emerald-600 text-white px-3 py-1.5' : 'bg-gray-800 text-gray-400 px-3 py-1.5 hover:text-gray-200'">Date range</button>
+            </div>
           </div>
+          @if (dlMode() === 'days') {
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1">Days</label>
+              <select [(ngModel)]="dlDays" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
+                <option [value]="3">3</option>
+                <option [value]="7">7</option>
+                <option [value]="30">30</option>
+                <option [value]="90">90</option>
+                <option [value]="180">180</option>
+                <option [value]="365">365</option>
+              </select>
+            </div>
+          } @else {
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1">From</label>
+              <input type="date" [(ngModel)]="dlFrom" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1">To</label>
+              <input type="date" [(ngModel)]="dlTo" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
+            </div>
+          }
           <button (click)="startDownload()" [disabled]="dlLoading()"
             class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
             {{ dlLoading() ? 'Downloading...' : 'Download' }}
@@ -76,6 +97,47 @@ interface MarketDataItem {
         }
       </div>
 
+      <!-- Import (cTrader-free): upload NDJSON or CSV history -->
+      <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+        <h2 class="mb-1 text-sm font-medium text-gray-300">Import Market Data</h2>
+        <p class="mb-3 text-xs text-gray-500">Upload an NDJSON shard or a CSV export (columns: time, open, high, low, close, [volume, symbol, timeframe]). Bars are deduped on import — no cTrader required.</p>
+        <div class="flex flex-wrap items-end gap-3">
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">File</label>
+            <input type="file" accept=".ndjson,.csv,.json,.txt" (change)="onFileSelect($event)"
+              class="text-xs text-gray-300 file:mr-2 file:rounded file:border-0 file:bg-gray-700 file:px-3 file:py-1.5 file:text-gray-100 hover:file:bg-gray-600" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Symbol <span class="text-gray-600">(CSV w/o column)</span></label>
+            <input type="text" [(ngModel)]="impSymbol" placeholder="EURUSD"
+              class="w-28 rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Timeframe <span class="text-gray-600">(CSV w/o column)</span></label>
+            <input type="text" [(ngModel)]="impTimeframe" placeholder="H1"
+              class="w-20 rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Source tag</label>
+            <input type="text" [(ngModel)]="impSource" placeholder="import"
+              class="w-28 rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
+          </div>
+          <button (click)="importFile()" [disabled]="impLoading() || !impFile"
+            class="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50">
+            {{ impLoading() ? 'Importing...' : 'Import' }}
+          </button>
+        </div>
+        @if (impResult()) {
+          <div class="mt-2 rounded bg-emerald-900/20 p-2 text-xs text-emerald-400">
+            {{ impResult()!.fileName }} ({{ impResult()!.format }}) — {{ impResult()!.barsInserted.toLocaleString() }} bars inserted
+            @if (impResult()!.parseErrors > 0) { · {{ impResult()!.parseErrors }} skipped }
+          </div>
+        }
+        @if (impError()) {
+          <div class="mt-2 rounded bg-red-900/20 p-2 text-xs text-red-400">{{ impError() }}</div>
+        }
+      </div>
+
       @if (loading()) {
         <div class="py-12 text-center text-sm text-gray-500">Loading inventory...</div>
       } @else if (error()) {
@@ -83,7 +145,7 @@ interface MarketDataItem {
       } @else if (inventory().length === 0) {
         <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-12 text-center">
           <p class="text-sm text-gray-400 mb-2">No market data available.</p>
-          <p class="text-xs text-gray-500">Download data using the form above. Requires cTrader CLI configured.</p>
+          <p class="text-xs text-gray-500">Download via cTrader (top form) or import an NDJSON/CSV file (no cTrader required).</p>
         </div>
       } @else {
         <!-- Per-symbol storage totals -->
@@ -145,7 +207,7 @@ interface MarketDataItem {
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DataManagerComponent implements OnInit {
+export class DataManagerComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   inventory = signal<MarketDataItem[]>([]);
   loading = signal(true);
@@ -177,13 +239,33 @@ export class DataManagerComponent implements OnInit {
   ];
   dlTfs = signal<string[]>(['h1', 'm1']);
   dlDays = 7;
+  dlMode = signal<'days' | 'range'>('days');
+  dlFrom = '';
+  dlTo = '';
   dlLoading = signal(false);
   dlResult = signal<{ symbol: string; tfs: string[]; status: string; barsRecorded?: number; error?: string } | null>(null);
   dlError = signal<string | null>(null);
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
+  impFile: File | null = null;
+  impSymbol = '';
+  impTimeframe = '';
+  impSource = '';
+  impLoading = signal(false);
+  impResult = signal<{ fileName: string; format: string; barsInserted: number; parseErrors: number } | null>(null);
+  impError = signal<string | null>(null);
+
   ngOnInit(): void {
+    const now = new Date();
+    this.dlTo = now.toISOString().slice(0, 10);
+    const from = new Date(now);
+    from.setDate(from.getDate() - 7);
+    this.dlFrom = from.toISOString().slice(0, 10);
     this.loadInventory();
+  }
+
+  ngOnDestroy(): void {
+    this.stopPoll();
   }
 
   toggleTf(tf: string): void {
@@ -191,14 +273,23 @@ export class DataManagerComponent implements OnInit {
   }
 
   startDownload(): void {
+    if (this.dlTfs().length === 0) { this.dlError.set('Select at least one timeframe.'); return; }
+    const body: { symbol: string; tfs: string[]; days?: number; from?: string; to?: string } = {
+      symbol: this.dlSymbol,
+      tfs: this.dlTfs(),
+    };
+    if (this.dlMode() === 'range') {
+      if (!this.dlFrom || !this.dlTo) { this.dlError.set('Select a From and To date.'); return; }
+      if (new Date(this.dlFrom) >= new Date(this.dlTo)) { this.dlError.set('From date must be before To date.'); return; }
+      body.from = this.dlFrom;
+      body.to = this.dlTo;
+    } else {
+      body.days = this.dlDays;
+    }
     this.dlLoading.set(true);
     this.dlError.set(null);
     this.dlResult.set(null);
-    this.http.post<{ jobId: string; symbol: string; tfs: string[]; status: string }>('/api/data-manager/download', {
-      symbol: this.dlSymbol,
-      tfs: this.dlTfs(),
-      days: this.dlDays,
-    }).subscribe({
+    this.http.post<{ jobId: string; symbol: string; tfs: string[]; status: string }>('/api/data-manager/download', body).subscribe({
       next: (r) => {
         this.dlLoading.set(false);
         this.dlResult.set({ symbol: r.symbol, tfs: r.tfs, status: r.status });
@@ -228,6 +319,37 @@ export class DataManagerComponent implements OnInit {
 
   private stopPoll(): void {
     if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+  }
+
+  onFileSelect(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.impFile = input.files && input.files.length > 0 ? input.files[0] : null;
+    this.impResult.set(null);
+    this.impError.set(null);
+  }
+
+  importFile(): void {
+    if (!this.impFile) { this.impError.set('Choose a file first.'); return; }
+    const form = new FormData();
+    form.append('file', this.impFile);
+    if (this.impSource.trim()) form.append('source', this.impSource.trim());
+    if (this.impSymbol.trim()) form.append('symbol', this.impSymbol.trim());
+    if (this.impTimeframe.trim()) form.append('timeframe', this.impTimeframe.trim());
+    this.impLoading.set(true);
+    this.impError.set(null);
+    this.impResult.set(null);
+    this.http.post<{ fileName: string; format: string; barsInserted: number; parseErrors: number }>('/api/data-manager/import', form)
+      .subscribe({
+        next: (r) => {
+          this.impLoading.set(false);
+          this.impResult.set(r);
+          this.loadInventory();
+        },
+        error: (err) => {
+          this.impError.set(err?.error?.error ?? err?.message ?? 'Import failed');
+          this.impLoading.set(false);
+        },
+      });
   }
 
   deleteRow(item: MarketDataItem): void {
