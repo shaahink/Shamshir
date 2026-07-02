@@ -173,7 +173,7 @@ export class DataManagerComponent implements OnInit {
   dlTfs = signal<string[]>(['h1', 'm1']);
   dlDays = 7;
   dlLoading = signal(false);
-  dlResult = signal<{ symbol: string; tfs: string[]; barsRecorded: number } | null>(null);
+  dlResult = signal<{ symbol: string; tfs: string[]; jobId?: string } | null>(null);
   dlError = signal<string | null>(null);
 
   ngOnInit(): void {

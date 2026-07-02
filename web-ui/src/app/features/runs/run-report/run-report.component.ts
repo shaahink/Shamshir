@@ -129,7 +129,7 @@ function safeJson(raw: string): Record<string, unknown> | null {
             @case ('trades') {
               <div class="space-y-4">
                 <!-- Trade detail expand -->
-                @if (expandedTradeId()) {
+                @if (expandedTradeId(); as etid) {
                   <div class="mb-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
                     <button (click)="expandedTradeId.set(null)" class="mb-1 text-xs text-gray-500 hover:text-gray-300">&larr; Close trade detail</button>
                     @if (expandedTradeNarrative(); as tn) {
@@ -146,7 +146,7 @@ function safeJson(raw: string): Record<string, unknown> | null {
                         </div>
                       </div>
                     }
-                    <app-trade-chart-card [tradeId]="expandedTradeId()!" />
+                    <app-trade-chart-card [tradeId]="etid" />
                   </div>
                 }
 
@@ -236,7 +236,7 @@ function safeJson(raw: string): Record<string, unknown> | null {
                     <div class="max-h-96 overflow-y-auto rounded-lg border border-gray-800">
                       <table class="w-full text-xs">
                         <thead class="sticky top-0 bg-gray-900 text-gray-500"><tr class="border-b border-gray-800"><th class="px-3 py-1.5 text-left">Time</th><th class="px-3 py-1.5 text-left">Regime</th><th class="px-3 py-1.5 text-left">Signals</th><th class="px-3 py-1.5 text-right">Prop</th><th class="px-3 py-1.5 text-right">Fill</th><th class="px-3 py-1.5 text-right">Close</th><th class="px-3 py-1.5 text-left">Rejections</th><th class="px-3 py-1.5 text-right">Equity</th><th class="px-3 py-1.5 text-right">Pos</th></tr></thead>
-                        <tbody>@for (b of activeBars(); track b.firstSeq) { <tr class="border-b border-gray-800 last:border-0"><td class="px-3 py-1 text-gray-500">{{ b.simTimeUtc | date: 'MM-dd HH:mm' }}</td><td class="px-3 py-1 text-gray-400">{{ b.regime || '—' }}</td><td class="px-3 py-1 text-emerald-400">{{ firedSignals(b) }}</td><td class="px-3 py-1 text-right text-gray-300">{{ b.proposalCount || '' }}</td><td class="px-3 py-1 text-right text-gray-300">{{ b.fillCount || '' }}</td><td class="px-3 py-1 text-right text-gray-300">{{ b.closeCount || '' }}</td><td class="px-3 py-1 text-amber-400">{{ b.gateRejections.join('; ') }}</td><td class="px-3 py-1 text-right font-mono text-gray-300">{{ b.risk ? b.risk.equity.toFixed(0) : '—' }}</td><td class="px-3 py-1 text-right text-gray-400">{{ b.risk ? b.risk.openPositions : '—' }}</td></tr> }</tbody>
+                        <tbody>@for (b of activeBars(); track b.firstSeq) { <tr class="border-b border-gray-800 last:border-0"><td class="px-3 py-1 text-gray-500">{{ b.simTimeUtc | date: 'MM-dd HH:mm' }}</td><td class="px-3 py-1 text-gray-400">{{ b.regime || '—' }}</td><td class="px-3 py-1 text-emerald-400">{{ firedSignals(b) }}</td><td class="px-3 py-1 text-right text-gray-300">{{ b.proposalCount || '' }}</td><td class="px-3 py-1 text-right text-gray-300">{{ b.fillCount || '' }}</td><td class="px-3 py-1 text-right text-gray-300">{{ b.closeCount || '' }}</td>                  <td class="px-3 py-1 text-amber-400">{{ b.gateRejections?.join('; ') ?? '' }}</td><td class="px-3 py-1 text-right font-mono text-gray-300">{{ b.risk ? b.risk.equity.toFixed(0) : '—' }}</td><td class="px-3 py-1 text-right text-gray-400">{{ b.risk ? b.risk.openPositions : '—' }}</td></tr> }</tbody>
                       </table>
                     </div>
                   </div>
@@ -344,7 +344,9 @@ export class RunReportComponent implements OnInit {
   expandedTradeNarrative = computed(() => {
     const id = this.expandedTradeId();
     if (!id) return null;
-    const t = this.trades().find(x => x.id === id);
+    const tArr = this.trades();
+    if (!tArr || !Array.isArray(tArr)) return null;
+    const t = tArr.find(x => x.id === id);
     if (!t) return null;
     const exitDetail = t.exitDetailJson ? safeJson(t.exitDetailJson) : null;
     return { entryReason: t.entryReason || null, entryRegime: t.entryRegime || null, exitReason: t.exitReason, exitDetail };
@@ -410,9 +412,9 @@ export class RunReportComponent implements OnInit {
   private orderIdOf(e: JournalEntry): string | null { if (!e.eventJson) return null; try { const o = JSON.parse(e.eventJson); return o.OrderId ?? o.orderId ?? null; } catch { return null; } }
   private isCloseFill(e: JournalEntry): boolean { if (!e.eventJson) return false; try { const o = JSON.parse(e.eventJson); return !!(o.closeReason ?? o.CloseReason); } catch { return false; } }
 
-  grossTotal = computed(() => this.trades().reduce((s, t) => s + t.grossPnLAmount, 0));
-  commTotal = computed(() => this.trades().reduce((s, t) => s + t.commissionAmount, 0));
-  swapTotal = computed(() => this.trades().reduce((s, t) => s + t.swapAmount, 0));
+  grossTotal = computed(() => this.trades().reduce((s, t) => s + (t.grossPnLAmount ?? 0), 0));
+  commTotal = computed(() => this.trades().reduce((s, t) => s + (t.commissionAmount ?? 0), 0));
+  swapTotal = computed(() => this.trades().reduce((s, t) => s + (t.swapAmount ?? 0), 0));
   grossDisplay = computed(() => { const d = this.store.selectedRun(); return d ? (d.grossPnL ?? this.trades().reduce((s, t) => s + (t.grossPnLAmount ?? 0), 0)).toFixed(2) : '0.00'; });
   commDisplay = computed(() => { const d = this.store.selectedRun(); return d ? (d.commissionTotal ?? this.trades().reduce((s, t) => s + (t.commissionAmount ?? 0), 0)).toFixed(2) : '0.00'; });
   swapDisplay = computed(() => { const d = this.store.selectedRun(); return d ? (d.swapTotal ?? this.trades().reduce((s, t) => s + (t.swapAmount ?? 0), 0)).toFixed(2) : '0.00'; });
@@ -426,9 +428,9 @@ export class RunReportComponent implements OnInit {
   private formatDuration(ms: number): string { if (ms <= 0) return '—'; const s = Math.floor(ms / 1000); if (s < 60) return s + 's'; const m = Math.floor(s / 60); if (m < 60) return m + 'm ' + (s % 60) + 's'; const h = Math.floor(m / 60); return h + 'h ' + (m % 60) + 'm'; }
 
   returnPct(d: { netProfit: number; initialBalance: number }): string { return d.initialBalance > 0 ? ((d.netProfit / d.initialBalance) * 100).toFixed(2) + '%' : '—'; }
-  recNetOk = computed(() => { const d = this.store.selectedRun(); return d ? Math.abs(d.netProfit - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01 : false; });
+  recNetOk = computed(() => { const d = this.store.selectedRun(); return d ? Math.abs(d.netProfit - this.trades().reduce((s, t) => s + (t.netPnLAmount ?? 0), 0)) < 0.01 : false; });
   recClosesOk = computed(() => { const d = this.store.selectedRun(); return d ? d.totalTrades === this.trades().length : false; });
-  recCostOk = computed(() => Math.abs(this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01);
+  recCostOk = computed(() => Math.abs(this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + (t.netPnLAmount ?? 0), 0)) < 0.01);
 
   topReasons(s: StrategyPerformance): string { return (s.topRejections ?? []).map(r => r.reason + ' (' + r.count + ')').join(', ') || '—'; }
   rejectionBarHeight(count: number, rejections: { count: number }[]): number { const max = Math.max(...rejections.map(r => r.count), 1); return Math.max(4, (count / max) * 60); }
@@ -461,7 +463,7 @@ export class RunReportComponent implements OnInit {
   async duplicate(runId: string): Promise<void> { if (this.duplicating()) return; this.duplicating.set(true); try { const res = await this.api.duplicateRun(runId); if (res?.runId) this.router.navigate(['/runs', res.runId, 'monitor']); } finally { this.duplicating.set(false); } }
 
   journalColumns: ColumnDef[] = [{ key: 'simTime', label: 'Sim Time' }, { key: 'kind', label: 'Kind' }, { key: 'outcome', label: 'Outcome' }, { key: 'symbol', label: 'Symbol' }, { key: 'strategy', label: 'Strategy' }, { key: 'reason', label: 'Reason' }];
-  journalTableData = computed(() => this.filteredJournal().map(e => ({ seq: e.seq, simTime: new Date(e.simTimeUtc).toLocaleString(), kind: this.kindOf(e), outcome: e.outcome ?? null, symbol: e.symbol ?? null, strategy: e.strategyId ?? null, reason: this.fmtReason(e.decisionReason ?? e.reason ?? null) })));
+  journalTableData = computed(() => this.filteredJournal().map(e => ({ seq: e.seq, simTime: e.simTimeUtc ? new Date(e.simTimeUtc).toLocaleString() : '—', kind: this.kindOf(e), outcome: e.outcome ?? null, symbol: e.symbol ?? null, strategy: e.strategyId ?? null, reason: this.fmtReason(e.decisionReason ?? e.reason ?? null) })));
 
   async ngOnInit(): Promise<void> {
     const runId = this.route.snapshot.paramMap.get('runId');

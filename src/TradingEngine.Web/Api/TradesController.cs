@@ -46,6 +46,7 @@ public sealed class TradesController : ControllerBase
                 Lots = t.Lots,
                 EntryPrice = t.EntryPrice,
                 ExitPrice = t.ExitPrice,
+                OpenedAtUtc = t.OpenedAtUtc,
                 ClosedAtUtc = t.ClosedAtUtc,
                 GrossPnLAmount = t.GrossPnLAmount,
                 CommissionAmount = t.CommissionAmount,

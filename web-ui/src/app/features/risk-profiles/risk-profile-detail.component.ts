@@ -287,13 +287,16 @@ export class RiskProfileDetailComponent extends DetailFormBase implements OnInit
   }
 
   async duplicate(): Promise<void> {
-      const res = await this.api.duplicate(this.data()!.id);
+    const d = this.data();
+    if (!d) return;
+    const res = await this.api.duplicate(d.id);
     this.router.navigate(['/risk-profiles', res.id]);
   }
 
   async del(): Promise<void> {
-    if (!confirm('Delete this risk profile?')) return;
-      await this.api.delete(this.data()!.id);
+    const d = this.data();
+    if (!d || !confirm('Delete this risk profile?')) return;
+    await this.api.delete(d.id);
     this.router.navigate(['/risk-profiles']);
   }
 }

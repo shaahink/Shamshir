@@ -1,4 +1,4 @@
-import { Component, inject, input, signal, computed, OnInit, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, input, signal, computed, OnInit, OnDestroy, effect, ChangeDetectionStrategy } from '@angular/core';
 import { CandleChartComponent, type OhlcBar, type PriceMarker } from './candle-chart.component';
 import type { TradeDetail } from '../models/api.types';
 import { TradesApiService } from '../features/trades/trades.service';
@@ -65,7 +65,7 @@ import { markerFor } from './chart-marker.helper';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TradeChartCardComponent implements OnInit {
+export class TradeChartCardComponent implements OnInit, OnDestroy {
   private api = inject(TradesApiService);
   readonly tradeId = input.required<string>();
 
@@ -74,17 +74,21 @@ export class TradeChartCardComponent implements OnInit {
   markers = signal<PriceMarker[]>([]);
   loading = signal(false);
 
-  tradeOpenMs = computed(() => {
-    const t = this.trade();
-    return t ? new Date(t.openedAtUtc).getTime() : null;
-  });
-  tradeCloseMs = computed(() => {
-    const t = this.trade();
-    return t ? new Date(t.closedAtUtc).getTime() : null;
-  });
+  private loadEffect = effect(() => {
+    const id = this.tradeId();
+    if (id) void this.loadTrade(id);
+  }, { allowSignalWrites: true });
 
   async ngOnInit(): Promise<void> {
     const id = this.tradeId();
+    if (id) await this.loadTrade(id);
+  }
+
+  ngOnDestroy(): void {
+    this.loadEffect.destroy();
+  }
+
+  private async loadTrade(id: string): Promise<void> {
     try {
       const t = await this.api.getById(id);
       this.trade.set(t);
@@ -102,7 +106,6 @@ export class TradeChartCardComponent implements OnInit {
         })),
       );
       const mks = chart.markers.map((m: any) => markerFor(m.kind, m.price));
-      // Add exit reason as a visible marker on the chart
       const t = this.trade();
       if (t?.exitReason) {
         mks.push({ price: t.exitPrice, label: `Exit: ${t.exitReason}`, color: '#fbbf24' });
@@ -114,6 +117,15 @@ export class TradeChartCardComponent implements OnInit {
       this.loading.set(false);
     }
   }
+
+  tradeOpenMs = computed(() => {
+    const t = this.trade();
+    return t ? new Date(t.openedAtUtc).getTime() : null;
+  });
+  tradeCloseMs = computed(() => {
+    const t = this.trade();
+    return t ? new Date(t.closedAtUtc).getTime() : null;
+  });
 
   fmtDuration = formatDuration;
 }

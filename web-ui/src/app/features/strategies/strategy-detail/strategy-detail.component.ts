@@ -582,9 +582,11 @@ export class StrategyDetailComponent extends DetailFormBase implements OnInit {
   }
 
   async duplicate(): Promise<void> {
+    const d = this.data();
+    if (!d) return;
     this.saving.set(true);
     try {
-      const res = await this.api.duplicate(this.data()!.id);
+      const res = await this.api.duplicate(d.id);
       this.router.navigate(['/strategies', res.id]);
     } catch {
     } finally {

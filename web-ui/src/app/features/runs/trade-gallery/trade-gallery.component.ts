@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TradeChartCardComponent } from '../../../shared/trade-chart-card.component';
 import { RunsApiService } from '../runs.service';
@@ -44,7 +44,7 @@ import { RunsApiService } from '../runs.service';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TradeGalleryComponent implements OnInit {
+export class TradeGalleryComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private api = inject(RunsApiService);
 

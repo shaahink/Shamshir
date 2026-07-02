@@ -8,7 +8,11 @@ import { TradesApiService } from '../trades.service';
 import { formatDuration } from '../../../shared/format.helper';
 
 function safeParse(raw: string): Record<string, unknown> | null {
-  try { return JSON.parse(raw) as Record<string, unknown>; } catch { return null; }
+  try {
+    const v = JSON.parse(raw);
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, unknown>;
+    return null;
+  } catch { return null; }
 }
 
 interface EntrySnapshot { reason: string | null | undefined; regime: string | null | undefined; snapshot: Record<string, unknown> | null; }
@@ -57,21 +61,20 @@ interface EntrySnapshot { reason: string | null | undefined; regime: string | nu
               @if (en.regime) { <p class="text-xs text-gray-500">Regime: {{ en.regime }}</p> }
               @if (en.snapshot) {
                 <div class="mt-1 flex flex-wrap gap-1.5">
-                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">Entry {{ $any(en.snapshot).entryPrice }}</span>
-                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">SL {{ $any(en.snapshot).stopLoss }}</span>
+                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">Entry {{ $any(en.snapshot).entryPrice ?? '—' }}</span>
+                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">SL {{ $any(en.snapshot).stopLoss ?? '—' }}</span>
                   @if ($any(en.snapshot).takeProfit) { <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">TP {{ $any(en.snapshot).takeProfit }}</span> }
-                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">{{ $any(en.snapshot).lots }} lots</span>
+                  @if ($any(en.snapshot).lots) { <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">{{ $any(en.snapshot).lots }} lots</span> }
                 </div>
               }
             </div>
           }
-          @if (exitNarrative(); as xn) {
-            <div>
-              <h2 class="mb-1 text-sm font-medium text-gray-400">Why exited</h2>
-              <p class="text-xs text-gray-300">{{ t.exitReason }}</p>
+          <div>
+            <h2 class="mb-1 text-sm font-medium text-gray-400">Exit: {{ t.exitReason }}</h2>
+            @if (exitNarrative(); as xn) {
               @if ($any(xn).exitPrice) { <p class="text-xs text-gray-500">Exit at {{ $any(xn).exitPrice }}, net {{ $any(xn).netAmt?.toFixed(2) }}, R {{ $any(xn).rMultiple?.toFixed(2) }}</p> }
-            </div>
-          }
+            }
+          </div>
           <p class="text-xs text-gray-500">Strategy: {{ t.strategyId }}</p>
         </div>
 
@@ -91,8 +94,12 @@ export class TradeDetailComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
-    const t = await this.api.getById(id);
-    this.trade.set(t);
+    try {
+      const t = await this.api.getById(id);
+      this.trade.set(t);
+    } catch {
+      // trade signal stays null → template shows "Trade not found."
+    }
   }
 
   fmtDuration = formatDuration;
