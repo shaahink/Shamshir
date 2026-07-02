@@ -1,9 +1,9 @@
 # AGENTS.md — Session Startup Guide
 
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `iter/merge-plan` (active worktree: `C:\Code\shamshir-trust`)
+**Branch:** `develop` (active worktree: `C:\Code\shamshir-trust`)
 **Created:** 2026-06-18
-**Updated:** 2026-07-02 (session close — M3.3 done, Groups 1-2 done, deep audit complete, 15 pre-flight bugs fixed, ready for owner manual testing)
+**Updated:** 2026-07-02 (merge into develop — all iter/merge-plan work integrated. Main worktree C:\Code\Shamshir still pinned to iter/tape-trust, needs manual checkout to develop)
 
 ---
 
