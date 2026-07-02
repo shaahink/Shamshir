@@ -460,6 +460,13 @@ With the tape path (`Venue=tape`) functional:
 
 ## 11. Current Gaps & Issues — Prioritized
 
+> ⚠ **UPDATED 2026-07-02 (iter-tape-trust):** The gap list below was written before the independent
+> handover review. An updated bug/fidelity-gap audit with file:line evidence is at
+> `docs/iterations/iter-marketdata-tape/HANDOVER-REVIEW.md` (B1–B11, F1–F8). The fix plan is at
+> `docs/iterations/iter-tape-trust/PLAN.md`. T0–T5 have been implemented; see
+> `docs/iterations/iter-tape-trust/HANDOVER.md` for the current state. The issues below (T1, T6, T7,
+> Perf-*) may be stale — cross-reference with the review before treating them as active.
+
 ### P0 — Critical (blocking or correctness)
 
 | ID | Issue | Location |
@@ -576,6 +583,13 @@ With the tape path (`Venue=tape`) functional:
 ---
 
 ## 13. Detailed Phased Plan for Next Iteration
+
+> ⚠ **UPDATED 2026-07-02:** This plan was written pre-review and described P0-P6 phases as planned.
+> The actual implementation happened in `iter-tape-trust` (T0-T5). See
+> `docs/iterations/iter-tape-trust/PLAN.md` for the executed plan and
+> `docs/iterations/iter-tape-trust/HANDOVER.md` for completion status.
+> Cross-reference `docs/iterations/iter-marketdata-tape/HANDOVER-REVIEW.md` for the bug/gap
+> catalogue (B1-B11, F1-F8) that drove the current plan.
 
 ### Phase A — Fix Critical Bugs (P0, ~2-3 sessions)
 

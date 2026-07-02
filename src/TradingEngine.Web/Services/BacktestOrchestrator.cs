@@ -1000,6 +1000,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 MinLogLevel = LogLevel.Warning,
                 DiagnosticsEnabled = _configuration.GetSection("Engine:Diagnostics").GetValue<bool>("Enabled"),
                 RunDataCache = _runDataCache,
+                SkipJournal = string.Equals(cfg.CustomParams.GetValueOrDefault("SkipJournal"), "true", StringComparison.OrdinalIgnoreCase),
             });
             state.EngineHost = innerHost;
             EngineHostFactory.WireEventHandlers(innerHost);

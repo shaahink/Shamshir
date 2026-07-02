@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using Microsoft.EntityFrameworkCore;
 using TradingEngine.CTraderRunner;
+using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Web.Dtos.Runs;
 
 namespace TradingEngine.Web.Services;
@@ -138,6 +140,40 @@ public sealed class SweepRunnerService
         using var scope = _scopeFactory.CreateScope();
         var command = scope.ServiceProvider.GetRequiredService<IBacktestCommandService>();
         var runQuery = scope.ServiceProvider.GetRequiredService<IRunQueryService>();
+        var db = scope.ServiceProvider.GetRequiredService<TradingEngine.Infrastructure.Persistence.TradingDbContext>();
+
+        // Content-address skip: if a completed run exists for this exact cell, reuse it.
+        var existing = await db.BacktestRuns.AsNoTracking()
+            .Where(r => r.Symbol == cell.Symbol && r.Period == cell.Timeframe
+                && r.BacktestFrom == req.From && r.BacktestTo == req.To
+                && r.Venue == "tape" && r.CompletedAtUtc != default
+                && r.TotalTrades > 0)
+            .OrderByDescending(r => r.CompletedAtUtc)
+            .FirstOrDefaultAsync(CancellationToken.None);
+
+        if (existing is not null)
+        {
+            var skipDetail = await runQuery.GetRunAsync(existing.RunId, CancellationToken.None);
+            if (skipDetail is not null)
+            {
+                return new SweepCellResult
+                {
+                    Cell = cell,
+                    RunId = existing.RunId,
+                    NetProfit = skipDetail.NetProfit,
+                    MaxDrawdownPct = skipDetail.MaxDrawdownPct,
+                    TotalTrades = skipDetail.TotalTrades,
+                    WinningTrades = skipDetail.WinningTrades,
+                    WinRatePct = skipDetail.WinRatePct,
+                    GrossPnL = skipDetail.GrossPnL,
+                    CommissionTotal = skipDetail.CommissionTotal,
+                    SwapTotal = skipDetail.SwapTotal,
+                    TotalBars = skipDetail.TotalBars,
+                    BarsPerSec = skipDetail.BarsPerSec,
+                    WallElapsedMs = skipDetail.WallElapsedMs,
+                };
+            }
+        }
 
         var runId = await command.StartAsync(config, CancellationToken.None);
         if (string.IsNullOrWhiteSpace(runId))

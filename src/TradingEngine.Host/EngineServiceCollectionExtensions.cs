@@ -31,7 +31,7 @@ public static class EngineServiceCollectionExtensions
         return services
             .AddMarketDataFromOptions(options)
             .AddRiskFromOptions(options)
-            .AddPersistence(options.DbPath, options.SolutionRoot)
+            .AddPersistence(options.DbPath, options.SolutionRoot, options.SkipJournal)
             .AddStrategiesFromOptions(options)
             .AddEventInfrastructureFromOptions(options)
             .AddEngineWorkerFromOptions(options);
@@ -42,7 +42,7 @@ public static class EngineServiceCollectionExtensions
         return services.AddPersistence(dbPath, null);
     }
 
-    public static IServiceCollection AddPersistence(this IServiceCollection services, string dbPath, string? basePath)
+    public static IServiceCollection AddPersistence(this IServiceCollection services, string dbPath, string? basePath, bool skipJournal = false)
     {
         services.AddScoped<TradingEngine.Infrastructure.Persistence.AuditStampInterceptor>(sp =>
         {
@@ -67,8 +67,17 @@ public static class EngineServiceCollectionExtensions
         services.AddScoped<IJournalQueryRepository, SqliteJournalQueryRepository>();
         // iter-36 K5: the single, lossless StepRecord journal the kernel engine writes to. Singleton per
         // (inner) host = per run; drains on host dispose. Scope-per-flush bridge to the scoped SQLite sink.
-        services.AddSingleton<IJournalWriter>(sp => new ChannelJournalWriter(
-            new ScopedStepRecordSink(sp.GetRequiredService<IServiceScopeFactory>())));
+        // iter-tape-trust T5: SkipJournal disables per-bar StepRecord persistence for sweep runs
+        // (trades + summary + equity are kept; only the per-bar narration is skipped).
+        if (!skipJournal)
+        {
+            services.AddSingleton<IJournalWriter>(sp => new ChannelJournalWriter(
+                new ScopedStepRecordSink(sp.GetRequiredService<IServiceScopeFactory>())));
+        }
+        else
+        {
+            services.AddSingleton<IJournalWriter, NullJournalWriter>();
+        }
         services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
         services.AddScoped<IAddOnPackStore, SqliteAddOnPackStore>();   // iter-38 PK1
         services.AddSingleton<PersistenceService>();

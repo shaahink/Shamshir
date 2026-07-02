@@ -32,4 +32,6 @@ public sealed record EngineHostOptions
     public bool DiagnosticsEnabled { get; init; }
 
     public IRunDataCache? RunDataCache { get; init; }
+
+    public bool SkipJournal { get; init; }
 }
