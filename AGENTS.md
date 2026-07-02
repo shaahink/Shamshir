@@ -3,7 +3,7 @@
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
 **Branch:** `iter/merge-plan` (active worktree: `C:\Code\shamshir-trust`)
 **Created:** 2026-06-18
-**Updated:** 2026-07-02 (merge review — synced docs from iter/master-plan, cleaned worktrees, consolidated all remaining gaps)
+**Updated:** 2026-07-02 (session close — M3.3 done, Groups 1-2 done, deep audit complete, 15 pre-flight bugs fixed, ready for owner manual testing)
 
 ---
 
@@ -66,19 +66,27 @@ tests/
 - **`BoundedChannelFullMode.Wait`** for order/trade channels; `DropOldest` only for analytics.
 - **`IEngineClock`** for all time — never `DateTime.UtcNow` directly.
 
-## Current state (iter-merge-plan)
+## Current state (iter-merge-plan, session close 2026-07-02)
 
 - **M1–M4 done** — nav, backtest/monitor/report redesign, charts, narrative service, monitor↔narrative switch, settings+reset UI, run delete/prune, data-manager delete, SkipJournal verified.
-- **All B1–B11 bugs fixed** · **F1–F4, F8 fidelity gaps fixed** · Golden 63/63 · Unit 314/0/6 · Integration 105/0
-- **M3.3 partial** — `ExitDetailJson` stamped at close; `EntryReason`/`EntryRegime`/`EntrySnapshotJson` columns exist in DB but are never populated, and neither entry nor exit narrative is surfaced in the trade UI.
-- **F5 deferred** — commission half-at-open needs golden re-baseline (owner sign-off required)
-- **F6/F7 undocumented** — tape-venue edge cases not yet written up in RECONCILE-FINDINGS.md
-- **Tracks F, G, and Q1-Q4** — portfolio, symbol program, and quant phases defined in reference docs but not started
+- **M3.3 signed off** — `EntryReason`/`EntryRegime`/`EntrySnapshotJson` populated at open (threaded OrderProposed→PositionState→PublishTradeClosed→EffectExecutor). "Why entered"/"Why exited" surfaced on trade-detail + report expanded row.
+- **All B1–B11 bugs fixed** · **F1–F4, F8 fidelity gaps fixed** · **F6–F7 documented in RECONCILE-FINDINGS.md**
+- **Golden 63/63** · **Unit 314/0/6** · **Integration 108/0** · DB migrations applied (InitialCreate + AddTradeNarrativeColumns)
+- **15 pre-flight bugs fixed** — trade-detail safeParse reject arrays, exitReason always visible, unhandled promise caught, NaN guards on accumulators, TradeChartCardComponent reloads on trade switch, gateRejections null-safe, missing OpenedAtUtc in global trade endpoint, Duplicate button null guards, trade-gallery OnDestroy import, dlResult type mismatch
 
-## What's NOT done
+### What's ready for owner testing
+- Data Manager: download symbols 12, timeframes 6 (M1/M5/M15/H1/H4/D1), M1 overlap + spread-pips chips
+- New Backtest: two-pane, coverage check, tape M1 guard disables start when missing
+- Run Monitor: 2×2 grid, narrative polling, counter bar, overlap protection (409 on concurrent start)
+- Run Report: 4 tabs, 10-col trade table with column chooser, expanded row shows why entered/exited + trade chart
+- Trade Detail: 16 stat tiles + why entered/exited sections
+- Settings: system info, prune keep-last-N, 3 reset scopes with confirm modal
 
-See **`docs/audit/PROGRESS.md` §ALL REMAINING ITEMS** for the comprehensive 26-item ordered list.
-Top priority: M3.3 finish (#1), F6/F7 docs (#2-#3), then data coverage badge (#4), UX glitches (#5), journal completeness (#6).
+### What's NOT done
+See **`docs/audit/PROGRESS.md` §ALL REMAINING GAPS** — 18 items in 5 tiers with reasons + remedies.
+Top next items (Tier 1 quick wins, ~2hr): verify violations render in journal, hardcoded values audit, DB path unification.
+Top features (Tier 2, ~days): Portfolio entity (Track F1), Symbol scorecard (Track G1), Excursion recorder (Q1).
+Owner-only (Tier 5): V2–V5 cTrader downloads + reconcile, M5.1–M5.3 oracle set + drift alarm + per-bar spread, cBot E2E.
 
 ## Rules you must not break
 
