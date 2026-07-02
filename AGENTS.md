@@ -1,9 +1,9 @@
 # AGENTS.md — Session Startup Guide
 
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `iter/tape-trust` (active)
+**Branch:** `iter/merge-plan` (active worktree: `C:\Code\shamshir-trust`)
 **Created:** 2026-06-18
-**Updated:** 2026-07-02 (iter-tape-trust started — fixing tape venue truthfulness + trust loop)
+**Updated:** 2026-07-02 (merge review — synced docs from iter/master-plan, cleaned worktrees, consolidated all remaining gaps)
 
 ---
 
@@ -16,14 +16,16 @@ At the start of every session:
 3. **`docs/reference/BACKTEST-ARCHITECTURE.md`** — How backtesting actually works (both venue paths)
 4. **`docs/reference/TEST-ARCHITECTURE.md`** — Test tiers, harnesses, which tests need cTrader credentials
 5. **`docs/WORKFLOW.md`** — Agent workflow rules, code standards, handover format
-6. **`DECISIONS.md`** — All resolved decisions (D1–D80)
-7. **`docs/OPEN-ISSUES.md`** — Active bugs, design problems, carry-forward tasks
-8. **`docs/NEXT-STEPS.md`** — Roadmap backlog
-9. **`docs/iterations/iter-tape-trust/PLAN.md`** — Current iteration plan (T0–T5)
-10. **`docs/iterations/iter-marketdata-tape/HANDOVER-REVIEW.md`** — Bug/gap IDs B1–B11, F1–F8 defined here
-11. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology
-12. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
-13. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
+6. **`DECISIONS.md`** — All resolved decisions (D1–D96)
+7. **`docs/OPEN-ISSUES.md`** — Historical open issues (most resolved; remaining gaps → PROGRESS.md §ALL REMAINING)
+8. **`docs/NEXT-STEPS.md`** — Historical roadmap (most items mapped into merge-plan tracks)
+9. **`docs/iterations/iter-merge-plan/PLAN.md`** — **CURRENT plan** (M1–M5 phases)
+10. **`docs/iterations/iter-master-plan/PLAN.md`** — **Reference** master plan (Tracks A–G: venue fidelity, portfolio, symbol program, quant phases)
+11. **`docs/iterations/iter-marketdata-tape/HANDOVER-REVIEW.md`** — Bug/gap IDs B1–B11, F1–F8 defined here
+12. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology (Q1–Q4)
+13. **`docs/audit/PROGRESS.md`** — **Current status**: gates, what's done, ALL REMAINING ITEMS in priority order
+14. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
+15. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
 
 ## Build and test
 
@@ -31,7 +33,7 @@ At the start of every session:
 dotnet build                                 # Full build
 dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (~314 pass)
 dotnet test tests/TradingEngine.Tests.Simulation  # Simulation/FTMO tests
-dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (91)
+dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (105)
 ```
 
 ## Architecture at a glance
@@ -64,19 +66,19 @@ tests/
 - **`BoundedChannelFullMode.Wait`** for order/trade channels; `DropOldest` only for analytics.
 - **`IEngineClock`** for all time — never `DateTime.UtcNow` directly.
 
-## Current state (iter-tape-trust)
+## Current state (iter-merge-plan)
 
-- Tape venue runs but always reports `failed` (B1) — cast at `BacktestOrchestrator.cs:929` targets `BacktestReplayAdapter` instead of a common interface
-- Memory-served run detail drops metadata (B2) — `BuildRunDetailFromState` omits Venue, RiskProfileId, balance, time range
-- Data Manager downloads are synchronous fire-and-pray (B4)
-- Trust gate (V4 reconcile: tape vs cTrader) has never run
-- `LedgerReconciler.Compare` exists and is unit-tested; mapper from DB entities → `ReconcileLedger` does not exist yet
-- No spread cost on entry/exit fills in either replay venue (F1 — systematic optimistic bias)
+- **M1–M4 done** — nav, backtest/monitor/report redesign, charts, narrative service, monitor↔narrative switch, settings+reset UI, run delete/prune, data-manager delete, SkipJournal verified.
+- **All B1–B11 bugs fixed** · **F1–F4, F8 fidelity gaps fixed** · Golden 63/63 · Unit 314/0/6 · Integration 105/0
+- **M3.3 partial** — `ExitDetailJson` stamped at close; `EntryReason`/`EntryRegime`/`EntrySnapshotJson` columns exist in DB but are never populated, and neither entry nor exit narrative is surfaced in the trade UI.
+- **F5 deferred** — commission half-at-open needs golden re-baseline (owner sign-off required)
+- **F6/F7 undocumented** — tape-venue edge cases not yet written up in RECONCILE-FINDINGS.md
+- **Tracks F, G, and Q1-Q4** — portfolio, symbol program, and quant phases defined in reference docs but not started
 
 ## What's NOT done
 
-See `docs/iterations/iter-tape-trust/PLAN.md` for the full T0–T5 plan.
-Key items: B1–B11 bug fixes, F1–F8 fidelity gaps, T2 reconcile trust gate, T4 compare mode UI, T5 sweep runner.
+See **`docs/audit/PROGRESS.md` §ALL REMAINING ITEMS** for the comprehensive 26-item ordered list.
+Top priority: M3.3 finish (#1), F6/F7 docs (#2-#3), then data coverage badge (#4), UX glitches (#5), journal completeness (#6).
 
 ## Rules you must not break
 
