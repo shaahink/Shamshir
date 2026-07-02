@@ -26,7 +26,11 @@ public record TradeResult(
     EngineMode Mode = EngineMode.Backtest,
     string OrderEntryMethod = "Market",
     Guid OrderId = default,
-    string? Timeframe = null)
+    string? Timeframe = null,
+    string? EntryReason = null,
+    string? EntryRegime = null,
+    string? EntrySnapshotJson = null,
+    string? ExitDetailJson = null)
 {
     public double DurationSeconds => (ClosedAtUtc - OpenedAtUtc).TotalSeconds;
 }

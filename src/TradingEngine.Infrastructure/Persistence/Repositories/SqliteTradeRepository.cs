@@ -37,6 +37,10 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             OrderEntryMethod = trade.OrderEntryMethod,
             DurationSeconds = trade.DurationSeconds,
             RunId = string.IsNullOrEmpty(runId) ? null : runId,
+            EntryReason = trade.EntryReason,
+            EntryRegime = trade.EntryRegime,
+            EntrySnapshotJson = trade.EntrySnapshotJson,
+            ExitDetailJson = trade.ExitDetailJson,
         };
         db.Trades.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -78,6 +82,10 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             e.ExitReason, e.StrategyId, e.RiskProfileId,
             Enum.Parse<EngineMode>(e.Mode),
             OrderEntryMethod: e.OrderEntryMethod,
-            OrderId: e.OrderId);
+            OrderId: e.OrderId,
+            EntryReason: e.EntryReason,
+            EntryRegime: e.EntryRegime,
+            EntrySnapshotJson: e.EntrySnapshotJson,
+            ExitDetailJson: e.ExitDetailJson);
     }
 }

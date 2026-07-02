@@ -169,13 +169,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     internal static void TallyEvent(BacktestRunState state, BacktestProgressEvent evt)
     {
-        // Counter keys must match the event-type strings the ENGINE actually emits:
-        //   TradingLoop → "SIGNAL"/"ORDER"; MarketEventSource → "EXEC" (fill) / "REJECTED";
-        //   EffectExecutor → "CLOSE" (on trade close); AccountProcessor → "BREACH".
-        // The old keys ("FILL"/"REJECT"/no breach producer) never matched, so Fills/Rejections/
-        // Breaches were always 0 and Closes undercounted.
-        // Interlocked: a Progress<T> created on a thread with no captured SyncContext (the background
-        // RunAsync task) posts its callbacks to the thread pool, so these can fire concurrently.
+        // Counter keys match event-type strings the ENGINE emits.
         switch (evt.EventType)
         {
             case "SIGNAL": Interlocked.Increment(ref state.Signals); break;
@@ -185,30 +179,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             case "REJECTED": case "OrderRejected": Interlocked.Increment(ref state.Rejections); break;
             case "BREACH": Interlocked.Increment(ref state.Breaches); break;
         }
-
-        if (evt.EventType is "SIGNAL" or "ORDER" or "EXEC" or "CLOSE" or "REJECTED" or "BREACH")
-        {
-            lock (state.RecentJournal)
-            {
-                var indicatorDict = evt.Indicators is { Count: > 0 }
-                    ? evt.Indicators.ToDictionary(kv => kv.Key, kv => (object)kv.Value)
-                    : null;
-                var detail = System.Text.Json.JsonSerializer.Serialize(new
-                {
-                    equity = state.Equity,
-                    balance = state.Balance,
-                    dailyDdPct = state.DailyDdPct,
-                    barCount = state.BarCount,
-                    indicators = indicatorDict,
-                });
-                var simTime = DateTime.TryParse(state.SimTime, out var parsed) ? parsed : DateTime.UtcNow;
-                state.RecentJournal.Enqueue(new DecisionRecordView(
-                    ++state.Seq, simTime, null, null, evt.EventType,
-                    null, null, null, evt.Message, detail));
-                while (state.RecentJournal.Count > 30)
-                    state.RecentJournal.Dequeue();
-            }
-        }
+        // M3.2: RecentJournal ring removed — the monitor now polls GET /api/runs/{id}/narrative
     }
 
     private void EnqueueLog(string runId, ConcurrentQueue<string> queue, string msg)

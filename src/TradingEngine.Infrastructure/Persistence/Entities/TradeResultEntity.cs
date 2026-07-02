@@ -38,4 +38,8 @@ public sealed class TradeResultEntity : IAuditableEntity
     public string OrderEntryMethod { get; set; } = "";
     public double DurationSeconds { get; set; }
     public string? RunId { get; set; }
+    public string? EntryReason { get; set; }
+    public string? EntryRegime { get; set; }
+    public string? EntrySnapshotJson { get; set; }
+    public string? ExitDetailJson { get; set; }
 }

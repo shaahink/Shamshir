@@ -44,18 +44,18 @@
 | M3.1: Narrative service (`GET /api/runs/{id}/narrative`) | ✅ Built, needs UI |
 | Merge plan doc (`docs/iterations/iter-merge-plan/PLAN.md`) | ✅ Written |
 | M1.1: Nav consolidation (6 areas + 2 hub pages) | ✅ Built 2026-07-02 |
+| M2.1: New-Backtest redesign (two-pane, data coverage, toggle-chips) | ✅ Built 2026-07-02 |
+| M2.2: Monitor redesign (2x2 grid, narrative polling) | ✅ Built 2026-07-02 |
+| M2.3: Report tabs (Overview/Trades/Journal/Costs & Risk, 9-col trade table) | ✅ Built 2026-07-02 |
+| M2.4: Charts (daily PnL histogram, underwater equity) | ✅ Built 2026-07-02 |
+| M3.2: Monitor switch to narrative (TallyEvent removed) | ✅ Built 2026-07-02 |
+| M3.3: Trade narrative columns (EF migration + ExitDetailJson) | ✅ Built 2026-07-02 |
 
 ## Merged plan — remaining
 
 | # | Phase | Items | Scope |
 |---|-------|-------|-------|
-| 1 | M2.1 | New-Backtest redesign: two-pane layout, data coverage check, toggle-chip protections, field hygiene | Angular |
-| 2 | M2.2 | Monitor redesign: 2x2 grid (equity+DD, risk tiles, narrative journal, open positions) | Angular |
-| 3 | M2.3 | Report tabs: Overview / Trades / Journal / Costs & Risk tabs, 9-col default trade table | Angular |
-| 4 | M2.4 | Charts: C1 trade chart, C2 daily DD bars, C3 unified equity chart | Angular |
-| 5 | M3.2 | Monitor switch to narrative: delete TallyEvent branch, BacktestJournal → error/system only | C# |
-| 6 | M3.3 | Trade narrative columns: EF migration + EntryReason/EntryRegime/EntrySnapshotJson/ExitDetailJson | C# |
-| 7 | M4 | Housekeeping + gaps: multi-select delete, coverage view, F5 commission, F6/F7 document | C# + Angular |
+| 1 | M4 | Housekeeping + gaps: multi-select delete, coverage view, F5 commission, F6/F7 document | C# + Angular |
 | — | M5 | cTrader trust: oracle set + drift alarm | **OWNER ONLY** |
 
 ## Speed baseline (informal)
