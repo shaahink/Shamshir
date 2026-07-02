@@ -756,14 +756,15 @@ public partial class TradingEngineCBot : Robot
 
         var symbols = SymbolString.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         var periods = Periods.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        for (int i = 0; i < symbols.Length; i++)
+        foreach (var sym in symbols)
         {
-            var sym = symbols[i];
-            var period = i < periods.Length ? periods[i] : periods[periods.Length - 1];
-            var tf = ParseTimeFrame(period);
-            var bars = MarketData.GetBars(tf, sym);
-            _subscriptions.Add(bars);
-            bars.BarClosed += OnBarClosed;
+            foreach (var period in periods)
+            {
+                var tf = ParseTimeFrame(period);
+                var bars = MarketData.GetBars(tf, sym);
+                _subscriptions.Add(bars);
+                bars.BarClosed += OnBarClosed;
+            }
         }
         Print($"CBOT|RECORD_START|path={ReportPath}|symbols={SymbolString}|periods={Periods}");
     }
@@ -798,7 +799,7 @@ public partial class TradingEngineCBot : Robot
         if (!_shardWriters.TryGetValue(key, out var w))
         {
             var path = System.IO.Path.Combine(ReportPath, $"{key}.ndjson");
-            w = new System.IO.StreamWriter(path, append: false) { AutoFlush = false };
+            w = new System.IO.StreamWriter(path, append: true) { AutoFlush = false };
             _shardWriters[key] = w;
         }
         return w;
