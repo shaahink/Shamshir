@@ -22,6 +22,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/data-manager/data-manager.component').then((m) => m.DataManagerComponent),
   },
   {
+    path: 'experiments',
+    loadChildren: () => import('./features/experiments/experiments.routes').then((m) => m.experimentsRoutes),
+  },
+  {
     path: 'settings',
     loadComponent: () => import('./features/settings/settings.component').then((m) => m.SettingsComponent),
   },

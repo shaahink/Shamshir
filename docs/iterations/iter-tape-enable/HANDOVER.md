@@ -103,6 +103,23 @@ Beyond the crash (now fixed), `ExperimentRunner` has interlocking gaps that make
 
 ---
 
+## Tier 1 — done (branch `iter/experiments-tape-tier1`)
+
+All four Tier 1 items above are implemented and verified. Not committed to `develop` yet — merge when reviewed.
+
+1. **Venue + strategies** (`ExperimentRunner.cs`): swapped `IBarRepository`/`BacktestReplayAdapter` for `IMarketDataStore`/`TapeReplayAdapter` (decision TF + M1 exit, same as the web tape path). `ValidateBarsAsync` now checks the tape store. `EngineHostOptions.ActiveStrategyIds = spec.Strategies` so the run honours exactly the requested strategies instead of "whatever's enabled in the base JSON config" — plus a `ForceEnableStrategies` pass so a requested strategy runs even if its config file has `enabled: false`. `ExperimentCli.cs` updated to match (registers `IMarketDataStore`/`SqliteMarketDataStore` instead of the bar-repo trio; unused `IBacktestRunRepository`/`ITradeRepository`/`IEquityRepository` ctor params dropped from `ExperimentRunner` — they were dead fields).
+2. **Run persistence**: `PersistRunAsync` now writes an `ExperimentRunEntity` (with real `ScoreJson` = the fold's `FoldScore`) right where each fold's score is computed in `RunAsync`, instead of `RunSingleAsync` gating on `_backtestRunRepo.GetByIdAsync(runId)` against a temp per-fold DB that gets deleted before that lookup could ever succeed. `Experiment.Runs` now populates.
+3. **Experiments UI** (`web-ui/src/app/features/experiments/`): list (`experiment-list.component.ts`), new-experiment form (`experiment-new.component.ts` — strategy/symbol/timeframe pills, optional walk-forward folds, multi-variant with raw JSON config overrides), detail (`experiment-detail.component.ts` — variant results table re-aggregated client-side from persisted fold rows using the *same* weighting formula as `VariantScorer.ScoreVariant`, plus a report viewer). Wired into `app.routes.ts` / nav (`app.component.ts`). **Gotcha fixed along the way:** `specJson`/`scoreJson` are written with a bare `JsonSerializer.Serialize(...)` inside `ExperimentRunner` (no ASP.NET Core camelCase policy), so they come back **PascalCase** — unlike every other API response body. `experiment-detail.component.ts` has a `camelizeKeys()` helper to normalize both blobs before reading them; if either payload changes shape, keep using it rather than hand-parsing.
+4. **Test**: `tests/TradingEngine.Tests.Integration/Api/ExperimentEndpointsTests.cs` — two tests hitting the real `/api/experiments` endpoints through `WebApplicationFactory<Program>`, seeding `IMarketDataStore` directly (never `IBarRepository`) so a regression back to the catalog path fails loudly instead of silently passing.
+
+**Verified end-to-end against the real running app** (not just tests): imported 500 synthetic EURUSD H1 bars via `/api/data-manager/import`, POSTed a `trend-breakout` experiment via `/api/experiments`, confirmed `status: completed` and a populated `runs[]` with real `scoreJson`, and hit the new `/experiments` and `/experiments/new` SPA routes (200s). Cleaned up the smoke-test `docs/experiments/...` report dir and temp DB afterward — no leftovers.
+
+**Gates**: Unit 314/0/6 · Integration 110/0 (108 baseline + 2 new) · full `dotnet build` + `npm run build` clean.
+
+**Not done in this branch** (unchanged from the plan above): Tier 2 (#5–7) and Tier 3 (#8). Also out of scope: multi-symbol/multi-timeframe experiments still only run the first `(Symbols[0], Timeframes[0])` pair (pre-existing, not a Tier1-flagged bug); recomputing the exact variant composite client-side duplicates `VariantScorer.ScoreVariant`'s formula — if that formula changes server-side, update `summarizeVariant()` in `experiment-detail.component.ts` to match.
+
+---
+
 ## Changed files this session
 
 ```

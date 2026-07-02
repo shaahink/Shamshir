@@ -472,3 +472,78 @@ export interface AutoTunePreview {
   adxFloor?: number;
   relaxedAtrMultiple?: number;
 }
+
+// iter-tape-enable Tier1: experiment types matching the backend ExperimentSpec/ExperimentEntity/VariantScore.
+export interface ExperimentSummary {
+  id: string;
+  name: string;
+  status: string;
+  createdUtc: string;
+  completedUtc?: string | null;
+  runCount: number;
+}
+
+export interface ExperimentRunRow {
+  id: string;
+  variantLabel: string;
+  foldIndex: number;
+  foldRole: string;
+  backtestRunId: string;
+  scoreJson: string;
+}
+
+export interface ExperimentDetail {
+  id: string;
+  name: string;
+  hypothesis: string;
+  specJson: string;
+  status: string;
+  createdUtc: string;
+  completedUtc?: string | null;
+  runs: ExperimentRunRow[];
+}
+
+export interface FoldScore {
+  foldIndex: number;
+  foldRole: string;
+  composite: number;
+  passProbability: number;
+  expectancyR: number;
+  maxDrawdownPercent: number;
+  totalTrades: number;
+}
+
+export interface VariantScore {
+  label: string;
+  composite: number;
+  passProbability: number;
+  expectancyR: number;
+  maxDrawdownPercent: number;
+  foldConsistency: number;
+  totalTrades: number;
+  folds: FoldScore[];
+}
+
+export interface ExperimentCreateResult {
+  experimentId: string;
+  status: string;
+  variantScores: VariantScore[];
+}
+
+export interface ExperimentVariantInput {
+  label: string;
+  overrides?: Record<string, unknown>;
+}
+
+export interface ExperimentSpecInput {
+  name: string;
+  hypothesis: string;
+  symbols: string[];
+  timeframes: string[];
+  strategies: string[];
+  from: string;
+  to: string;
+  walkForward?: { folds: number; trainFraction: number } | null;
+  variants: ExperimentVariantInput[];
+  maxRuns?: number;
+}
