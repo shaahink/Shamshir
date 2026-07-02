@@ -443,5 +443,10 @@ Quick reference:
  | D87 | GetAccountStateAsync returns _balance for both balance+equity | Final - Called at startup only (no open positions). Computing floating PnL adds risk without value. |
  | D88 | cBot shards append:true (not .partial/rename) | Final - Simpler. Ingester dedupe absorbs overlaps. No rename-on-close coordination needed. |
  | D89 | LedgerReconcileService is Scoped (needs TradingDbContext) | Final - Scoped to match DB context lifetime. |
- | D90 | F1 spread fix deferred to T3 | Final - Would change all trade results + characterization test baselines. Needs its own phase with baseline refresh. |
+ | D90 | F1 spread on fills — directional spread on entry + exit; ask-bar detection for shorts | Final - Actually applied in T3. Changed all fill prices in both adapters. Golden 63/63 survived (kernel-vs-imperative both use same adapter). |
  | D91 | RunPlanJson sourced from cfg.CustomParams[RunRows] | Final - Same source as WriteStartRecordAsync line 566. Consistent with DB path; no new serialization needed. |
+ | D92 | F1 halfSpread sourced from SymbolInfo.TypicalSpread / 2 | Final - `GetHalfSpread()` helper in both adapters; fallback 0.00005m if registry lookup fails. Per-bar spread (Q3) is future refinement. |
+ | D93 | ProcessPendingLimits decrementExpiry param | Final - Boolean param, default true (backward compat). Fine-bar calls pass false so limit expiry counts decision bars. |
+ | D94 | ComparePairId stored in CustomParams, not a DB column | Final - Avoids schema migration for T4. Both tape + cTrader runs share the same ComparePairId in their params dict. |
+ | D95 | SweepRunnerService is Singleton, uses IServiceScopeFactory | Final - Must be singleton (holds sweep job state). Scoped deps (IBacktestCommandService, IRunQueryService) created per-cell via factory scope. |
+ | D96 | Sweep cell execution uses 300 × 500ms polling (2.5min timeout) | Final - Simple polling loop; no event-driven completion. Adequate for tape venue (<1s per cell). |

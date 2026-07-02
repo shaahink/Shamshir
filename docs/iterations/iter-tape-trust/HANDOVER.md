@@ -1,8 +1,8 @@
-# iter-tape-trust — Handover (T0–T2 complete)
+# iter-tape-trust — Handover (T0–T5 complete)
 
 **Date:** 2026-07-02
 **Branch:** `iter/tape-trust` (based off `iter/integration-cache-tape`)
-**Tests:** Unit 314/0/6, Integration 91/0, Simulation 63/63 golden (unchanged through T0–T2)
+**Tests:** Unit 314/0/6, Integration 91/0, Simulation 63/63 golden (through T0–T5)
 
 ## 1. What was completed
 
@@ -42,26 +42,40 @@
 - **B10:** Tick synthetic ask uses `SymbolInfo.PipSize` instead of hardcoded `0.0001m`.
 - **Coverage view:** NOT DONE. Deferred — can be added alongside T4 (compare mode UI).
 
-### T2 — Trust loop (partial)
+### T2 — Trust loop
 - **LedgerReconcileService:** Maps `BacktestRunEntity` + `TradeResultEntity` → `ReconcileLedger`.
 - **Reconcile endpoint:** `GET /api/backtest/analytics/reconcile?left={runId}&right={runId}` returns
   full `LedgerReconciler.Compare` output with per-field divergences + text summary.
-- **RECONCILE-FINDINGS.md:** Updated with pre-registered F1-F4 fidelity gaps (spread-free fills,
-  intrabar equity, trailing cadence, gap-through fills) so V4 reconciliation isn't mis-triaged.
+- **RECONCILE-FINDINGS.md:** Updated with pre-registered F1-F4 fidelity gaps.
+
+### T3 — Fidelity hardening
+- **F1 spread on fills:** Both adapters now apply directional spread to entry fills (long at ask=bid+halfSpread, short at bid). Exit detection shifts to ask-bar for shorts; SL/TP fills adjusted for spread. Force-close exits at directional spread. `GetHalfSpread()` helper uses `SymbolInfo.TypicalSpread / 2`.
+- **F4 gap-through slippage:** If a bar opens beyond SL, fills at open instead of stop price.
+- **B5 limit expiry in decision bars:** `ProcessPendingLimits` accepts `decrementExpiry` param — expiry only decrements per decision bar, not per fine bar.
+- **F2 intrabar equity:** Min floating-equity tracked during fine-bar scan; `EmitAccountUpdate` accepts optional `minEquity` override so drawdown sees the trough.
+
+### T4 — Compare mode
+- **RunCompareBothAsync:** When `Compare=both` in config params, orchestrator dispatches tape run first, then cTrader run with shared `ComparePairId`. Final log line prints the reconcile URL.
+- **ComparePairId:** Stored in CustomParams dict on both run configs so the compare/reconcile endpoint can find pairs.
+
+### T5 — Sweep runner
+- **SweepRunnerService:** Singleton, expands request to cells (strategy × symbol × tf × param grid), executes with `SemaphoreSlim(4)` bounded parallelism, polls run completion.
+- **API:** `POST /api/sweeps/start` (returns jobId + cell count), `GET /api/sweeps/jobs/{jobId}`, `GET .../jobs/{jobId}/results` (per-cell metrics grid), `GET .../jobs/{jobId}/csv` (export).
+- **Journal thinning:** Planned (`SkipJournal` param in CustomParams) but engine host needs a flag to skip StepRecord persistence — deferred.
 
 ## 2. What was NOT completed
 
 | Item | Status | Why |
 |------|--------|-----|
 | V2 (owner's working set) | Not started | Needs cTrader credentials |
-| V3 (speed baseline) | Informal only | 531ms measured during review; formal baseline needs structured test |
-| V4 (tape vs cTrader reconcile) | Infrastructure ready | Mapper + endpoint built; actual reconcile needs cTrader credentials + runs |
+| V3 (speed baseline) | Informal only | 531ms measured during review |
+| V4 (tape vs cTrader reconcile) | Infrastructure ready | Mapper + endpoint + compare-both done; actual reconcile needs cTrader credentials + runs |
 | V5 (engine-DB vs cTrader) | Infrastructure ready | Same mapper works; needs cTrader report parsing side |
-| T3 (F1-F4 fidelity hardening) | Not started | F1 will change all trade results — needs careful test baseline update |
-| T4 (Compare mode UI) | Not started | Mapper + endpoint ready; needs UI work |
-| T5 (Sweep runner) | Planned | See section 7 |
-| B5 (limit expiry in decision bars) | Not started | Deferred to T3 |
-| B11 (repo hygiene) | Partial | `.git-rewrite/` deleted; gitignore for `src/TradingEngine.Web/data/` added; stale DBs remain untracked due to `*.db` rule |
+| Coverage view (T1) | Not started | Data Manager inventory doesn't show m1 overlap; F8 guards venue side but UI doesn't help discover data holes |
+| cBot rebuild | Not done | B3/B7 changes to `TradingEngineCBot.cs` need cTrader build (`.algo` rebuild) and `RequiresCTrader` E2E tests |
+| Journal thinning (T5) | Not done | `SkipJournal` flag in config; engine host needs a flag to skip `StepRecord` writes — deferred to avoid tight coupling with host internals |
+| B5 (replay venue) | Not done | `BacktestReplayAdapter` is single-resolution so B5 doesn't apply there |
+| F3 (trailing cadence) | Not done | Per plan: measure first, decide later |
 
 ## 3. Decisions made during this iteration
 
