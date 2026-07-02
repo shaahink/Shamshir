@@ -103,6 +103,10 @@ public sealed class TradesController : ControllerBase
             ExitReason = t.ExitReason,
             StrategyId = t.StrategyId,
             DurationSeconds = t.DurationSeconds,
+            EntryReason = t.EntryReason,
+            EntryRegime = t.EntryRegime,
+            EntrySnapshotJson = t.EntrySnapshotJson,
+            ExitDetailJson = t.ExitDetailJson,
         });
     }
 

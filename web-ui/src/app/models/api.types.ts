@@ -126,6 +126,10 @@ export interface TradeDetail {
   strategyId: string;
   durationSeconds: number;
   timeframe: string;
+  entryReason?: string;
+  entryRegime?: string;
+  entrySnapshotJson?: string;
+  exitDetailJson?: string;
 }
 
 // iter-36 K5: the journal is now the lossless StepRecord stream (GET /api/runs/{id}/journal). eventKind
