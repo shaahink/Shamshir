@@ -11,6 +11,8 @@ namespace TradingEngine.Infrastructure.MarketData;
 /// </summary>
 public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext> factory) : IMarketDataStore
 {
+    private const int ChunkSize = 5_000;
+
     public async Task<int> WriteBarsAsync(string source, IReadOnlyList<Bar> bars, CancellationToken ct = default)
     {
         if (bars.Count == 0) return 0;
@@ -26,14 +28,13 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
             var min = ordered[0].OpenTimeUtc;
             var max = ordered[^1].OpenTimeUtc;
 
-            // One range query for the existing keys in this batch's window; dedupe both against the DB
-            // and within the batch itself (HashSet.Add returns false on a duplicate).
             var existing = await db.Bars
                 .Where(r => r.Symbol == sym && r.Timeframe == tf && r.OpenTimeUtc >= min && r.OpenTimeUtc <= max)
                 .Select(r => r.OpenTimeUtc)
                 .ToListAsync(ct);
             var seen = existing.ToHashSet();
 
+            var chunk = 0;
             foreach (var b in ordered)
             {
                 if (!seen.Add(b.OpenTimeUtc)) continue;
@@ -52,10 +53,18 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
                     IngestedAtUtc = now,
                 });
                 inserted++;
+                chunk++;
+
+                if (chunk >= ChunkSize)
+                {
+                    await db.SaveChangesAsync(ct);
+                    db.ChangeTracker.Clear();
+                    chunk = 0;
+                }
             }
         }
 
-        if (inserted > 0)
+        if (db.ChangeTracker.HasChanges())
             await db.SaveChangesAsync(ct);
         return inserted;
     }

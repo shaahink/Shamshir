@@ -26,7 +26,52 @@ public sealed class MarketDataIngester(IMarketDataStore store, ILogger<MarketDat
         return new IngestResult(files, lines, inserted, errors);
     }
 
+    private const int StreamThreshold = 100_000;
+
     public async Task<IngestResult> IngestFileAsync(string file, string source, CancellationToken ct = default)
+    {
+        var lines = 0;
+        var errors = 0;
+        var totalInserted = 0;
+
+        // For small files, parse and insert in one batch; for large files, stream in chunks.
+        var fileInfo = new FileInfo(file);
+        if (fileInfo.Exists && fileInfo.Length < StreamThreshold * 200) // rough: ~200 bytes/line
+        {
+            var all = await ReadAndParseLinesAsync(file, ct);
+            lines = all.lines;
+            errors = all.errors;
+            totalInserted = all.bars.Count > 0 ? await store.WriteBarsAsync(source, all.bars, ct) : 0;
+        }
+        else
+        {
+            var chunk = new List<Bar>(50_000);
+            foreach (var line in File.ReadLines(file))
+            {
+                ct.ThrowIfCancellationRequested();
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                lines++;
+                if (MarketDataShardIo.TryParse(line, out var bar))
+                    chunk.Add(bar);
+                else
+                    errors++;
+
+                if (chunk.Count >= 50_000)
+                {
+                    totalInserted += await store.WriteBarsAsync(source, chunk, ct);
+                    chunk.Clear();
+                }
+            }
+            if (chunk.Count > 0)
+                totalInserted += await store.WriteBarsAsync(source, chunk, ct);
+        }
+
+        logger?.LogInformation("Ingested {File}: {Lines} lines -> {Inserted} new bars, {Errors} parse errors",
+            Path.GetFileName(file), lines, totalInserted, errors);
+        return new IngestResult(1, lines, totalInserted, errors);
+    }
+
+    private static async Task<(int lines, int errors, List<Bar> bars)> ReadAndParseLinesAsync(string file, CancellationToken ct)
     {
         var bars = new List<Bar>();
         int lines = 0, errors = 0;
@@ -38,11 +83,7 @@ public sealed class MarketDataIngester(IMarketDataStore store, ILogger<MarketDat
             if (MarketDataShardIo.TryParse(line, out var bar)) bars.Add(bar);
             else errors++;
         }
-
-        var inserted = bars.Count > 0 ? await store.WriteBarsAsync(source, bars, ct) : 0;
-        logger?.LogInformation("Ingested {File}: {Lines} lines → {Inserted} new bars, {Errors} parse errors",
-            Path.GetFileName(file), lines, inserted, errors);
-        return new IngestResult(1, lines, inserted, errors);
+        return (lines, errors, bars);
     }
 }
 

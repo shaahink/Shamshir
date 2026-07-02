@@ -47,6 +47,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     private readonly Dictionary<Guid, PendingLimit> _pendingLimits = new();
     private decimal _balance;
     private decimal _lastClose;
+    private readonly decimal _tickSpread;
     private Task _feedTask = Task.CompletedTask;
     private CancellationTokenSource? _feedCts;
 
@@ -107,6 +108,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         _logger = logger;
         _decisionInterval = decisionTf.ToTimeSpan();
         _exitInterval = exitTf.ToTimeSpan();
+        try { _tickSpread = symbolRegistry.Get(symbol).PipSize; }
+        catch { _tickSpread = 0.0001m; }
     }
 
     public async Task ConnectAsync(CancellationToken ct)
@@ -162,7 +165,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 ct.ThrowIfCancellationRequested();
                 await _barChannel.Writer.WriteAsync(bar, ct);
                 await _tickChannel.Writer.WriteAsync(
-                    new Tick(bar.Symbol, bar.Close, bar.Close + 0.0001m, bar.OpenTimeUtc), ct);
+                    new Tick(bar.Symbol, bar.Close, bar.Close + _tickSpread, bar.OpenTimeUtc), ct);
             }
         }
         catch (OperationCanceledException) { _logger.LogDebug("TapeReplay: feed cancelled"); }
@@ -216,7 +219,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     }
 
     public Task<AccountState> GetAccountStateAsync(CancellationToken ct)
-        => Task.FromResult(new AccountState(_initialBalance, _initialBalance, []));
+        => Task.FromResult(new AccountState(_balance, _balance, []));
 
     public Task<Guid> SubmitOrderAsync(OrderRequest request, CancellationToken ct)
     {
