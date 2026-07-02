@@ -62,6 +62,26 @@ public sealed class DataManagerController : ControllerBase
         });
     }
 
+    // M4.2 — per (symbol, TF) delete range. Null from/to = whole range; null source = all sources. This
+    // only touches downloaded market-data history (marketdata.db), never a run's per-RunId Bars.
+    [HttpPost("delete")]
+    public async Task<IActionResult> DeleteBars([FromBody] DeleteBarsRequest req, CancellationToken ct)
+    {
+        if (_marketDataStore is null)
+            return Problem("Market data store not registered.");
+        if (string.IsNullOrWhiteSpace(req.Symbol) || string.IsNullOrWhiteSpace(req.Timeframe))
+            return BadRequest(new { error = "Symbol and timeframe required." });
+        if (!Enum.TryParse<Timeframe>(req.Timeframe, ignoreCase: true, out var tf))
+            return BadRequest(new { error = $"Unknown timeframe '{req.Timeframe}'." });
+
+        DateTime? from = req.From is null ? null : DateTime.SpecifyKind(req.From.Value, DateTimeKind.Utc);
+        DateTime? to = req.To is null ? null : DateTime.SpecifyKind(req.To.Value, DateTimeKind.Utc);
+
+        var deleted = await _marketDataStore.DeleteBarsAsync(Symbol.Parse(req.Symbol), tf, from, to, req.Source, ct);
+        _logger.LogInformation("Deleted {Deleted} market-data bar(s) for {Symbol} {Tf}.", deleted, req.Symbol, req.Timeframe);
+        return Ok(new { deleted });
+    }
+
     [HttpGet("jobs")]
     public IActionResult ListJobs()
     {
@@ -102,5 +122,14 @@ public sealed class DataManagerController : ControllerBase
         public int Days { get; init; } = 7;
         public DateTime? From { get; init; }
         public DateTime? To { get; init; }
+    }
+
+    public sealed record DeleteBarsRequest
+    {
+        public string Symbol { get; init; } = "";
+        public string Timeframe { get; init; } = "";
+        public DateTime? From { get; init; }
+        public DateTime? To { get; init; }
+        public string? Source { get; init; }
     }
 }

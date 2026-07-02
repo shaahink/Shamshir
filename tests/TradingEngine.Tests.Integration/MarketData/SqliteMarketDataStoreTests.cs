@@ -111,6 +111,39 @@ public sealed class SqliteMarketDataStoreTests : IDisposable
         gap.NextOpenUtc.Should().Be(mon);
     }
 
+    [Fact]
+    public async Task DeleteBars_wholeRange_removesOnlyThatSymbolTimeframe()
+    {
+        var t0 = new DateTime(2024, 1, 3, 10, 0, 0, DateTimeKind.Utc);
+        await _store.WriteBarsAsync("ctrader", new[] { H1(t0, 1.1m), H1(t0.AddHours(1), 1.1m) }, default);
+        // A different timeframe for the same symbol must survive.
+        var h4 = new Bar(Eur, Timeframe.H4, t0, 1.1m, 1.11m, 1.09m, 1.1m, 100);
+        await _store.WriteBarsAsync("ctrader", new[] { h4 }, default);
+
+        var deleted = await _store.DeleteBarsAsync(Eur, Timeframe.H1, null, null, null, default);
+
+        deleted.Should().Be(2);
+        (await _store.ReadBarsAsync(Eur, Timeframe.H1, t0, t0.AddHours(5), default)).Should().BeEmpty();
+        (await _store.ReadBarsAsync(Eur, Timeframe.H4, t0, t0.AddHours(5), default)).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task DeleteBars_range_removesOnlyBarsInWindow()
+    {
+        var t0 = new DateTime(2024, 1, 3, 10, 0, 0, DateTimeKind.Utc);
+        await _store.WriteBarsAsync("ctrader", new[]
+        {
+            H1(t0, 1.1m), H1(t0.AddHours(1), 1.1m), H1(t0.AddHours(2), 1.1m),
+        }, default);
+
+        // Delete only the middle bar.
+        var deleted = await _store.DeleteBarsAsync(Eur, Timeframe.H1, t0.AddHours(1), t0.AddHours(1), null, default);
+
+        deleted.Should().Be(1);
+        (await _store.ReadBarsAsync(Eur, Timeframe.H1, t0, t0.AddHours(5), default))
+            .Select(b => b.OpenTimeUtc).Should().ContainInOrder(t0, t0.AddHours(2));
+    }
+
     public void Dispose() => _factory.Dispose();
 
     private sealed class TempFactory : IDbContextFactory<MarketDataDbContext>, IDisposable

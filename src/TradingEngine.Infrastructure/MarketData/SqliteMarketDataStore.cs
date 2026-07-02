@@ -130,6 +130,18 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
         return gaps;
     }
 
+    public async Task<int> DeleteBarsAsync(Symbol symbol, Timeframe tf, DateTime? fromUtc, DateTime? toUtc, string? source, CancellationToken ct = default)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var sym = symbol.ToString();
+        var tfs = tf.ToString();
+        var q = db.Bars.Where(r => r.Symbol == sym && r.Timeframe == tfs);
+        if (fromUtc is not null) q = q.Where(r => r.OpenTimeUtc >= fromUtc.Value);
+        if (toUtc is not null) q = q.Where(r => r.OpenTimeUtc <= toUtc.Value);
+        if (!string.IsNullOrWhiteSpace(source)) q = q.Where(r => r.Source == source);
+        return await q.ExecuteDeleteAsync(ct);
+    }
+
     // FX closes ~Fri 21:00 UTC → Sun 21:00 UTC. A gap that contains a Saturday is almost certainly the
     // normal weekend close rather than a data hole; flag it so callers can filter.
     private static bool StraddlesWeekend(DateTime a, DateTime b)
