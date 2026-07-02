@@ -58,6 +58,12 @@ public sealed class RunsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Start([FromBody] StartRunRequest req, CancellationToken ct)
     {
+        var activeRuns = _orchestrator.GetAll()
+            .Where(r => r.Status is "starting" or "running")
+            .Select(r => r.RunId).ToList();
+        if (activeRuns.Count > 0)
+            return Conflict(new { error = "A backtest is already running. Cancel it or wait for completion before starting a new one.", activeRunIds = activeRuns });
+
         // iter-strategy-system P1 (D3): the row-based builder sends explicit rows
         // (strategy × symbol × timeframe × pack). When present they supersede the legacy cross-product —
         // symbols/periods/strategies are DERIVED from the enabled rows.
