@@ -124,7 +124,7 @@ export class RunListComponent implements OnInit {
   openCompare(): void {
     const ids = this.selectedRuns();
     if (ids.length >= 2) {
-      this.router.navigate(['/compare'], {
+      this.router.navigate(['/runs/compare'], {
         queryParams: { left: ids[0], right: ids[1] },
       });
     }

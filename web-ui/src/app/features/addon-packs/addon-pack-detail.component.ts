@@ -11,7 +11,7 @@ import { DetailFormBase } from '../../shared/detail-form-base';
   imports: [RouterLink, FormsModule],
   template: `
     <div class="space-y-6">
-      <a [routerLink]="['/addon-packs']" class="text-xs text-gray-500 hover:text-gray-300">← Packs</a>
+      <a [routerLink]="['/risk/packs']" class="text-xs text-gray-500 hover:text-gray-300">← Packs</a>
       @if (pack(); as p) {
         <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-6">
           <h1 class="text-lg font-semibold mb-4">{{ p.name }}</h1>

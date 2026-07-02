@@ -43,12 +43,13 @@
 | M1.2: System info endpoint (`GET /api/system/info`) | ✅ Built, needs UI |
 | M3.1: Narrative service (`GET /api/runs/{id}/narrative`) | ✅ Built, needs UI |
 | Merge plan doc (`docs/iterations/iter-merge-plan/PLAN.md`) | ✅ Written |
+| M1.1: Nav consolidation (6 areas + 2 hub pages) | ✅ Built 2026-07-02 |
 
 ## Merged plan — pending
 
 | Phase | Items | Depends on |
 |-------|-------|-----------|
-| M1.1 (nav consolidation) | Angular: 6 nav areas, Risk hub | Angular build env |
+| M1.1 (nav consolidation) | Angular: 6 nav areas (Live, Runs, Strategies, Risk, Data, Settings) + Risk/Runs hub pages with sub-tabs | ✅ 2026-07-02 |
 | M1.2/M1.3 (settings + reset UI) | Angular: settings page with reset modals | M1.3 API done |
 | M2.1 (New-Backtest redesign) | Angular: two-pane layout, coverage check | Angular |
 | M2.2 (Monitor redesign) | Angular: 2x2 grid, narrative journal | M3.1 API done |

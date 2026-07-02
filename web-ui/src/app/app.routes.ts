@@ -7,47 +7,54 @@ export const routes: Routes = [
   },
   {
     path: 'runs',
-    loadChildren: () => import('./features/runs/runs.routes').then((m) => m.RUNS_ROUTES),
-  },
-  {
-    path: 'trades',
-    loadChildren: () => import('./features/trades/trades.routes').then((m) => m.TRADES_ROUTES),
+    loadChildren: () => import('./features/runs/runs-hub.routes').then((m) => m.RUNS_HUB_ROUTES),
   },
   {
     path: 'strategies',
     loadChildren: () => import('./features/strategies/strategies.routes').then((m) => m.STRATEGIES_ROUTES),
   },
   {
-    path: 'addon-packs',
-    loadChildren: () => import('./features/addon-packs/addon-packs.routes').then((m) => m.addonPacksRoutes),
-  },
-  {
-    path: 'risk-profiles',
-    loadChildren: () => import('./features/risk-profiles/risk-profiles.routes').then((m) => m.RISK_PROFILES_ROUTES),
-  },
-  {
-    path: 'prop-firm-rules',
-    loadChildren: () => import('./features/prop-firm-rules/prop-firm-rules.routes').then((m) => m.PROP_FIRM_ROUTES),
-  },
-  {
-    path: 'governor-options',
-    loadComponent: () => import('./features/governor/governor-edit.component').then((m) => m.GovernorEditComponent),
-  },
-  {
-    path: 'ctrader-sessions',
-    loadChildren: () => import('./features/ctrader-sessions/ctrader-sessions.routes').then((m) => m.CTRADER_ROUTES),
+    path: 'risk',
+    loadChildren: () => import('./features/risk/risk-hub.routes').then((m) => m.RISK_HUB_ROUTES),
   },
   {
     path: 'data-manager',
     loadComponent: () => import('./features/data-manager/data-manager.component').then((m) => m.DataManagerComponent),
   },
   {
-    path: 'compare',
-    loadComponent: () => import('./features/compare/compare.component').then((m) => m.CompareComponent),
-  },
-  {
     path: 'settings',
     loadComponent: () => import('./features/settings/settings.component').then((m) => m.SettingsComponent),
   },
+
+  // Legacy redirects — list paths
+  { path: 'trades', redirectTo: '/runs/trades', pathMatch: 'full' },
+  { path: 'ctrader-sessions', redirectTo: '/runs/ctrader', pathMatch: 'full' },
+  { path: 'compare', redirectTo: '/runs/compare', pathMatch: 'full' },
+  { path: 'risk-profiles', redirectTo: '/risk/profiles', pathMatch: 'full' },
+  { path: 'prop-firm-rules', redirectTo: '/risk/ftmo', pathMatch: 'full' },
+  { path: 'governor-options', redirectTo: '/risk/governor', pathMatch: 'full' },
+  { path: 'addon-packs', redirectTo: '/risk/packs', pathMatch: 'full' },
+
+  // Legacy detail routes — kept for existing component routerLinks
+  {
+    path: 'trades/:id',
+    loadComponent: () => import('./features/trades/trade-detail/trade-detail.component').then((m) => m.TradeDetailComponent),
+  },
+  {
+    path: 'risk-profiles/:id',
+    loadComponent: () =>
+      import('./features/risk-profiles/risk-profile-detail.component').then((m) => m.RiskProfileDetailComponent),
+  },
+  {
+    path: 'prop-firm-rules/:id',
+    loadComponent: () =>
+      import('./features/prop-firm-rules/prop-firm-rule-detail.component').then((m) => m.PropFirmRuleDetailComponent),
+  },
+  {
+    path: 'addon-packs/:id',
+    loadComponent: () =>
+      import('./features/addon-packs/addon-pack-detail.component').then((m) => m.AddOnPackDetailComponent),
+  },
+
   { path: '**', redirectTo: '' },
 ];
