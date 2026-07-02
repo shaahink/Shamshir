@@ -14,6 +14,7 @@ public sealed class RunsController : ControllerBase
     private readonly IJournalQueryRepository _journals;
     private readonly IBacktestRunRepository _runRepo;
     private readonly BacktestOrchestrator _orchestrator;
+    private readonly RunNarrativeService? _narrative;
     private readonly ILogger<RunsController> _logger;
 
     public RunsController(
@@ -23,7 +24,8 @@ public sealed class RunsController : ControllerBase
         IJournalQueryRepository journals,
         IBacktestRunRepository runRepo,
         BacktestOrchestrator orchestrator,
-        ILogger<RunsController> logger)
+        ILogger<RunsController> logger,
+        RunNarrativeService? narrative = null)
     {
         _query = query;
         _command = command;
@@ -31,6 +33,7 @@ public sealed class RunsController : ControllerBase
         _journals = journals;
         _runRepo = runRepo;
         _orchestrator = orchestrator;
+        _narrative = narrative;
         _logger = logger;
     }
 
@@ -246,6 +249,27 @@ public sealed class RunsController : ControllerBase
             await Response.WriteAsync(System.Text.Json.JsonSerializer.Serialize(entry, opts) + "\n", ct);
             await Response.Body.FlushAsync(ct);
         }
+    }
+
+    [HttpGet("{runId}/narrative")]
+    public async Task<IActionResult> GetNarrative(
+        string runId,
+        [FromQuery] long? afterSeq,
+        [FromQuery] string? kinds,
+        [FromQuery] string? severity,
+        [FromQuery] int limit = 100)
+    {
+        if (_narrative is null)
+            return Problem("Narrative service not available.");
+
+        var kindArray = kinds?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var result = await _narrative.GetNarrativeAsync(runId, afterSeq, kindArray, severity, limit, HttpContext.RequestAborted);
+        return Ok(new
+        {
+            events = result.Events,
+            latestSeq = result.LatestSeq,
+            hasMore = result.HasMore,
+        });
     }
 
     [HttpGet("{runId}/equity")]

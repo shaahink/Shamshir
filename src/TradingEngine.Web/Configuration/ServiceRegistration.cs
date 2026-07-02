@@ -148,6 +148,7 @@ public static class ServiceRegistration
         services.AddSingleton<DownloadJobService>();
         services.AddSingleton<SweepRunnerService>();
         services.AddScoped<Services.LedgerReconcileService>();
+        services.AddScoped<Services.RunNarrativeService>();
         services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
         services.AddSingleton<CTraderListenService>();
         services.AddSingleton<IRunDataCache, TradingEngine.Infrastructure.Caching.RunDataCache>();

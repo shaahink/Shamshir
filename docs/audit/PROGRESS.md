@@ -1,7 +1,8 @@
-# Progress Metrics — iter-tape-trust
+# Progress Metrics
 
 **Updated:** 2026-07-02
 **Branch:** `iter/tape-trust`
+**Master plan:** `docs/iterations/iter-merge-plan/PLAN.md` (consolidated from `iter/master-plan`)
 
 ## Gates (2026-07-02, final)
 
@@ -11,82 +12,56 @@
 | Unit | `dotnet test tests/TradingEngine.Tests.Unit` | 314 pass / 0 fail / 6 skip |
 | Integration | `dotnet test tests/TradingEngine.Tests.Integration` | 91 pass / 0 fail |
 | Golden/Determinism | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true&(FullyQualifiedName~Golden\|FullyQualifiedName~Characterization\|FullyQualifiedName~Acceptance\|FullyQualifiedName~Lifecycle\|FullyQualifiedName~Deterministic\|FullyQualifiedName~Equivalence\|FullyQualifiedName~Journal)"` | 63 pass / 0 fail |
-| cTrader E2E | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader=true&FullyQualifiedName!~NetMQBridge"` | PENDING (cBot rebuild needed) |
+| cTrader E2E | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader=true&FullyQualifiedName!~NetMQBridge"` | BLOCKED — cTrader CLI not installed on this machine. Owner to run. |
 
-## Speed baseline (informal, from review)
+## iter-tape-trust — completed (T0–T5)
+
+| Phase | Items | Status |
+|-------|-------|--------|
+| T0 | B1, B1b, B2, F8, B9 (tape truth) | ✅ |
+| T1 | B3, B4, B6, B7, B8, B10 (data pipeline) | ✅ |
+| T2 | Reconcile mapper, endpoint, RECONCILE-FINDINGS | ✅ |
+| T3 | F1 spread, F4 gap-through, B5 expiry, F2 intrabar equity | ✅ |
+| T4 | Compare-both dispatch | ✅ |
+| T5 | Sweep runner, content-address skip, journal thinning (SkipJournal) | ✅ |
+
+## iter-tape-trust — pending (needs cTrader)
+
+| Item | Blocked by |
+|------|-----------|
+| V2 owner's working set download | cTrader CLI |
+| V3 speed baseline | cTrader CLI |
+| V4 tape vs cTrader reconcile | cTrader CLI + real runs |
+| V5 engine-DB vs cTrader report | cTrader CLI + real runs |
+| cBot E2E tests | cTrader CLI (cBot rebuilt, `.algo` fresh) |
+
+## Merged plan — implemented (M1 + M3 partial)
+
+| Item | Status |
+|------|--------|
+| M1.3: DB reset API (`POST /api/system/reset` with runs/config/all) | ✅ Built, needs UI |
+| M1.2: System info endpoint (`GET /api/system/info`) | ✅ Built, needs UI |
+| M3.1: Narrative service (`GET /api/runs/{id}/narrative`) | ✅ Built, needs UI |
+| Merge plan doc (`docs/iterations/iter-merge-plan/PLAN.md`) | ✅ Written |
+
+## Merged plan — pending
+
+| Phase | Items | Depends on |
+|-------|-------|-----------|
+| M1.1 (nav consolidation) | Angular: 6 nav areas, Risk hub | Angular build env |
+| M1.2/M1.3 (settings + reset UI) | Angular: settings page with reset modals | M1.3 API done |
+| M2.1 (New-Backtest redesign) | Angular: two-pane layout, coverage check | Angular |
+| M2.2 (Monitor redesign) | Angular: 2x2 grid, narrative journal | M3.1 API done |
+| M2.3 (Report tabs) | Angular: tab layout, lazy-load | Angular |
+| M2.4 (Charts C1-C3) | Angular: entry/exit markers, SL step-lines, DD bars | Angular |
+| M3.2 (Monitor switch to narrative) | Server + Angular: replace RecentJournal ring | M3.1 API done |
+| M3.3 (Trade narrative columns) | Migration + executor stamping | M3.1 done |
+| M4 (Housekeeping + gaps) | Runs delete, coverage view, F5/F6/F7 | |
+| M5 (cTrader trust) | Owner verified — A1-A3 oracle set + drift alarm | cTrader CLI |
+
+## Speed baseline (informal)
 
 | Path | Bars | Wall-clock | Bars/sec |
 |------|------|-----------|----------|
 | Tape replay | 170 (EURUSD M1) | ~531 ms | ~320 |
 | cTrader CLI | 170 (EURUSD M1) | ~33 s | ~5 |
-
-## Bugs fixed (B1-B11)
-
-| ID | Fixed | Phase |
-|----|-------|-------|
-| B1 | ✅ | T0 |
-| B2 | ✅ | T0 |
-| B3 | ✅ | T1 |
-| B4 | ✅ | T1 |
-| B5 | ✅ | T3 |
-| B6 | ✅ | T1 |
-| B7 | ✅ | T1 |
-| B8 | ✅ | T1 |
-| B9 | ✅ | T0 |
-| B10 | ✅ | T1 |
-| B11 | ✅ (partial) | Housekeeping |
-
-## Fidelity gaps (F1-F8)
-
-| ID | Fixed | Phase | Notes |
-|----|-------|-------|-------|
-| F1 | ✅ | T3 | Spread on fills in both replay venues |
-| F2 | ✅ | T3 | Intrabar equity min tracking |
-| F3 | ⚠️ | Deferred | Measure first via V4 |
-| F4 | ✅ | T3 | Gap-through slippage |
-| F5 | ⚠️ | Open | Commission half-at-open; minor |
-| F6 | ⚠️ | Open | Limit+SL same fine bar; document |
-| F7 | ⚠️ | Open | Fine bars in decision-TF gaps |
-| F8 | ✅ | T0 | Exit resolution surfaced |
-
-## V-phases
-
-| Phase | Status |
-|-------|--------|
-| V2 (owner's working set) | Not done — needs cTrader |
-| V3 (speed baseline) | Informal measurement only |
-| V4 (tape vs cTrader reconcile) | Infrastructure ready — needs runs |
-| V5 (DB vs cTrader report) | Infrastructure ready — needs runs |
-
-## Files changed
-
-```
-src/TradingEngine.Domain/Interfaces/IReplayVenue.cs          (new)
-src/TradingEngine.Domain/EngineHostOptions.cs                 (+SkipJournal)
-src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs   (F1, F4, B6, B9, B10, IReplayVenue)
-src/TradingEngine.Infrastructure/Adapters/TapeReplayAdapter.cs       (F1, F2, F4, B5, B6, B9, B10, ExitResolution, IReplayVenue)
-src/TradingEngine.Infrastructure/MarketData/SqliteMarketDataStore.cs  (B8)
-src/TradingEngine.Infrastructure/MarketData/MarketDataIngester.cs     (B8)
-src/TradingEngine.Adapters.CTrader/TradingEngineCBot.cs              (B3, B7)
-src/TradingEngine.Web/Services/BacktestOrchestrator.cs               (B1, B1b, B2, T4, SkipJournal)
-src/TradingEngine.Web/Services/RunQueryService.cs                    (B2, ExitResolution)
-src/TradingEngine.Web/Services/LedgerReconcileService.cs    (new, T2)
-src/TradingEngine.Web/Services/SweepRunnerService.cs        (new, T5)
-src/TradingEngine.Web/Services/DownloadJobService.cs        (new, T1/B4)
-src/TradingEngine.Web/Api/DataManagerController.cs                   (B4)
-src/TradingEngine.Web/Api/BacktestAnalyticsController.cs             (T2)
-src/TradingEngine.Web/Api/SweepController.cs                (new, T5)
-src/TradingEngine.Web/Dtos/Runs/RunDetailResponse.cs                 (ExitResolution)
-src/TradingEngine.Web/Configuration/ServiceRegistration.cs           (DI)
-src/TradingEngine.Host/EngineServiceCollectionExtensions.cs          (SkipJournal)
-.gitignore                                                           (data dir)
-AGENTS.md                                                            (branch + reading list)
-docs/iterations/iter-tape-trust/PLAN.md                     (new)
-docs/iterations/iter-tape-trust/HANDOVER.md                  (new)
-docs/iterations/iter-marketdata-tape/HANDOVER-REVIEW.md      (new)
-docs/iterations/iter-marketdata-tape/FULL-HANDOVER.md                (§11/§13 pointers)
-docs/QUANT-ROADMAP.md                                         (new)
-docs/audit/RECONCILE-FINDINGS.md                                     (F1-F4 pre-registered)
-docs/audit/PROGRESS.md                                       (new, this file)
-DECISIONS.md                                                         (D85-D96)
-```
