@@ -295,9 +295,11 @@ const rowKey = (sid: string, sym: string, tf: string) => `${sid}|${sym}|${tf}`;
               <div class="rounded-md bg-red-900/20 p-3 text-sm text-red-400">{{ error() }}</div>
             }
 
-            <button (click)="start()" [disabled]="loading() || enabledCount() === 0"
+            <button (click)="start()"
+              [disabled]="loading() || enabledCount() === 0 || tapeM1Gap()"
+              [title]="tapeM1Gap() ? 'Tape venue requires M1 bars for dual-resolution exits. Download M1 data first.' : enabledCount() === 0 ? 'Enable at least one strategy row.' : ''"
               class="w-full rounded-md bg-emerald-600 px-4 py-3 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
-              {{ loading() ? 'Starting...' : 'Start Backtest (' + enabledCount() + ' rows)' }}
+              {{ loading() ? 'Starting...' : tapeM1Gap() ? 'No M1 data (tape)' : 'Start Backtest (' + enabledCount() + ' rows)' }}
             </button>
           </div>
         </div>
@@ -389,6 +391,7 @@ export class NewBacktestComponent implements OnInit {
   });
 
   missingData = computed(() => this.coverageRows().filter(r => !r.main));
+  tapeM1Gap = computed(() => this.venue === 'tape' && this.coverageRows().some(r => r.m1 === false));
 
   allProtectionsOn = computed(() =>
     this.governorEnabled && this.dailyDdEnabled && this.maxDdEnabled && this.forceCloseEnabled && this.regimeEnabled

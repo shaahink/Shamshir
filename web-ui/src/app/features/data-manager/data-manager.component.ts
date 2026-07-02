@@ -33,12 +33,7 @@ interface MarketDataItem {
           <div>
             <label class="block text-xs font-medium text-gray-400 mb-1">Symbol</label>
             <select [(ngModel)]="dlSymbol" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
-              <option value="EURUSD">EURUSD</option>
-              <option value="GBPUSD">GBPUSD</option>
-              <option value="USDJPY">USDJPY</option>
-              <option value="AUDUSD">AUDUSD</option>
-              <option value="USDCAD">USDCAD</option>
-              <option value="NZDUSD">NZDUSD</option>
+              @for (s of dlSymbols; track s) { <option [value]="s">{{ s }}</option> }
             </select>
           </div>
           <div>
@@ -68,7 +63,7 @@ interface MarketDataItem {
         </div>
         @if (dlResult()) {
           <div class="mt-2 rounded bg-emerald-900/20 p-2 text-xs text-emerald-400">
-            Downloaded {{ dlResult()?.barsRecorded }} bars for {{ dlResult()?.symbol }} ({{ dlResult()?.tfs?.join(', ') }}) — refresh to see updated inventory.
+            Download queued: {{ dlResult()?.symbol }} ({{ dlResult()?.tfs?.join(', ') }}). Refresh to see updated inventory.
           </div>
         }
         @if (dlError()) {
@@ -166,8 +161,11 @@ export class DataManagerComponent implements OnInit {
   rowKey = (i: MarketDataItem) => `${i.symbol}|${i.timeframe}|${i.source}`;
 
   dlSymbol = 'EURUSD';
+  dlSymbols = ['EURUSD','GBPUSD','USDJPY','GBPJPY','XAUUSD','AUDUSD','USDCHF','USDCAD','NZDUSD','EURGBP','EURJPY','XAGUSD'];
   allTfs = [
     { value: 'm1', label: 'M1' },
+    { value: 'm5', label: 'M5' },
+    { value: 'm15', label: 'M15' },
     { value: 'h1', label: 'H1' },
     { value: 'h4', label: 'H4' },
     { value: 'd1', label: 'D1' },
