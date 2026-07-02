@@ -35,24 +35,23 @@
 | V5 engine-DB vs cTrader report | cTrader CLI + real runs |
 | cBot E2E tests | cTrader CLI (cBot rebuilt, `.algo` fresh) |
 
-## Merged plan — implemented (M1 + M3 partial)
+## Merged plan — implemented
 
 | Item | Status |
 |------|--------|
-| M1.3: DB reset API (`POST /api/system/reset` with runs/config/all) | ✅ Built, needs UI |
-| M1.2: System info endpoint (`GET /api/system/info`) | ✅ Built, needs UI |
-| M3.1: Narrative service (`GET /api/runs/{id}/narrative`) | ✅ Built, needs UI |
-| Merge plan doc (`docs/iterations/iter-merge-plan/PLAN.md`) | ✅ Written |
+| M1.1: Nav consolidation (6 nav areas) | ✅ 2026-07-02 |
+| M1.2/M1.3: Settings page (system info + reset modals) | ✅ 2026-07-02 |
+| M2.1: New-Backtest redesign (two-pane, coverage check, toggle chips) | ✅ 2026-07-02 |
+| M2.2: Monitor redesign (2x2 grid, narrative API polling, terminal CTA) | ✅ 2026-07-02 |
+| M2.3: Report tabs (Overview/Trades/Journal/Costs&Risk, column chooser) | ✅ 2026-07-02 |
+| M1.3: DB reset API | ✅ Built |
+| M1.2: System info endpoint | ✅ Built |
+| M3.1: Narrative service | ✅ Built |
 
 ## Merged plan — pending
 
 | Phase | Items | Depends on |
 |-------|-------|-----------|
-| M1.1 (nav consolidation) | Angular: 6 nav areas, Risk hub | Angular build env |
-| M1.2/M1.3 (settings + reset UI) | Angular: settings page with reset modals | M1.3 API done |
-| M2.1 (New-Backtest redesign) | Angular: two-pane layout, coverage check | Angular |
-| M2.2 (Monitor redesign) | Angular: 2x2 grid, narrative journal | M3.1 API done |
-| M2.3 (Report tabs) | Angular: tab layout, lazy-load | Angular |
 | M2.4 (Charts C1-C3) | Angular: entry/exit markers, SL step-lines, DD bars | Angular |
 | M3.2 (Monitor switch to narrative) | Server + Angular: replace RecentJournal ring | M3.1 API done |
 | M3.3 (Trade narrative columns) | Migration + executor stamping | M3.1 done |

@@ -14,6 +14,7 @@ import { TradeChartCardComponent } from '../../../shared/trade-chart-card.compon
 import { downloadBlob } from '../../../shared/download.helper';
 import { formatSymbols } from '../../../shared/symbols.helper';
 import { TRADE_COLUMNS } from '../../../shared/trade-columns';
+import { DdBarChartComponent } from '../../../shared/dd-bar-chart.component';
 import { exportReport as doExportReport, type ExportStats } from '../report-export.helper';
 import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance, AddOnPack, BarNarrative } from '../../../models/api.types';
 
@@ -34,6 +35,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
     ScatterChartComponent,
     BadgeComponent,
     TradeChartCardComponent,
+    DdBarChartComponent,
   ],
   template: `
     @if (store.isLoading()) {
@@ -162,15 +164,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
             }
 
             @if (dailyPnl().length > 0) {
-              <div>
-                <h2 class="mb-3 text-sm font-medium text-gray-400">DD Timeline</h2>
-                <div class="flex h-16 items-end gap-0.5">
-                  @for (dp of dailyPnl(); track dp.date) {
-                    <div class="flex-1 rounded-t" [class.bg-emerald-600]="dp.pnl >= 0" [class.bg-red-600]="dp.pnl < 0"
-                      [style.height]="barHeight(dp.pnl) + '%'" [title]="dp.date + ': ' + dp.pnl.toFixed(2)"></div>
-                  }
-                </div>
-              </div>
+              <app-dd-bar-chart [data]="dailyPnl()" [limitPct]="0.05" />
             }
           }
 
@@ -749,12 +743,6 @@ export class RunReportComponent implements OnInit {
         .map(([k, val]) => k + '=' + val)
         .join(' ')
     );
-  }
-
-  barHeight(pnl: number): number {
-    const arr = this.dailyPnl();
-    const m = arr.length > 0 ? Math.max(...arr.map((d) => Math.abs(d.pnl ?? 0)), 1) : 1;
-    return Math.min(100, (Math.abs(pnl ?? 0) / m) * 100);
   }
 
   symbolsDisplay = () => formatSymbols(this.store.selectedRun() ?? { symbols: '', symbol: '' });

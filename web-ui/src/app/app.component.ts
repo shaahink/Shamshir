@@ -25,43 +25,22 @@ import { AppStatusComponent } from './core/status/app-status.component';
               >Runs</a
             >
             <a
-              routerLink="/trades"
-              routerLinkActive="bg-gray-800 text-white"
-              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
-            >
-              Trades
-            </a>
-            <a
               routerLink="/strategies"
               routerLinkActive="bg-gray-800 text-white"
               class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
+              >Strategies</a
             >
-              Strategies
-            </a>
             <a
-              routerLink="/addon-packs"
-              routerLinkActive="bg-gray-800 text-white"
-              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
-            >
-              Packs
-            </a>
-            <a
-              routerLink="/risk-profiles"
+              routerLink="/risk"
               routerLinkActive="bg-gray-800 text-white"
               class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
               >Risk</a
             >
             <a
-              routerLink="/prop-firm-rules"
+              routerLink="/data-manager"
               routerLinkActive="bg-gray-800 text-white"
               class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
-              >FTMO</a
-            >
-            <a
-              routerLink="/governor-options"
-              routerLinkActive="bg-gray-800 text-white"
-              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
-              >Governor</a
+              >Data</a
             >
             <a
               routerLink="/settings"
@@ -69,10 +48,8 @@ import { AppStatusComponent } from './core/status/app-status.component';
               class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
               >Settings</a
             >
-            <a routerLink="/ctrader-sessions" routerLinkActive="bg-gray-800 text-white" class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white">cTrader</a>
-            <a routerLink="/data-manager" routerLinkActive="bg-gray-800 text-white" class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white">Data</a>
             <a
-              href="/runs/new"
+              routerLink="/runs/new"
               class="ml-4 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-500"
             >
               + New Backtest

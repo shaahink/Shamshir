@@ -101,11 +101,13 @@ export class TradeChartCardComponent implements OnInit {
           open: b.open, high: b.high, low: b.low, close: b.close,
         })),
       );
-      const mks = chart.markers.map((m: any) => markerFor(m.kind, m.price));
-      // Add exit reason as a visible marker on the chart
+      const mks = chart.markers.map((m: any) => ({
+        ...markerFor(m.kind, m.price),
+        time: m.time ? m.time * 1000 : undefined,
+      }));
       const t = this.trade();
       if (t?.exitReason) {
-        mks.push({ price: t.exitPrice, label: `Exit: ${t.exitReason}`, color: '#fbbf24' });
+        mks.push({ price: t.exitPrice, label: `Exit: ${t.exitReason}`, color: '#fbbf24', time: this.tradeCloseMs() ?? undefined });
       }
       this.markers.set(mks);
     } catch {

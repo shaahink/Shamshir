@@ -14,6 +14,7 @@ export interface PriceMarker {
   price: number;
   label: string;
   color: string;
+  time?: number;
 }
 
 @Component({
@@ -76,16 +77,45 @@ export class CandleChartComponent extends BaseChartComponent {
     this.markerLines = [];
 
     const legends: LegendEntry[] = [];
-    // P3.4: detect same-price markers and nudge exit marker slightly so it's visible.
-    const nudged = this.nudgeSamePriceMarkers(this.markers());
+    const markers = this.markers();
 
-    for (const m of nudged) {
+    // C1: split markers into time-anchored (entry/exit arrows on candle) and
+    // horizontal lines (SL/TP levels spanning the full chart).
+    const pointMarkers: PriceMarker[] = [];
+    const lineMarkers: PriceMarker[] = [];
+    for (const m of markers) {
+      if (m.time && (m.label === 'Entry' || m.label === 'Exit')) {
+        pointMarkers.push(m);
+      } else {
+        lineMarkers.push(m);
+      }
+    }
+
+    // Render time-anchored point markers as candlestick series markers
+    if (pointMarkers.length > 0) {
+      const candleMarks = pointMarkers.map((m) => ({
+        time: toUtcTimestamp(m.time!),
+        position: m.label === 'Entry'
+          ? (this.tradeDirection() === 'Short' ? 'aboveBar' : 'belowBar')
+          : (this.tradeDirection() === 'Short' ? 'belowBar' : 'aboveBar'),
+        color: m.color,
+        shape: m.label === 'Entry' ? 'arrowUp' : 'arrowDown',
+        text: m.label,
+        size: 3,
+      }));
+      this.candleSeries.setMarkers(candleMarks);
+    } else {
+      this.candleSeries.setMarkers([]);
+    }
+
+    // Render horizontal price lines for SL/TP
+    const t0 = candleData[0]?.time ?? toUtcTimestamp(Date.now());
+    const t1 = candleData[candleData.length - 1]?.time ?? t0;
+    for (const m of lineMarkers) {
       const ls = this.chart!.addSeries(LineSeries, {
         color: m.color, lineWidth: 1, lineStyle: 2,
         priceLineVisible: false, lastValueVisible: false,
       });
-      const t0 = candleData[0]?.time ?? toUtcTimestamp(Date.now());
-      const t1 = candleData[candleData.length - 1]?.time ?? t0;
       ls.setData([{ time: t0, value: m.price }, { time: t1, value: m.price }]);
       this.markerLines.push(ls);
       legends.push({ name: m.label, color: m.color });
@@ -94,50 +124,29 @@ export class CandleChartComponent extends BaseChartComponent {
     this.legendEntries.set(legends);
     this.fitContent();
 
-    // P5.x: draw pre/post trade boundaries
     const openT = this.tradeOpenTime();
     const closeT = this.tradeCloseTime();
     if (openT != null && closeT != null && this.chart) {
       const shadeColor = this.tradeDirection() === 'Short'
         ? 'rgba(239, 68, 68, 0.06)'
         : 'rgba(16, 185, 129, 0.06)';
-      // Draw vertical boundary lines via LineSeries
-      const t0 = toUtcTimestamp(openT);
-      const t1 = toUtcTimestamp(closeT);
-      const prices = this.markers().map(m => m.price);
+      const openTime = toUtcTimestamp(openT);
+      const closeTime = toUtcTimestamp(closeT);
+      const prices = markers.map(m => m.price);
       const minP = prices.length > 0 ? Math.min(...prices) : 0;
       const maxP = prices.length > 0 ? Math.max(...prices) : 1;
       const openLine = this.chart.addSeries(LineSeries, {
         color: '#60a5fa', lineWidth: 1, lineStyle: 2,
         priceLineVisible: false, lastValueVisible: false,
       });
-      openLine.setData([{ time: t0, value: minP * 0.999 }, { time: t0, value: maxP * 1.001 }]);
+      openLine.setData([{ time: openTime, value: minP * 0.999 }, { time: openTime, value: maxP * 1.001 }]);
       this.markerLines.push(openLine);
       const closeLine = this.chart.addSeries(LineSeries, {
         color: '#fb923c', lineWidth: 1, lineStyle: 2,
         priceLineVisible: false, lastValueVisible: false,
       });
-      closeLine.setData([{ time: t1, value: minP * 0.999 }, { time: t1, value: maxP * 1.001 }]);
+      closeLine.setData([{ time: closeTime, value: minP * 0.999 }, { time: closeTime, value: maxP * 1.001 }]);
       this.markerLines.push(closeLine);
     }
-  }
-
-  // P3.4: when Entry and Exit markers have the same timestamp/price (single-bar trades),
-  // nudge the exit marker by a tiny amount so both are visible on the chart.
-  private nudgeSamePriceMarkers(markers: PriceMarker[]): PriceMarker[] {
-    const byPrice = new Map<number, PriceMarker[]>();
-    for (const m of markers) {
-      const key = Math.round(m.price * 100_000) / 100_000;
-      const arr = byPrice.get(key) ?? [];
-      arr.push(m);
-      byPrice.set(key, arr);
-    }
-    const result: PriceMarker[] = [];
-    for (const arr of byPrice.values()) {
-      for (let i = 0; i < arr.length; i++) {
-        result.push({ ...arr[i], price: arr[i].price + i * 0.00001 });
-      }
-    }
-    return result;
   }
 }
