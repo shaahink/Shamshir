@@ -16,7 +16,7 @@ namespace TradingEngine.Infrastructure.Adapters;
 /// long-shadow / SL-before-TP fidelity that a single decision-bar OHLC can't express. Falls back to
 /// decision-bar-resolution exits when no finer data is stored. Kernel/decision logic is untouched.
 /// </summary>
-public sealed class TapeReplayAdapter : IBrokerAdapter, IAsyncDisposable
+public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisposable
 {
     private readonly IMarketDataStore _store;
     private readonly Symbol _symbol;
@@ -75,6 +75,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IAsyncDisposable
     public int BarCount { get; private set; }
     public DateTime BrokerTimeUtc { get; private set; }
 
+    public string? ExitResolution { get; private set; }
+
     // Venue owns exits (same model as cTrader / BacktestReplayAdapter): the engine never runs bar-by-bar
     // exit detection for this venue; the venue reports reasoned closes.
     public ExitMode ExitMode => ExitMode.VenueManaged;
@@ -120,9 +122,18 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IAsyncDisposable
             _exitBars = await _store.ReadBarsAsync(_symbol, _exitTf, _from, _to, ct);
             if (_exitBars.Count == 0)
             {
-                _logger.LogInformation("TapeReplay: no {ExitTf} bars stored for {Symbol} — falling back to {DecisionTf}-resolution exits",
+                _logger.LogWarning("TapeReplay: no {ExitTf} bars stored for {Symbol} — falling back to {DecisionTf}-resolution exits",
                     _exitTf, _symbol, _decisionTf);
+                ExitResolution = $"{_decisionTf} (fallback — no {_exitTf} bars)";
             }
+            else
+            {
+                ExitResolution = _exitTf == Timeframe.M1 ? "M1" : _exitTf.ToString();
+            }
+        }
+        else
+        {
+            ExitResolution = _decisionTf.ToString();
         }
 
         await _accountChannel.Writer.WriteAsync(
@@ -232,9 +243,15 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IAsyncDisposable
         return Task.FromResult(orderId);
     }
 
+    private void EmitExecutionEvent(ExecutionEvent evt)
+    {
+        if (!_executionChannel.Writer.TryWrite(evt))
+            _logger.LogError("TapeReplay: execution channel full — event dropped; orderId={OrderId}", evt.OrderId);
+    }
+
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
     {
-        _executionChannel.Writer.TryWrite(
+        EmitExecutionEvent(
             new ExecutionEvent(orderId, OrderState.Filled, new Price(fillPrice), lots, null, BrokerTimeUtc) { Symbol = _symbol });
         _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc, sl, tp);
     }
@@ -264,7 +281,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IAsyncDisposable
             if (limit.BarsRemaining <= 0)
             {
                 _pendingLimits.Remove(orderId);
-                _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                EmitExecutionEvent(new ExecutionEvent(
                     orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
             }
         }
@@ -287,7 +304,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IAsyncDisposable
             _balance += costs.NetProfit;
             _openTrades.Remove(orderId);
 
-            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+            EmitExecutionEvent(new ExecutionEvent(
                 orderId, OrderState.Filled, new Price(fillPrice), trade.Lots, null, BrokerTimeUtc)
             {
                 GrossProfit = costs.GrossProfit,
@@ -324,7 +341,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IAsyncDisposable
             _balance += costs.NetProfit;
             _openTrades.Remove(positionId);
 
-            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+            EmitExecutionEvent(new ExecutionEvent(
                 positionId, OrderState.Filled, fillPrice, trade.Lots, null, BrokerTimeUtc)
             {
                 GrossProfit = costs.GrossProfit,
@@ -337,7 +354,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IAsyncDisposable
         }
         else
         {
-            _executionChannel.Writer.TryWrite(
+            EmitExecutionEvent(
                 new ExecutionEvent(positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc) { Symbol = _symbol });
         }
         return Task.CompletedTask;
@@ -352,7 +369,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IAsyncDisposable
             var costs = ComputeCosts(partialTrade, fillPrice.Value);
             _balance += costs.NetProfit;
 
-            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+            EmitExecutionEvent(new ExecutionEvent(
                 positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc)
             {
                 GrossProfit = costs.GrossProfit,
@@ -369,7 +386,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IAsyncDisposable
         }
         else
         {
-            _executionChannel.Writer.TryWrite(
+            EmitExecutionEvent(
                 new ExecutionEvent(positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc) { Symbol = _symbol });
         }
         return Task.CompletedTask;

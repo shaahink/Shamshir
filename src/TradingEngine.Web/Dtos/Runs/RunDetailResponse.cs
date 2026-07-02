@@ -37,4 +37,5 @@ public sealed record RunDetailResponse
     public long WallElapsedMs { get; init; }
     public double BarsPerSec { get; init; }
     public int TotalBars { get; init; }
+    public string? ExitResolution { get; init; }
 }

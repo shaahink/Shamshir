@@ -1,11 +1,12 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Domain;
 using TradingEngine.Engine;
 using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Infrastructure.Adapters;
 
-public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
+public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisposable
 {
     private readonly IBarRepository _barRepo;
     private readonly Symbol _symbol;
@@ -194,9 +195,15 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         return Task.FromResult(orderId);
     }
 
+    private void EmitExecutionEvent(ExecutionEvent evt)
+    {
+        if (!_executionChannel.Writer.TryWrite(evt))
+            _logger.LogError("BacktestReplay: execution channel full — event dropped; orderId={OrderId}", evt.OrderId);
+    }
+
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
     {
-        _executionChannel.Writer.TryWrite(
+        EmitExecutionEvent(
             new ExecutionEvent(orderId, OrderState.Filled, new Price(fillPrice), lots, null, BrokerTimeUtc) { Symbol = _symbol });
         _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc, sl, tp);
     }
@@ -228,7 +235,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             if (limit.BarsRemaining <= 0)
             {
                 _pendingLimits.Remove(orderId);
-                _executionChannel.Writer.TryWrite(new ExecutionEvent(
+                EmitExecutionEvent(new ExecutionEvent(
                     orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
                 _logger.LogDebug("BacktestReplay: limit expired {Id} at {Price:F5}", orderId, limit.LimitPrice);
             }
@@ -288,7 +295,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             _balance += costs.NetProfit;
             _openTrades.Remove(orderId);
 
-            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+            EmitExecutionEvent(new ExecutionEvent(
                 orderId, OrderState.Filled, new Price(fillPrice), trade.Lots, null, BrokerTimeUtc)
             {
                 GrossProfit = costs.GrossProfit,
@@ -355,7 +362,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             // H14 (iter-35 B2): report the closed lot size (was 0). FilledLots == position lots keeps
             // this a FULL close in the lifecycle FSM (the partial branch needs FilledLots < lots), while
             // the order ledger / reconciliation now see the real volume instead of zero.
-            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+            EmitExecutionEvent(new ExecutionEvent(
                 positionId, OrderState.Filled, fillPrice, trade.Lots, null, BrokerTimeUtc)
             {
                 GrossProfit = costs.GrossProfit,
@@ -374,7 +381,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         {
             // No tracked trade (unknown / already closed) — surface a cost-free fill so the lifecycle
             // FSM can still resolve.
-            _executionChannel.Writer.TryWrite(
+            EmitExecutionEvent(
                 new ExecutionEvent(positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc) { Symbol = _symbol });
         }
 
@@ -412,7 +419,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             var costs = ComputeCosts(partialTrade, fillPrice.Value);
             _balance += costs.NetProfit;
 
-            _executionChannel.Writer.TryWrite(new ExecutionEvent(
+            EmitExecutionEvent(new ExecutionEvent(
                 positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc)
             {
                 GrossProfit = costs.GrossProfit,
@@ -434,7 +441,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         }
         else
         {
-            _executionChannel.Writer.TryWrite(
+            EmitExecutionEvent(
                 new ExecutionEvent(positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc) { Symbol = _symbol });
         }
 

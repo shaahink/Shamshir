@@ -88,6 +88,17 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public bool RegimeEnabled = true;
         public double CommissionPerMillion;
         public double SpreadPips;
+
+        // iter-tape-trust T0/B2: memory-served run detail must carry these.
+        public decimal InitialBalance;
+        public DateTime BacktestFrom;
+        public DateTime BacktestTo;
+        public string? RiskProfileId;
+        public string? EffectiveConfigJson;
+        public string? RunPlanJson;
+
+        // iter-tape-trust T0/F8: which exit resolution the tape venue actually used.
+        public string? ExitResolution;
     }
 
     public BacktestOrchestrator(
@@ -269,6 +280,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             RegimeEnabled = cfg.CustomParams.GetValueOrDefault("DisableRegime") != "true",
             CommissionPerMillion = (double)cfg.CommissionPerMillion,
             SpreadPips = (double)cfg.SpreadPips,
+            InitialBalance = cfg.Balance,
+            BacktestFrom = cfg.Start,
+            BacktestTo = cfg.End,
+            RiskProfileId = cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
         };
         _runs[runId] = state;
         state.CancellationSource = new CancellationTokenSource();
@@ -372,6 +387,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         {
             effectiveConfigJson = await ResolveEffectiveConfigJsonAsync(cfg);
             await WriteStartRecordAsync(runId, cfg, startedAt, effectiveConfigJson);
+
+            state.EffectiveConfigJson = effectiveConfigJson;
+            state.RunPlanJson = cfg.CustomParams.GetValueOrDefault("RunRows") ?? "[]";
 
             state.Status = "running";
             EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Starting backtest {runId}...");
@@ -860,8 +878,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var preQueryBars = 0;
         foreach (var (sym, tf, _) in passes)
         {
-            var bars = await barRepo.GetAsync(sym, tf, cfg.Start, cfg.End, userCt);
-            preQueryBars += bars.Count;
+            if (useTape && marketDataStore is not null)
+            {
+                var tapeBars = await marketDataStore.ReadBarsAsync(sym, tf, cfg.Start, cfg.End, userCt);
+                preQueryBars += tapeBars.Count;
+            }
+            else
+            {
+                var bars = await barRepo.GetAsync(sym, tf, cfg.Start, cfg.End, userCt);
+                preQueryBars += bars.Count;
+            }
         }
         if (preQueryBars > 0)
             state.BarsTotal = preQueryBars;
@@ -926,9 +952,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
             await adapter.BarStream.Completion;
 
-            var barCount = (adapter as BacktestReplayAdapter)?.BarCount ?? 0;
+            var barCount = (adapter as IReplayVenue)?.BarCount ?? 0;
             totalBars += barCount;
             if (barCount > 0) anyBars = true;
+
+            if (adapter is TapeReplayAdapter tape && tape.ExitResolution is not null)
+                state.ExitResolution = tape.ExitResolution;
             // BarsTotal is set by pre-query (line 832) — do NOT overwrite mid-loop
             // or the display shows nonsense like "99.9% (816 / 400)" on multi-pass runs.
 

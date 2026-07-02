@@ -167,9 +167,9 @@ public sealed class RunQueryService : IRunQueryService
             Periods = state.Period,
             StartedAtUtc = state.StartedAt,
             CompletedAtUtc = null,
-            BacktestFrom = default,
-            BacktestTo = default,
-            InitialBalance = 0,
+            BacktestFrom = state.BacktestFrom == default ? state.StartedAt : state.BacktestFrom,
+            BacktestTo = state.BacktestTo,
+            InitialBalance = state.InitialBalance,
             NetProfit = netProfit,
             GrossPnL = grossPnL,
             CommissionTotal = commissionTotal,
@@ -183,6 +183,15 @@ public sealed class RunQueryService : IRunQueryService
             WallElapsedMs = wallElapsedMs,
             BarsPerSec = barsPerSec,
             TotalBars = state.BarsTotal,
+            Venue = state.Venue,
+            RiskProfileId = state.RiskProfileId,
+            GovernorEnabled = state.GovernorEnabled,
+            RegimeEnabled = state.RegimeEnabled,
+            CommissionPerMillion = state.CommissionPerMillion,
+            SpreadPips = state.SpreadPips,
+            ExitResolution = state.ExitResolution,
+            EffectiveConfigJson = state.EffectiveConfigJson,
+            RunPlanJson = state.RunPlanJson ?? "[]",
         };
     }
 
