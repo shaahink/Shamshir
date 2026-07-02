@@ -221,21 +221,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
     } catch { /* */ }
 
     // Narrative polling every 2s
-    this.narrTimer = setInterval(async () => {
-      try {
-        const resp = await firstValueFrom(this.http.get<NarrativeResponse>(
-          `/api/runs/${rid}/narrative?afterSeq=${this.lastNarrSeq}&limit=200`
-        ));
-        if (resp?.events?.length) {
-          this.narrative.update(existing => {
-            const existingSeqs = new Set(existing.map(e => e.seq));
-            const fresh = resp.events.filter(e => !existingSeqs.has(e.seq));
-            return [...existing, ...fresh].slice(-300);
-          });
-          this.lastNarrSeq = resp.latestSeq;
-        }
-      } catch { /* */ }
-    }, 2000);
+    this.narrTimer = setInterval(() => void this.pollNarrative(rid), 2000);
 
     this.hub.progress$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((e: RunProgressEnvelope) => {
       this.status.set('running');
@@ -267,10 +253,29 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       }
     });
 
-    this.hub.completed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((e: RunCompletedEnvelope) => {
+    this.hub.completed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(async (e: RunCompletedEnvelope) => {
       this.status.set(e.status || 'completed');
       this.breachBanner.set(e.error || null);
+      // Run is terminal: catch up on any trailing events once, then stop polling a finished run.
+      await this.pollNarrative(this.runId());
+      if (this.narrTimer) { clearInterval(this.narrTimer); this.narrTimer = undefined; }
     });
+  }
+
+  private async pollNarrative(rid: string): Promise<void> {
+    try {
+      const resp = await firstValueFrom(this.http.get<NarrativeResponse>(
+        `/api/runs/${rid}/narrative?afterSeq=${this.lastNarrSeq}&limit=200`
+      ));
+      if (resp?.events?.length) {
+        this.narrative.update(existing => {
+          const existingSeqs = new Set(existing.map(e => e.seq));
+          const fresh = resp.events.filter(e => !existingSeqs.has(e.seq));
+          return [...existing, ...fresh].slice(-300);
+        });
+        this.lastNarrSeq = resp.latestSeq;
+      }
+    } catch { /* */ }
   }
 
   async cancel(): Promise<void> {

@@ -1,6 +1,6 @@
 import { DatePipe, NgClass } from '@angular/common';
 import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy, type WritableSignal } from '@angular/core';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -39,7 +39,7 @@ const rowKey = (sid: string, sym: string, tf: string) => `${sid}|${sym}|${tf}`;
 @Component({
   selector: 'app-new-backtest',
   standalone: true,
-  imports: [FormsModule, DatePipe, NgClass],
+  imports: [FormsModule, DatePipe, NgClass, RouterLink],
   template: `
     <div class="space-y-4">
       <h1 class="text-xl font-semibold">New Backtest</h1>

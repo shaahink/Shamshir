@@ -205,7 +205,7 @@ type Tab = 'overview' | 'trades' | 'journal' | 'risk';
                     <div class="max-h-72 overflow-y-auto rounded-lg border border-gray-800">
                       <table class="w-full text-xs">
                         <thead class="text-gray-500"><tr class="border-b border-gray-800"><th class="px-3 py-1.5 text-left">Time</th><th class="px-3 py-1.5 text-left">Strategy</th><th class="px-3 py-1.5 text-left">Signal</th><th class="px-3 py-1.5 text-left">Reason</th></tr></thead>
-                        <tbody>@for (v of perBarVerdicts(); track v.strategyId) { <tr class="border-b border-gray-800 last:border-0"><td class="px-3 py-1 text-gray-500">{{ v.simTimeUtc | date: 'MM-dd HH:mm' }}</td><td class="px-3 py-1 text-gray-300">{{ v.strategyId }}</td><td class="px-3 py-1" [class.text-emerald-400]="v.signalFired" [class.text-gray-500]="!v.signalFired">{{ v.signalFired ? v.direction || 'FIRED' : '—' }}</td><td class="px-3 py-1 text-gray-500">{{ v.reason }}</td></tr> }</tbody>
+                        <tbody>@for (v of perBarVerdicts(); track $index) { <tr class="border-b border-gray-800 last:border-0"><td class="px-3 py-1 text-gray-500">{{ v.simTimeUtc | date: 'MM-dd HH:mm' }}</td><td class="px-3 py-1 text-gray-300">{{ v.strategyId }}</td><td class="px-3 py-1" [class.text-emerald-400]="v.signalFired" [class.text-gray-500]="!v.signalFired">{{ v.signalFired ? v.direction || 'FIRED' : '—' }}</td><td class="px-3 py-1 text-gray-500">{{ v.reason }}</td></tr> }</tbody>
                       </table>
                     </div>
                   </div>
