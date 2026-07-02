@@ -37,12 +37,7 @@ public sealed class RunProgressContractTests
         DistanceToDailyLimit: 0.038m,
         GovernorState: "Normal",
         GovernorReason: "ok",
-        Counters: new RunCounters(10, 8, 8, 6, 2, 0),
-        RecentJournal: new[]
-        {
-            new DecisionRecordView(1, new DateTime(2026, 6, 15, 9, 0, 0, DateTimeKind.Utc),
-                "EURUSD", "trend-rider", "SIGNAL", null, null, null, "long signal", "{}")
-        });
+        Counters: new RunCounters(10, 8, 8, 6, 2, 0));
 
     [Fact]
     public void Envelope_SerializesWithEveryDocumentedField_InCamelCase()
@@ -58,7 +53,7 @@ public sealed class RunProgressContractTests
             "equity", "balance", "openPositions",
             "dailyDdPct", "maxDdPct", "distanceToDailyLimit",
             "governorState", "governorReason",
-            "counters", "recentJournal",
+            "counters",
             // iter-strategy-system P3: multi-pass context.
             "currentPass", "passIndex", "passTotal"
         ];
@@ -78,19 +73,5 @@ public sealed class RunProgressContractTests
 
         counters["signals"]!.GetValue<int>().Should().Be(10);
         counters["breaches"]!.GetValue<int>().Should().Be(0);
-    }
-
-    [Fact]
-    public void RecentJournal_IsAnArrayOfDecisionRecordShapedItems()
-    {
-        var json = JsonSerializer.Serialize(Sample(), HubOptions);
-        var journal = JsonNode.Parse(json)!["recentJournal"]!.AsArray();
-
-        journal.Should().HaveCount(1);
-        var line = journal[0]!.AsObject();
-        line.ContainsKey("seq").Should().BeTrue();
-        line.ContainsKey("simTimeUtc").Should().BeTrue();
-        line.ContainsKey("event").Should().BeTrue();
-        line["event"]!.GetValue<string>().Should().Be("SIGNAL");
     }
 }

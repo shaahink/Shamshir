@@ -63,8 +63,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public int Closes;
         public int Rejections;
         public int Breaches;
-        public readonly Queue<DecisionRecordView> RecentJournal = new();
-        public long Seq;
 
         // iter-24/21 — engine equity snapshot fields, populated from AccountSnapshotStore
         // after the run completes for the final RunProgress envelope.
@@ -131,8 +129,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         DateTime? simTime = DateTime.TryParse(state.SimTime, out var t) ? t : null;
         var elapsedMs = (long)(DateTime.UtcNow - state.StartedAt).TotalMilliseconds;
         var barsPerSec = elapsedMs > 0 ? state.BarCount / (elapsedMs / 1000.0) : 0;
-        DecisionRecordView[] journal;
-        lock (state.RecentJournal) { journal = state.RecentJournal.ToArray(); }
 
         var barsTotal = state.BarsTotal > 0 ? state.BarsTotal : 0;
         double percent;
@@ -163,7 +159,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             GovernorState: state.GovernorState, GovernorReason: state.GovernorReason,
             Counters: new RunCounters(state.Signals, state.Orders, state.Fills,
                 state.Closes, state.Rejections, state.Breaches),
-            RecentJournal: journal,
             CurrentPass: state.CurrentPass, PassIndex: state.PassIndex, PassTotal: state.PassTotal);
     }
 
@@ -184,30 +179,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             case "CLOSE": Interlocked.Increment(ref state.Closes); break;
             case "REJECTED": case "OrderRejected": Interlocked.Increment(ref state.Rejections); break;
             case "BREACH": Interlocked.Increment(ref state.Breaches); break;
-        }
-
-        if (evt.EventType is "SIGNAL" or "ORDER" or "EXEC" or "CLOSE" or "REJECTED" or "BREACH")
-        {
-            lock (state.RecentJournal)
-            {
-                var indicatorDict = evt.Indicators is { Count: > 0 }
-                    ? evt.Indicators.ToDictionary(kv => kv.Key, kv => (object)kv.Value)
-                    : null;
-                var detail = System.Text.Json.JsonSerializer.Serialize(new
-                {
-                    equity = state.Equity,
-                    balance = state.Balance,
-                    dailyDdPct = state.DailyDdPct,
-                    barCount = state.BarCount,
-                    indicators = indicatorDict,
-                });
-                var simTime = DateTime.TryParse(state.SimTime, out var parsed) ? parsed : DateTime.UtcNow;
-                state.RecentJournal.Enqueue(new DecisionRecordView(
-                    ++state.Seq, simTime, null, null, evt.EventType,
-                    null, null, null, evt.Message, detail));
-                while (state.RecentJournal.Count > 30)
-                    state.RecentJournal.Dequeue();
-            }
         }
     }
 
