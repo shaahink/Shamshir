@@ -146,6 +146,7 @@ public static class ServiceRegistration
         services.AddSingleton<BacktestOrchestrator>();
         services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
         services.AddSingleton<DownloadJobService>();
+        services.AddScoped<Services.LedgerReconcileService>();
         services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
         services.AddSingleton<CTraderListenService>();
         services.AddSingleton<IRunDataCache, TradingEngine.Infrastructure.Caching.RunDataCache>();

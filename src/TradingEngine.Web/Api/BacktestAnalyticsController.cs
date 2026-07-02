@@ -1,6 +1,8 @@
 namespace TradingEngine.Web.Api;
 
+using TradingEngine.Infrastructure.Reconcile;
 using TradingEngine.Risk.Compliance;
+using TradingEngine.Web.Services;
 
 /// <summary>
 /// Legacy analytics controller. The SPA now uses <c>/api/runs/{id}/...</c> endpoints exclusively
@@ -17,6 +19,7 @@ public class BacktestAnalyticsController : ControllerBase
     private readonly IStrategyConfigStore _strategyConfigStore;
     private readonly IRiskProfileStore _riskProfileStore;
     private readonly IPropFirmRuleSetStore _propFirmStore;
+    private readonly LedgerReconcileService? _reconcile;
 
     public BacktestAnalyticsController(
         TradingDbContext db,
@@ -24,7 +27,8 @@ public class BacktestAnalyticsController : ControllerBase
         IBacktestRunRepository runRepo,
         IStrategyConfigStore strategyConfigStore,
         IRiskProfileStore riskProfileStore,
-        IPropFirmRuleSetStore propFirmStore)
+        IPropFirmRuleSetStore propFirmStore,
+        LedgerReconcileService? reconcile = null)
     {
         _db = db;
         _estimator = estimator;
@@ -32,6 +36,7 @@ public class BacktestAnalyticsController : ControllerBase
         _strategyConfigStore = strategyConfigStore;
         _riskProfileStore = riskProfileStore;
         _propFirmStore = propFirmStore;
+        _reconcile = reconcile;
     }
 
     // iter-38 W-B4: resolve the prop-firm ruleset the engine actually runs under, mirroring
@@ -116,6 +121,33 @@ public class BacktestAnalyticsController : ControllerBase
             results.Add(new { run.RunId, run.NetProfit, run.MaxDrawdownPct, run.TotalTrades, run.WinningTrades, run.WinRatePct });
         }
         return Ok(results);
+    }
+
+    [HttpGet("reconcile")]
+    public async Task<IActionResult> Reconcile([FromQuery] string left, [FromQuery] string right)
+    {
+        if (_reconcile is null)
+            return Problem("Reconcile service not available.");
+
+        var engine = await _reconcile.BuildEngineLedgerAsync(left, HttpContext.RequestAborted);
+        var venue = await _reconcile.BuildEngineLedgerAsync(right, HttpContext.RequestAborted);
+        var report = LedgerReconciler.Compare(engine, venue);
+
+        return Ok(new
+        {
+            match = report.IsMatch,
+            left = new { source = engine.Source, engine.NetProfit, engine.GrossProfit, engine.Commission, engine.Swap, engine.MaxDrawdownPct, engine.TotalTrades },
+            right = new { source = venue.Source, venue.NetProfit, venue.GrossProfit, venue.Commission, venue.Swap, venue.MaxDrawdownPct, venue.TotalTrades },
+            divergences = report.Divergences.Select(d => new
+            {
+                d.Field,
+                category = d.Category.ToString(),
+                engineValue = d.EngineValue,
+                venueValue = d.VenueValue,
+                absDiff = d.AbsDiff,
+            }),
+            text = report.ToText(),
+        });
     }
 
     [HttpGet("{runId}/daily-pnl")]
