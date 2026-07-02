@@ -14,6 +14,19 @@ as bugs. `RawMoney` divergence from any of these is EXPECTED — the fix is in i
 | **F2** | **Intrabar floating equity not snapshotted.** `EmitAccountUpdate` fires per decision bar only, not per exit-TF bar. Intrabar equity troughs are invisible. | Tape MaxDD understates cTrader's floating DD — the "DB MaxDD=0 vs venue 4.6%" pain survives on the fast path. |
 | **F3** | **Trailing/breakeven cadence.** Trailing stops update once per decision bar; cTrader trails per-tick. | Trailing exits systematically later/looser than cTrader. Sizing unknown — measure first. |
 | **F4** | **Gap-through fills at exact stop price.** A bar opening beyond SL fills at the stop, not the (worse) open. | Optimistic on weekend/news gaps; FTMO daily DD punishes these tails. |
+| **F5** | **Commission charged wholly at close.** cTrader charges half at open, half at close. The engine charges 100% at close. | Net P&L is identical either way. Intrabar equity is slightly optimistic while a position is open (commission deduction deferred). **Deferred — needs golden re-baseline.** |
+| **F6** | **Limit+SL same-fine-bar ordering.** In dual-resolution tape mode, `ProcessPendingLimits` runs before `ProcessSlTpHits` each fine bar. A limit that fills on fine bar k becomes an open trade immediately SL-checked on the same bar k. `DetectSlTpExit` checks SL before TP (conservative). | Intrabar entry+exit possible within one 1-minute bar. Intra-bar ordering (limit-fill vs SL-touch) is unknowable at M1 resolution. Impact: minor. Decision: document, no code change planned. |
+| **F7** | **Fine bars in decision-TF gaps.** When a decision-TF bar is missing (weekend gap, patchy data), fine bars in the gap window are consumed by `_exitIndex++` + warmup skip (`if (fine.OpenTimeUtc < decisionBar.OpenTimeUtc) continue`) without ever passing through `ProcessSlTpHits`. | SL/TP exits that would have triggered during the gap never fire — the position survives a gap it might not have. Optimistic bias. Impact: only matters with patchy decision data. Mitigation noted: future gap-exit-detection pass would process fine bars in gaps before skipping. |
+
+## Fixed gaps (for audit trail)
+
+| # | Gap | Resolution |
+|---|---|---|
+| **F1** | No spread cost on entry/exit fills | **Fixed (T3):** `BacktestReplayAdapter` + `TapeReplayAdapter` now apply half-spread on fills (longs buy at ask, shorts sell at bid; SL/TP detection uses opposite side). Golden 63/63 survived — both kernel paths use the same adapter. |
+| **F2** | Intrabar floating equity not snapshotted | **Fixed (T3):** `TapeReplayAdapter.OnBarObserved` tracks `minEquity` across the fine-bar window and emits it via `EmitAccountUpdate(BrokerTimeUtc, minEquity)`. |
+| **F3** | Trailing/breakeven cadence (decision-bar vs per-tick) | **Design gap — measure first.** `KernelTrailingEvaluator` runs once per decision bar by design. cTrader trails per tick. Dual-res tape detects hits of the *last-set* stop on M1 bars, but the stop only *moves* per H1. Revisit only if V4 reconcile shows it changes a GO/NO-GO decision. |
+| **F4** | Gap-through fills at exact stop price | **Fixed (T3):** Gap-through fills now include slippage — fills at the bar open (worse price) if it gaps beyond the stop, not at the stop. |
+| **F8** | Silent single-resolution fallback (exit resolution not surfaced) | **Fixed (T0):** `ExitResolution` is now on `RunDetailResponse`. Tape venue logs a Warning when falling back to single-res. Owner can see whether a run got wick-fidelity or not. |
 
 ## What the harness does
 `LedgerReconciler.Compare(engineLedger, venueLedger)` diffs two normalized `ReconcileLedger`s and classifies
