@@ -438,3 +438,10 @@ Quick reference:
  | D82 | Golden oracle stays realized-equity; no MtM re-baseline | Final - KernelLoopHarness/golden use FakeVenue realized equity (the oracle). Production uses mark-to-market; its floating-DD is validated by in-host BacktestReplayTests + cTrader e2e, not the golden snapshot. No re-baseline. |
  | D83 | One journal = StepRecord; legacy writers deleted | Final - PipelineEventWriter + BarEvaluationHandler (DropOldest) deleted; ChannelJournalWriter (Wait) is the single journal. Legacy IDecisionJournal/IPipelineJournal consumers bind to NullDecisionJournal/NullPipelineJournal. |
  | D84 | EF migrations regenerated from scratch for ParentRunId | Final - recreate/regen-init (delete migrations + single fresh InitialCreate); dev DB recreated, app migrates + re-seeds from JSON on boot. Pre-release: no data to preserve. |
+ | D85 | Download ports hardcoded 15562/3 — no port manager exists yet | Final - iter-tape-trust T1. No port allocator anywhere in codebase. Documented as known limitation; must be built before concurrent downloads/backtests. |
+ | D86 | EmitExecutionEvent helper added per-adapter, not shared static | Final - Both adapters are sealed in same namespace. Per-adapter helpers keep scope small; no shared dependency needed. |
+ | D87 | GetAccountStateAsync returns _balance for both balance+equity | Final - Called at startup only (no open positions). Computing floating PnL adds risk without value. |
+ | D88 | cBot shards append:true (not .partial/rename) | Final - Simpler. Ingester dedupe absorbs overlaps. No rename-on-close coordination needed. |
+ | D89 | LedgerReconcileService is Scoped (needs TradingDbContext) | Final - Scoped to match DB context lifetime. |
+ | D90 | F1 spread fix deferred to T3 | Final - Would change all trade results + characterization test baselines. Needs its own phase with baseline refresh. |
+ | D91 | RunPlanJson sourced from cfg.CustomParams[RunRows] | Final - Same source as WriteStartRecordAsync line 566. Consistent with DB path; no new serialization needed. |
