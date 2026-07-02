@@ -462,3 +462,31 @@ export interface AutoTunePreview {
   adxFloor?: number;
   relaxedAtrMultiple?: number;
 }
+
+export interface SystemInfo {
+  version: string;
+  branch: string;
+  buildDate: string;
+  dataPaths: { tradingDb: string };
+  activeRuns: number;
+  runningRuns: number;
+}
+
+export interface ResetRequest {
+  scope: 'runs' | 'config' | 'all';
+  confirm: string;
+}
+
+export interface ResetResponse {
+  scope: string;
+  status: string;
+}
+
+export interface InventoryItem {
+  symbol: string;
+  timeframe: string;
+  source: string;
+  firstBar: string;
+  lastBar: string;
+  barCount: number;
+}
