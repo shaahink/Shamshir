@@ -837,7 +837,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines, CancellationToken userCt = default)
     {
         var from = cfg.Start;
-        var to = cfg.End;
         var wallStart = DateTime.UtcNow;
 
         var dbPath = _configuration.GetValue<string>("Persistence:DbPath")
@@ -851,6 +850,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         // store in-process (no cTrader-cli/NetMQ) with dual-resolution exits (decision TF vs ExitTimeframe,
         // default m1). Default/empty venue keeps the existing per-run-bars BacktestReplayAdapter unchanged.
         var useTape = string.Equals(cfg.CustomParams.GetValueOrDefault("Venue"), "tape", StringComparison.OrdinalIgnoreCase);
+        var to = useTape ? cfg.End.Date.AddDays(1) : cfg.End;
         var marketDataStore = useTape ? scope.ServiceProvider.GetService<IMarketDataStore>() : null;
         var exitTf = ParseTimeframe(cfg.CustomParams.GetValueOrDefault("ExitTimeframe") ?? "M1");
 

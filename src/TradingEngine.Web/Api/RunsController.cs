@@ -478,9 +478,9 @@ public sealed class RunsController : ControllerBase
                     continue;
                 }
 
-                var from = req.Start;
-                var to = req.End;
-                if (entry.FirstOpenUtc > from || entry.LastOpenUtc < to)
+                var from = req.Start.Date;
+                var to = req.End.Date;
+                if (entry.FirstOpenUtc.Date > from || entry.LastOpenUtc.Date < to)
                 {
                     missing.Add(new
                     {

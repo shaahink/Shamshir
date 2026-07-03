@@ -394,13 +394,13 @@ export class NewBacktestComponent implements OnInit {
   coverageMap = computed(() => {
     const inv = this.inventory();
     const map = new Map<string, { decisionTf: boolean; m1: boolean }>();
-    const from = this.startDate ? new Date(this.startDate).getTime() : 0;
-    const to = this.endDate ? new Date(this.endDate).getTime() : 0;
+    const from = this.startDate ? new Date(this.startDate + 'T00:00:00').getTime() : 0;
+    const to = this.endDate ? new Date(this.endDate + 'T00:00:00').getTime() : 0;
 
     for (const item of inv) {
       const key = `${item.symbol}|${item.timeframe.toLowerCase()}`;
-      const itemFrom = new Date(item.firstBar).getTime();
-      const itemTo = new Date(item.lastBar).getTime();
+      const itemFrom = new Date(item.firstBar.slice(0, 10) + 'T00:00:00').getTime();
+      const itemTo = new Date(item.lastBar.slice(0, 10) + 'T00:00:00').getTime();
       const covers = itemFrom <= from && itemTo >= to;
       const existing = map.get(key);
       if (existing) {
@@ -456,8 +456,8 @@ export class NewBacktestComponent implements OnInit {
     if (this.venue !== 'tape') return null;
     const inv = this.inventory();
     if (!inv.length || !this.startDate || !this.endDate) return null;
-    const from = new Date(this.startDate).getTime();
-    const to = new Date(this.endDate).getTime();
+    const from = new Date(this.startDate + 'T00:00:00').getTime();
+    const to = new Date(this.endDate + 'T00:00:00').getTime();
     let maxFirst = 0;
     let minLast = Infinity;
     let found = false;
@@ -465,8 +465,8 @@ export class NewBacktestComponent implements OnInit {
       if (!r.enabled) continue;
       const item = inv.find(i => i.symbol === r.symbol && i.timeframe.toLowerCase() === r.timeframe.toLowerCase());
       if (!item) return null;
-      const itemFrom = new Date(item.firstBar).getTime();
-      const itemTo = new Date(item.lastBar).getTime();
+      const itemFrom = new Date(item.firstBar.slice(0, 10) + 'T00:00:00').getTime();
+      const itemTo = new Date(item.lastBar.slice(0, 10) + 'T00:00:00').getTime();
       if (itemFrom > from || itemTo < to) return null;
       if (itemFrom > maxFirst) maxFirst = itemFrom;
       if (itemTo < minLast) minLast = itemTo;
