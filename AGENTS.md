@@ -1,9 +1,9 @@
 # AGENTS.md — Session Startup Guide
 
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `iter/tape-trust` (active)
+**Branch:** `iter/tape-trust` (active) / `develop` (authoritative, merged)
 **Created:** 2026-06-18
-**Updated:** 2026-07-02 (iter-tape-trust started — fixing tape venue truthfulness + trust loop)
+**Updated:** 2026-07-03 (merged to develop, branches/worktrees cleaned, docs consolidated)
 
 ---
 
@@ -16,14 +16,13 @@ At the start of every session:
 3. **`docs/reference/BACKTEST-ARCHITECTURE.md`** — How backtesting actually works (both venue paths)
 4. **`docs/reference/TEST-ARCHITECTURE.md`** — Test tiers, harnesses, which tests need cTrader credentials
 5. **`docs/WORKFLOW.md`** — Agent workflow rules, code standards, handover format
-6. **`DECISIONS.md`** — All resolved decisions (D1–D80)
-7. **`docs/OPEN-ISSUES.md`** — Active bugs, design problems, carry-forward tasks
-8. **`docs/NEXT-STEPS.md`** — Roadmap backlog
-9. **`docs/iterations/iter-tape-trust/PLAN.md`** — Current iteration plan (T0–T5)
-10. **`docs/iterations/iter-marketdata-tape/HANDOVER-REVIEW.md`** — Bug/gap IDs B1–B11, F1–F8 defined here
-11. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology
-12. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
-13. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
+6. **`DECISIONS.md`** — All resolved decisions (D1–D96)
+7. **`docs/OPEN-ISSUES.md`** — ALL remaining bugs + tasks (single source of truth, kept current)
+8. **`docs/iterations/iter-merge-plan/NEXT-ITERATION.md`** — Session handover: what happened, what's next
+9. **`docs/audit/PROGRESS.md`** — Progress metrics, gate history, branch state
+10. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology
+11. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
+12. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
 
 ## Build and test
 
@@ -31,7 +30,7 @@ At the start of every session:
 dotnet build                                 # Full build
 dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (~314 pass)
 dotnet test tests/TradingEngine.Tests.Simulation  # Simulation/FTMO tests
-dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (91)
+dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (109)
 ```
 
 ## Architecture at a glance
@@ -66,17 +65,21 @@ tests/
 
 ## Current state (iter-tape-trust)
 
-- Tape venue runs but always reports `failed` (B1) — cast at `BacktestOrchestrator.cs:929` targets `BacktestReplayAdapter` instead of a common interface
-- Memory-served run detail drops metadata (B2) — `BuildRunDetailFromState` omits Venue, RiskProfileId, balance, time range
-- Data Manager downloads are synchronous fire-and-pray (B4)
-- Trust gate (V4 reconcile: tape vs cTrader) has never run
-- `LedgerReconciler.Compare` exists and is unit-tested; mapper from DB entities → `ReconcileLedger` does not exist yet
-- No spread cost on entry/exit fills in either replay venue (F1 — systematic optimistic bias)
+- Tape venue runs correctly — reports `completed`, `venue="tape"`, `barsPerSec` measured
+- Download pipeline: async job polling, status tracking, 12 symbols + M5/M15 TFs
+- Merge plan M1–M4 delivered: nav, Settings, Monitor, Report, Charts, Narrative, Delete, Prune
+- M3.3 EntryReason/EntryRegime/EntrySnapshotJson populated with real data (not placeholder)
+- Run-overlap protection (A6) — 409 Conflict on concurrent starts
+- `RunNarrativeService` fixed — journal lines show real symbol/direction/price/SL/TP
+- Daily-DD chart uses 22:00 UTC prop-firm roll, not calendar date
+- Data Manager: per-symbol delete, storage totals, m1 overlap badges
+- `VenueSessions` orphan rows fixed on run delete
+- B1–B11 bugs all fixed, F1–F4+F8 fidelity gaps closed
 
 ## What's NOT done
 
-See `docs/iterations/iter-tape-trust/PLAN.md` for the full T0–T5 plan.
-Key items: B1–B11 bug fixes, F1–F8 fidelity gaps, T2 reconcile trust gate, T4 compare mode UI, T5 sweep runner.
+See `docs/OPEN-ISSUES.md` — the single source of truth.
+Key remaining: C1 short-spread (2 lines, golden-sensitive), D1 DB fragmentation, D2 hardcoded defaults.
 
 ## Rules you must not break
 

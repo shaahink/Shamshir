@@ -244,3 +244,62 @@ trail â€” items are never deleted, only added.
 **K7 ï¿½ reconciliation:** C3/C4/H1/H2/H5/H6/M7 shadowed `RiskManager` bugs confirmed **production-dead** (no caller in `src`; oracle-only). OPEN-ISSUES + this file + SYSTEM-REFERENCE updated.
 
 Verified: build 0 errors ï¿½ Unit 208/4-skip ï¿½ Simulation non-cTrader 82/2 (2 pre-existing: EntryPlanner-harness DI gap + NetMQ transport) ï¿½ in-host replay writes StepRecord journal ï¿½ `run-shamshir` driver 11/11 ï¿½ `npm run build` green.
+
+---
+
+## Iteration tape-trust + merge-plan (iter/tape-trust, merged to develop 2026-07-03)
+
+### iter-tape-trust (T0???T5)
+
+| Phase | Items | Status |
+|-------|-------|--------|
+| T0 | B1 (run result), B1b (progress totals), B2 (memory-served run detail), F8 (fidelity downgrade), B9 (event loss) | Done |
+| T1 | B3 (cross-product recording), B4 (download background job), B7 (resumable shards), B8 (chunked ingest), B6 (account state), B10 (tick offset) | Done |
+| T2 | Reconcile mapper, endpoint, RECONCILE-FINDINGS | Done |
+| T3 | F1 (spread on fills), F4 (gap-through), B5 (limit expiry), F2 (intrabar equity) | Done |
+| T4 | Compare-both dispatch | Done |
+| T5 | Sweep runner, content-address skip, SkipJournal | Done |
+
+### Merge plan (M1???M4)
+
+| Item | Status |
+|------|--------|
+| M1.1: Nav consolidation (6 areas, hub pages) | Done |
+| M1.2/M1.3: Settings page (system info + 3 DB reset modals) | Done |
+| M2.1: New-Backtest redesign (two-pane, coverage check) | Done |
+| M2.2: Monitor redesign (2x2 grid, narrative polling) | Done |
+| M2.3: Report tabs (Overview/Trades/Journal/Costs&Risk) | Done |
+| M2.4: Charts (C1 entry/exit arrows, C2 DD bar chart + underwater) | Done |
+| M3.1: Narrative service | Done |
+| M3.2: Journal cleanup (remove RecentJournal) | Done |
+| M3.3: Trade narrative columns (EntryReason/EntryRegime/EntrySnapshotJson) | Done |
+| M4.1: Multi-select delete runs (FK-safe cascade) + keep-last-N prune | Done |
+| M4.2: Data Manager per-(symbol,TF) delete + storage totals | Done |
+
+### Audit + port pass (2026-07-03, 4 commits)
+
+| # | Bug | Commit |
+|---|-----|--------|
+| 1 | RunNarrativeService schema — journal blank/'rejected' since M3.2 | 6931217 |
+| 2 | VenueSessions orphan rows on run delete (no FK) | 6931217 |
+| 3 | Daily-DD bucketed by calendar date instead of 22:00 UTC roll | 6931217 |
+| 4 | A6 run-overlap protection — 409 on Start+Delete | 6931217 |
+| 5 | trade-detail unhandled async crash | 6931217 |
+| 6 | gateRejections null-safety in report | 6931217 |
+| 7 | trade-chart-card stale on gallery navigation | 6931217 |
+| 8 | NaN guards on reduce accumulators | 17a31bb |
+| 9 | simTimeUtc null guard in journalTableData | 17a31bb |
+| 10 | OpenedAtUtc missing from /api/trades DTO | 17a31bb |
+| 11 | Download symbols 6->12 + M5/M15 TFs | 17a31bb |
+| 12 | exitResolution TypeScript field | 17a31bb |
+| 13 | Duplicate button null guards (3 components) | 17a31bb |
+| 14 | M4.2 per-symbol delete (interface+SQL+API+UI) | 17a31bb |
+| 15 | Batch DeleteRunsAsync + prune endpoint | 17a31bb |
+| 16 | M3.3 EntryReason/EntryRegime real data (threaded pipeline) | 1a7cc93 |
+
+### Infrastructure
+
+- Merged iter/tape-trust into develop via theirs strategy
+- Cleaned 5 stale branches, removed 2 stale worktrees
+- Sibling origin/iter/merge-plan fixes ported manually
+- Integration tests: 90 -> 109
