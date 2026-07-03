@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-03
 **Branch:** `iter/data-mgmt`
-**Status:** Research complete — fixes not implemented
+**Status:** Audit complete — P0, P2, P5 fixed. P1, P3, P4 remain.
 
 ---
 
@@ -211,3 +211,23 @@ Actually, I think the real issue is more nuanced. Let me just document this corr
 - **Tape path:** Same as backtest (after fixing P0 and P1).
 - **cTrader path:** Real broker simulation. Fills, slippage, and expiry are determined by cTrader's backtesting engine. No spread approximation.
 - **Reconciliation caveat:** Tape and cTrader will never produce identical results for limit orders due to different fill models. Tape is a reasonable approximation for strategy development. cTrader is the ground truth.
+
+---
+
+## 6. Changes Implemented (2026-07-03)
+
+### P0 — Tape dual-res expiry (FIXED)
+`TapeReplayAdapter.cs:215`: `decrementExpiry: false` → `decrementExpiry: true`
+
+### P2 — Default OrderEntryMethod → LimitOffset
+- `OrderEntryOptions.cs`: default `Method` changed from `Market` to `LimitOffset`, `LimitOffsetPips` defaults to `2.0`
+- `StrategiesController.cs`: new strategies default to `LimitOffset` with 2-pip offset
+
+### P5 — cBot limit order expiry
+- `TradingEngineCBot.cs`: `expiryBars` now tracked in `_pendingLimits` dictionary
+- `ProcessLimitExpiry()` called on each `OnBarClosed`: decrements bars, cancels expired orders via `CancelPendingOrder`
+- Pending limit orders (where `Position` is null) properly handled — returned as `"Pending"` status
+
+### P? — Limit order null-reference fix
+- `ExecuteSubmitOrder`: null-check on `result.Position` — limit orders that stay pending no longer crash on `pos.Id`
+

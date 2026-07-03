@@ -50,7 +50,7 @@ internal sealed record AlwaysSignalConfig : IStrategyConfig
     public string RiskProfileId => "standard";
     public Timeframe Timeframe => Timeframe.H1;
     public RegimeFilterOptions RegimeFilter => new();
-    public OrderEntryOptions OrderEntry => new();
+    public OrderEntryOptions OrderEntry => new() { Method = OrderEntryMethod.Market };
     public PositionManagementOptions PositionManagement => new();
     public ReentryOptions Reentry => new();
 }

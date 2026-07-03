@@ -79,7 +79,7 @@ public sealed class TrailingStopE2ETests
         public string RiskProfileId => "standard";
         public Timeframe Timeframe => Timeframe.H1;
         public RegimeFilterOptions RegimeFilter => new();
-        public OrderEntryOptions OrderEntry => new();
+        public OrderEntryOptions OrderEntry => new() { Method = OrderEntryMethod.Market };
         public PositionManagementOptions PositionManagement => new()
         {
             Breakeven = new BreakevenOptions { Enabled = true, TriggerRMultiple = 1.0, OffsetPips = 1.0 },

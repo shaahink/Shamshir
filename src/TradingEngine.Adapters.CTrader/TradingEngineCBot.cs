@@ -63,7 +63,14 @@ public partial class TradingEngineCBot : Robot
     private readonly List<Bars> _subscriptions = new();
     private readonly Dictionary<long, Guid> _positionMap = new();
     private readonly HashSet<long> _commandCloses = new();
+    private readonly Dictionary<string, PendingLimitEntry> _pendingLimits = new(); // key = clientOrderId
     private volatile bool _connected;
+
+    private sealed class PendingLimitEntry
+    {
+        public int BarsRemaining;
+        public string Symbol = "";
+    }
 
     private readonly ShamshirTradeLogger _tradeLog = new();
     private int _reportCheckpoint;
@@ -216,6 +223,8 @@ public partial class TradingEngineCBot : Robot
         var bar = bars.Last(1);
         if (bar.Open == 0 && bar.High == 0) return;
 
+        ProcessLimitExpiry(bars.SymbolName, bars.TimeFrame.ShortName);
+
         var key = (bars.SymbolName, bars.TimeFrame.ShortName, bar.OpenTime);
         if (!_publishedBars.Add(key)) { _duplicateCount++; return; }
 
@@ -362,6 +371,7 @@ public partial class TradingEngineCBot : Robot
         var tpPrice = cmd.GetProperty("tpPrice").GetDouble();
         var orderType = cmd.TryGetProperty("orderType", out var ot) ? ot.GetString() : "Market";
         var limitPrice = cmd.TryGetProperty("limitPrice", out var lp) ? lp.GetDouble() : 0.0;
+        var expiryBars = cmd.TryGetProperty("expiryBars", out var eb) ? eb.GetInt32() : 0;
 
         Diag($"CMD_RECV|submit_order|{clientOrderId}|{symbol}|{direction}|type={orderType}|lots={lots:F4}|limit={limitPrice:F5}");
 
@@ -389,6 +399,24 @@ public partial class TradingEngineCBot : Robot
         if (result?.IsSuccessful == true)
         {
             var pos = result.Position;
+
+            if (orderType == "Limit" && expiryBars > 0 && pos is null)
+            {
+                _pendingLimits[clientOrderId] = new PendingLimitEntry
+                {
+                    BarsRemaining = expiryBars,
+                    Symbol = symbol,
+                };
+                return MakeExecResult(clientOrderId, "pending_limit", 0, "Pending", limitPrice, lots, null);
+            }
+
+            if (pos is null)
+            {
+                _ordersExecuted++;
+                PublishAccount();
+                return MakeExecResult(clientOrderId, "entry_fill", 0, "Filled", 0, lots, null);
+            }
+
             _positionMap[pos.Id] = Guid.Parse(clientOrderId);
             _ordersExecuted++;
 
@@ -412,6 +440,45 @@ public partial class TradingEngineCBot : Robot
         }
 
         return MakeExecResult(clientOrderId, "entry_fill", 0, "Rejected", 0, lots, result?.Error.ToString() ?? "Null result");
+    }
+
+    private void ProcessLimitExpiry(string symbol, string timeframe)
+    {
+        if (_pendingLimits.Count == 0) return;
+
+        var expired = new List<string>();
+        foreach (var (clientOrderId, entry) in _pendingLimits)
+        {
+            if (!string.Equals(entry.Symbol, symbol, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            entry.BarsRemaining--;
+            if (entry.BarsRemaining <= 0)
+            {
+                expired.Add(clientOrderId);
+                Print($"CBOT|LIMIT_EXPIRED|orderId={clientOrderId}|symbol={symbol}");
+            }
+        }
+
+        foreach (var id in expired)
+        {
+            _pendingLimits.Remove(id);
+            foreach (var order in PendingOrders)
+            {
+                if (!string.Equals(order.Label, id, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+#pragma warning disable CS0618
+                    CancelPendingOrder(order);
+#pragma warning restore CS0618
+                }
+                catch (Exception ex)
+                {
+                    Print($"CBOT|CANCEL_PENDING_FAIL|orderId={id}|err={ex.Message}");
+                }
+                break;
+            }
+        }
     }
 
     private object ExecuteCancelOrder(JsonElement cmd)

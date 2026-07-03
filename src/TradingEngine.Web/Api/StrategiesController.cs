@@ -185,7 +185,7 @@ public class StrategiesController : ControllerBase
                 StopLoss = new SlOptions { Method = "AtrMultiple", AtrMultiple = 1.5 },
                 TakeProfit = new TpOptions { Method = "RrMultiple", RrMultiple = 2.0 },
             },
-            OrderEntry = new OrderEntryOptions { Method = OrderEntryMethod.Market, MaxSlippagePips = 2.0 },
+            OrderEntry = new OrderEntryOptions { Method = OrderEntryMethod.LimitOffset, LimitOffsetPips = 2.0, LimitOrderExpiryBars = 3, MaxSlippagePips = 2.0 },
             RegimeFilter = new RegimeFilterOptions { AllowTrending = true, AllowRanging = true, AllowHighVolatility = true, AllowLowVolatility = true, AllowUnknown = true },
             Reentry = new ReentryOptions { BlockWhileSameDirectionOpen = true, CooldownBarsAfterSl = 5, CooldownBarsAfterTp = 2, CooldownBarsAfterEntry = 3 },
         };
