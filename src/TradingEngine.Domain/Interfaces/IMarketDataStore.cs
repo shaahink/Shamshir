@@ -12,7 +12,8 @@ public interface IMarketDataStore
     /// <summary>Insert bars, deduping on (symbol, timeframe, openTime). Returns the number actually inserted
     /// (idempotent: re-writing the same window inserts 0). <paramref name="source"/> tags provenance
     /// (e.g. "ctrader", "dukascopy") so mixed feeds stay distinguishable.</summary>
-    Task<int> WriteBarsAsync(string source, IReadOnlyList<Bar> bars, CancellationToken ct = default);
+    Task<int> WriteBarsAsync(string source, IReadOnlyList<Bar> bars, CancellationToken ct = default,
+        IProgress<int>? progress = null);
 
     /// <summary>Ordered (ascending openTime) bars for a symbol/timeframe in [fromUtc, toUtc].</summary>
     Task<IReadOnlyList<Bar>> ReadBarsAsync(Symbol symbol, Timeframe tf, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);

@@ -47,6 +47,22 @@ public sealed class DownloadJobService
         return job;
     }
 
+    public DownloadJob StartIngest(string? symbol = null)
+    {
+        var jobId = Guid.NewGuid().ToString("N")[..8];
+        var job = new DownloadJob
+        {
+            Id = jobId,
+            Symbol = symbol ?? "all",
+            Status = "ingesting",
+            CreatedAtUtc = DateTime.UtcNow,
+        };
+        _jobs[jobId] = job;
+
+        _ = Task.Run(() => ExecuteIngestAsync(job, symbol));
+        return job;
+    }
+
     public DownloadJob? Get(string jobId) =>
         _jobs.TryGetValue(jobId, out var job) ? job : null;
 
@@ -180,6 +196,78 @@ public sealed class DownloadJobService
         }
     }
 
+    private async Task ExecuteIngestAsync(DownloadJob job, string? symbol)
+    {
+        try
+        {
+            var root = ShardsRoot;
+            if (!Directory.Exists(root))
+            {
+                job.Status = "done";
+                job.BarsRecorded = 0;
+                return;
+            }
+
+            var files = new List<string>();
+            foreach (var file in Directory.GetFiles(root, "*.ndjson", SearchOption.AllDirectories))
+            {
+                var rel = Path.GetRelativePath(root, file);
+                if (rel.StartsWith("archive", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!string.IsNullOrEmpty(symbol))
+                {
+                    var fname = Path.GetFileNameWithoutExtension(file);
+                    if (!fname.StartsWith(symbol, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
+                files.Add(file);
+            }
+
+            if (files.Count == 0)
+            {
+                job.Status = "done";
+                job.BarsRecorded = 0;
+                return;
+            }
+
+            using var scope = _scopeFactory.CreateScope();
+            var store = scope.ServiceProvider.GetRequiredService<IMarketDataStore>();
+            var ingester = new MarketDataIngester(store, scope.ServiceProvider.GetService<ILogger<MarketDataIngester>>());
+
+            job.FilesTotal = files.Count;
+            var progress = new Progress<IngestProgress>(p =>
+            {
+                job.FilesProcessed = p.FilesProcessed;
+                job.BarsRecorded = p.BarsInserted;
+                job.LinesProcessed = p.LinesRead;
+                job.StatusDetails = p.FileName ?? "";
+            });
+
+            foreach (var file in files)
+            {
+                var ir = await ingester.IngestFileAsync(file, "ctrader", CancellationToken.None, progress);
+                job.BarsRecorded = ir.BarsInserted;
+
+                var archiveDir = Path.Combine(root, "archive");
+                Directory.CreateDirectory(archiveDir);
+                var dest = Path.Combine(archiveDir, Path.GetFileName(file));
+                if (File.Exists(dest)) File.Delete(dest);
+                File.Move(file, dest);
+            }
+
+            job.Status = "done";
+            job.CompletedAtUtc = DateTime.UtcNow;
+            _logger.LogInformation("Ingest job {JobId}: complete — {Files} files, {Bars} bars",
+                job.Id, files.Count, job.BarsRecorded);
+        }
+        catch (Exception ex)
+        {
+            job.Status = "failed";
+            job.Error = ex.Message;
+            _logger.LogError(ex, "Ingest job {JobId}: failed", job.Id);
+        }
+    }
+
     private string ResolveAlgo()
     {
         var configured = _configuration["CTrader:AlgoPath"];
@@ -213,6 +301,10 @@ public sealed class DownloadJob
     public DateTime? StartedAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
     public int BarsRecorded { get; set; }
+    public int LinesProcessed { get; set; }
+    public int FilesTotal { get; set; }
+    public int FilesProcessed { get; set; }
     public string? Error { get; set; }
+    public string? StatusDetails { get; set; }
     public bool KeepShards { get; set; }
 }

@@ -20,7 +20,11 @@ interface DownloadJobResponse {
   tfs: string[];
   status: string;
   barsRecorded?: number;
+  linesProcessed?: number;
+  filesTotal?: number;
+  filesProcessed?: number;
   error?: string;
+  statusDetails?: string;
   createdAtUtc?: string;
   completedAtUtc?: string;
 }
@@ -124,6 +128,22 @@ interface PendingShardsResponse {
               {{ ingesting() ? 'Ingesting...' : 'Ingest All' }}
             </button>
           </div>
+          @if (activeIngestJob(); as job) {
+            <div class="mb-2 rounded border border-amber-700 bg-gray-800/30 p-2">
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-amber-400">Ingesting...</span>
+                <span class="text-gray-500">{{ job.statusDetails || '' }}</span>
+              </div>
+              <div class="h-1.5 rounded-full bg-gray-700">
+                <div class="h-full rounded-full bg-amber-500 transition-all duration-300"
+                  [style.width]="((job.filesProcessed ?? 0) / (job.filesTotal || 1) * 100) + '%'"></div>
+              </div>
+              <div class="flex justify-between text-xs text-gray-500 mt-1">
+                <span>{{ job.filesProcessed ?? 0 }}/{{ job.filesTotal || '?' }} files</span>
+                <span>{{ (job.barsRecorded ?? 0).toLocaleString() }} bars &middot; {{ (job.linesProcessed ?? 0).toLocaleString() }} lines</span>
+              </div>
+            </div>
+          }
           <p class="text-xs text-amber-500/70 mb-2">
             NDJSON files in <code class="text-amber-400/80">{{ shardsRoot() || 'data/shards' }}</code> not yet imported.
             Drop files there manually or keep files from downloads for later ingestion.
@@ -262,8 +282,12 @@ export class DataManagerComponent implements OnInit {
 
   pendingFiles = signal<PendingShard[]>([]);
   shardsRoot = signal<string>('');
-  ingesting = signal(false);
+  ingesting = computed(() => this.activeIngestJob() !== null);
   ingestResult = signal<{ filesProcessed: number; barsIngested: number; errors: string[] } | null>(null);
+
+  activeIngestJob = computed(() => {
+    return this.activeJobs().find(j => j.status === 'ingesting' && (!j.tfs || j.tfs.length === 0)) ?? null;
+  });
 
   ngOnInit(): void {
     this.loadInventory();
@@ -313,18 +337,14 @@ export class DataManagerComponent implements OnInit {
   }
 
   ingestShards(): void {
-    this.ingesting.set(true);
     this.ingestResult.set(null);
-    this.http.post<{ filesProcessed: number; barsIngested: number; errors: string[] }>('/api/data-manager/ingest-shards', {}).subscribe({
+    this.http.post<DownloadJobResponse>('/api/data-manager/ingest-shards', {}).subscribe({
       next: (r) => {
-        this.ingestResult.set(r);
-        this.ingesting.set(false);
-        this.loadInventory();
-        this.loadPendingShards();
+        this.activeJobs.update(jobs => [...jobs, r]);
+        this.pollJob(r.jobId);
       },
       error: (err) => {
         this.ingestResult.set({ filesProcessed: 0, barsIngested: 0, errors: [err?.error?.error ?? err?.message ?? 'Ingest failed'] });
-        this.ingesting.set(false);
       },
     });
   }

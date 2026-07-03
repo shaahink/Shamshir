@@ -139,69 +139,19 @@ public sealed class DataManagerController : ControllerBase
     }
 
     [HttpPost("ingest-shards")]
-    public async Task<IActionResult> IngestShards([FromBody] IngestShardsRequest? req, CancellationToken ct)
+    public IActionResult IngestShards([FromBody] IngestShardsRequest? req)
     {
         if (_marketDataStore is null)
             return Problem("Market data store not registered.");
         if (_downloadJobs is null)
             return Problem("Download job service not registered.");
 
-        var root = _downloadJobs.ShardsRoot;
-        if (!Directory.Exists(root))
-            return Ok(new { filesProcessed = 0, barsIngested = 0, errors = Array.Empty<string>() });
-
-        var files = new List<string>();
-        foreach (var file in Directory.GetFiles(root, "*.ndjson", SearchOption.AllDirectories))
-        {
-            var rel = Path.GetRelativePath(root, file);
-            if (rel.StartsWith("archive", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            if (req?.Symbol is { Length: > 0 })
-            {
-                var fname = Path.GetFileNameWithoutExtension(file);
-                if (!fname.StartsWith(req.Symbol, StringComparison.OrdinalIgnoreCase))
-                    continue;
-            }
-
-            files.Add(file);
-        }
-
-        if (files.Count == 0)
-            return Ok(new { filesProcessed = 0, barsIngested = 0, errors = Array.Empty<string>() });
-
-        var ingester = new MarketDataIngester(_marketDataStore, HttpContext.RequestServices.GetService<ILogger<MarketDataIngester>>());
-        var errors = new List<string>();
-        int totalInserted = 0;
-
-        foreach (var file in files)
-        {
-            try
-            {
-                var ir = await ingester.IngestFileAsync(file, "ctrader", ct);
-                totalInserted += ir.BarsInserted;
-
-                var archiveDir = Path.Combine(root, "archive");
-                Directory.CreateDirectory(archiveDir);
-                var dest = Path.Combine(archiveDir, Path.GetFileName(file));
-                if (System.IO.File.Exists(dest)) System.IO.File.Delete(dest);
-                System.IO.File.Move(file, dest);
-            }
-            catch (Exception ex)
-            {
-                errors.Add($"{Path.GetFileName(file)}: {ex.Message}");
-                _logger.LogWarning(ex, "Ingest-shards: failed on {File}", file);
-            }
-        }
-
-        _logger.LogInformation("Ingest-shards: processed {Count} files, {Bars} bars ingested, {Errors} errors",
-            files.Count, totalInserted, errors.Count);
-
+        var job = _downloadJobs.StartIngest(req?.Symbol);
         return Ok(new
         {
-            filesProcessed = files.Count,
-            barsIngested = totalInserted,
-            errors = errors.ToArray(),
+            jobId = job.Id,
+            symbol = job.Symbol,
+            status = job.Status,
         });
     }
 
@@ -218,7 +168,11 @@ public sealed class DataManagerController : ControllerBase
         startedAtUtc = job.StartedAtUtc,
         completedAtUtc = job.CompletedAtUtc,
         barsRecorded = job.BarsRecorded,
+        linesProcessed = job.LinesProcessed,
+        filesTotal = job.FilesTotal,
+        filesProcessed = job.FilesProcessed,
         error = job.Error,
+        statusDetails = job.StatusDetails,
     };
 
     public sealed record DownloadRequest

@@ -3,22 +3,19 @@ using TradingEngine.Domain;
 
 namespace TradingEngine.Infrastructure.MarketData;
 
-/// <summary>
-/// SQLite-backed <see cref="IMarketDataStore"/> (iter-marketdata-tape P1). Uses an
-/// <see cref="IDbContextFactory{TContext}"/> so it is safe to call from any lifetime (singleton ingester,
-/// per-run adapter) — each operation gets a fresh short-lived context. Writes dedupe on the natural key;
-/// reads are streamed range scans (load a run's window once, never per-bar point queries — PLAN §5).
-/// </summary>
 public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext> factory) : IMarketDataStore
 {
-    private const int ChunkSize = 5_000;
+    private const int ChunkSize = 10_000;
 
-    public async Task<int> WriteBarsAsync(string source, IReadOnlyList<Bar> bars, CancellationToken ct = default)
+    public async Task<int> WriteBarsAsync(string source, IReadOnlyList<Bar> bars, CancellationToken ct = default,
+        IProgress<int>? progress = null)
     {
         if (bars.Count == 0) return 0;
         await using var db = await factory.CreateDbContextAsync(ct);
+        db.ChangeTracker.AutoDetectChangesEnabled = false;
 
         var inserted = 0;
+        var processed = 0;
         var now = DateTime.UtcNow;
         foreach (var group in bars.GroupBy(b => (Symbol: b.Symbol.ToString(), Tf: b.Timeframe)))
         {
@@ -53,6 +50,7 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
                     IngestedAtUtc = now,
                 });
                 inserted++;
+                processed++;
                 chunk++;
 
                 if (chunk >= ChunkSize)
@@ -60,6 +58,7 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
                     await db.SaveChangesAsync(ct);
                     db.ChangeTracker.Clear();
                     chunk = 0;
+                    progress?.Report(processed);
                 }
             }
         }
@@ -142,8 +141,6 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
         return await q.ExecuteDeleteAsync(ct);
     }
 
-    // FX closes ~Fri 21:00 UTC → Sun 21:00 UTC. A gap that contains a Saturday is almost certainly the
-    // normal weekend close rather than a data hole; flag it so callers can filter.
     private static bool StraddlesWeekend(DateTime a, DateTime b)
     {
         for (var d = a.Date; d <= b.Date; d = d.AddDays(1))

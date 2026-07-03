@@ -197,6 +197,12 @@ interface CoverageInfo {
                 @if (venue === 'tape' && rows().length > 0) {
                   <div class="rounded border border-gray-700 p-2 space-y-1">
                     <h4 class="text-xs font-medium text-gray-400">Data Coverage</h4>
+                    @if (safeRange()) {
+                      <button (click)="startDate = safeRange()!.from; endDate = safeRange()!.to"
+                        class="text-xs text-emerald-400 hover:underline mb-1">
+                        Snap to available: {{ safeRange()!.from }} – {{ safeRange()!.to }}
+                      </button>
+                    }
                     @for (cov of coverageIssues(); track cov.key) {
                       <div class="flex items-center gap-1.5 text-xs">
                         <span [class.text-emerald-400]="cov.info.decisionTf" [class.text-red-400]="!cov.info.decisionTf">
@@ -444,6 +450,33 @@ export class NewBacktestComponent implements OnInit {
       && new Date(this.startDate) < new Date(this.endDate)
       && this.balance > 0
       && (this.venue !== 'tape' || this.missingCoverage().length === 0);
+  });
+
+  safeRange = computed(() => {
+    if (this.venue !== 'tape') return null;
+    const inv = this.inventory();
+    if (!inv.length || !this.startDate || !this.endDate) return null;
+    const from = new Date(this.startDate).getTime();
+    const to = new Date(this.endDate).getTime();
+    let maxFirst = 0;
+    let minLast = Infinity;
+    let found = false;
+    for (const r of this.rows()) {
+      if (!r.enabled) continue;
+      const item = inv.find(i => i.symbol === r.symbol && i.timeframe.toLowerCase() === r.timeframe.toLowerCase());
+      if (!item) return null;
+      const itemFrom = new Date(item.firstBar).getTime();
+      const itemTo = new Date(item.lastBar).getTime();
+      if (itemFrom > from || itemTo < to) return null;
+      if (itemFrom > maxFirst) maxFirst = itemFrom;
+      if (itemTo < minLast) minLast = itemTo;
+      found = true;
+    }
+    if (!found || maxFirst === 0 || minLast === Infinity) return null;
+    return {
+      from: new Date(maxFirst).toISOString().slice(0, 10),
+      to: new Date(minLast).toISOString().slice(0, 10),
+    };
   });
 
   startDisabledReason = computed(() => {
