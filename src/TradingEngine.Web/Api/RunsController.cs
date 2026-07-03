@@ -1,4 +1,5 @@
 using TradingEngine.CTraderRunner;
+using TradingEngine.Infrastructure.MarketData;
 using TradingEngine.Web.Dtos.Runs;
 using TradingEngine.Web.Services;
 
@@ -14,6 +15,7 @@ public sealed class RunsController : ControllerBase
     private readonly IJournalQueryRepository _journals;
     private readonly IBacktestRunRepository _runRepo;
     private readonly BacktestOrchestrator _orchestrator;
+    private readonly IMarketDataStore? _marketDataStore;
     private readonly RunNarrativeService? _narrative;
     private readonly IRunDataCache? _cache;
     private readonly ILogger<RunsController> _logger;
@@ -26,6 +28,7 @@ public sealed class RunsController : ControllerBase
         IBacktestRunRepository runRepo,
         BacktestOrchestrator orchestrator,
         ILogger<RunsController> logger,
+        IMarketDataStore? marketDataStore = null,
         RunNarrativeService? narrative = null,
         IRunDataCache? cache = null)
     {
@@ -35,6 +38,7 @@ public sealed class RunsController : ControllerBase
         _journals = journals;
         _runRepo = runRepo;
         _orchestrator = orchestrator;
+        _marketDataStore = marketDataStore;
         _narrative = narrative;
         _cache = cache;
         _logger = logger;
@@ -108,6 +112,14 @@ public sealed class RunsController : ControllerBase
         if (errors.Count > 0)
             return BadRequest(new { error = "Invalid backtest request.", details = errors });
 
+        var venue = (!string.IsNullOrWhiteSpace(req.Venue) ? req.Venue!.Trim().ToLowerInvariant() : null) ?? "replay";
+        if (venue == "tape" && _marketDataStore is not null)
+        {
+            var missing = await ValidateTapeDataAsync(req, validSymbols, validPeriods, ct);
+            if (missing.Count > 0)
+                return BadRequest(new { error = "Missing market data for tape backtest.", missing });
+        }
+
         var cfg = new BacktestConfig
         {
             Symbol = validSymbols[0],
@@ -133,7 +145,7 @@ public sealed class RunsController : ControllerBase
             cfg.CustomParams["ForceCloseOnBreachEnabled"] = req.ForceCloseOnBreachEnabled ? "true" : "false";
         if (!string.IsNullOrWhiteSpace(req.RiskProfileId))
             cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
-        cfg.CustomParams["Venue"] = (!string.IsNullOrWhiteSpace(req.Venue) ? req.Venue!.Trim().ToLowerInvariant() : null) ?? "replay";
+        cfg.CustomParams["Venue"] = venue;
         cfg.CustomParams["Speed"] = req.Speed.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
         if (req.StrategyOverrides is { Count: > 0 })
             cfg.CustomParams["StrategyOverrides"] = System.Text.Json.JsonSerializer.Serialize(req.StrategyOverrides);
@@ -440,6 +452,50 @@ public sealed class RunsController : ControllerBase
         };
 
         return Ok(result);
+    }
+
+    private async Task<List<object>> ValidateTapeDataAsync(StartRunRequest req, string[] symbols, string[] periods, CancellationToken ct)
+    {
+        var missing = new List<object>();
+        if (_marketDataStore is null) return missing;
+
+        var inventory = await _marketDataStore.GetInventoryAsync(ct);
+        var invBySymTf = inventory
+            .GroupBy(i => (i.Symbol.ToUpperInvariant(), i.Timeframe))
+            .ToDictionary(g => g.Key, g => g.First());
+
+        foreach (var sym in symbols)
+        {
+            foreach (var per in periods)
+            {
+                if (!Enum.TryParse<Timeframe>(per, ignoreCase: true, out var tf))
+                    continue;
+
+                var key = (sym.ToUpperInvariant(), tf);
+                if (!invBySymTf.TryGetValue(key, out var entry))
+                {
+                    missing.Add(new { symbol = sym, timeframe = per, reason = "No data downloaded at all." });
+                    continue;
+                }
+
+                var from = req.Start;
+                var to = req.End;
+                if (entry.FirstOpenUtc > from || entry.LastOpenUtc < to)
+                {
+                    missing.Add(new
+                    {
+                        symbol = sym,
+                        timeframe = per,
+                        reason = "Coverage gap.",
+                        availableFrom = entry.FirstOpenUtc,
+                        availableTo = entry.LastOpenUtc,
+                        barCount = entry.BarCount,
+                    });
+                }
+            }
+        }
+
+        return missing;
     }
 }
 

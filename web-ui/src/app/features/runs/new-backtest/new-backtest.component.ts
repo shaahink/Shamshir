@@ -1,6 +1,7 @@
 import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy, type WritableSignal } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { RunsStore } from '../runs.store';
@@ -34,7 +35,7 @@ interface CoverageInfo {
 @Component({
   selector: 'app-new-backtest',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, DatePipe],
   template: `
     <div class="space-y-4">
       <div class="flex items-center justify-between">
@@ -196,13 +197,15 @@ interface CoverageInfo {
                 @if (venue === 'tape' && rows().length > 0) {
                   <div class="rounded border border-gray-700 p-2 space-y-1">
                     <h4 class="text-xs font-medium text-gray-400">Data Coverage</h4>
-                    <div class="text-xs text-gray-500 mb-1">Data Coverage</div>
                     @for (cov of coverageIssues(); track cov.key) {
                       <div class="flex items-center gap-1.5 text-xs">
                         <span [class.text-emerald-400]="cov.info.decisionTf" [class.text-red-400]="!cov.info.decisionTf">
                           {{ cov.info.decisionTf ? '\u2713' : '\u2717' }}
                         </span>
                         <span class="text-gray-300">{{ cov.symbol }} {{ cov.tf }}</span>
+                        @if (cov.firstBar && cov.lastBar) {
+                          <span class="text-gray-600">{{ cov.firstBar | date:'yyyy-MM-dd' }} – {{ cov.lastBar | date:'yyyy-MM-dd' }}</span>
+                        }
                         @if (!cov.info.decisionTf) {
                           <a routerLink="/data-manager" class="ml-auto text-xs text-emerald-400 hover:underline">download</a>
                         }
@@ -213,7 +216,7 @@ interface CoverageInfo {
                         <div class="flex items-center gap-1.5 text-xs text-amber-400">
                           <span>\u26A0</span>
                           <span class="text-amber-300">{{ cov.symbol }} m1</span>
-                          <span class="text-amber-500">missing (wick-fidelity fallback)</span>
+                          <span class="text-amber-500">missing (exit-fidelity fallback)</span>
                         </div>
                       }
                     }
@@ -408,7 +411,8 @@ export class NewBacktestComponent implements OnInit {
 
   coverageIssues = computed(() => {
     const map = this.coverageMap();
-    const issues: { key: string; symbol: string; tf: string; info: CoverageInfo }[] = [];
+    const inv = this.inventory();
+    const issues: { key: string; symbol: string; tf: string; info: CoverageInfo; firstBar?: string; lastBar?: string }[] = [];
     const seen = new Set<string>();
     for (const r of this.rows()) {
       if (!r.enabled) continue;
@@ -416,10 +420,15 @@ export class NewBacktestComponent implements OnInit {
       if (seen.has(tk)) continue;
       seen.add(tk);
       const cov = map.get(tk) ?? { decisionTf: false, m1: false };
-      // M1 coverage check
       const m1Key = `${r.symbol}|m1`;
       const m1Cov = map.get(m1Key) ?? { decisionTf: false, m1: false };
-      issues.push({ key: tk, symbol: r.symbol, tf: r.timeframe, info: { decisionTf: cov.decisionTf, m1: m1Cov.decisionTf } });
+      const invEntry = inv.find(i => i.symbol === r.symbol && i.timeframe.toLowerCase() === r.timeframe.toLowerCase());
+      issues.push({
+        key: tk, symbol: r.symbol, tf: r.timeframe,
+        info: { decisionTf: cov.decisionTf, m1: m1Cov.decisionTf },
+        firstBar: invEntry?.firstBar,
+        lastBar: invEntry?.lastBar,
+      });
     }
     return issues;
   });

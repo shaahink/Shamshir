@@ -1,23 +1,56 @@
 # Progress Metrics
 
-**Updated:** 2026-07-03 (session close — merged to develop, branches/worktrees cleaned)
-**Branch:** `iter/tape-trust` (active) + `develop` (merged)
-**Last commit:** `1a7cc93` (iter/tape-trust) / `d786d3f` (develop)
-**Gates:** Unit 314/0/6 · Integration 109/0 (develop) / 94/0 (iter) · Golden 63/63 · build 0 · npm 0
+**Updated:** 2026-07-03 (iter/data-mgmt — shards pipeline, tape speed, limit fixes)
+**Branch:** `iter/data-mgmt` (active) / `develop` (authoritative, merged)
+**Last commit:** `28219ad` (iter/data-mgmt) / `d786d3f` (develop)
+**Gates:** Unit 314/0/6 · Integration 94/0 · Golden 63/63 · build 0 · npm 0
 
 ## Branch Summary
 
 | Branch | State | Notes |
 |--------|-------|-------|
 | `develop` | **Merged** `d786d3f` | Contains all iter/tape-trust work + experiments tier1 |
-| `iter/tape-trust` | Active `1a7cc93` | Authoritative dev branch, pushed to origin |
-| `origin/iter/merge-plan` | Stale (sibling) | Ported fixes, branch deleted locally |
-| `iter/experiments-tape-tier1` | Deleted | Merged into develop |
-| 5 other stale branches | Deleted | Fully merged into develop |
+| `iter/data-mgmt` | **Active** `28219ad` | Data management, tape speed, limit fixes, build race fix |
+| `iter/tape-trust` | Ancestor `1a7cc93` | Parent of iter/data-mgmt |
+| `origin/iter/merge-plan` | Stale (sibling) | All valuable fixes ported to iter/data-mgmt |
 
-**Worktrees:** 1 — `C:/Code/Shamshir` (`iter/tape-trust`). Removed `shamshir-dev` and `shamshir-trust`.
-**Gates:** Unit 314/0/6 · Integration 90/0 · Golden 63/63 · build 0 errors · npm 0 errors
-**Next:** `docs/iterations/iter-merge-plan/NEXT-ITERATION.md` — prioritized remaining work
+## iter/data-mgmt — delivered (2026-07-03)
+
+### Data management
+- **Shards pipeline**: `data/shards/` directory, `GET pending-shards`, `POST ingest-shards`
+- **Auto-archive**: successfully ingested files move to `data/shards/archive/`
+- **Keep files checkbox**: download with `KeepShards=true` preserves NDJSON for inspection
+- **Pending files UI**: Data Manager shows unprocessed shards with Ingest All button
+- **Market data reset**: Settings page Clear Market Data button (`scope=marketdata`)
+
+### Tape speed control
+- **Speed 0-10x**: slider on new-backtest form and live run monitor
+- **Pause/resume**: `PATCH /api/runs/{id} { speed: 0 }` with `ManualResetEventSlim`
+- **Delay mechanism**: `100ms / speed` per bar in `FeedBarsAsync`
+
+### Limit order fixes
+- **P0**: Tape dual-res limit expiry fixed (`decrementExpiry: true`)
+- **Full audit**: `docs/audit/LIMIT-ORDER-AUDIT.md` covering all 4 venues
+
+### Server-side validation
+- **Tape data check**: `RunsController.Start` validates market data exists before starting tape run
+- **Coverage guidance**: new-backtest shows first/last bar dates from inventory for each symbol
+
+### Build
+- **Angular race fixed**: correct `BeforeTargets="ResolveStaticWebAssetsConfiguration"` + PS 5.1 path compat
+- **Dead config**: removed `ConnectionStrings:Trading` from appsettings.json
+
+### Angular
+- **Journal close-fill**: `isCloseFill` detection — close events now visible in journal tab
+- **trade-chart-card**: `effect()` replaces `OnChanges` + `OnDestroy` cleanup
+
+### Gaps remaining
+- C1 short-spread (2 lines, golden-sensitive)
+- D1 DB fragmentation
+- D2 Hardcoded defaults audit
+- P1 Sell-limit halfSpread alignment
+- P3 Limit-order integration tests
+- Owner-only: V2–V5, M5, cBot E2E
 
 ## Branch Decision (RESOLVED 2026-07-03)
 
