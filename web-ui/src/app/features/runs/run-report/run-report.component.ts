@@ -497,7 +497,7 @@ export class RunReportComponent implements OnInit {
           kind === 'OrderPartiallyFilled')
       ) {
         const proposal = byOrder.get(oid);
-        if (proposal) {
+        if (proposal && !this.isCloseFill(e)) {
           proposal.outcome = kind;
           continue;
         }
@@ -525,6 +525,16 @@ export class RunReportComponent implements OnInit {
       return o.OrderId ?? o.orderId ?? null;
     } catch {
       return null;
+    }
+  }
+
+  private isCloseFill(e: JournalEntry): boolean {
+    if (!e.eventJson) return false;
+    try {
+      const o = JSON.parse(e.eventJson);
+      return !!(o.closeReason ?? o.CloseReason);
+    } catch {
+      return false;
     }
   }
 

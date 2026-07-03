@@ -25,6 +25,20 @@ interface DownloadJobResponse {
   completedAtUtc?: string;
 }
 
+interface PendingShard {
+  fileName: string;
+  relativePath: string;
+  symbol: string;
+  timeframe: string;
+  sizeBytes: number;
+  lastModifiedUtc: string;
+}
+
+interface PendingShardsResponse {
+  shardsRoot: string;
+  files: PendingShard[];
+}
+
 @Component({
   selector: 'app-data-manager',
   standalone: true,
@@ -65,10 +79,16 @@ interface DownloadJobResponse {
               <option [value]="180">180</option>
             </select>
           </div>
-          <button (click)="startDownload()" [disabled]="dlLoading()"
-            class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
-            {{ dlLoading() ? 'Starting...' : 'Download' }}
-          </button>
+          <div class="flex items-end gap-2">
+            <div class="flex items-center gap-1.5 pb-1.5">
+              <input type="checkbox" id="keepShards" [(ngModel)]="keepShards" class="rounded" />
+              <label for="keepShards" class="text-xs text-gray-500 cursor-pointer" title="Keep NDJSON files after ingest for inspection">Keep files</label>
+            </div>
+            <button (click)="startDownload()" [disabled]="dlLoading()"
+              class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
+              {{ dlLoading() ? 'Starting...' : 'Download' }}
+            </button>
+          </div>
         </div>
         @if (dlError()) {
           <div class="mt-2 rounded bg-red-900/20 p-2 text-xs text-red-400">{{ dlError() }}</div>
@@ -92,6 +112,46 @@ interface DownloadJobResponse {
         }
       </div>
 
+      @if (pendingFiles().length > 0) {
+        <div class="rounded-lg border border-amber-800 bg-amber-900/10 p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-medium text-amber-400">
+              Pending Shards ({{ pendingFiles().length }} file{{ pendingFiles().length !== 1 ? 's' : '' }},
+              {{ fmtPendingSize() }})
+            </h2>
+            <button (click)="ingestShards()" [disabled]="ingesting()"
+              class="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50">
+              {{ ingesting() ? 'Ingesting...' : 'Ingest All' }}
+            </button>
+          </div>
+          <p class="text-xs text-amber-500/70 mb-2">
+            NDJSON files in <code class="text-amber-400/80">{{ shardsRoot() || 'data/shards' }}</code> not yet imported.
+            Drop files there manually or keep files from downloads for later ingestion.
+          </p>
+          @if (ingestResult()) {
+            @let errLen = ingestResult()?.errors?.length ?? 0;
+            <div class="mt-2 rounded p-2 text-xs" [class]="errLen === 0 ? 'bg-emerald-900/20' : 'bg-red-900/20'">
+              <span [class]="errLen === 0 ? 'text-emerald-400' : 'text-red-400'">
+                {{ ingestResult()?.barsIngested?.toLocaleString() ?? 0 }} bars ingested from {{ ingestResult()?.filesProcessed ?? 0 }} files.
+              </span>
+              @for (e of ingestResult()?.errors ?? []; track e) {
+                <div class="mt-1 text-red-400 font-mono">{{ e }}</div>
+              }
+            </div>
+          }
+          <div class="mt-2 max-h-40 overflow-y-auto space-y-0.5">
+            @for (f of pendingFiles(); track f.relativePath) {
+              <div class="flex items-center gap-2 rounded bg-gray-800/30 px-2 py-1 text-xs">
+                <span class="font-mono text-gray-300">{{ f.fileName }}</span>
+                <span class="text-gray-500">{{ f.symbol }} {{ f.timeframe }}</span>
+                <span class="text-gray-600">{{ fmtSize(f.sizeBytes) }}</span>
+                <span class="ml-auto text-gray-600">{{ f.lastModifiedUtc | date:'MM-dd HH:mm' }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
       @if (loading()) {
         <div class="py-12 text-center text-sm text-gray-500">Loading inventory...</div>
       } @else if (error()) {
@@ -99,7 +159,7 @@ interface DownloadJobResponse {
       } @else if (inventory().length === 0) {
         <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-12 text-center">
           <p class="text-sm text-gray-400 mb-2">No market data available.</p>
-          <p class="text-xs text-gray-500">Use the download form above or run a recorder backtest.</p>
+          <p class="text-xs text-gray-500">Use the download form above or drop NDJSON shards in data/shards/.</p>
         </div>
       } @else {
         <div class="flex flex-wrap gap-2 mb-3">
@@ -196,12 +256,18 @@ export class DataManagerComponent implements OnInit {
   dlDays = 7;
   dlLoading = signal(false);
   dlError = signal<string | null>(null);
+  keepShards = false;
   activeJobs = signal<DownloadJobResponse[]>([]);
   private completedJobIds = new Set<string>();
 
+  pendingFiles = signal<PendingShard[]>([]);
+  shardsRoot = signal<string>('');
+  ingesting = signal(false);
+  ingestResult = signal<{ filesProcessed: number; barsIngested: number; errors: string[] } | null>(null);
+
   ngOnInit(): void {
     this.loadInventory();
-    // Poll active jobs every 2s
+    this.loadPendingShards();
     interval(2000)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.pollActiveJobs());
@@ -218,11 +284,11 @@ export class DataManagerComponent implements OnInit {
       symbol: this.dlSymbol,
       tfs: this.dlTfs(),
       days: this.dlDays,
+      keepShards: this.keepShards,
     }).subscribe({
       next: (r) => {
         this.dlLoading.set(false);
         this.activeJobs.update(jobs => [...jobs, r]);
-        // Start polling this job
         this.pollJob(r.jobId);
       },
       error: (err) => {
@@ -246,6 +312,34 @@ export class DataManagerComponent implements OnInit {
     }
   }
 
+  ingestShards(): void {
+    this.ingesting.set(true);
+    this.ingestResult.set(null);
+    this.http.post<{ filesProcessed: number; barsIngested: number; errors: string[] }>('/api/data-manager/ingest-shards', {}).subscribe({
+      next: (r) => {
+        this.ingestResult.set(r);
+        this.ingesting.set(false);
+        this.loadInventory();
+        this.loadPendingShards();
+      },
+      error: (err) => {
+        this.ingestResult.set({ filesProcessed: 0, barsIngested: 0, errors: [err?.error?.error ?? err?.message ?? 'Ingest failed'] });
+        this.ingesting.set(false);
+      },
+    });
+  }
+
+  fmtSize(bytes: number): string {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  fmtPendingSize(): string {
+    const total = this.pendingFiles().reduce((s, f) => s + f.sizeBytes, 0);
+    return this.fmtSize(total);
+  }
+
   private pollActiveJobs(): void {
     const jobs = this.activeJobs();
     if (jobs.length === 0) return;
@@ -261,6 +355,7 @@ export class DataManagerComponent implements OnInit {
         this.activeJobs.update(jobs => jobs.map(j => j.jobId === jobId ? updated : j));
         if (updated.status === 'done') {
           this.loadInventory();
+          this.loadPendingShards();
         }
       },
       error: () => { /* job may not exist yet */ },
@@ -305,6 +400,16 @@ export class DataManagerComponent implements OnInit {
         this.error.set(err?.message ?? 'Failed to load inventory');
         this.loading.set(false);
       },
+    });
+  }
+
+  private loadPendingShards(): void {
+    this.http.get<PendingShardsResponse>('/api/data-manager/pending-shards').subscribe({
+      next: (r) => {
+        this.pendingFiles.set(r.files ?? []);
+        this.shardsRoot.set(r.shardsRoot ?? '');
+      },
+      error: () => { /* endpoint may not exist yet */ },
     });
   }
 }

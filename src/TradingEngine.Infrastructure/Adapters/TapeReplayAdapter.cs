@@ -212,7 +212,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             if (fine.OpenTimeUtc < decisionBar.OpenTimeUtc) continue;
             _lastClose = fine.Close;
             BrokerTimeUtc = fine.OpenTimeUtc + _exitInterval;
-            ProcessPendingLimits(fine, decrementExpiry: false);
+            ProcessPendingLimits(fine, decrementExpiry: true);
             ProcessSlTpHits(fine);
             var floatingEquity = _balance + ComputeFloatingPnL(fine.Close);
             if (floatingEquity < minEquity) minEquity = floatingEquity;

@@ -52,7 +52,7 @@ public sealed class DataManagerController : ControllerBase
         if (req.From is not null) from = DateTime.SpecifyKind(req.From.Value, DateTimeKind.Utc);
         if (req.To is not null) to = DateTime.SpecifyKind(req.To.Value, DateTimeKind.Utc);
 
-        var job = _downloadJobs.Start(req.Symbol, req.Tfs, req.Days, from, to);
+        var job = _downloadJobs.Start(req.Symbol, req.Tfs, req.Days, from, to, keepShards: req.KeepShards);
         return Ok(new
         {
             jobId = job.Id,
@@ -97,6 +97,108 @@ public sealed class DataManagerController : ControllerBase
         return Ok(new { deleted });
     }
 
+    [HttpGet("pending-shards")]
+    public IActionResult GetPendingShards()
+    {
+        if (_downloadJobs is null)
+            return Ok(new { shardsRoot = "", files = Array.Empty<object>() });
+
+        var root = _downloadJobs.ShardsRoot;
+        var result = new List<object>();
+
+        if (Directory.Exists(root))
+        {
+            foreach (var file in Directory.GetFiles(root, "*.ndjson", SearchOption.AllDirectories))
+            {
+                var fi = new FileInfo(file);
+                var relativePath = Path.GetRelativePath(root, file);
+
+                var symbol = "";
+                var timeframe = "";
+                var name = Path.GetFileNameWithoutExtension(file);
+                var parts = name.Split('_');
+                if (parts.Length >= 2)
+                {
+                    symbol = parts[0].ToUpperInvariant();
+                    timeframe = parts[1].ToLowerInvariant();
+                }
+
+                result.Add(new
+                {
+                    fileName = Path.GetFileName(file),
+                    relativePath,
+                    symbol,
+                    timeframe,
+                    sizeBytes = fi.Length,
+                    lastModifiedUtc = fi.LastWriteTimeUtc,
+                });
+            }
+        }
+
+        return Ok(new { shardsRoot = root, files = result });
+    }
+
+    [HttpPost("ingest-shards")]
+    public async Task<IActionResult> IngestShards([FromBody] IngestShardsRequest? req, CancellationToken ct)
+    {
+        if (_marketDataStore is null)
+            return Problem("Market data store not registered.");
+        if (_downloadJobs is null)
+            return Problem("Download job service not registered.");
+
+        var root = _downloadJobs.ShardsRoot;
+        if (!Directory.Exists(root))
+            return Ok(new { filesProcessed = 0, barsIngested = 0, errors = Array.Empty<string>() });
+
+        var files = new List<string>();
+        foreach (var file in Directory.GetFiles(root, "*.ndjson", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(root, file);
+            if (rel.StartsWith("archive", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (req?.Symbol is { Length: > 0 })
+            {
+                var fname = Path.GetFileNameWithoutExtension(file);
+                if (!fname.StartsWith(req.Symbol, StringComparison.OrdinalIgnoreCase))
+                    continue;
+            }
+
+            files.Add(file);
+        }
+
+        if (files.Count == 0)
+            return Ok(new { filesProcessed = 0, barsIngested = 0, errors = Array.Empty<string>() });
+
+        var ingester = new MarketDataIngester(_marketDataStore, HttpContext.RequestServices.GetService<ILogger<MarketDataIngester>>());
+        var errors = new List<string>();
+        int totalInserted = 0;
+
+        foreach (var file in files)
+        {
+            try
+            {
+                var ir = await ingester.IngestFileAsync(file, "ctrader", ct);
+                totalInserted += ir.BarsInserted;
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{Path.GetFileName(file)}: {ex.Message}");
+                _logger.LogWarning(ex, "Ingest-shards: failed on {File}", file);
+            }
+        }
+
+        _logger.LogInformation("Ingest-shards: processed {Count} files, {Bars} bars ingested, {Errors} errors",
+            files.Count, totalInserted, errors.Count);
+
+        return Ok(new
+        {
+            filesProcessed = files.Count,
+            barsIngested = totalInserted,
+            errors = errors.ToArray(),
+        });
+    }
+
     private static object MapJob(DownloadJob job) => new
     {
         jobId = job.Id,
@@ -120,6 +222,7 @@ public sealed class DataManagerController : ControllerBase
         public int Days { get; init; } = 7;
         public DateTime? From { get; init; }
         public DateTime? To { get; init; }
+        public bool KeepShards { get; init; }
     }
 
     public sealed record DeleteBarsRequest
@@ -129,5 +232,10 @@ public sealed class DataManagerController : ControllerBase
         public DateTime? From { get; init; }
         public DateTime? To { get; init; }
         public string? Source { get; init; }
+    }
+
+    public sealed record IngestShardsRequest
+    {
+        public string? Symbol { get; init; }
     }
 }

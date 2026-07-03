@@ -17,9 +17,16 @@ public sealed class DownloadJobService
         _scopeFactory = scopeFactory;
         _configuration = configuration;
         _logger = logger;
+
+        var dataDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data"));
+        ShardsRoot = configuration.GetValue<string>("MarketData:ShardsPath")
+            ?? Path.Combine(dataDir, "shards");
+        Directory.CreateDirectory(ShardsRoot);
     }
 
-    public DownloadJob Start(string symbol, string[] tfs, int days, DateTime? from, DateTime? to)
+    public string ShardsRoot { get; }
+
+    public DownloadJob Start(string symbol, string[] tfs, int days, DateTime? from, DateTime? to, bool keepShards = false)
     {
         var jobId = Guid.NewGuid().ToString("N")[..8];
         var job = new DownloadJob
@@ -28,8 +35,11 @@ public sealed class DownloadJobService
             Symbol = symbol,
             Timeframes = tfs,
             Days = days,
+            From = from,
+            To = to,
             Status = "queued",
             CreatedAtUtc = DateTime.UtcNow,
+            KeepShards = keepShards,
         };
         _jobs[jobId] = job;
 
@@ -48,7 +58,7 @@ public sealed class DownloadJobService
         job.Status = "running";
         job.StartedAtUtc = DateTime.UtcNow;
 
-        var shardsDir = Path.Combine(Path.GetTempPath(), "shamshir-download", job.Id);
+        var shardsDir = Path.Combine(ShardsRoot, job.Id);
         try
         {
             Directory.CreateDirectory(shardsDir);
@@ -94,7 +104,6 @@ public sealed class DownloadJobService
                 ReportDir = shardsDir,
                 Record = true,
                 Periods = [periodsStr],
-                // iter-tape-trust T1/B4: hardcoded ports — no dynamic port manager yet
                 DataPort = 15562,
                 CommandPort = 15563,
             };
@@ -135,14 +144,37 @@ public sealed class DownloadJobService
         }
         finally
         {
-            if (job.Status == "done" || job.Status == "failed")
+            if (job.Status == "done")
+            {
+                if (job.KeepShards)
+                {
+                    var archiveDir = Path.Combine(ShardsRoot, "archive");
+                    try
+                    {
+                        Directory.CreateDirectory(archiveDir);
+                        var archivedDest = Path.Combine(archiveDir, job.Id);
+                        if (Directory.Exists(archivedDest)) Directory.Delete(archivedDest, true);
+                        Directory.Move(shardsDir, archivedDest);
+                        _logger.LogInformation("Download job {JobId}: shards archived to {Dir}", job.Id, archivedDest);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Download job {JobId}: could not archive shards from {Dir}", job.Id, shardsDir);
+                    }
+                }
+                else
+                {
+                    try { if (Directory.Exists(shardsDir)) Directory.Delete(shardsDir, true); }
+                    catch { _logger.LogWarning("Download job {JobId}: could not clean up shards dir {Dir}", job.Id, shardsDir); }
+                }
+            }
+            else if (job.Status == "failed")
             {
                 try { if (Directory.Exists(shardsDir)) Directory.Delete(shardsDir, true); }
-                catch { _logger.LogWarning("Download job {JobId}: could not clean up shards dir {Dir}", job.Id, shardsDir); }
+                catch { _logger.LogWarning("Download job {JobId}: could not clean up failed shards dir {Dir}", job.Id, shardsDir); }
             }
             else
             {
-                // Keep shards on unexpected failure — they can be inspected/re-ingested
                 _logger.LogWarning("Download job {JobId}: shards retained at {Dir} (status={Status})", job.Id, shardsDir, job.Status);
             }
         }
@@ -182,4 +214,5 @@ public sealed class DownloadJob
     public DateTime? CompletedAtUtc { get; set; }
     public int BarsRecorded { get; set; }
     public string? Error { get; set; }
+    public bool KeepShards { get; set; }
 }
