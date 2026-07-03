@@ -128,6 +128,11 @@ export class RunsApiService {
     return firstValueFrom(this.http.post<{ deleted: number }>('/api/runs/delete', { runIds }));
   }
 
+  // M4.1: keep newest N runs, delete the rest.
+  pruneRuns(keep: number): Promise<{ deleted: number; kept: number }> {
+    return firstValueFrom(this.http.post<{ deleted: number; kept: number }>('/api/runs/prune', { keep }));
+  }
+
   // iter-37 F3 — NDJSON download of the lossless StepRecord journal.
   journalExportUrl(runId: string): string {
     return `/api/runs/${runId}/journal/export`;

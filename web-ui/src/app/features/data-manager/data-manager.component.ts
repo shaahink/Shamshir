@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -42,12 +42,7 @@ interface DownloadJobResponse {
           <div>
             <label class="block text-xs font-medium text-gray-400 mb-1">Symbol</label>
             <select [(ngModel)]="dlSymbol" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
-              <option value="EURUSD">EURUSD</option>
-              <option value="GBPUSD">GBPUSD</option>
-              <option value="USDJPY">USDJPY</option>
-              <option value="AUDUSD">AUDUSD</option>
-              <option value="USDCAD">USDCAD</option>
-              <option value="NZDUSD">NZDUSD</option>
+              @for (s of dlSymbols; track s) { <option [value]="s">{{ s }}</option> }
             </select>
           </div>
           <div>
@@ -107,6 +102,15 @@ interface DownloadJobResponse {
           <p class="text-xs text-gray-500">Use the download form above or run a recorder backtest.</p>
         </div>
       } @else {
+        <div class="flex flex-wrap gap-2 mb-3">
+          @for (s of perSymbol(); track s.symbol) {
+            <div class="rounded-md border border-gray-800 bg-gray-900/40 px-3 py-1.5 text-xs">
+              <span class="font-mono text-gray-300">{{ s.symbol }}</span>
+              <span class="ml-2 text-gray-500">{{ s.bars.toLocaleString() }} bars &middot; {{ s.tfs }} TF</span>
+            </div>
+          }
+        </div>
+
         <div class="overflow-x-auto rounded-lg border border-gray-800">
           <table class="min-w-full text-sm">
             <thead class="bg-gray-900/50">
@@ -118,6 +122,7 @@ interface DownloadJobResponse {
                 <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Last Bar</th>
                 <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500"># Bars</th>
                 <th class="px-4 py-2 text-center text-xs font-medium uppercase tracking-wide text-gray-500">M1 Overlap</th>
+                <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500"></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-800">
@@ -140,6 +145,12 @@ interface DownloadJobResponse {
                       <span class="text-xs text-gray-600">&mdash;</span>
                     }
                   </td>
+                  <td class="whitespace-nowrap px-4 py-2 text-right">
+                    <button (click)="deleteRow(item)" [disabled]="deletingKey() === rowKey(item)"
+                      class="rounded border border-red-900 px-2 py-0.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50">
+                      {{ deletingKey() === rowKey(item) ? '...' : 'Delete' }}
+                    </button>
+                  </td>
                 </tr>
               }
             </tbody>
@@ -156,10 +167,27 @@ export class DataManagerComponent implements OnInit {
   inventory = signal<MarketDataItem[]>([]);
   loading = signal(true);
   error = signal<string | null>(null);
+  deletingKey = signal<string | null>(null);
+
+  perSymbol = computed(() => {
+    const by = new Map<string, { symbol: string; bars: number; tfs: number }>();
+    for (const i of this.inventory()) {
+      const e = by.get(i.symbol) ?? { symbol: i.symbol, bars: 0, tfs: 0 };
+      e.bars += i.barCount;
+      e.tfs += 1;
+      by.set(i.symbol, e);
+    }
+    return [...by.values()].sort((a, b) => a.symbol.localeCompare(b.symbol));
+  });
+
+  rowKey = (i: MarketDataItem) => `${i.symbol}|${i.timeframe}|${i.source}`;
 
   dlSymbol = 'EURUSD';
+  dlSymbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'GBPJPY', 'XAUUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'XAGUSD'];
   allTfs = [
     { value: 'm1', label: 'M1' },
+    { value: 'm5', label: 'M5' },
+    { value: 'm15', label: 'M15' },
     { value: 'h1', label: 'H1' },
     { value: 'h4', label: 'H4' },
     { value: 'd1', label: 'D1' },
@@ -236,6 +264,23 @@ export class DataManagerComponent implements OnInit {
         }
       },
       error: () => { /* job may not exist yet */ },
+    });
+  }
+
+  deleteRow(item: MarketDataItem): void {
+    if (this.deletingKey()) return;
+    if (!confirm(`Delete all ${item.barCount.toLocaleString()} ${item.symbol} ${item.timeframe} bars (${item.source})? This cannot be undone.`)) return;
+    this.deletingKey.set(this.rowKey(item));
+    this.http.post<{ deleted: number }>('/api/data-manager/delete', {
+      symbol: item.symbol,
+      timeframe: item.timeframe,
+      source: item.source,
+    }).subscribe({
+      next: () => { this.deletingKey.set(null); this.loadInventory(); },
+      error: (err) => {
+        this.error.set(err?.error?.error ?? err?.message ?? 'Delete failed');
+        this.deletingKey.set(null);
+      },
     });
   }
 

@@ -11,6 +11,7 @@ public sealed record TradeSummaryResponse
     public decimal Lots { get; init; }
     public decimal EntryPrice { get; init; }
     public decimal ExitPrice { get; init; }
+    public DateTime OpenedAtUtc { get; init; }
     public DateTime ClosedAtUtc { get; init; }
     public decimal GrossPnLAmount { get; init; }
     public decimal CommissionAmount { get; init; }

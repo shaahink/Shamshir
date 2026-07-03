@@ -61,6 +61,7 @@ export interface RunDetail {
   wallElapsedMs: number;
   barsPerSec: number;
   totalBars: number;
+  exitResolution?: string | null;
 }
 
 export interface TradeListResponse {

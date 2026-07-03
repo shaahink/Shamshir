@@ -606,9 +606,9 @@ export class RunReportComponent implements OnInit {
     return this.fmtReason(e.decisionReason ?? e.reason ?? null);
   }
 
-  grossTotal = computed(() => this.trades().reduce((s, t) => s + t.grossPnLAmount, 0));
-  commTotal = computed(() => this.trades().reduce((s, t) => s + t.commissionAmount, 0));
-  swapTotal = computed(() => this.trades().reduce((s, t) => s + t.swapAmount, 0));
+  grossTotal = computed(() => this.trades().reduce((s, t) => s + (t.grossPnLAmount ?? 0), 0));
+  commTotal = computed(() => this.trades().reduce((s, t) => s + (t.commissionAmount ?? 0), 0));
+  swapTotal = computed(() => this.trades().reduce((s, t) => s + (t.swapAmount ?? 0), 0));
   grossDisplay = computed(() => {
     const d = this.store.selectedRun();
     return d ? (d.grossPnL ?? this.trades().reduce((s, t) => s + (t.grossPnLAmount ?? 0), 0)).toFixed(2) : '0.00';
@@ -659,7 +659,7 @@ export class RunReportComponent implements OnInit {
   }
   recNetOk = computed(() => {
     const d = this.store.selectedRun();
-    return d ? Math.abs(d.netProfit - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01 : false;
+    return d ? Math.abs(d.netProfit - this.trades().reduce((s, t) => s + (t.netPnLAmount ?? 0), 0)) < 0.01 : false;
   });
   recClosesOk = computed(() => {
     const d = this.store.selectedRun();
@@ -668,7 +668,7 @@ export class RunReportComponent implements OnInit {
   recCostOk = computed(
     () =>
       Math.abs(
-        this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + t.netPnLAmount, 0),
+        this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + (t.netPnLAmount ?? 0), 0),
       ) < 0.01,
   );
 
@@ -819,7 +819,7 @@ export class RunReportComponent implements OnInit {
   journalTableData = computed(() =>
     this.filteredJournal().map(e => ({
       seq: e.seq,
-      simTime: new Date(e.simTimeUtc).toLocaleString(),
+      simTime: e.simTimeUtc ? new Date(e.simTimeUtc).toLocaleString() : '—',
       kind: this.kindOf(e),
       outcome: e.outcome ?? null,
       symbol: e.symbol ?? null,

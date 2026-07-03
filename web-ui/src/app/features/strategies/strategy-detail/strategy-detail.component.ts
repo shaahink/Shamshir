@@ -571,7 +571,9 @@ export class StrategyDetailComponent extends DetailFormBase implements OnInit {
     };
     this.saving.set(true);
     try {
-      await this.api.save(this.data()!.id, body);
+      const d = this.data();
+      if (!d) return;
+      await this.api.save(d.id, body);
       this.savedOk.set(true);
       this.editing.set(false);
     } catch (e: any) {
@@ -584,7 +586,9 @@ export class StrategyDetailComponent extends DetailFormBase implements OnInit {
   async duplicate(): Promise<void> {
     this.saving.set(true);
     try {
-      const res = await this.api.duplicate(this.data()!.id);
+      const d = this.data();
+      if (!d) return;
+      const res = await this.api.duplicate(d.id);
       this.router.navigate(['/strategies', res.id]);
     } catch {
     } finally {

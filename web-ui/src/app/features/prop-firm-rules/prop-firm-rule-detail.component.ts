@@ -263,13 +263,16 @@ export class PropFirmRuleDetailComponent extends DetailFormBase implements OnIni
   }
 
   async duplicate(): Promise<void> {
-      const res = await this.api.duplicate(this.data()!.id);
+    const d = this.data();
+    if (!d) return;
+    const res = await this.api.duplicate(d.id);
     this.router.navigate(['/prop-firm-rules', res.id]);
   }
 
   async del(): Promise<void> {
-    if (!confirm('Delete this rule set?')) return;
-      await this.api.delete(this.data()!.id);
+    const d = this.data();
+    if (!d || !confirm('Delete this rule set?')) return;
+    await this.api.delete(d.id);
     this.router.navigate(['/prop-firm-rules']);
   }
 }
