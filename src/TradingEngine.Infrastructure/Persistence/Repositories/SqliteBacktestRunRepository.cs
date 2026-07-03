@@ -229,6 +229,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         await db.JournalEntries.Where(j => j.RunId == runId).ExecuteDeleteAsync(ct);
         await db.EquitySnapshots.Where(e => e.RunId == runId).ExecuteDeleteAsync(ct);
         await db.Bars.Where(b => b.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.VenueSessions.Where(v => v.RunId == runId).ExecuteDeleteAsync(ct);
         await db.BacktestRuns.Where(r => r.RunId == runId).ExecuteDeleteAsync(ct);
         await db.SaveChangesAsync(ct);
     }

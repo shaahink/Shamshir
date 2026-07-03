@@ -304,7 +304,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                           <td class="px-3 py-1 text-right text-gray-300">{{ b.proposalCount || '' }}</td>
                           <td class="px-3 py-1 text-right text-gray-300">{{ b.fillCount || '' }}</td>
                           <td class="px-3 py-1 text-right text-gray-300">{{ b.closeCount || '' }}</td>
-                          <td class="px-3 py-1 text-amber-400">{{ b.gateRejections.join('; ') }}</td>
+                          <td class="px-3 py-1 text-amber-400">{{ (b.gateRejections ?? []).join('; ') }}</td>
                           <td class="px-3 py-1 text-right font-mono text-gray-300">{{ b.risk ? b.risk.equity.toFixed(0) : '&mdash;' }}</td>
                           <td class="px-3 py-1 text-right text-gray-400">{{ b.risk ? b.risk.openPositions : '&mdash;' }}</td>
                         </tr>

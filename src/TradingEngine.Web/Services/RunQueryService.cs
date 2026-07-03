@@ -283,7 +283,7 @@ public sealed class RunQueryService : IRunQueryService
             if (cachedTrades.Count > 0)
             {
                 return cachedTrades
-                    .GroupBy(t => t.ClosedAtUtc.Date)
+                    .GroupBy(t => PropFirmDayOf(t.ClosedAtUtc))
                     .Select(g => new DailyPnlResponse
                     {
                         Date = g.Key.ToString("yyyy-MM-dd"),
@@ -299,13 +299,25 @@ public sealed class RunQueryService : IRunQueryService
             .OrderBy(t => t.ClosedAtUtc)
             .ToListAsync(ct);
 
-        return trades.GroupBy(t => t.ClosedAtUtc.Date)
+        return trades.GroupBy(t => PropFirmDayOf(t.ClosedAtUtc))
             .Select(g => new DailyPnlResponse
             {
                 Date = g.Key.ToString("yyyy-MM-dd"),
                 PnL = g.Sum(t => t.NetPnLAmount),
             })
             .ToList();
+    }
+
+    /// <summary>
+    /// The prop-firm reset-period date a UTC instant belongs to (default 22:00 UTC roll — matches
+    /// <c>ResetClock.ResetPeriodDate</c> in TradingEngine.Host and every seeded ruleset's
+    /// <c>dailyResetTimeUtc</c>). Before 22:00 you're still in yesterday's period. Daily PnL/DD MUST bucket
+    /// on this boundary, not calendar midnight — see iter-merge-plan PLAN.md "What NOT to do".
+    /// </summary>
+    private static DateOnly PropFirmDayOf(DateTime closedAtUtc)
+    {
+        var date = DateOnly.FromDateTime(closedAtUtc);
+        return TimeOnly.FromDateTime(closedAtUtc) >= new TimeOnly(22, 0) ? date : date.AddDays(-1);
     }
 
     public async Task<RunAnalyticsResponse?> GetRunAnalyticsAsync(string runId, CancellationToken ct)

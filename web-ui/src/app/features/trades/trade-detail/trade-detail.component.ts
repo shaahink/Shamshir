@@ -64,8 +64,12 @@ export class TradeDetailComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
-    const t = await this.api.getById(id);
-    this.trade.set(t);
+    try {
+      const t = await this.api.getById(id);
+      this.trade.set(t);
+    } catch {
+      this.trade.set(null);
+    }
   }
 
   fmtDuration = formatDuration;

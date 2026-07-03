@@ -82,6 +82,19 @@ public sealed class RunsController : ControllerBase
             validPeriods = perList.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
         }
 
+        var activeRuns = _orchestrator.GetAll()
+            .Where(r => r.Status is "starting" or "running")
+            .Select(r => r.RunId)
+            .ToList();
+        if (activeRuns.Count > 0)
+        {
+            return Conflict(new
+            {
+                error = "A backtest is already running. Wait for it to complete or cancel it first.",
+                activeRunIds = activeRuns,
+            });
+        }
+
         var errors = new List<string>();
         if (req.Rows is { Count: > 0 } && rowPlan is not { Entries.Count: > 0 })
             errors.Add("At least one enabled row is required.");
@@ -149,6 +162,18 @@ public sealed class RunsController : ControllerBase
     {
         if (req.RunIds is null or { Length: 0 })
             return BadRequest(new { error = "At least one runId required." });
+
+        var active = req.RunIds
+            .Where(id => _orchestrator.GetState(id)?.Status is "running" or "starting")
+            .ToList();
+        if (active.Count > 0)
+        {
+            return Conflict(new
+            {
+                error = $"{active.Count} run(s) are still active — cancel them first.",
+                activeRunIds = active,
+            });
+        }
 
         var deleted = 0;
         foreach (var runId in req.RunIds)

@@ -1,4 +1,4 @@
-import { Component, inject, input, signal, computed, OnInit, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, input, signal, computed, OnInit, OnChanges, ChangeDetectionStrategy } from '@angular/core';
 import { CandleChartComponent, type OhlcBar, type PriceMarker } from './candle-chart.component';
 import type { TradeDetail } from '../models/api.types';
 import { TradesApiService } from '../features/trades/trades.service';
@@ -65,7 +65,7 @@ import { markerFor } from './chart-marker.helper';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TradeChartCardComponent implements OnInit {
+export class TradeChartCardComponent implements OnInit, OnChanges {
   private api = inject(TradesApiService);
   readonly tradeId = input.required<string>();
 
@@ -84,7 +84,18 @@ export class TradeChartCardComponent implements OnInit {
   });
 
   async ngOnInit(): Promise<void> {
+    await this.loadTradeData();
+  }
+
+  async ngOnChanges(): Promise<void> {
+    await this.loadTradeData();
+  }
+
+  private async loadTradeData(): Promise<void> {
     const id = this.tradeId();
+    this.bars.set([]);
+    this.markers.set([]);
+
     try {
       const t = await this.api.getById(id);
       this.trade.set(t);
