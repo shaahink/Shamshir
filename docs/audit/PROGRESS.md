@@ -1,12 +1,36 @@
 # Progress Metrics
 
-**Updated:** 2026-07-02 (session close — Groups 1&2 implemented, deep audit completed, 5 audit gaps fixed)
-**Branch:** `iter/merge-plan`
-**Worktree:** `C:\Code\shamshir-trust` (ACTIVE)
-**Pinned:** `C:\Code\Shamshir` (iter/tape-trust, do not touch)
+**Updated:** 2026-07-03 (branch reconciliation + tape-backtest live verification)
+**Branch:** `develop` — now the canonical integration branch. See
+`docs/iterations/iter-tape-enable/FOLLOWUP-RECONCILE.md` for the full reconciliation record and readiness verdict.
+**Worktree used this session:** `C:\code\shamshir-dev`
+**Superseded branches (historical, do not build on):** `iter/tape-trust` (11 commits, all superseded — one genuine
+fix ported forward, see below), `iter/merge-plan` (fully merged into `develop` already before this session).
 **Master plans:** `docs/iterations/iter-merge-plan/PLAN.md` (M1–M5) + `docs/iterations/iter-master-plan/PLAN.md` (Tracks A–G) + `docs/QUANT-ROADMAP.md` (Q1–Q4)
 
-## Gates (2026-07-02)
+## 2026-07-03 — branch reconciliation + fix (pushed to origin/develop, commit 71133dd)
+
+`develop` was compared file-by-file against the sibling `iter/tape-trust` branch (which independently redid the
+same M1–M4 plan). Every difference was audited; `develop` already had equal-or-better versions of everything
+(RunNarrativeService schema fix with test coverage, VenueSessions cascade-delete with test coverage, real
+EntryReason/EntryRegime threading, working "Why entered" UI, run-overlap 409 guard, full Data Manager
+storage/delete-range) **except one genuine gap**: daily PnL/DD was bucketed by calendar date instead of the
+22:00 UTC prop-firm roll (`RunQueryService.GetRunDailyPnLAsync` + `BacktestAnalyticsController`'s two endpoints).
+Fixed and pushed as `71133dd`. Gates below are post-fix, on `develop`.
+
+## Gates (2026-07-03, develop @ 71133dd)
+
+| Gate | Command | Result |
+|------|---------|--------|
+| Build | `dotnet build` | 0 errors |
+| Unit | `dotnet test tests/TradingEngine.Tests.Unit` | 314 pass / 0 fail / 6 skip |
+| Integration | `dotnet test tests/TradingEngine.Tests.Integration` | 110 pass / 0 fail (incl. WebSmokeTests — required a stopgap `wwwroot` copy, see FOLLOWUP-RECONCILE.md npm caveat) |
+| Golden/Determinism | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true&(FullyQualifiedName~Golden\|FullyQualifiedName~Characterization\|FullyQualifiedName~Acceptance\|FullyQualifiedName~Lifecycle\|FullyQualifiedName~Deterministic\|FullyQualifiedName~Equivalence\|FullyQualifiedName~Journal)"` | 63 pass / 0 fail |
+| cTrader E2E | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader=true&FullyQualifiedName!~NetMQBridge"` | BLOCKED — cTrader CLI not installed. Owner to run. |
+| Live tape-backtest (curl, real EURUSD H1 data) | drove a real run end-to-end | ✅ completed, real narrative confirmed readable (see FOLLOWUP-RECONCILE.md) |
+| DB Migrations | `dotnet ef database update` | Applied: InitialCreate + AddTradeNarrativeColumns |
+
+## Gates (2026-07-02, pre-reconciliation baseline on former iter/merge-plan)
 
 | Gate | Command | Result |
 |------|---------|--------|
