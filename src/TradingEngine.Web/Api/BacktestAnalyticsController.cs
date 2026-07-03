@@ -81,7 +81,7 @@ public class BacktestAnalyticsController : ControllerBase
     public async Task<IActionResult> GetPassProbability(string runId)
     {
         var trades = await _db.Trades.Where(t => t.RunId == runId).OrderBy(t => t.ClosedAtUtc).ToListAsync();
-        var dailyPnL = trades.GroupBy(t => t.ClosedAtUtc.Date)
+        var dailyPnL = trades.GroupBy(t => PropFirmDayOf(t.ClosedAtUtc))
             .Select(g => g.Sum(t => t.NetPnLAmount))
             .Select(d => (decimal)d)
             .ToList();
@@ -154,10 +154,9 @@ public class BacktestAnalyticsController : ControllerBase
     public async Task<IActionResult> GetDailyPnL(string runId)
     {
         var trades = await _db.Trades.Where(t => t.RunId == runId).OrderBy(t => t.ClosedAtUtc).ToListAsync();
-        // iter-38 W-B9/W-B10: daily buckets are UTC calendar dates — grouped off ClosedAtUtc (stored UTC;
-        // SQLite materializes the same wall-clock with Kind=Unspecified). The W-B8 converter emits 'Z' so the
-        // client localizes for display; the server-side buckets stay deterministic UTC.
-        var daily = trades.GroupBy(t => t.ClosedAtUtc.Date)
+        // iter-merge-plan: daily buckets follow the 22:00 UTC prop-firm roll, not calendar midnight (PLAN.md
+        // "What NOT to do"). Superseded the iter-38 W-B9/W-B10 calendar-date convention noted here previously.
+        var daily = trades.GroupBy(t => PropFirmDayOf(t.ClosedAtUtc))
             .Select(g => new { date = g.Key.ToString("yyyy-MM-dd"), pnl = g.Sum(t => t.NetPnLAmount) })
             .ToList();
         return Ok(daily);
@@ -204,6 +203,14 @@ public class BacktestAnalyticsController : ControllerBase
             matrix.Add(row);
         }
         return Ok(new { symbols = symList, matrix });
+    }
+
+    /// <summary>22:00 UTC prop-firm reset-period date (matches RunQueryService.PropFirmDayOf /
+    /// TradingEngine.Host.ResetClock.ResetPeriodDate). Before 22:00 you're still in yesterday's period.</summary>
+    private static DateOnly PropFirmDayOf(DateTime closedAtUtc)
+    {
+        var date = DateOnly.FromDateTime(closedAtUtc);
+        return TimeOnly.FromDateTime(closedAtUtc) >= new TimeOnly(22, 0) ? date : date.AddDays(-1);
     }
 
     private static double PearsonR(List<decimal> a, List<decimal> b)
