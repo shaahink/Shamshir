@@ -58,6 +58,19 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     private readonly decimal _tickSpread;
     private Task _feedTask = Task.CompletedTask;
     private CancellationTokenSource? _feedCts;
+    private volatile float _speed = 10f;
+    private readonly ManualResetEventSlim _pauseEvent = new(true);
+
+    public float Speed
+    {
+        get => _speed;
+        set
+        {
+            _speed = Math.Clamp(value, 0f, 10f);
+            if (_speed > 0f) _pauseEvent.Set();
+            else _pauseEvent.Reset();
+        }
+    }
 
     // Finer-resolution bars for exit detection, plus a monotonic cursor consumed by OnBarObserved.
     private IReadOnlyList<Bar> _exitBars = [];
@@ -172,6 +185,9 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             foreach (var bar in bars)
             {
                 ct.ThrowIfCancellationRequested();
+                _pauseEvent.Wait(ct);
+                var delayMs = _speed > 0f ? (int)(100f / _speed) : Timeout.Infinite;
+                if (delayMs > 0) await Task.Delay(delayMs, ct);
                 await _barChannel.Writer.WriteAsync(bar, ct);
                 await _tickChannel.Writer.WriteAsync(
                     new Tick(bar.Symbol, bar.Close, bar.Close + _tickSpread, bar.OpenTimeUtc), ct);

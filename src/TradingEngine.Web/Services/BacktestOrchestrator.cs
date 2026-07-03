@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -97,6 +98,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         // iter-tape-trust T0/F8: which exit resolution the tape venue actually used.
         public string? ExitResolution;
+
+        // Tape replay playback speed (see TapeReplayAdapter.Speed).
+        public float Speed = 10f;
+
+        // Reference to the tape adapter for live speed changes.
+        public TapeReplayAdapter? TapeAdapter;
     }
 
     public BacktestOrchestrator(
@@ -152,7 +159,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         return new RunProgress(
             state.RunId, status, simTime,
             BarsProcessed: state.BarCount, BarsTotal: barsTotal, Percent: percent, EtaSeconds: etaSeconds,
-            WallElapsedMs: elapsedMs, BarsPerSec: barsPerSec,
+            WallElapsedMs: elapsedMs, BarsPerSec: barsPerSec, Speed: state.Speed,
             Equity: state.Equity, Balance: state.Balance, OpenPositions: state.OpenPositions,
             DailyDdPct: state.DailyDdPct, MaxDdPct: state.MaxDdPct,
             DistanceToDailyLimit: state.DistanceToDailyLimit,
@@ -255,6 +262,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             BacktestFrom = cfg.Start,
             BacktestTo = cfg.End,
             RiskProfileId = cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
+            Speed = float.TryParse(cfg.CustomParams.GetValueOrDefault("Speed"), NumberStyles.Float, CultureInfo.InvariantCulture, out var spd) ? Math.Clamp(spd, 0f, 10f) : 10f,
         };
         _runs[runId] = state;
         state.CancellationSource = new CancellationTokenSource();
@@ -331,6 +339,15 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             state.Status = "cancelled";
             state.CancellationSource?.Cancel();
         }
+    }
+
+    public void SetSpeed(string runId, float speed)
+    {
+        if (!_runs.TryGetValue(runId, out var state)) return;
+        speed = Math.Clamp(speed, 0f, 10f);
+        state.Speed = speed;
+        if (state.TapeAdapter is { } tape)
+            tape.Speed = speed;
     }
 
     public async Task StopAllAsync()
@@ -951,10 +968,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 {
                     if (useTape && marketDataStore is not null)
                     {
-                        return new TapeReplayAdapter(marketDataStore, sym, tf, exitTf, from, to,
+                        var tapeAdapter = new TapeReplayAdapter(marketDataStore, sym, tf, exitTf, from, to,
                             cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
                             sp.GetRequiredService<Func<string, string, decimal>>(),
                             sp.GetRequiredService<ILogger<TapeReplayAdapter>>());
+                        tapeAdapter.Speed = state.Speed;
+                        state.TapeAdapter = tapeAdapter;
+                        return tapeAdapter;
                     }
                     return new BacktestReplayAdapter(barRepo, sym, tf, from, to,
                         cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),

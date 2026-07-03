@@ -37,6 +37,9 @@ public sealed record StartRunRequest
     // iter-redesign P3.2: strip all enrichment add-ons (breakeven/trailing/partial/ride/dynamic),
     // leaving only the strategy's baseline SL/TP — the owner's "no add-ons, watch the drawdown" mode.
     public bool StripAddOns { get; init; }
+
+    // Tape replay playback speed: 0 = paused, 0.1–10 = speed multiplier. Default 10 = max speed.
+    public float Speed { get; init; } = 10f;
 }
 
 public sealed record RunRowRequest

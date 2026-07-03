@@ -179,9 +179,23 @@ interface CoverageInfo {
                   </select>
                 </div>
 
+                @if (venue === 'tape') {
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Playback Speed</label>
+                    <div class="flex items-center gap-2">
+                      <input type="range" [(ngModel)]="speed" min="0" max="10" step="0.5" class="flex-1 accent-emerald-500" />
+                      <span class="text-xs font-mono text-gray-300 w-10 text-right">{{ speed === 0 ? 'Paused' : speed + '×' }}</span>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-600 mt-0.5">
+                      <span>Paused</span><span>1×</span><span>5×</span><span>Max</span>
+                    </div>
+                  </div>
+                }
+
                 <!-- Coverage check -->
                 @if (venue === 'tape' && rows().length > 0) {
                   <div class="rounded border border-gray-700 p-2 space-y-1">
+                    <h4 class="text-xs font-medium text-gray-400">Data Coverage</h4>
                     <div class="text-xs text-gray-500 mb-1">Data Coverage</div>
                     @for (cov of coverageIssues(); track cov.key) {
                       <div class="flex items-center gap-1.5 text-xs">
@@ -350,6 +364,7 @@ export class NewBacktestComponent implements OnInit {
   spread = 1;
   riskProfile = 'standard';
   venue = 'replay';
+  speed = 10;
   governorEnabled = true;
   dailyDdEnabled = true;
   maxDdEnabled = true;
@@ -583,6 +598,7 @@ export class NewBacktestComponent implements OnInit {
       forceCloseOnBreachEnabled: this.forceCloseEnabled,
       disableRegime: this.regimeEnabled ? undefined : true,
       stripAddOns: this.stripAddOns ? true : undefined,
+      speed: this.venue === 'tape' ? this.speed : undefined,
     };
     this.saveSetup();
     const runId = await this.store.startBacktest(req);

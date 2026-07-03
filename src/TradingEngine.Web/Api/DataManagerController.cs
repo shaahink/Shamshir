@@ -180,6 +180,12 @@ public sealed class DataManagerController : ControllerBase
             {
                 var ir = await ingester.IngestFileAsync(file, "ctrader", ct);
                 totalInserted += ir.BarsInserted;
+
+                var archiveDir = Path.Combine(root, "archive");
+                Directory.CreateDirectory(archiveDir);
+                var dest = Path.Combine(archiveDir, Path.GetFileName(file));
+                if (System.IO.File.Exists(dest)) System.IO.File.Delete(dest);
+                System.IO.File.Move(file, dest);
             }
             catch (Exception ex)
             {

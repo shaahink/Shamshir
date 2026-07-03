@@ -1,6 +1,7 @@
 import { Component, DestroyRef, inject, OnDestroy, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { interval } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RunHubService, type RunProgressEnvelope, type RunCompletedEnvelope } from '../../../core/signalr/run-hub.service';
@@ -17,7 +18,7 @@ const NARRATIVE_LIMIT = 100;
 @Component({
   selector: 'app-run-monitor',
   standalone: true,
-  imports: [DatePipe, RouterLink, StatTileComponent, EquityChartComponent, BacktestTimelineComponent],
+  imports: [DatePipe, RouterLink, FormsModule, StatTileComponent, EquityChartComponent, BacktestTimelineComponent],
   template: `
     <div class="space-y-4">
       <!-- Header -->
@@ -84,6 +85,15 @@ const NARRATIVE_LIMIT = 100;
           </span>
           <span>{{ percent().toFixed(1) }}% ({{ barCount() }} / {{ totalBars() || '?' }} &#64; {{ barsPerSec().toFixed(0) }} bar/s)</span>
         </div>
+        @if (venue() === 'tape' && !terminal()) {
+          <div class="flex items-center gap-2 mt-2">
+            <button (click)="togglePause()" class="rounded border border-gray-600 px-2 py-0.5 text-xs text-gray-300 hover:bg-gray-700">
+              {{ speed() === 0 ? '▶ Resume' : '⏸ Pause' }}
+            </button>
+            <input type="range" [(ngModel)]="speedDisplay" (input)="onSpeedChange($event)" min="0" max="10" step="0.5" class="flex-1 accent-emerald-500 h-5" />
+            <span class="text-xs font-mono text-gray-300 w-10 text-right">{{ speed() === 0 ? 'Paused' : speedDisplay + '×' }}</span>
+          </div>
+        }
         <div class="h-2 overflow-hidden rounded-full bg-gray-700">
           <div class="h-full rounded-full bg-emerald-500 transition-all duration-500" [style.width]="percent() + '%'"></div>
         </div>
@@ -224,6 +234,9 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   totalBars = signal(0);
   percent = signal(0);
   barsPerSec = signal(0);
+  speed = signal(10);
+  speedDisplay = signal(10);
+  venue = signal('');
   eta = signal('--');
   elapsed = signal('--');
   simTime = signal('');
@@ -265,6 +278,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       const detail = await this.api.getRun(rid);
       if (detail.backtestFrom) this.backtestFrom.set(detail.backtestFrom);
       if (detail.backtestTo) this.backtestTo.set(detail.backtestTo);
+      this.venue.set((detail as any).venue ?? '');
     } catch { /* */ }
 
     try {
@@ -323,6 +337,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
         this.totalBars.set(e.barsTotal ?? 0);
         this.percent.set(e.percent ?? 0);
         this.barsPerSec.set(e.barsPerSec ?? 0);
+        if (e.speed != null) { this.speed.set(e.speed); this.speedDisplay.set(e.speed); }
         if (e.etaSeconds > 0) {
           const m = Math.floor(e.etaSeconds / 60);
           this.eta.set(m > 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm');
@@ -371,6 +386,17 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
     this.cancelling.set(true);
     await this.store.cancelRun(this.runId());
     this.cancelling.set(false);
+  }
+
+  togglePause(): void {
+    const newSpeed = this.speed() === 0 ? this.speedDisplay() || 1 : 0;
+    this.api.setSpeed(this.runId(), newSpeed);
+  }
+
+  onSpeedChange(event: Event): void {
+    const val = parseFloat((event.target as HTMLInputElement).value);
+    this.speedDisplay.set(val);
+    this.api.setSpeed(this.runId(), val);
   }
 
   ngOnDestroy(): void {

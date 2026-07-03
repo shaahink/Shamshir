@@ -33,6 +33,7 @@ src/TradingEngine.Web/wwwroot/
 
 # Runtime data (SQLite databases + shards)
 src/TradingEngine.Web/data/
+data/
 
 # Test data generated
 tests/data/*.csv

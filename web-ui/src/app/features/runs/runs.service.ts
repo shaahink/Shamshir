@@ -51,12 +51,17 @@ export class RunsApiService {
       maxDdEnabled: req.maxDdEnabled ?? true,
       forceCloseOnBreachEnabled: req.forceCloseOnBreachEnabled ?? true,
       stripAddOns: req.stripAddOns ?? false,
+      speed: req.speed ?? 10,
     };
     return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }
 
   cancelRun(runId: string): Promise<{ cancelled: boolean }> {
     return firstValueFrom(this.http.delete<{ cancelled: boolean }>(`/api/runs/${runId}`));
+  }
+
+  setSpeed(runId: string, speed: number): Promise<{ runId: string }> {
+    return firstValueFrom(this.http.patch<{ runId: string }>(`/api/runs/${runId}`, { speed }));
   }
 
   async getRunTrades(runId: string): Promise<TradeSummary[]> {

@@ -134,6 +134,7 @@ public sealed class RunsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(req.RiskProfileId))
             cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
         cfg.CustomParams["Venue"] = (!string.IsNullOrWhiteSpace(req.Venue) ? req.Venue!.Trim().ToLowerInvariant() : null) ?? "replay";
+        cfg.CustomParams["Speed"] = req.Speed.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
         if (req.StrategyOverrides is { Count: > 0 })
             cfg.CustomParams["StrategyOverrides"] = System.Text.Json.JsonSerializer.Serialize(req.StrategyOverrides);
         if (!string.IsNullOrWhiteSpace(req.UsePackId))
@@ -158,6 +159,14 @@ public sealed class RunsController : ControllerBase
     {
         _orchestrator.Cancel(runId);
         return Ok(new { cancelled = true });
+    }
+
+    [HttpPatch("{runId}")]
+    public IActionResult PatchRun(string runId, [FromBody] PatchRunRequest req)
+    {
+        if (req.Speed is { } speed)
+            _orchestrator.SetSpeed(runId, speed);
+        return Ok(new { runId });
     }
 
     [HttpPost("delete")]
@@ -432,5 +441,10 @@ public sealed class RunsController : ControllerBase
 
         return Ok(result);
     }
+}
+
+public sealed record PatchRunRequest
+{
+    public float? Speed { get; init; }
 }
 

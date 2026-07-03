@@ -29,6 +29,7 @@ public sealed class RunProgressContractTests
         EtaSeconds: 42.5,
         WallElapsedMs: 13_500,
         BarsPerSec: 88.8,
+        Speed: 10f,
         Equity: 10_250.50m,
         Balance: 10_000m,
         OpenPositions: 2,

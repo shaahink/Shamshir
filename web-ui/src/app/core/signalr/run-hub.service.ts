@@ -12,6 +12,7 @@ export interface RunProgressEnvelope {
   etaSeconds: number;
   wallElapsedMs: number;
   barsPerSec: number;
+  speed: number;
   equity: number;
   balance: number;
   openPositions: number;

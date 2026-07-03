@@ -243,6 +243,8 @@ export interface StartRunRequest {
   forceCloseOnBreachEnabled?: boolean;
   // iter-redesign P3.2: strip all add-ons (breakeven/trailing/partial/ride/dynamic) -> baseline SL/TP only.
   stripAddOns?: boolean;
+  // Tape replay playback speed: 0 = paused, 0.1–10 = multiplier. Default 10.
+  speed?: number;
 }
 
 export interface RiskProfile {
