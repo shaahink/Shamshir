@@ -41,7 +41,7 @@ public sealed class RunNarrativeService
 
         var skipDefault = kinds is null || kinds.Length == 0;
         if (skipDefault)
-            query = query.Where(e => e.EventKind != "BarClosed" && e.EventKind != "EquityObserved" && e.EventKind != "BarIngested");
+            query = query.Where(e => e.EventKind != "BarClosed" && e.EventKind != "EquityObserved");
         else
             query = query.Where(e => kinds!.Contains(e.EventKind));
 
@@ -65,6 +65,7 @@ public sealed class RunNarrativeService
             AddOnJournalKinds.Trail or AddOnJournalKinds.Breakeven or AddOnJournalKinds.Ride => BuildTrail(entry),
             AddOnJournalKinds.Partial => BuildPartial(entry),
             AddOnJournalKinds.AddOnsResolved => new(entry.Seq, entry.SimTimeUtc, "info", "AddOn", "Add-ons resolved", ""),
+            "Breach" => new(entry.Seq, entry.SimTimeUtc, "critical", "Risk", "BREACH", entry.EventJson ?? ""),
             "DayRolled" => new(entry.Seq, entry.SimTimeUtc, "info", "System", "New prop-firm day", ""),
             "WeekRolled" => new(entry.Seq, entry.SimTimeUtc, "info", "System", "New week", ""),
             "MonthRolled" => new(entry.Seq, entry.SimTimeUtc, "info", "System", "New month", ""),

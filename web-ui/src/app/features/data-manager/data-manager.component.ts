@@ -1,7 +1,9 @@
-import { Component, inject, OnInit, OnDestroy, signal, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { interval } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { BadgeComponent } from '../../shared/badge.component';
 
@@ -14,6 +16,17 @@ interface MarketDataItem {
   barCount: number;
   m1Overlap?: boolean;
   spreadPips?: number;
+}
+
+interface DownloadJobResponse {
+  jobId: string;
+  symbol: string;
+  tfs: string[];
+  status: string;
+  barsRecorded?: number;
+  error?: string;
+  createdAtUtc?: string;
+  completedAtUtc?: string;
 }
 
 @Component({
@@ -79,21 +92,28 @@ interface MarketDataItem {
           }
           <button (click)="startDownload()" [disabled]="dlLoading()"
             class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
-            {{ dlLoading() ? 'Downloading...' : 'Download' }}
+            {{ dlLoading() ? 'Starting...' : 'Download' }}
           </button>
         </div>
-        @if (dlResult()) {
-          <div class="mt-2 rounded p-2 text-xs" [class]="dlResult()!.status === 'failed' ? 'bg-red-900/20 text-red-400' : dlResult()!.status === 'done' ? 'bg-emerald-900/20 text-emerald-400' : 'bg-blue-900/20 text-blue-400'">
-            {{ dlResult()!.symbol }} ({{ dlResult()!.tfs?.join(', ') || '—' }}) — {{ dlResult()!.status }}
-            @if (dlResult()!.barsRecorded! > 0) { · {{ dlResult()!.barsRecorded!.toLocaleString() }} bars }
-            @if (dlResult()!.status === 'done') { · refresh to see updated inventory }
-            @if (dlResult()!.error) {
-              <div class="mt-1 font-mono">{{ dlResult()!.error }}</div>
-            }
-          </div>
-        }
         @if (dlError()) {
           <div class="mt-2 rounded bg-red-900/20 p-2 text-xs text-red-400">{{ dlError() }}</div>
+        }
+
+        @if (activeJobs().length > 0) {
+          <div class="mt-3 space-y-1">
+            <div class="text-xs text-gray-500 mb-1">Active Jobs</div>
+            @for (job of activeJobs(); track job.jobId) {
+              <div class="flex items-center gap-2 rounded border border-gray-700 bg-gray-800/50 px-3 py-2 text-xs">
+                <span [class]="jobStatusColor(job.status)">{{ job.status }}</span>
+                <span class="text-gray-300">{{ job.symbol }} ({{ job.tfs.join(', ') }})</span>
+                @if (job.barsRecorded) { <span class="text-gray-500">{{ job.barsRecorded }} bars</span> }
+                @if (job.error) { <span class="text-red-400 truncate">{{ job.error }}</span> }
+                @if (job.status === 'done' || job.status === 'failed') {
+                  <button (click)="dismissJob(job.jobId)" class="ml-auto text-gray-500 hover:text-gray-300">dismiss</button>
+                }
+              </div>
+            }
+          </div>
         }
       </div>
 
@@ -148,12 +168,11 @@ interface MarketDataItem {
           <p class="text-xs text-gray-500">Download via cTrader (top form) or import an NDJSON/CSV file (no cTrader required).</p>
         </div>
       } @else {
-        <!-- Per-symbol storage totals -->
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap gap-2 mb-3">
           @for (s of perSymbol(); track s.symbol) {
             <div class="rounded-md border border-gray-800 bg-gray-900/40 px-3 py-1.5 text-xs">
               <span class="font-mono text-gray-300">{{ s.symbol }}</span>
-              <span class="ml-2 text-gray-500">{{ s.bars.toLocaleString() }} bars · {{ s.tfs }} TF</span>
+              <span class="ml-2 text-gray-500">{{ s.bars.toLocaleString() }} bars &middot; {{ s.tfs }} TF</span>
             </div>
           }
         </div>
@@ -168,7 +187,7 @@ interface MarketDataItem {
                 <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">First Bar</th>
                 <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Last Bar</th>
                 <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500"># Bars</th>
-                <th class="px-4 py-2 text-center text-xs font-medium uppercase tracking-wide text-gray-500">Coverage</th>
+                <th class="px-4 py-2 text-center text-xs font-medium uppercase tracking-wide text-gray-500">M1 Overlap</th>
                 <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-gray-500"></th>
               </tr>
             </thead>
@@ -182,19 +201,20 @@ interface MarketDataItem {
                   <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-400">{{ item.lastBar | date:'yyyy-MM-dd HH:mm' }}</td>
                   <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums text-gray-300">{{ item.barCount.toLocaleString() }}</td>
                   <td class="whitespace-nowrap px-4 py-2 text-center">
-                    <div class="flex items-center justify-center gap-1">
-                      @if (item.timeframe !== 'M1') {
-                        <app-badge [label]="item.m1Overlap ? 'M1 ✓' : 'No M1'" [variant]="item.m1Overlap ? 'success' : 'error'" />
+                    @if (item.timeframe.toLowerCase() !== 'm1') {
+                      @if (hasM1Overlap(item.symbol, item.firstBar, item.lastBar)) {
+                        <span class="rounded bg-emerald-900/60 px-1.5 py-0.5 text-xs text-emerald-400">&check; m1</span>
+                      } @else {
+                        <span class="rounded bg-red-900/40 px-1.5 py-0.5 text-xs text-red-400">&cross; no m1</span>
                       }
-                      @if (item.spreadPips != null) {
-                        <span class="text-xs text-gray-500">{{ item.spreadPips.toFixed(1) }} sp</span>
-                      }
-                    </div>
+                    } @else {
+                      <span class="text-xs text-gray-600">&mdash;</span>
+                    }
                   </td>
                   <td class="whitespace-nowrap px-4 py-2 text-right">
                     <button (click)="deleteRow(item)" [disabled]="deletingKey() === rowKey(item)"
                       class="rounded border border-red-900 px-2 py-0.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50">
-                      {{ deletingKey() === rowKey(item) ? '…' : 'Delete' }}
+                      {{ deletingKey() === rowKey(item) ? '...' : 'Delete' }}
                     </button>
                   </td>
                 </tr>
@@ -209,6 +229,7 @@ interface MarketDataItem {
 })
 export class DataManagerComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
+  private destroyRef = inject(DestroyRef);
   inventory = signal<MarketDataItem[]>([]);
   loading = signal(true);
   error = signal<string | null>(null);
@@ -228,7 +249,7 @@ export class DataManagerComponent implements OnInit, OnDestroy {
   rowKey = (i: MarketDataItem) => `${i.symbol}|${i.timeframe}|${i.source}`;
 
   dlSymbol = 'EURUSD';
-  dlSymbols = ['EURUSD','GBPUSD','USDJPY','GBPJPY','XAUUSD','AUDUSD','USDCHF','USDCAD','NZDUSD','EURGBP','EURJPY','XAGUSD'];
+  dlSymbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'GBPJPY', 'XAUUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'XAGUSD'];
   allTfs = [
     { value: 'm1', label: 'M1' },
     { value: 'm5', label: 'M5' },
@@ -243,17 +264,9 @@ export class DataManagerComponent implements OnInit, OnDestroy {
   dlFrom = '';
   dlTo = '';
   dlLoading = signal(false);
-  dlResult = signal<{ symbol: string; tfs: string[]; status: string; barsRecorded?: number; error?: string } | null>(null);
   dlError = signal<string | null>(null);
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
-
-  impFile: File | null = null;
-  impSymbol = '';
-  impTimeframe = '';
-  impSource = '';
-  impLoading = signal(false);
-  impResult = signal<{ fileName: string; format: string; barsInserted: number; parseErrors: number } | null>(null);
-  impError = signal<string | null>(null);
+  activeJobs = signal<DownloadJobResponse[]>([]);
+  private completedJobIds = new Set<string>();
 
   ngOnInit(): void {
     const now = new Date();
@@ -262,6 +275,10 @@ export class DataManagerComponent implements OnInit, OnDestroy {
     from.setDate(from.getDate() - 7);
     this.dlFrom = from.toISOString().slice(0, 10);
     this.loadInventory();
+    // Poll active jobs every 2s
+    interval(2000)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.pollActiveJobs());
   }
 
   ngOnDestroy(): void {
@@ -288,11 +305,15 @@ export class DataManagerComponent implements OnInit, OnDestroy {
     }
     this.dlLoading.set(true);
     this.dlError.set(null);
-    this.dlResult.set(null);
-    this.http.post<{ jobId: string; symbol: string; tfs: string[]; status: string }>('/api/data-manager/download', body).subscribe({
+    this.http.post<DownloadJobResponse>('/api/data-manager/download', {
+      symbol: this.dlSymbol,
+      tfs: this.dlTfs(),
+      days: this.dlDays,
+    }).subscribe({
       next: (r) => {
         this.dlLoading.set(false);
-        this.dlResult.set({ symbol: r.symbol, tfs: r.tfs, status: r.status });
+        this.activeJobs.update(jobs => [...jobs, r]);
+        // Start polling this job
         this.pollJob(r.jobId);
       },
       error: (err) => {
@@ -302,54 +323,39 @@ export class DataManagerComponent implements OnInit, OnDestroy {
     });
   }
 
+  dismissJob(jobId: string): void {
+    this.completedJobIds.add(jobId);
+    this.activeJobs.update(jobs => jobs.filter(j => j.jobId !== jobId));
+  }
+
+  jobStatusColor(status: string): string {
+    switch (status) {
+      case 'done': return 'rounded bg-emerald-900/60 px-1.5 py-0.5 text-emerald-400';
+      case 'failed': return 'rounded bg-red-900/60 px-1.5 py-0.5 text-red-400';
+      case 'running': case 'recording': case 'ingesting': return 'rounded bg-blue-900/60 px-1.5 py-0.5 text-blue-400';
+      default: return 'rounded bg-gray-700 px-1.5 py-0.5 text-gray-400';
+    }
+  }
+
+  private pollActiveJobs(): void {
+    const jobs = this.activeJobs();
+    if (jobs.length === 0) return;
+    for (const job of jobs) {
+      if (job.status === 'done' || job.status === 'failed') continue;
+      this.pollJob(job.jobId);
+    }
+  }
+
   private pollJob(jobId: string): void {
-    if (this.pollTimer) clearInterval(this.pollTimer);
-    this.pollTimer = setInterval(() => {
-      this.http.get<{ status: string; barsRecorded?: number; error?: string }>(`/api/data-manager/jobs/${jobId}`).subscribe({
-        next: (j) => {
-          const cur = this.dlResult();
-          if (cur) this.dlResult.set({ ...cur, status: j.status, barsRecorded: j.barsRecorded, error: j.error });
-          if (j.status === 'done') { this.stopPoll(); this.loadInventory(); }
-          if (j.status === 'failed') this.stopPoll();
-        },
-        error: () => this.stopPoll(),
-      });
-    }, 1500);
-  }
-
-  private stopPoll(): void {
-    if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
-  }
-
-  onFileSelect(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    this.impFile = input.files && input.files.length > 0 ? input.files[0] : null;
-    this.impResult.set(null);
-    this.impError.set(null);
-  }
-
-  importFile(): void {
-    if (!this.impFile) { this.impError.set('Choose a file first.'); return; }
-    const form = new FormData();
-    form.append('file', this.impFile);
-    if (this.impSource.trim()) form.append('source', this.impSource.trim());
-    if (this.impSymbol.trim()) form.append('symbol', this.impSymbol.trim());
-    if (this.impTimeframe.trim()) form.append('timeframe', this.impTimeframe.trim());
-    this.impLoading.set(true);
-    this.impError.set(null);
-    this.impResult.set(null);
-    this.http.post<{ fileName: string; format: string; barsInserted: number; parseErrors: number }>('/api/data-manager/import', form)
-      .subscribe({
-        next: (r) => {
-          this.impLoading.set(false);
-          this.impResult.set(r);
+    this.http.get<DownloadJobResponse>(`/api/data-manager/jobs/${jobId}`).subscribe({
+      next: (updated) => {
+        this.activeJobs.update(jobs => jobs.map(j => j.jobId === jobId ? updated : j));
+        if (updated.status === 'done') {
           this.loadInventory();
-        },
-        error: (err) => {
-          this.impError.set(err?.error?.error ?? err?.message ?? 'Import failed');
-          this.impLoading.set(false);
-        },
-      });
+        }
+      },
+      error: () => { /* job may not exist yet */ },
+    });
   }
 
   deleteRow(item: MarketDataItem): void {
@@ -367,6 +373,16 @@ export class DataManagerComponent implements OnInit, OnDestroy {
         this.deletingKey.set(null);
       },
     });
+  }
+
+  hasM1Overlap(symbol: string, firstBar: string, lastBar: string): boolean {
+    const from = new Date(firstBar).getTime();
+    const to = new Date(lastBar).getTime();
+    return this.inventory().some(
+      i => i.symbol === symbol && i.timeframe.toLowerCase() === 'm1'
+        && new Date(i.firstBar).getTime() <= to
+        && new Date(i.lastBar).getTime() >= from
+    );
   }
 
   private loadInventory(): void {

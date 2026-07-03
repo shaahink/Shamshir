@@ -1,15 +1,9 @@
-using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence.Entities;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Tests.Integration.Support;
 
 namespace TradingEngine.Tests.Integration.Runs;
 
-/// <summary>
-/// M4.1 (E2) — multi-select delete. Proves the FK-safe cascade removes ALL run-scoped rows for the deleted
-/// run (trades, journal, equity, recorded bars, venue sessions, run header) and leaves a sibling run's rows
-/// completely intact.
-/// </summary>
 [Trait("Category", "Infrastructure")]
 public sealed class DeleteRunsCascadeTests : IDisposable
 {

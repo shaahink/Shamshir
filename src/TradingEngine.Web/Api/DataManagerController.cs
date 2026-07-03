@@ -256,6 +256,24 @@ public sealed class DataManagerController : ControllerBase
         return Ok(MapJob(job));
     }
 
+    [HttpPost("delete")]
+    public async Task<IActionResult> DeleteBars([FromBody] DeleteBarsRequest req, CancellationToken ct)
+    {
+        if (_marketDataStore is null)
+            return Problem("Market data store not registered.");
+        if (string.IsNullOrWhiteSpace(req.Symbol) || string.IsNullOrWhiteSpace(req.Timeframe))
+            return BadRequest(new { error = "Symbol and timeframe required." });
+        if (!Enum.TryParse<Timeframe>(req.Timeframe, ignoreCase: true, out var tf))
+            return BadRequest(new { error = $"Unknown timeframe '{req.Timeframe}'." });
+
+        DateTime? from = req.From is null ? null : DateTime.SpecifyKind(req.From.Value, DateTimeKind.Utc);
+        DateTime? to = req.To is null ? null : DateTime.SpecifyKind(req.To.Value, DateTimeKind.Utc);
+
+        var deleted = await _marketDataStore.DeleteBarsAsync(Symbol.Parse(req.Symbol), tf, from, to, req.Source, ct);
+        _logger.LogInformation("Deleted {Deleted} market-data bar(s) for {Symbol} {Tf}.", deleted, req.Symbol, req.Timeframe);
+        return Ok(new { deleted });
+    }
+
     private static object MapJob(DownloadJob job) => new
     {
         jobId = job.Id,

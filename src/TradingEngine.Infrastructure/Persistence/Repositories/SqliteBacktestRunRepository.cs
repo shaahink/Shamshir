@@ -242,4 +242,33 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             e.CommissionPerMillion, e.SpreadPips,
             e.WallElapsedMs, e.BarsPerSec, e.TotalBars);
     }
+
+    public async Task DeleteAsync(string runId, CancellationToken ct)
+    {
+        await db.Trades.Where(t => t.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.JournalEntries.Where(j => j.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.EquitySnapshots.Where(e => e.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.Bars.Where(b => b.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.VenueSessions.Where(v => v.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.BacktestRuns.Where(r => r.RunId == runId).ExecuteDeleteAsync(ct);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<int> DeleteRunsAsync(IReadOnlyCollection<string> runIds, CancellationToken ct)
+    {
+        if (runIds.Count == 0) return 0;
+        var ids = runIds.ToHashSet();
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        await db.Trades.Where(t => t.RunId != null && ids.Contains(t.RunId)).ExecuteDeleteAsync(ct);
+        await db.JournalEntries.Where(j => ids.Contains(j.RunId)).ExecuteDeleteAsync(ct);
+        await db.EquitySnapshots.Where(s => s.RunId != null && ids.Contains(s.RunId)).ExecuteDeleteAsync(ct);
+        await db.Bars.Where(b => ids.Contains(b.RunId)).ExecuteDeleteAsync(ct);
+        await db.VenueSessions.Where(v => ids.Contains(v.RunId)).ExecuteDeleteAsync(ct);
+        var deleted = await db.BacktestRuns.Where(r => ids.Contains(r.RunId)).ExecuteDeleteAsync(ct);
+
+        await tx.CommitAsync(ct);
+        return deleted;
+    }
 }

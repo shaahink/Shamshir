@@ -43,12 +43,6 @@ import { AppStatusComponent } from './core/status/app-status.component';
               >Data</a
             >
             <a
-              routerLink="/experiments"
-              routerLinkActive="bg-gray-800 text-white"
-              class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"
-              >Experiments</a
-            >
-            <a
               routerLink="/settings"
               routerLinkActive="bg-gray-800 text-white"
               class="rounded-md px-3 py-1.5 text-sm text-gray-400 transition hover:text-white"

@@ -23,13 +23,13 @@ import { formatSymbols } from '../../../shared/symbols.helper';
               Compare ({{ selectedRuns().length }})
             </button>
           }
-          @if (selectedRuns().length >= 1) {
+          @if (selectedRuns().length > 0) {
             <button
               (click)="deleteSelected()"
               [disabled]="deleting()"
               class="rounded-md border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50"
             >
-              {{ deleting() ? 'Deleting…' : 'Delete (' + selectedRuns().length + ')' }}
+              {{ deleting() ? 'Deleting...' : 'Delete (' + selectedRuns().length + ')' }}
             </button>
           }
           <a
@@ -144,15 +144,12 @@ export class RunListComponent implements OnInit {
 
   async deleteSelected(): Promise<void> {
     const ids = this.selectedRuns();
-    if (ids.length === 0 || this.deleting()) return;
-    if (!confirm(`Delete ${ids.length} run(s) and all their trades, journal, equity and recorded bars? This cannot be undone.`)) return;
+    if (ids.length === 0) return;
     this.deleting.set(true);
     try {
       await this.api.deleteRuns(ids);
       this.selectedRuns.set([]);
       this.store.loadRuns();
-    } catch {
-      alert('Delete failed. A selected run may still be running — cancel it first.');
     } finally {
       this.deleting.set(false);
     }

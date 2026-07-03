@@ -40,7 +40,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             EntryReason = trade.EntryReason,
             EntryRegime = trade.EntryRegime,
             EntrySnapshotJson = trade.EntrySnapshotJson,
-            ExitDetailJson = trade.ExitDetailJson,
+            ExitDetailJson = System.Text.Json.JsonSerializer.Serialize(new { reason = trade.ExitReason, exit = trade.ExitPrice.Value, r = trade.RMultiple }),
         };
         db.Trades.Add(entity);
         await db.SaveChangesAsync(ct);

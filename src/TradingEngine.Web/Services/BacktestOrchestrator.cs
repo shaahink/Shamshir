@@ -63,8 +63,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public int Closes;
         public int Rejections;
         public int Breaches;
-        public readonly Queue<DecisionRecordView> RecentJournal = new();
-        public long Seq;
 
         // iter-24/21 — engine equity snapshot fields, populated from AccountSnapshotStore
         // after the run completes for the final RunProgress envelope.
@@ -131,8 +129,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         DateTime? simTime = DateTime.TryParse(state.SimTime, out var t) ? t : null;
         var elapsedMs = (long)(DateTime.UtcNow - state.StartedAt).TotalMilliseconds;
         var barsPerSec = elapsedMs > 0 ? state.BarCount / (elapsedMs / 1000.0) : 0;
-        DecisionRecordView[] journal;
-        lock (state.RecentJournal) { journal = state.RecentJournal.ToArray(); }
 
         var barsTotal = state.BarsTotal > 0 ? state.BarsTotal : 0;
         double percent;
@@ -163,7 +159,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             GovernorState: state.GovernorState, GovernorReason: state.GovernorReason,
             Counters: new RunCounters(state.Signals, state.Orders, state.Fills,
                 state.Closes, state.Rejections, state.Breaches),
-            RecentJournal: journal,
             CurrentPass: state.CurrentPass, PassIndex: state.PassIndex, PassTotal: state.PassTotal);
     }
 
@@ -179,7 +174,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             case "REJECTED": case "OrderRejected": Interlocked.Increment(ref state.Rejections); break;
             case "BREACH": Interlocked.Increment(ref state.Breaches); break;
         }
-        // M3.2: RecentJournal ring removed — the monitor now polls GET /api/runs/{id}/narrative
     }
 
     private void EnqueueLog(string runId, ConcurrentQueue<string> queue, string msg)

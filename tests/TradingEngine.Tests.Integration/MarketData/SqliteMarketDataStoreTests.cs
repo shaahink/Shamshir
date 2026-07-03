@@ -116,7 +116,6 @@ public sealed class SqliteMarketDataStoreTests : IDisposable
     {
         var t0 = new DateTime(2024, 1, 3, 10, 0, 0, DateTimeKind.Utc);
         await _store.WriteBarsAsync("ctrader", new[] { H1(t0, 1.1m), H1(t0.AddHours(1), 1.1m) }, default);
-        // A different timeframe for the same symbol must survive.
         var h4 = new Bar(Eur, Timeframe.H4, t0, 1.1m, 1.11m, 1.09m, 1.1m, 100);
         await _store.WriteBarsAsync("ctrader", new[] { h4 }, default);
 
@@ -136,7 +135,6 @@ public sealed class SqliteMarketDataStoreTests : IDisposable
             H1(t0, 1.1m), H1(t0.AddHours(1), 1.1m), H1(t0.AddHours(2), 1.1m),
         }, default);
 
-        // Delete only the middle bar.
         var deleted = await _store.DeleteBarsAsync(Eur, Timeframe.H1, t0.AddHours(1), t0.AddHours(1), null, default);
 
         deleted.Should().Be(1);

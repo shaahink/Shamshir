@@ -14,6 +14,8 @@ import { BadgeComponent } from '../../../shared/badge.component';
 import { TradeChartCardComponent } from '../../../shared/trade-chart-card.component';
 import { downloadBlob } from '../../../shared/download.helper';
 import { formatSymbols } from '../../../shared/symbols.helper';
+import { TRADE_COLUMNS } from '../../../shared/trade-columns';
+import { DdBarChartComponent } from '../../../shared/dd-bar-chart.component';
 import { exportReport as doExportReport, type ExportStats } from '../report-export.helper';
 import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance, AddOnPack, BarNarrative } from '../../../models/api.types';
 
@@ -28,221 +30,302 @@ function safeJson(raw: string): Record<string, unknown> | null {
 @Component({
   selector: 'app-run-report',
   standalone: true,
-  imports: [RouterLink, DatePipe, NgClass, DecimalPipe, FormsModule, StatTileComponent, DataTableComponent, EquityChartComponent, ScatterChartComponent, HistogramChartComponent, BadgeComponent, TradeChartCardComponent],
+  imports: [
+    RouterLink,
+    DatePipe,
+    NgClass,
+    DecimalPipe,
+    FormsModule,
+    StatTileComponent,
+    DataTableComponent,
+    EquityChartComponent,
+    ScatterChartComponent,
+    BadgeComponent,
+    TradeChartCardComponent,
+    DdBarChartComponent,
+  ],
   template: `
     @if (store.isLoading()) {
       <div class="py-12 text-center text-sm text-gray-500">Loading...</div>
     } @else {
       @if (store.selectedRun(); as d) {
-        <div class="space-y-6">
+        <div class="space-y-4">
+          <!-- Header -->
           <div class="flex items-center justify-between">
             <div>
               <h1 class="text-xl font-semibold">Run {{ d.runId.slice(0, 8) }}</h1>
               <p class="text-sm text-gray-500">
-                {{ symbolsDisplay() }} {{ d.period }} {{ d.backtestFrom | date }} - {{ d.backtestTo | date }} · Balance {{ d.initialBalance | number }}
-                · <span class="uppercase">{{ d.venue || 'replay' }}</span>
+                {{ symbolsDisplay() }} {{ d.period }} {{ d.backtestFrom | date }} - {{ d.backtestTo | date }} &middot; Balance
+                {{ d.initialBalance | number }}
+              </p>
+              <p class="mt-0.5 text-xs text-gray-600">
+                @if (d.parentRunId) {
+                  <a [routerLink]="['/runs', d.parentRunId]" class="text-emerald-500 hover:underline"
+                    >&cularr; duplicate of {{ d.parentRunId.slice(0, 8) }}</a
+                  >
+                  <span class="mx-1">&middot;</span>
+                }
+                @if (d.datasetId) {
+                  <span title="dataset identity (same data window)">data {{ d.datasetId.slice(0, 8) }}</span>
+                }
+                @if (d.configSetId) {
+                  <span class="mx-1">&middot;</span
+                  ><span title="effective-config identity">cfg {{ d.configSetId.slice(0, 8) }}</span>
+                }
               </p>
             </div>
             <div class="flex gap-2">
-              <button (click)="openDuplicate(d.runId)" [disabled]="duplicating()" class="rounded-md border border-emerald-700 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-50">{{ duplicating() ? 'Duplicating…' : 'Duplicate' }}</button>
-              <a [href]="journalExportUrl(d.runId)" download class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Journal NDJSON</a>
-              <a [href]="tradesCsvUrl(d.runId)" download class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">CSV</a>
-              <button (click)="exportReport('json')" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">JSON</button>
-              <button (click)="exportReport('md')" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">MD</button>
-              <a [routerLink]="['/runs', d.runId, 'monitor']" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Monitor</a>
-              <a [routerLink]="['/runs', d.runId, 'analyzer']" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Analyzer</a>
-              <a routerLink="/runs/all" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">All Runs</a>
+              <button (click)="openDuplicate(d.runId)" [disabled]="duplicating()"
+                class="rounded-md border border-emerald-700 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-50">
+                {{ duplicating() ? 'Duplicating&hellip;' : 'Duplicate' }}
+              </button>
+              <a [href]="journalExportUrl(d.runId)" download
+                class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">NDJSON</a>
+              <a [href]="tradesCsvUrl(d.runId)" download
+                class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">CSV</a>
+              <button (click)="exportReport('json')"
+                class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">JSON</button>
+              <button (click)="exportReport('md')"
+                class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">MD</button>
+              <a [routerLink]="['/runs', d.runId, 'monitor']"
+                class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Monitor</a>
+              <a routerLink="/runs"
+                class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">All Runs</a>
             </div>
           </div>
 
           <!-- Tab bar -->
-          <div class="flex gap-1 border-b border-gray-800">
-            @for (t of tabs; track t.id) {
-              <button (click)="activeTab.set(t.id)" [class]="tabClass(t.id)">{{ t.label }}</button>
+          <nav class="flex gap-1 border-b border-gray-800 pb-2">
+            @for (t of reportTabs; track t.id) {
+              <button (click)="activeTab.set(t.id)"
+                class="rounded-md px-3 py-1.5 text-sm transition"
+                [class.bg-gray-800]="activeTab() === t.id"
+                [class.text-white]="activeTab() === t.id"
+                [class.text-gray-400]="activeTab() !== t.id"
+                [class.hover:text-white]="activeTab() !== t.id">
+                {{ t.label }}
+              </button>
             }
-          </div>
+          </nav>
 
-          @switch (activeTab()) {
-            @case ('overview') {
-              <div class="space-y-6">
-                <!-- Reconcile badges -->
-                <div class="flex gap-3">
-                  <span class="text-xs text-gray-500">Net = Σ trades: <app-badge [label]="recNetOk() ? 'OK' : 'MISMATCH'" [variant]="recNetOk() ? 'success' : 'error'" /></span>
-                  <span class="text-xs text-gray-500">Closes = trades: <app-badge [label]="recClosesOk() ? 'OK' : 'MISMATCH'" [variant]="recClosesOk() ? 'success' : 'error'" /></span>
-                  <span class="text-xs text-gray-500">ΣGross-Comm-Swap = ΣNet: <app-badge [label]="recCostOk() ? 'OK' : 'MISMATCH'" [variant]="recCostOk() ? 'success' : 'error'" /></span>
+          <!-- Overview tab -->
+          @if (activeTab() === 'overview') {
+            <div class="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5">
+              <app-stat-tile label="Net P/L" [value]="d.netProfit.toFixed(2)" [positive]="d.netProfit > 0" [negative]="d.netProfit < 0" />
+              <app-stat-tile label="Return %" [value]="returnPct(d)" [positive]="d.netProfit > 0" [negative]="d.netProfit < 0" />
+              <app-stat-tile label="Max DD" [value]="(d.maxDrawdownPct * 100).toFixed(2) + '%'" [negative]="true" />
+              <app-stat-tile label="Profit Factor" [value]="pfDisplay()" [positive]="profitFactor() > 1" />
+              <app-stat-tile label="Win Rate" [value]="(d.winRatePct * 100).toFixed(1) + '%'" [positive]="d.winRatePct > 0.5" />
+              <app-stat-tile label="Trades" [value]="d.totalTrades" />
+              <app-stat-tile label="Gross P/L" [value]="grossDisplay()" [positive]="d.grossPnL > 0" [negative]="d.grossPnL < 0" />
+              <app-stat-tile label="Commission" [value]="commDisplay()" [negative]="d.commissionTotal !== 0" />
+              <app-stat-tile label="Swap" [value]="swapDisplay()" [negative]="d.swapTotal !== 0" />
+              <app-stat-tile label="Avg R" [value]="avgR().toFixed(2)" [positive]="avgR() > 0" />
+            </div>
+
+            <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+              <h2 class="mb-3 text-sm font-medium text-gray-400">Profiling</h2>
+              <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
+                <app-stat-tile label="Wall elapsed" [value]="wallElapsedDisplay()" />
+                <app-stat-tile label="Bars/sec" [value]="barsPerSecDisplay()" />
+                <app-stat-tile label="Total bars" [value]="totalBarsDisplay()" />
+              </div>
+            </div>
+
+            <div class="flex gap-3">
+              <span class="text-xs text-gray-500">Net = &Sigma; trades: <app-badge [label]="recNetOk() ? 'OK' : 'MISMATCH'" [variant]="recNetOk() ? 'success' : 'error'" /></span>
+              <span class="text-xs text-gray-500">Closes = trade count: <app-badge [label]="recClosesOk() ? 'OK' : 'MISMATCH'" [variant]="recClosesOk() ? 'success' : 'error'" /></span>
+              <span class="text-xs text-gray-500">&Sigma;Gross - &Sigma;Comm - &Sigma;Swap = &Sigma;Net: <app-badge [label]="recCostOk() ? 'OK' : 'MISMATCH'" [variant]="recCostOk() ? 'success' : 'error'" /></span>
+            </div>
+
+            @if (runPlan().length > 0) {
+              <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+                <div class="mb-2 flex flex-wrap items-center gap-2">
+                  <h2 class="mr-2 text-sm font-medium text-gray-400">Run plan ({{ runPlan().length }} rows)</h2>
+                  <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-300">Venue: {{ d.venue || 'replay' }}</span>
+                  @if (d.riskProfileId) { <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-300">Risk: {{ d.riskProfileId }}</span> }
+                  <span [class]="chipClass(d.governorEnabled !== false)">Governor: {{ d.governorEnabled === false ? 'Off' : 'On' }}</span>
+                  <span [class]="chipClass(d.regimeEnabled !== false)">Regime: {{ d.regimeEnabled === false ? 'Off' : 'On' }}</span>
+                  <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-300">Comm {{ d.commissionPerMillion ?? 0 }}/M &middot; Spread {{ d.spreadPips ?? 0 }} pips</span>
                 </div>
-
-                <!-- Key stats -->
-                <div class="grid grid-cols-2 gap-3 md:grid-cols-5">
-                  <app-stat-tile label="Net P/L" [value]="d.netProfit.toFixed(2)" [positive]="d.netProfit > 0" [negative]="d.netProfit < 0" />
-                  <app-stat-tile label="Return %" [value]="returnPct(d)" [positive]="d.netProfit > 0" [negative]="d.netProfit < 0" />
-                  <app-stat-tile label="Max DD" [value]="(d.maxDrawdownPct * 100).toFixed(2) + '%'" [negative]="true" />
-                  <app-stat-tile label="Profit Factor" [value]="pfDisplay()" [positive]="profitFactor() > 1" />
-                  <app-stat-tile label="Win Rate" [value]="(d.winRatePct * 100).toFixed(1) + '%'" [positive]="d.winRatePct > 0.5" />
-                  <app-stat-tile label="Trades" [value]="d.totalTrades" />
-                  <app-stat-tile label="Gross P/L" [value]="grossDisplay()" [positive]="d.grossPnL > 0" [negative]="d.grossPnL < 0" />
-                  <app-stat-tile label="Commission" [value]="commDisplay()" [negative]="d.commissionTotal !== 0" />
-                  <app-stat-tile label="Swap" [value]="swapDisplay()" [negative]="d.swapTotal !== 0" />
-                  <app-stat-tile label="Avg R" [value]="avgR().toFixed(2)" [positive]="avgR() > 0" />
+                <div class="overflow-hidden rounded border border-gray-800">
+                  <table class="w-full text-xs">
+                    <thead class="bg-gray-800/50 text-gray-500">
+                      <tr><th class="px-3 py-1.5 text-left">Strategy</th><th class="px-3 py-1.5 text-left">Symbol</th><th class="px-3 py-1.5 text-left">TF</th><th class="px-3 py-1.5 text-left">Add-on pack</th></tr>
+                    </thead>
+                    <tbody>
+                      @for (r of runPlan(); track $index) {
+                        <tr class="border-t border-gray-800">
+                          <td class="px-3 py-1 text-gray-200">{{ r.strategyId }}</td><td class="px-3 py-1 text-gray-300">{{ r.symbol }}</td>
+                          <td class="px-3 py-1 uppercase text-gray-300">{{ r.timeframe }}</td><td class="px-3 py-1 text-gray-400">{{ r.packId || '&mdash;' }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
                 </div>
-
-                <!-- Equity chart -->
-                @if (equityPoints().length > 1) {
-                  <app-equity-chart title="Equity & Drawdown" [data]="equityPoints()" [showDrawdown]="true" [showBalance]="true" />
-                }
-
-                <!-- Daily PnL histogram -->
-                @if (dailyHistogram().length > 0) {
-                  <app-histogram-chart title="Daily PnL" [data]="dailyHistogram()" [color]="'#10b981'" />
-                }
-
-                <!-- Underwater equity (drawdown area) -->
-                @if (underwaterPoints().length > 1) {
-                  <app-equity-chart title="Underwater Drawdown" [data]="underwaterPoints()" [showDrawdown]="false" [showBalance]="false" />
-                }
-
-                <!-- Run plan -->
-                @if (runPlan().length > 0) {
-                  <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
-                    <div class="mb-2 flex flex-wrap items-center gap-2">
-                      <h2 class="text-sm font-medium text-gray-400">Run Plan ({{ runPlan().length }} rows)</h2>
-                      <span [class]="chipClass(d.governorEnabled !== false)">Governor: {{ d.governorEnabled !== false ? 'On' : 'Off' }}</span>
-                      <span [class]="chipClass(d.regimeEnabled !== false)">Regime: {{ d.regimeEnabled !== false ? 'On' : 'Off' }}</span>
-                      <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-300">Comm {{ d.commissionPerMillion ?? 0 }}/M · Spread {{ d.spreadPips ?? 0 }} pips</span>
-                    </div>
-                    <div class="overflow-hidden rounded border border-gray-800">
-                      <table class="w-full text-xs">
-                        <thead class="bg-gray-800/50 text-gray-500"><tr><th class="px-3 py-1.5 text-left">Strategy</th><th class="px-3 py-1.5 text-left">Symbol</th><th class="px-3 py-1.5 text-left">TF</th><th class="px-3 py-1.5 text-left">Pack</th></tr></thead>
-                        <tbody>@for (r of runPlan(); track $index) { <tr class="border-t border-gray-800"><td class="px-3 py-1 text-gray-200">{{ r.strategyId }}</td><td class="px-3 py-1 text-gray-300">{{ r.symbol }}</td><td class="px-3 py-1 uppercase text-gray-300">{{ r.timeframe }}</td><td class="px-3 py-1 text-gray-400">{{ r.packId || '—' }}</td></tr> }</tbody>
-                      </table>
-                    </div>
-                  </div>
-                }
-
-                <!-- Scatter MAE/MFE -->
-                @if (scatterData().length > 0) {
-                  <app-scatter-chart title="MAE (orange) vs MFE (green) — pips per trade" [data]="scatterData()" />
-                }
               </div>
             }
 
-            @case ('trades') {
-              <div class="space-y-4">
-                <!-- Trade detail expand -->
-                @if (expandedTradeId(); as etid) {
-                  <div class="mb-4 rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
-                    <button (click)="expandedTradeId.set(null)" class="mb-1 text-xs text-gray-500 hover:text-gray-300">&larr; Close trade detail</button>
-                    @if (expandedTradeNarrative(); as tn) {
-                      <div class="flex gap-6">
-                        <div class="flex-1">
-                          <h3 class="mb-1 text-xs font-medium text-gray-500">Why entered</h3>
-                          <p class="text-sm text-gray-300">{{ tn.entryReason || '—' }}</p>
-                          @if (tn.entryRegime) { <p class="text-xs text-gray-500">Regime: {{ tn.entryRegime }}</p> }
-                        </div>
-                        <div class="flex-1">
-                          <h3 class="mb-1 text-xs font-medium text-gray-500">Why exited</h3>
-                          <p class="text-sm text-gray-300">{{ tn.exitReason }}</p>
-                          @if (tn.exitDetail) { <p class="text-xs text-gray-500">Exit at {{ $any(tn.exitDetail).exitPrice }}, net {{ $any(tn.exitDetail).netAmt?.toFixed(2) }}, R {{ $any(tn.exitDetail).rMultiple?.toFixed(2) }}</p> }
-                        </div>
-                      </div>
-                    }
-                    <app-trade-chart-card [tradeId]="etid" />
-                  </div>
-                }
-
-                <!-- Column chooser -->
-                <div class="flex flex-wrap gap-1.5">
-                  @for (col of allTradeCols; track col.key) {
-                    <button (click)="toggleTradeCol(col.key)" [class]="tradeColChipClass(col.key)">{{ col.label }}</button>
-                  }
-                </div>
-
-                <!-- Trades table -->
-                @if (trades().length > 0) {
-                  <app-data-table [columns]="visibleTradeCols()" [data]="trades()" trackKey="id" (rowClick)="onTradeClick($event)" />
-                } @else {
-                  <div class="py-8 text-center text-sm text-gray-500">No trades</div>
-                }
-              </div>
+            @if (equityPoints().length > 1) {
+              <app-equity-chart title="Equity &amp; Drawdown" [data]="equityPoints()" [showDrawdown]="true" [showBalance]="true" />
             }
 
-            @case ('journal') {
-              <div class="space-y-4">
-                <div class="flex flex-wrap gap-2">
-                  @for (k of journalKinds; track k) {
-                    @let active = (journalKind() || 'ALL') === k;
-                    <button (click)="journalKind.set(k === 'ALL' ? null : k)" [ngClass]="active ? 'rounded bg-emerald-900/50 px-2 py-0.5 text-xs text-emerald-400' : 'rounded px-2 py-0.5 text-xs text-gray-500'">{{ kindLabel(k) }}</button>
-                  }
-                </div>
-                @if (journalTableData().length > 0) {
-                  <app-data-table [columns]="journalColumns" [data]="journalTableData()" trackKey="seq" [searchable]="false" />
-                } @else {
-                  <div class="py-8 text-center text-sm text-gray-500">No journal entries</div>
-                }
-              </div>
+            @if (dailyPnl().length > 0) {
+              <app-dd-bar-chart [data]="dailyPnl()" [limitPct]="0.05" />
             }
+          }
 
-            @case ('risk') {
-              <div class="space-y-6">
-                <!-- Per-strategy breakdown -->
-                @if (breakdown().length > 0) {
-                  <div>
-                    <h2 class="mb-3 text-sm font-medium text-gray-400">Per-Strategy Funnel</h2>
-                    <div class="overflow-x-auto rounded-lg border border-gray-800">
-                      <table class="w-full text-xs">
-                        <thead class="text-gray-500"><tr class="border-b border-gray-800"><th class="px-3 py-1.5 text-left">Strategy</th><th class="px-3 py-1.5 text-right">Bars</th><th class="px-3 py-1.5 text-right">Signals</th><th class="px-3 py-1.5 text-right">Trades</th><th class="px-3 py-1.5 text-right">Win%</th><th class="px-3 py-1.5 text-left">Top rejections</th></tr></thead>
-                        <tbody>@for (s of breakdown(); track s.strategyId) { <tr class="border-b border-gray-800 last:border-0"><td class="px-3 py-1.5 text-gray-300">{{ s.strategyId }}</td><td class="px-3 py-1.5 text-right text-gray-400">{{ s.totalBarsEvaluated }}</td><td class="px-3 py-1.5 text-right" [class.text-emerald-400]="s.signalsFired > 0" [class.text-red-400]="s.signalsFired === 0">{{ s.signalsFired }}</td><td class="px-3 py-1.5 text-right text-gray-400">{{ s.tradesOpened }}</td><td class="px-3 py-1.5 text-right text-gray-400">{{ (s.winRatePct * 100).toFixed(0) }}%</td><td class="px-3 py-1.5 text-gray-500">{{ topReasons(s) }}</td></tr> }</tbody>
-                      </table>
-                    </div>
-                    <div class="mt-3 space-y-2">
-                      @for (s of breakdown(); track s.strategyId) {
-                        @if (s.topRejections?.length) {
-                          <div><div class="text-xs text-gray-500 mb-0.5">{{ s.strategyId }}</div>
-                            <div class="flex gap-0.5 items-end">@for (r of s.topRejections; track r.reason) { <div class="text-center" [style.flex]="1"><div [class]="rejectionBarColor(r.reason) + ' rounded-t min-w-4'" [style.height.px]="rejectionBarHeight(r.count, s.topRejections)" [title]="r.reason + ': ' + r.count"></div><div class="text-xs text-gray-500 truncate" [title]="r.reason">{{ r.reason }}</div></div> }</div>
-                          </div>
-                        }
+          <!-- Trades tab -->
+          @if (activeTab() === 'trades') {
+            @if (trades().length > 0) {
+              <div>
+                <div class="mb-2 flex items-center justify-between">
+                  <h2 class="text-sm font-medium text-gray-400">Trades ({{ trades().length }})</h2>
+                  <details class="relative">
+                    <summary class="cursor-pointer text-xs text-gray-500 hover:text-gray-300">Columns</summary>
+                    <div class="absolute right-0 z-10 mt-1 w-48 rounded border border-gray-700 bg-gray-900 p-2 shadow-lg">
+                      @for (col of tradeColumns; track col.key) {
+                        <label class="flex items-center gap-1.5 py-0.5 text-xs text-gray-300 cursor-pointer">
+                          <input type="checkbox" [checked]="visibleTradeColumns().includes(col.key)"
+                            (change)="toggleTradeColumn(col.key)" class="h-3 w-3 rounded" />
+                          {{ col.label }}
+                        </label>
                       }
                     </div>
-                  </div>
-                }
-
-                <!-- Profiling -->
-                <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
-                  <h2 class="mb-3 text-sm font-medium text-gray-400">Profiling</h2>
-                  <div class="grid grid-cols-3 gap-3">
-                    <app-stat-tile label="Wall elapsed" [value]="wallElapsedDisplay()" />
-                    <app-stat-tile label="Bars/sec" [value]="barsPerSecDisplay()" />
-                    <app-stat-tile label="Total bars" [value]="totalBarsDisplay()" />
-                  </div>
+                  </details>
                 </div>
-
-                <!-- Per-bar verdicts -->
-                @if (perBarVerdicts().length > 0) {
-                  <div>
-                    <h2 class="mb-3 text-sm font-medium text-gray-400">Per-Bar Verdicts ({{ perBarVerdicts().length }})</h2>
-                    <div class="max-h-72 overflow-y-auto rounded-lg border border-gray-800">
-                      <table class="w-full text-xs">
-                        <thead class="text-gray-500"><tr class="border-b border-gray-800"><th class="px-3 py-1.5 text-left">Time</th><th class="px-3 py-1.5 text-left">Strategy</th><th class="px-3 py-1.5 text-left">Signal</th><th class="px-3 py-1.5 text-left">Reason</th></tr></thead>
-                        <tbody>@for (v of perBarVerdicts(); track $index) { <tr class="border-b border-gray-800 last:border-0"><td class="px-3 py-1 text-gray-500">{{ v.simTimeUtc | date: 'MM-dd HH:mm' }}</td><td class="px-3 py-1 text-gray-300">{{ v.strategyId }}</td><td class="px-3 py-1" [class.text-emerald-400]="v.signalFired" [class.text-gray-500]="!v.signalFired">{{ v.signalFired ? v.direction || 'FIRED' : '—' }}</td><td class="px-3 py-1 text-gray-500">{{ v.reason }}</td></tr> }</tbody>
-                      </table>
-                    </div>
-                  </div>
-                }
-
-                <!-- Bar Inspector -->
-                @if (activeBars().length > 0) {
-                  <div>
-                    <h2 class="mb-3 text-sm font-medium text-gray-400">Bar Inspector — active bars ({{ activeBars().length }} of {{ runBars().length }})</h2>
-                    <div class="max-h-96 overflow-y-auto rounded-lg border border-gray-800">
-                      <table class="w-full text-xs">
-                        <thead class="sticky top-0 bg-gray-900 text-gray-500"><tr class="border-b border-gray-800"><th class="px-3 py-1.5 text-left">Time</th><th class="px-3 py-1.5 text-left">Regime</th><th class="px-3 py-1.5 text-left">Signals</th><th class="px-3 py-1.5 text-right">Prop</th><th class="px-3 py-1.5 text-right">Fill</th><th class="px-3 py-1.5 text-right">Close</th><th class="px-3 py-1.5 text-left">Rejections</th><th class="px-3 py-1.5 text-right">Equity</th><th class="px-3 py-1.5 text-right">Pos</th></tr></thead>
-                        <tbody>@for (b of activeBars(); track b.firstSeq) { <tr class="border-b border-gray-800 last:border-0"><td class="px-3 py-1 text-gray-500">{{ b.simTimeUtc | date: 'MM-dd HH:mm' }}</td><td class="px-3 py-1 text-gray-400">{{ b.regime || '—' }}</td><td class="px-3 py-1 text-emerald-400">{{ firedSignals(b) }}</td><td class="px-3 py-1 text-right text-gray-300">{{ b.proposalCount || '' }}</td><td class="px-3 py-1 text-right text-gray-300">{{ b.fillCount || '' }}</td><td class="px-3 py-1 text-right text-gray-300">{{ b.closeCount || '' }}</td>                  <td class="px-3 py-1 text-amber-400">{{ b.gateRejections?.join('; ') ?? '' }}</td><td class="px-3 py-1 text-right font-mono text-gray-300">{{ b.risk ? b.risk.equity.toFixed(0) : '—' }}</td><td class="px-3 py-1 text-right text-gray-400">{{ b.risk ? b.risk.openPositions : '—' }}</td></tr> }</tbody>
-                      </table>
-                    </div>
-                  </div>
+                <app-data-table [columns]="activeTradeColumns()" [data]="trades()" trackKey="id" (rowClick)="onTradeClick($event)" />
+                @if (expandedTradeId()) {
+                  <div class="mt-4"><app-trade-chart-card [tradeId]="expandedTradeId()!" /></div>
                 }
               </div>
+            } @else {
+              <div class="py-8 text-center text-xs text-gray-500">No trades in this run.</div>
             }
+
+            @if (scatterData().length > 0) {
+              <app-scatter-chart title="MAE vs MFE &mdash; pips per trade" [data]="scatterData()" />
+            }
+          }
+
+          <!-- Journal tab -->
+          @if (activeTab() === 'journal') {
+            @if (journal().length > 0) {
+              <div>
+                <div class="flex flex-wrap gap-2 mb-3">
+                  @for (k of journalKinds; track k) {
+                    @let active = (journalKind() || 'ALL') === k;
+                    <button (click)="journalKind.set(k === 'ALL' ? null : k)"
+                      class="rounded px-2 py-0.5 text-xs"
+                      [ngClass]="active ? 'bg-emerald-900/50 text-emerald-400' : 'text-gray-500'">
+                      {{ kindLabel(k) }}
+                    </button>
+                  }
+                </div>
+                <div class="max-h-[600px] overflow-y-auto">
+                  <app-data-table [columns]="journalColumns" [data]="journalTableData()" trackKey="seq" [searchable]="false" />
+                </div>
+              </div>
+            } @else {
+              <div class="py-8 text-center text-xs text-gray-500">No journal entries.</div>
+            }
+          }
+
+          <!-- Costs & Risk tab -->
+          @if (activeTab() === 'costs') {
+            @if (breakdown().length > 0) {
+              <div>
+                <h2 class="mb-3 text-sm font-medium text-gray-400">Per-strategy funnel</h2>
+                <div class="overflow-x-auto rounded-lg border border-gray-800">
+                  <table class="w-full text-xs">
+                    <thead class="text-gray-500">
+                      <tr class="border-b border-gray-800">
+                        <th class="px-3 py-1.5 text-left">Strategy</th><th class="px-3 py-1.5 text-right">Bars</th>
+                        <th class="px-3 py-1.5 text-right">Signals</th><th class="px-3 py-1.5 text-right">Trades</th>
+                        <th class="px-3 py-1.5 text-right">Win%</th><th class="px-3 py-1.5 text-left">Top no-signal reasons</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (s of breakdown(); track s.strategyId) {
+                        <tr class="border-b border-gray-800 last:border-0">
+                          <td class="px-3 py-1.5 text-gray-300">{{ s.strategyId }}</td>
+                          <td class="px-3 py-1.5 text-right text-gray-400">{{ s.totalBarsEvaluated }}</td>
+                          <td class="px-3 py-1.5 text-right" [class.text-emerald-400]="s.signalsFired > 0" [class.text-red-400]="s.signalsFired === 0">{{ s.signalsFired }}</td>
+                          <td class="px-3 py-1.5 text-right text-gray-400">{{ s.tradesOpened }}</td>
+                          <td class="px-3 py-1.5 text-right text-gray-400">{{ (s.winRatePct * 100).toFixed(0) }}%</td>
+                          <td class="px-3 py-1.5 text-gray-500">{{ topReasons(s) }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            }
+
+            @if (perBarVerdicts().length > 0) {
+              <div>
+                <h2 class="mb-3 text-sm font-medium text-gray-400">Per-bar "why" ({{ perBarVerdicts().length }})</h2>
+                <div class="max-h-72 overflow-y-auto rounded-lg border border-gray-800">
+                  <table class="w-full text-xs">
+                    <thead class="text-gray-500">
+                      <tr class="border-b border-gray-800">
+                        <th class="px-3 py-1.5 text-left">Sim time</th><th class="px-3 py-1.5 text-left">Strategy</th>
+                        <th class="px-3 py-1.5 text-left">Signal</th><th class="px-3 py-1.5 text-left">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (v of perBarVerdicts(); track v.strategyId) {
+                        <tr class="border-b border-gray-800 last:border-0">
+                          <td class="px-3 py-1 text-gray-500">{{ v.simTimeUtc | date: 'MM-dd HH:mm' }}</td>
+                          <td class="px-3 py-1 text-gray-300">{{ v.strategyId }}</td>
+                          <td class="px-3 py-1" [class.text-emerald-400]="v.signalFired" [class.text-gray-500]="!v.signalFired">{{ v.signalFired ? v.direction || 'FIRED' : '&mdash;' }}</td>
+                          <td class="px-3 py-1 text-gray-500">{{ v.reason }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            }
+
+            @if (activeBars().length > 0) {
+              <div>
+                <h2 class="mb-3 text-sm font-medium text-gray-400">Bar Inspector &mdash; active bars ({{ activeBars().length }} of {{ runBars().length }})</h2>
+                <div class="max-h-96 overflow-y-auto rounded-lg border border-gray-800">
+                  <table class="w-full text-xs">
+                    <thead class="sticky top-0 bg-gray-900 text-gray-500">
+                      <tr class="border-b border-gray-800">
+                        <th class="px-3 py-1.5 text-left">Sim time</th><th class="px-3 py-1.5 text-left">Regime</th>
+                        <th class="px-3 py-1.5 text-left">Signals</th><th class="px-3 py-1.5 text-right">Prop</th>
+                        <th class="px-3 py-1.5 text-right">Fill</th><th class="px-3 py-1.5 text-right">Close</th>
+                        <th class="px-3 py-1.5 text-left">Gate rejections</th><th class="px-3 py-1.5 text-right">Equity</th>
+                        <th class="px-3 py-1.5 text-right">Pos</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (b of activeBars(); track b.firstSeq) {
+                        <tr class="border-b border-gray-800 last:border-0">
+                          <td class="px-3 py-1 text-gray-500">{{ b.simTimeUtc | date: 'MM-dd HH:mm' }}</td>
+                          <td class="px-3 py-1 text-gray-400">{{ b.regime || '&mdash;' }}</td>
+                          <td class="px-3 py-1 text-emerald-400">{{ firedSignals(b) }}</td>
+                          <td class="px-3 py-1 text-right text-gray-300">{{ b.proposalCount || '' }}</td>
+                          <td class="px-3 py-1 text-right text-gray-300">{{ b.fillCount || '' }}</td>
+                          <td class="px-3 py-1 text-right text-gray-300">{{ b.closeCount || '' }}</td>
+                          <td class="px-3 py-1 text-amber-400">{{ (b.gateRejections ?? []).join('; ') }}</td>
+                          <td class="px-3 py-1 text-right font-mono text-gray-300">{{ b.risk ? b.risk.equity.toFixed(0) : '&mdash;' }}</td>
+                          <td class="px-3 py-1 text-right text-gray-400">{{ b.risk ? b.risk.openPositions : '&mdash;' }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            }
+          }
+
+          <!-- No tab content empty state -->
+          @if (!trades().length && !journal().length && !breakdown().length && !equityPoints().length && activeTab() !== 'overview') {
+            <div class="py-8 text-center text-xs text-gray-500">No data for this run.</div>
           }
         </div>
 
@@ -252,8 +335,19 @@ function safeJson(raw: string): Record<string, unknown> | null {
             <div class="w-full max-w-sm rounded-lg border border-gray-700 bg-gray-900 p-5 shadow-xl" (click)="$event.stopPropagation()">
               <h3 class="mb-3 text-sm font-medium text-gray-300">Duplicate Run</h3>
               <div class="space-y-3">
-                <div><label class="block text-xs text-gray-500 mb-1">Add-on Pack</label><select [(ngModel)]="dupPackId" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200"><option value="">None</option>@for (p of packs(); track p.id) { <option [value]="p.id">{{ p.name }}</option> }</select></div>
-                <div><label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer"><input type="checkbox" [(ngModel)]="dupDisableRegime" class="rounded" /> Disable Regime</label></div>
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Add-on Pack</label>
+                  <select [(ngModel)]="dupPackId" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200">
+                    <option value="">None (strategy defaults)</option>
+                    @for (p of packs(); track p.id) { <option [value]="p.id">{{ p.name }}</option> }
+                  </select>
+                </div>
+                <div>
+                  <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+                    <input type="checkbox" [(ngModel)]="dupDisableRegime" class="rounded" />
+                    Disable Regime Detection
+                  </label>
+                </div>
               </div>
               <div class="mt-4 flex gap-2 justify-end">
                 <button (click)="dupOpen.set(false)" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-800">Cancel</button>
@@ -359,6 +453,24 @@ export class RunReportComponent implements OnInit {
   dailyPnl = signal<DailyPnl[]>([]);
   journalKind = signal<string | null>(null);
   duplicating = signal(false);
+  activeTab = signal('overview');
+  reportTabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'trades', label: 'Trades' },
+    { id: 'journal', label: 'Journal' },
+    { id: 'costs', label: 'Costs & Risk' },
+  ];
+
+  visibleTradeColumns = signal(TRADE_COLUMNS.slice(0, 9).map(c => c.key));
+  activeTradeColumns = computed(() =>
+    TRADE_COLUMNS.filter(c => this.visibleTradeColumns().includes(c.key)) as any
+  );
+
+  toggleTradeColumn(key: string): void {
+    this.visibleTradeColumns.update(cols =>
+      cols.includes(key) ? cols.filter(c => c !== key) : [...cols, key]
+    );
+  }
 
   activeBars(): BarNarrative[] { return this.runBars().filter(b => b.proposalCount > 0 || b.fillCount > 0 || b.closeCount > 0 || b.rejectionCount > 0 || b.verdicts.some(v => v.signalFired)); }
   firedSignals(b: BarNarrative): string { return b.verdicts.filter(v => v.signalFired).map(v => v.strategyId + (v.direction ? ' ' + v.direction : '')).join(', '); }
@@ -408,62 +520,254 @@ export class RunReportComponent implements OnInit {
     return k && k !== 'ALL' ? this.displayJournal().filter(e => this.kindOf(e) === k) : this.displayJournal();
   });
 
-  kindOf(e: JournalEntry): string { return e.eventKind ?? e.kind ?? '?'; }
-  private orderIdOf(e: JournalEntry): string | null { if (!e.eventJson) return null; try { const o = JSON.parse(e.eventJson); return o.OrderId ?? o.orderId ?? null; } catch { return null; } }
-  private isCloseFill(e: JournalEntry): boolean { if (!e.eventJson) return false; try { const o = JSON.parse(e.eventJson); return !!(o.closeReason ?? o.CloseReason); } catch { return false; } }
+  kindOf(e: JournalEntry): string {
+    return e.eventKind ?? e.kind ?? '?';
+  }
+
+  private orderIdOf(e: JournalEntry): string | null {
+    if (!e.eventJson) return null;
+    try {
+      const o = JSON.parse(e.eventJson);
+      return o.OrderId ?? o.orderId ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  addonDetail(e: JournalEntry): string {
+    if (!e.eventJson) return '';
+    try {
+      const o = JSON.parse(e.eventJson);
+      const parts: string[] = [];
+      if (o.Trailing?.Enabled) {
+        const m = o.Trailing.Method ?? '?';
+        const atr = o.Trailing.AtrMultiple ?? o.Trailing.StepPips ?? '?';
+        parts.push(`Trail=${m}${m === 'StepPips' ? '@' + atr + 'pip' : '@' + atr + '×ATR'}`);
+      }
+      if (o.Breakeven?.Enabled) {
+        const t = o.Breakeven.TriggerRMultiple ?? '?';
+        const off = o.Breakeven.OffsetPips ?? 0;
+        parts.push(`BE@${t}R+${off}pip`);
+      }
+      if (o.PartialTp?.Enabled) {
+        const frac = o.PartialTp.CloseFraction ?? o.PartialTp.Fraction ?? '?';
+        const t = o.PartialTp.TriggerRMultiple ?? '?';
+        parts.push(`Partial@${t}R×${frac}`);
+      }
+      if (o.Ride?.Enabled) {
+        const adx = o.Ride.AdxFloor ?? '?';
+        const atr = o.Ride.RelaxedAtrMultiple ?? '?';
+        parts.push(`Ride ADX>${adx}→×${atr}`);
+      }
+      if (o.DynamicSlTp?.Enabled) {
+        const sl = o.DynamicSlTp.AtrMultipleSl ?? '?';
+        const tp = o.DynamicSlTp.RrMultipleTp ?? '?';
+        parts.push(`DynamicSl=${sl}×ATR TP=${tp}R`);
+      }
+      return parts.join('  ');
+    } catch {
+      return '';
+    }
+  }
+
+  partialDetail(e: JournalEntry): string {
+    if (!e.eventJson) return '';
+    try {
+      const o = JSON.parse(e.eventJson);
+      const lots = o.CloseLots ?? o.Lots ?? null;
+      const posId = o.PositionId ?? null;
+      if (lots != null) return `Close ${lots} lots` + (posId ? ' pos=' + posId : '');
+      return '';
+    } catch {
+      return '';
+    }
+  }
+
+  badgeVariant(kind: string): 'success' | 'error' | 'warning' | 'neutral' {
+    switch (kind) {
+      case 'CLOSE':
+      case 'OrderFilled':
+      case 'TP':
+        return 'success';
+      case 'REJECTED':
+      case 'OrderRejected':
+      case 'BREACH':
+      case 'SL':
+        return 'error';
+      case 'SIGNAL':
+      case 'OrderProposed':
+      case 'GOVERNOR':
+      case 'ENTRY_EXPIRED':
+      case 'OrderCancelled':
+      case 'TRAIL':
+      case 'BREAKEVEN':
+      case 'PARTIAL':
+        return 'warning';
+      default:
+        return 'neutral';
+    }
+  }
+
+  reasonOf(e: JournalEntry): string {
+    return this.fmtReason(e.decisionReason ?? e.reason ?? null);
+  }
 
   grossTotal = computed(() => this.trades().reduce((s, t) => s + (t.grossPnLAmount ?? 0), 0));
   commTotal = computed(() => this.trades().reduce((s, t) => s + (t.commissionAmount ?? 0), 0));
   swapTotal = computed(() => this.trades().reduce((s, t) => s + (t.swapAmount ?? 0), 0));
-  grossDisplay = computed(() => { const d = this.store.selectedRun(); return d ? (d.grossPnL ?? this.trades().reduce((s, t) => s + (t.grossPnLAmount ?? 0), 0)).toFixed(2) : '0.00'; });
-  commDisplay = computed(() => { const d = this.store.selectedRun(); return d ? (d.commissionTotal ?? this.trades().reduce((s, t) => s + (t.commissionAmount ?? 0), 0)).toFixed(2) : '0.00'; });
-  swapDisplay = computed(() => { const d = this.store.selectedRun(); return d ? (d.swapTotal ?? this.trades().reduce((s, t) => s + (t.swapAmount ?? 0), 0)).toFixed(2) : '0.00'; });
-  avgR = computed(() => { const t = this.trades(); return t.length ? t.reduce((s, x) => s + (x.rMultiple ?? 0), 0) / t.length : 0; });
-  profitFactor = computed(() => { const t = this.trades(); const g = t.filter(x => (x.grossPnLAmount ?? 0) > 0).reduce((s, x) => s + (x.grossPnLAmount ?? 0), 0); const l = Math.abs(t.filter(x => (x.grossPnLAmount ?? 0) < 0).reduce((s, x) => s + (x.grossPnLAmount ?? 0), 0)); return l === 0 ? (g > 0 ? Number.MAX_VALUE : 0) : g / l; });
+  grossDisplay = computed(() => {
+    const d = this.store.selectedRun();
+    return d ? (d.grossPnL ?? this.trades().reduce((s, t) => s + (t.grossPnLAmount ?? 0), 0)).toFixed(2) : '0.00';
+  });
+  commDisplay = computed(() => {
+    const d = this.store.selectedRun();
+    return d
+      ? (d.commissionTotal ?? this.trades().reduce((s, t) => s + (t.commissionAmount ?? 0), 0)).toFixed(2)
+      : '0.00';
+  });
+  swapDisplay = computed(() => {
+    const d = this.store.selectedRun();
+    return d ? (d.swapTotal ?? this.trades().reduce((s, t) => s + (t.swapAmount ?? 0), 0)).toFixed(2) : '0.00';
+  });
+  avgR = computed(() => {
+    const t = this.trades();
+    return t.length ? t.reduce((s, x) => s + (x.rMultiple ?? 0), 0) / t.length : 0;
+  });
+  profitFactor = computed(() => {
+    const t = this.trades();
+    const g = t.filter((x) => (x.grossPnLAmount ?? 0) > 0).reduce((s, x) => s + (x.grossPnLAmount ?? 0), 0);
+    const l = Math.abs(t.filter((x) => (x.grossPnLAmount ?? 0) < 0).reduce((s, x) => s + (x.grossPnLAmount ?? 0), 0));
+    return l === 0 ? (g > 0 ? Number.MAX_VALUE : 0) : g / l;
+  });
   pfDisplay = computed(() => (this.profitFactor() >= Number.MAX_VALUE - 1 ? '∞' : this.profitFactor().toFixed(2)));
 
   wallElapsedDisplay = computed(() => this.formatDuration(this.store.selectedRun()?.wallElapsedMs ?? 0));
-  barsPerSecDisplay = computed(() => { const v = this.store.selectedRun()?.barsPerSec ?? 0; return v > 0 ? v.toFixed(1) : '—'; });
-  totalBarsDisplay = computed(() => { const v = this.store.selectedRun()?.totalBars; return v ? v.toLocaleString() : '—'; });
-  private formatDuration(ms: number): string { if (ms <= 0) return '—'; const s = Math.floor(ms / 1000); if (s < 60) return s + 's'; const m = Math.floor(s / 60); if (m < 60) return m + 'm ' + (s % 60) + 's'; const h = Math.floor(m / 60); return h + 'h ' + (m % 60) + 'm'; }
-
-  returnPct(d: { netProfit: number; initialBalance: number }): string { return d.initialBalance > 0 ? ((d.netProfit / d.initialBalance) * 100).toFixed(2) + '%' : '—'; }
-  recNetOk = computed(() => { const d = this.store.selectedRun(); return d ? Math.abs(d.netProfit - this.trades().reduce((s, t) => s + (t.netPnLAmount ?? 0), 0)) < 0.01 : false; });
-  recClosesOk = computed(() => { const d = this.store.selectedRun(); return d ? d.totalTrades === this.trades().length : false; });
-  recCostOk = computed(() => Math.abs(this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + (t.netPnLAmount ?? 0), 0)) < 0.01);
-
-  topReasons(s: StrategyPerformance): string { return (s.topRejections ?? []).map(r => r.reason + ' (' + r.count + ')').join(', ') || '—'; }
-  rejectionBarHeight(count: number, rejections: { count: number }[]): number { const max = Math.max(...rejections.map(r => r.count), 1); return Math.max(4, (count / max) * 60); }
-  rejectionBarColor(reason: string): string { return reason.startsWith('GATE:') ? 'bg-amber-700/60' : 'bg-emerald-700/60'; }
-  scatterData = computed(() => this.trades().map(t => ({ x: -(t.maxAdverseExcursion ?? 0), y: t.maxFavorableExcursion ?? 0 })));
-
-  perBarVerdicts = computed(() => this.barDecisions().flatMap(e => (e.strategyVerdicts ?? []).map(v => ({ simTimeUtc: e.simTimeUtc, strategyId: v.strategyId, signalFired: v.signalFired, direction: v.direction, reason: v.reason }))));
-
-  exportReport(fmt: 'json' | 'md'): void { const d = this.store.selectedRun(); if (!d) return; const stats: ExportStats = { symbols: this.symbolsDisplay(), profitFactor: this.pfDisplay(), avgR: this.avgR().toFixed(2) }; doExportReport(d, stats, this.breakdown(), this.trades(), fmt); }
-
-  fmtReason(reason: string | null): string { if (!reason) return ''; if (reason.startsWith('[') || reason.startsWith('{')) { try { const parsed = JSON.parse(reason); if (Array.isArray(parsed)) return parsed.map((v: any) => this.nameOf(v)).join(', '); return this.nameOf(parsed); } catch { return reason; } } return reason; }
-  private nameOf(v: any): string { if (v == null) return ''; if (typeof v !== 'object') return String(v); return v.name ?? v.code ?? v.reason ?? v.message ?? Object.entries(v).map(([k, val]) => k + '=' + val).join(' '); }
-
-  barHeight(pnl: number): number { const arr = this.dailyPnl(); const m = arr.length > 0 ? Math.max(...arr.map(d => Math.abs(d.pnl ?? 0)), 1) : 1; return Math.min(100, (Math.abs(pnl ?? 0) / m) * 100); }
-
-  dailyHistogram = computed(() => this.dailyPnl().map(d => ({ time: new Date(d.date).getTime() / 1000, value: d.pnl })));
-  underwaterPoints = computed(() => {
-    const pts = this.equityPoints();
-    if (pts.length < 2) return [];
-    let peak = pts[0].value;
-    return pts.map(p => {
-      if (p.value > peak) peak = p.value;
-      return { time: p.time, value: peak > 0 ? ((p.value - peak) / peak) * 100 : 0 };
-    });
+  barsPerSecDisplay = computed(() => {
+    const v = this.store.selectedRun()?.barsPerSec ?? 0;
+    return v > 0 ? v.toFixed(1) : '—';
   });
+  totalBarsDisplay = computed(() => {
+    const v = this.store.selectedRun()?.totalBars;
+    return v ? v.toLocaleString() : '—';
+  });
+  private formatDuration(ms: number): string {
+    if (ms <= 0) return '—';
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ' + (s % 60) + 's';
+    const h = Math.floor(m / 60);
+    return h + 'h ' + (m % 60) + 'm';
+  }
+
+  returnPct(d: { netProfit: number; initialBalance: number }): string {
+    return d.initialBalance > 0 ? ((d.netProfit / d.initialBalance) * 100).toFixed(2) + '%' : '—';
+  }
+  recNetOk = computed(() => {
+    const d = this.store.selectedRun();
+    return d ? Math.abs(d.netProfit - this.trades().reduce((s, t) => s + (t.netPnLAmount ?? 0), 0)) < 0.01 : false;
+  });
+  recClosesOk = computed(() => {
+    const d = this.store.selectedRun();
+    return d ? d.totalTrades === this.trades().length : false;
+  });
+  recCostOk = computed(
+    () =>
+      Math.abs(
+        this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + (t.netPnLAmount ?? 0), 0),
+      ) < 0.01,
+  );
+
+  topReasons(s: StrategyPerformance): string {
+    return (s.topRejections ?? []).map((r) => r.reason + ' (' + r.count + ')').join(', ') || '\u2014';
+  }
+
+  rejectionBarHeight(count: number, rejections: { count: number }[]): number {
+    const max = Math.max(...rejections.map(r => r.count), 1);
+    return Math.max(4, (count / max) * 60);
+  }
+
+  rejectionBarColor(reason: string): string {
+    return reason.startsWith('GATE:') ? 'bg-amber-700/60' : 'bg-emerald-700/60';
+  }
+
+  // F4 — MAE/MFE scatter from the run's trades (x = MAE as negative pips, y = MFE).
+  scatterData = computed(() =>
+    this.trades().map((t) => ({ x: -(t.maxAdverseExcursion ?? 0), y: t.maxFavorableExcursion ?? 0 })),
+  );
+
+  // T4: per-bar "why" flattened from the server-paged bar-decisions endpoint.
+  perBarVerdicts = computed(() =>
+    this.barDecisions()
+      .flatMap((e) =>
+        (e.strategyVerdicts ?? []).map((v) => ({
+          simTimeUtc: e.simTimeUtc,
+          strategyId: v.strategyId,
+          signalFired: v.signalFired,
+          direction: v.direction,
+          reason: v.reason,
+        })),
+      ),
+  );
+
+  // F4 — client-side report export (JSON / Markdown) off the data the report already has.
+  exportReport(fmt: 'json' | 'md'): void {
+    const d = this.store.selectedRun();
+    if (!d) return;
+    const stats: ExportStats = {
+      symbols: this.symbolsDisplay(),
+      profitFactor: this.pfDisplay(),
+      avgR: this.avgR().toFixed(2),
+    };
+    doExportReport(d, stats, this.breakdown(), this.trades(), fmt);
+  }
+
+  // F1 — render a violation/decision reason as a readable name, never raw JSON / [object Object].
+  fmtReason(reason: string | null): string {
+    if (!reason) return '';
+    if (reason.startsWith('[') || reason.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(reason);
+        if (Array.isArray(parsed)) return parsed.map((v: any) => this.nameOf(v)).join(', ');
+        return this.nameOf(parsed);
+      } catch {
+        return reason;
+      }
+    }
+    return reason;
+  }
+
+  private nameOf(v: any): string {
+    if (v == null) return '';
+    if (typeof v !== 'object') return String(v);
+    return (
+      v.name ??
+      v.code ??
+      v.reason ??
+      v.message ??
+      Object.entries(v)
+        .map(([k, val]) => k + '=' + val)
+        .join(' ')
+    );
+  }
+
   symbolsDisplay = () => formatSymbols(this.store.selectedRun() ?? { symbols: '', symbol: '' });
 
   async openDuplicate(runId: string): Promise<void> { this.dupRunId.set(runId); this.dupPackId.set(''); this.dupDisableRegime.set(false); this.dupOpen.set(true); if (this.packs().length === 0) { try { const pks = await this.packsApi.getAll(); this.packs.set(pks.map(p => ({ id: p.id, name: p.name }))); } catch { /* */ } } }
   async confirmDuplicate(): Promise<void> { const runId = this.dupRunId(); if (!runId || this.duplicating()) return; this.duplicating.set(true); this.dupOpen.set(false); const params = new URLSearchParams(); params.set('sourceRunId', runId); const packId = this.dupPackId(); if (packId) params.set('usePackId', packId); if (this.dupDisableRegime()) params.set('disableRegime', 'true'); this.router.navigate(['/runs/new'], { queryParams: Object.fromEntries(params) }); this.duplicating.set(false); }
   async duplicate(runId: string): Promise<void> { if (this.duplicating()) return; this.duplicating.set(true); try { const res = await this.api.duplicateRun(runId); if (res?.runId) this.router.navigate(['/runs', res.runId, 'monitor']); } finally { this.duplicating.set(false); } }
 
-  journalColumns: ColumnDef[] = [{ key: 'simTime', label: 'Sim Time' }, { key: 'kind', label: 'Kind' }, { key: 'outcome', label: 'Outcome' }, { key: 'symbol', label: 'Symbol' }, { key: 'strategy', label: 'Strategy' }, { key: 'reason', label: 'Reason' }];
-  journalTableData = computed(() => this.filteredJournal().map(e => ({ seq: e.seq, simTime: e.simTimeUtc ? new Date(e.simTimeUtc).toLocaleString() : '—', kind: this.kindOf(e), outcome: e.outcome ?? null, symbol: e.symbol ?? null, strategy: e.strategyId ?? null, reason: this.fmtReason(e.decisionReason ?? e.reason ?? null) })));
+  journalTableData = computed(() =>
+    this.filteredJournal().map(e => ({
+      seq: e.seq,
+      simTime: e.simTimeUtc ? new Date(e.simTimeUtc).toLocaleString() : '—',
+      kind: this.kindOf(e),
+      outcome: e.outcome ?? null,
+      symbol: e.symbol ?? null,
+      strategy: e.strategyId ?? null,
+      reason: this.reasonOf(e),
+    })),
+  );
 
   async ngOnInit(): Promise<void> {
     const runId = this.route.snapshot.paramMap.get('runId');

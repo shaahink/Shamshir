@@ -25,9 +25,9 @@ public interface IMarketDataStore
     /// weekend-straddle flag so callers can distinguish real holes from normal FX weekend closes.</summary>
     Task<IReadOnlyList<MarketDataGap>> GetGapsAsync(Symbol symbol, Timeframe tf, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
 
-    /// <summary>M4.2 (Data Manager): delete stored bars for a (symbol, timeframe). Null <paramref name="fromUtc"/>/
-    /// <paramref name="toUtc"/> = whole range; null <paramref name="source"/> = all sources. Returns the number of
-    /// rows removed. Only ever touches downloaded market-data history — never a run's per-RunId Bars.</summary>
+    /// <summary>Delete stored bars for a (symbol, timeframe). Null <paramref name="fromUtc"/>/
+    /// <paramref name="toUtc"/> = whole range; null <paramref name="source"/> = all sources.
+    /// Only ever touches downloaded market-data history — never a run's per-RunId Bars.</summary>
     Task<int> DeleteBarsAsync(Symbol symbol, Timeframe tf, DateTime? fromUtc, DateTime? toUtc, string? source, CancellationToken ct = default);
 }
 

@@ -1,97 +1,176 @@
 import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { StrategiesApiService } from '../strategies/strategies.service';
-import { RunsApiService } from '../runs/runs.service';
-import { RiskProfilesApiService } from '../risk-profiles/risk-profiles.service';
-import { SystemApiService, type SystemInfo, type ResetScope } from './system.service';
+import { SettingsService } from './settings.service';
+import type { SystemInfo } from '../../models/api.types';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe],
   template: `
     <div class="space-y-6">
       <h1 class="text-xl font-semibold">Settings</h1>
 
-      <!-- System info -->
-      <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-6">
-        <h2 class="mb-3 text-sm font-medium uppercase tracking-wide text-gray-500">System</h2>
-        <dl class="space-y-3 text-sm">
-          <div class="flex justify-between py-1 border-b border-gray-800">
-            <dt class="text-gray-400">Version</dt>
-            <dd class="text-gray-200">{{ info()?.version || '—' }}</dd>
-          </div>
-          <div class="flex justify-between py-1 border-b border-gray-800">
-            <dt class="text-gray-400">Branch</dt>
-            <dd class="font-mono text-xs text-gray-300">{{ info()?.branch || '—' }}</dd>
-          </div>
-          <div class="flex justify-between py-1 border-b border-gray-800">
-            <dt class="text-gray-400">Build</dt>
-            <dd class="font-mono text-xs text-gray-500">{{ info()?.buildDate ? (info()!.buildDate | date: 'yyyy-MM-dd HH:mm') : '—' }}</dd>
-          </div>
-          <div class="flex justify-between py-1 border-b border-gray-800">
-            <dt class="text-gray-400">Trading DB</dt>
-            <dd class="font-mono text-xs text-gray-500 truncate max-w-[60%]" [title]="info()?.dataPaths?.tradingDb || ''">{{ info()?.dataPaths?.tradingDb || '—' }}</dd>
-          </div>
-          <div class="flex justify-between py-1 border-b border-gray-800">
-            <dt class="text-gray-400">Strategies</dt>
-            <dd class="text-gray-200">{{ stratCount() }} seeded</dd>
-          </div>
-          <div class="flex justify-between py-1 border-b border-gray-800">
-            <dt class="text-gray-400">Risk Profiles</dt>
-            <dd class="text-gray-200">{{ profileCount() }} seeded</dd>
-          </div>
-          <div class="flex justify-between py-1">
-            <dt class="text-gray-400">Completed Runs</dt>
-            <dd class="text-gray-200">{{ runCount() }} <span class="text-gray-500">({{ info()?.runningRuns ?? 0 }} running)</span></dd>
-          </div>
-        </dl>
-      </div>
+      <section class="rounded-lg border border-gray-800 bg-gray-900/50 p-6">
+        <h2 class="text-sm font-medium text-gray-300 mb-4">System Info</h2>
+        @if (info(); as info) {
+          <dl class="space-y-2 text-sm">
+            <div class="flex justify-between py-1 border-b border-gray-800">
+              <dt class="text-gray-400">Version</dt>
+              <dd class="text-gray-200">{{ info.version }}</dd>
+            </div>
+            <div class="flex justify-between py-1 border-b border-gray-800">
+              <dt class="text-gray-400">Branch</dt>
+              <dd class="text-gray-200 font-mono text-xs">{{ info.branch }}</dd>
+            </div>
+            <div class="flex justify-between py-1 border-b border-gray-800">
+              <dt class="text-gray-400">Build Date</dt>
+              <dd class="text-gray-200">{{ info.buildDate | date:'medium' }}</dd>
+            </div>
+            <div class="flex justify-between py-1 border-b border-gray-800">
+              <dt class="text-gray-400">Active Runs</dt>
+              <dd class="text-gray-200">{{ info.activeRuns }} ({{ info.runningRuns }} running)</dd>
+            </div>
+          </dl>
+        } @else {
+          <p class="text-sm text-gray-500">Loading system info...</p>
+        }
+        @if (error(); as err) {
+          <p class="text-xs text-red-400 mt-2">{{ err }}</p>
+        }
+      </section>
 
-      <!-- Housekeeping: prune -->
-      <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-6">
-        <h2 class="mb-1 text-sm font-medium uppercase tracking-wide text-gray-500">Housekeeping</h2>
-        <p class="mb-3 text-xs text-gray-500">Keep the newest runs, delete older ones. Running runs are always kept.</p>
-        <div class="flex items-center gap-3">
-          <label class="text-sm text-gray-400">Keep newest</label>
-          <input type="number" min="0" [(ngModel)]="keepN" class="w-24 rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-          <button (click)="prune()" [disabled]="busy()" class="rounded-md border border-amber-700 px-3 py-1.5 text-xs text-amber-400 hover:bg-amber-900/20 disabled:opacity-50">
-            {{ busy() ? 'Working…' : 'Prune runs' }}
-          </button>
-          @if (pruneMsg()) { <span class="text-xs text-gray-400">{{ pruneMsg() }}</span> }
-        </div>
-      </div>
+      <section class="rounded-lg border border-gray-800 bg-gray-900/50 p-6">
+        <h2 class="text-sm font-medium text-gray-300 mb-4">Database Reset</h2>
+        <p class="text-xs text-gray-500 mb-4">
+          These actions permanently delete data. This cannot be undone.
+        </p>
 
-      <!-- Danger zone: DB reset -->
-      <div class="rounded-lg border border-red-900/60 bg-red-950/10 p-6">
-        <h2 class="mb-1 text-sm font-medium uppercase tracking-wide text-red-400">Danger Zone</h2>
-        <p class="mb-4 text-xs text-gray-500">Irreversible. Market data (marketdata.db) is never touched by any reset.</p>
-        <div class="space-y-3">
-          <div class="flex items-center justify-between gap-4">
-            <div>
-              <div class="text-sm text-gray-200">Delete all runs</div>
-              <div class="text-xs text-gray-500">Clears every backtest run, its trades, journal, equity and recorded bars.</div>
-            </div>
-            <button (click)="askReset('runs')" [disabled]="busy()" class="shrink-0 rounded-md border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50">Reset runs</button>
+        <div class="grid gap-4 md:grid-cols-3">
+          <div class="rounded border border-gray-700 p-4">
+            <h3 class="text-sm font-medium text-gray-200 mb-2">Clear Runs</h3>
+            <p class="text-xs text-gray-500 mb-3">
+              Deletes all backtest runs, trades, journal entries, equity snapshots, and related data.
+            </p>
+            @if (confirmScope() === 'runs') {
+              <div class="space-y-2">
+                <input
+                  #runsInput
+                  type="text"
+                  placeholder="Type delete-everything"
+                  class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-100 focus:border-red-500 focus:outline-none"
+                />
+                <div class="flex gap-2">
+                  <button
+                    (click)="doReset('runs', runsInput.value); runsInput.value = ''"
+                    class="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-500"
+                  >
+                    Confirm Reset
+                  </button>
+                  <button
+                    (click)="confirmScope.set(null)"
+                    class="rounded border border-gray-600 px-2 py-1 text-xs text-gray-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            } @else {
+              <button
+                (click)="confirmScope.set('runs')"
+                [disabled]="busy()"
+                class="rounded border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-40"
+              >
+                Clear Runs
+              </button>
+            }
           </div>
-          <div class="flex items-center justify-between gap-4 border-t border-gray-800 pt-3">
-            <div>
-              <div class="text-sm text-gray-200">Reset config</div>
-              <div class="text-xs text-gray-500">Re-seeds strategies, risk profiles, prop-firm rules, governor and add-on packs from JSON.</div>
-            </div>
-            <button (click)="askReset('config')" [disabled]="busy()" class="shrink-0 rounded-md border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50">Reset config</button>
+
+          <div class="rounded border border-gray-700 p-4">
+            <h3 class="text-sm font-medium text-gray-200 mb-2">Re-seed Config</h3>
+            <p class="text-xs text-gray-500 mb-3">
+              Resets all strategy configs, risk profiles, FTMO rules, governor options, and add-on packs to factory defaults.
+            </p>
+            @if (confirmScope() === 'config') {
+              <div class="space-y-2">
+                <input
+                  #configInput
+                  type="text"
+                  placeholder="Type delete-everything"
+                  class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-100 focus:border-red-500 focus:outline-none"
+                />
+                <div class="flex gap-2">
+                  <button
+                    (click)="doReset('config', configInput.value); configInput.value = ''"
+                    class="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-500"
+                  >
+                    Confirm Reset
+                  </button>
+                  <button
+                    (click)="confirmScope.set(null)"
+                    class="rounded border border-gray-600 px-2 py-1 text-xs text-gray-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            } @else {
+              <button
+                (click)="confirmScope.set('config')"
+                [disabled]="busy()"
+                class="rounded border border-orange-800 px-3 py-1.5 text-xs text-orange-400 hover:bg-orange-900/20 disabled:opacity-40"
+              >
+                Re-seed Config
+              </button>
+            }
           </div>
-          <div class="flex items-center justify-between gap-4 border-t border-gray-800 pt-3">
-            <div>
-              <div class="text-sm text-gray-200">Wipe everything</div>
-              <div class="text-xs text-gray-500">Backs up and recreates the trading DB, then re-seeds config.</div>
-            </div>
-            <button (click)="askReset('all')" [disabled]="busy()" class="shrink-0 rounded-md border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50">Wipe all</button>
+
+          <div class="rounded border border-gray-700 p-4">
+            <h3 class="text-sm font-medium text-gray-200 mb-2">Wipe All</h3>
+            <p class="text-xs text-gray-500 mb-3">
+              Renames trading.db, runs EF migrations, and re-seeds config. The old database is kept as a .bak file.
+            </p>
+            @if (confirmScope() === 'all') {
+              <div class="space-y-2">
+                <input
+                  #allInput
+                  type="text"
+                  placeholder="Type delete-everything"
+                  class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-100 focus:border-red-500 focus:outline-none"
+                />
+                <div class="flex gap-2">
+                  <button
+                    (click)="doReset('all', allInput.value); allInput.value = ''"
+                    class="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-500"
+                  >
+                    Confirm Reset
+                  </button>
+                  <button
+                    (click)="confirmScope.set(null)"
+                    class="rounded border border-gray-600 px-2 py-1 text-xs text-gray-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            } @else {
+              <button
+                (click)="confirmScope.set('all')"
+                [disabled]="busy()"
+                class="rounded border border-red-800 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-40"
+              >
+                Wipe All
+              </button>
+            }
           </div>
         </div>
-        @if (resetMsg()) { <div class="mt-3 text-xs text-gray-400">{{ resetMsg() }}</div> }
-      </div>
+
+        @if (resetStatus(); as status) {
+          <div [class]="statusClass(status)">
+            {{ status }}
+          </div>
+        }
+      </section>
     </div>
 
     <!-- Confirm modal: type the word -->
@@ -114,22 +193,12 @@ import { SystemApiService, type SystemInfo, type ResetScope } from './system.ser
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SettingsComponent implements OnInit {
-  private strategies = inject(StrategiesApiService);
-  private runs = inject(RunsApiService);
-  private profiles = inject(RiskProfilesApiService);
-  private system = inject(SystemApiService);
-
+  private svc = inject(SettingsService);
   info = signal<SystemInfo | null>(null);
-  stratCount = signal(0);
-  runCount = signal(0);
-  profileCount = signal(0);
+  error = signal<string | null>(null);
   busy = signal(false);
-
-  keepN = 20;
-  pruneMsg = signal('');
-  resetMsg = signal('');
-  pendingScope = signal<ResetScope | null>(null);
-  confirmText = '';
+  confirmScope = signal<'runs' | 'config' | 'all' | null>(null);
+  resetStatus = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
     await this.refresh();
@@ -149,38 +218,35 @@ export class SettingsComponent implements OnInit {
     this.busy.set(true);
     this.pruneMsg.set('');
     try {
-      const res = await this.runs.pruneRuns(keep);
-      this.pruneMsg.set(`Deleted ${res.deleted}, kept ${res.kept}.`);
-      await this.refresh();
+      this.info.set(await this.svc.getSystemInfo());
     } catch {
-      this.pruneMsg.set('Prune failed.');
-    } finally {
-      this.busy.set(false);
+      this.error.set('Failed to load system info.');
     }
   }
 
-  askReset(scope: ResetScope): void {
-    this.confirmText = '';
-    this.resetMsg.set('');
-    this.pendingScope.set(scope);
-  }
-  cancelReset(): void { this.pendingScope.set(null); }
-
-  scopeLabel(s: ResetScope): string {
-    return s === 'runs' ? 'delete all runs' : s === 'config' ? 'reset config' : 'wipe everything';
+  statusClass(status: string): string {
+    const base = 'mt-3 rounded border px-3 py-2 text-xs';
+    const failed = status.includes('failed');
+    return failed
+      ? base + ' border-red-800 bg-red-900/20 text-red-400'
+      : base + ' border-emerald-800 bg-emerald-900/20 text-emerald-400';
   }
 
-  async confirmReset(): Promise<void> {
-    const scope = this.pendingScope();
-    if (!scope || this.confirmText !== 'delete-everything' || this.busy()) return;
+  async doReset(scope: 'runs' | 'config' | 'all', confirmValue: string): Promise<void> {
+    this.confirmScope.set(null);
+    if (confirmValue !== 'delete-everything') {
+      this.resetStatus.set('Confirm token incorrect. Type "delete-everything" exactly.');
+      return;
+    }
     this.busy.set(true);
+    this.resetStatus.set(null);
     try {
-      await this.system.reset(scope);
-      this.resetMsg.set(`${scopeLabelDone(scope)} — done.`);
-      this.pendingScope.set(null);
-      await this.refresh();
-    } catch {
-      this.resetMsg.set('Reset failed — a run may still be active. Cancel it and retry.');
+      const res = await this.svc.reset({ scope, confirm: confirmValue });
+      this.resetStatus.set(`Reset complete: scope=${res.scope}, status=${res.status}`);
+      this.info.set(await this.svc.getSystemInfo());
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      this.resetStatus.set(`Reset failed: ${msg}`);
     } finally {
       this.busy.set(false);
     }

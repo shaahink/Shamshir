@@ -15,6 +15,14 @@ namespace TradingEngine.Infrastructure.Adapters;
 /// evaluated against a FINER timeframe (default m1) within each decision bar — recovering intrabar
 /// long-shadow / SL-before-TP fidelity that a single decision-bar OHLC can't express. Falls back to
 /// decision-bar-resolution exits when no finer data is stored. Kernel/decision logic is untouched.
+///
+/// F6 (documented): Gap-through slippage — when a fine bar OPENS beyond the stop price, the fill
+/// price is the bar's open (not the stop), modelling real market gap-through. This is handled in
+/// the fine-bar SL/TP detection loop.
+///
+/// F7 (documented): Fine bars in decision-TF gaps — when the fine-bar data has gaps within a
+/// decision bar (e.g., weekends, missing candles), the per-bar high/low watermarks still provide a
+/// reasonable envelope. True tick-level gap-through fidelity requires per-bar recorded spread (A3).
 /// </summary>
 public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisposable
 {

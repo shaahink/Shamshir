@@ -91,6 +91,19 @@ public sealed class RunsController : ControllerBase
             validPeriods = perList.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
         }
 
+        var activeRuns = _orchestrator.GetAll()
+            .Where(r => r.Status is "starting" or "running")
+            .Select(r => r.RunId)
+            .ToList();
+        if (activeRuns.Count > 0)
+        {
+            return Conflict(new
+            {
+                error = "A backtest is already running. Wait for it to complete or cancel it first.",
+                activeRunIds = activeRuns,
+            });
+        }
+
         var errors = new List<string>();
         if (req.Rows is { Count: > 0 } && rowPlan is not { Entries.Count: > 0 })
             errors.Add("At least one enabled row is required.");
@@ -153,8 +166,6 @@ public sealed class RunsController : ControllerBase
         return Ok(new { cancelled = true });
     }
 
-    // M4.1 (E2): multi-select delete. FK-safe cascade removes each run's trades/journal/equity/bars/
-    // sessions/header. Refuses to delete a run that is still running/starting.
     [HttpPost("delete")]
     public async Task<IActionResult> DeleteRuns([FromBody] DeleteRunsRequest? req, CancellationToken ct)
     {
@@ -164,7 +175,13 @@ public sealed class RunsController : ControllerBase
 
         var active = ids.Where(id => _orchestrator.GetState(id)?.Status is "running" or "starting").ToList();
         if (active.Count > 0)
-            return Conflict(new { error = $"{active.Count} run(s) are still active — cancel them first.", activeRunIds = active });
+        {
+            return Conflict(new
+            {
+                error = $"{active.Count} run(s) are still active — cancel them first.",
+                activeRunIds = active,
+            });
+        }
 
         var deleted = await _runRepo.DeleteRunsAsync(ids, ct);
         foreach (var id in ids) _cache?.Evict(id);
@@ -172,7 +189,6 @@ public sealed class RunsController : ControllerBase
         return Ok(new { deleted });
     }
 
-    // M4.1 (E2): auto-prune — keep the newest N runs, delete the rest. Active runs are always kept.
     [HttpPost("prune")]
     public async Task<IActionResult> Prune([FromBody] PruneRunsRequest? req, CancellationToken ct)
     {
@@ -423,3 +439,4 @@ public sealed class RunsController : ControllerBase
         return Ok(result);
     }
 }
+

@@ -98,7 +98,7 @@ export class TradeDetailComponent implements OnInit {
       const t = await this.api.getById(id);
       this.trade.set(t);
     } catch {
-      // trade signal stays null → template shows "Trade not found."
+      this.trade.set(null);
     }
   }
 

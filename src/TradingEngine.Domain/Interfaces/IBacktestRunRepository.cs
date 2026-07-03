@@ -47,9 +47,6 @@ public interface IBacktestRunRepository
     Task UpdateAsync(BacktestRunSummary run, CancellationToken ct);
     Task<IReadOnlyList<BacktestRunSummary>> GetAllAsync(CancellationToken ct);
     Task<BacktestRunSummary?> GetByIdAsync(string runId, CancellationToken ct);
-
-    /// <summary>M4.1 (E2): FK-safe cascade delete of the given runs and all their run-scoped rows
-    /// (trades, journal, equity, recorded bars, venue sessions, run header). Shared dataset/config rows
-    /// are left intact — duplicate runs reuse them. Returns the number of run headers removed.</summary>
+    Task DeleteAsync(string runId, CancellationToken ct);
     Task<int> DeleteRunsAsync(IReadOnlyCollection<string> runIds, CancellationToken ct);
 }

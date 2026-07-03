@@ -1,11 +1,10 @@
-import { DatePipe, NgClass } from '@angular/common';
 import { Component, computed, inject, OnInit, signal, ChangeDetectionStrategy, type WritableSignal } from '@angular/core';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { RunsStore } from '../runs.store';
-import type { StrategySummary, StartRunRequest, RiskProfile, RunRow } from '../../../models/api.types';
+import type { StrategySummary, StartRunRequest, RiskProfile, RunRow, InventoryItem } from '../../../models/api.types';
 import { StrategiesApiService } from '../../strategies/strategies.service';
 import { RiskProfilesApiService } from '../../risk-profiles/risk-profiles.service';
 import { AddOnPacksApiService } from '../../addon-packs/addon-packs.service';
@@ -36,271 +35,297 @@ interface InventoryEntry {
 
 const rowKey = (sid: string, sym: string, tf: string) => `${sid}|${sym}|${tf}`;
 
+interface CoverageInfo {
+  decisionTf: boolean;
+  m1: boolean;
+}
+
 @Component({
   selector: 'app-new-backtest',
   standalone: true,
-  imports: [FormsModule, DatePipe, NgClass, RouterLink],
+  imports: [FormsModule],
   template: `
     <div class="space-y-4">
-      <h1 class="text-xl font-semibold">New Backtest</h1>
-
-      <div class="flex items-center gap-4 mb-1">
-        <span class="text-xs text-gray-500">Load setup:</span>
-        @for (s of savedSetups; track s.savedAt; let i = $index) {
-          <button (click)="loadSetup(i)"
-            class="text-xs text-gray-400 hover:text-gray-200 rounded border border-gray-700 px-2 py-0.5"
-            [title]="s.startDate + ' to ' + s.endDate + ' · ' + (s.balance || 0)">
-            {{ (s.savedAt | date:'MM-dd HH:mm') || 'Saved' }}
-          </button>
-        }
-        @if (savedSetups.length === 0) {
-          <span class="text-xs text-gray-600">none yet</span>
-        }
+      <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">New Backtest</h1>
+        <div class="flex items-center gap-2">
+          @for (s of savedSetups; track s.name + s.savedAt; let i = $index) {
+            <button (click)="loadSetup(i)"
+              class="text-xs text-gray-400 hover:text-gray-200 rounded border border-gray-700 px-2 py-0.5"
+              [title]="s.startDate + ' to ' + s.endDate + ' \u00b7 ' + (s.balance || 0)">
+              {{ s.name || ('#' + (i + 1)) }}
+            </button>
+          }
+          @if (savedSetups.length === 0) {
+            <span class="text-xs text-gray-600">no saved setups</span>
+          }
+        </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <!-- LEFT PANE: strategy row builder -->
-        <div class="lg:col-span-2 space-y-5">
-          <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-5 space-y-5">
-            <!-- Section: Data & Venue -->
-            <fieldset>
-              <legend class="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Data & Venue</legend>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-medium text-gray-400 mb-1">Venue</label>
-                  <select [(ngModel)]="venue" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
-                    <option value="replay">Stored-bar replay</option>
-                    <option value="tape">Tape replay (fast, market data required)</option>
-                    <option value="ctrader">cTrader (oracle)</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-xs font-medium text-gray-400 mb-1">Risk Profile</label>
-                  <select [(ngModel)]="riskProfile" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
-                    @for (p of riskProfiles(); track p.id) {
-                      <option [value]="p.id">{{ p.displayName }} ({{ (p.riskPerTradePercent * 100).toFixed(2) }}%/trade)</option>
-                    }
-                  </select>
-                </div>
-              </div>
-            </fieldset>
-
-            <!-- Section: Strategies -->
-            <fieldset>
-              <legend class="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Strategies</legend>
-              <div class="grid gap-2 md:grid-cols-2">
-                @for (s of strategies(); track s.id) {
-                  <label [attr.class]="stratClass(s.id)" (click)="toggleStrat(s.id)">
-                    <input type="checkbox" [checked]="selectedStrategyIds().has(s.id)"
-                      class="h-4 w-4 rounded border-gray-600 bg-gray-800 text-emerald-500 focus:ring-emerald-500" />
-                    <div>
-                      <div class="text-sm font-medium text-gray-200">{{ s.displayName }}</div>
-                      <div class="text-xs text-gray-500">{{ s.entryRule || '—' }} · {{ s.exitFormula || '—' }}</div>
-                    </div>
-                  </label>
-                }
-              </div>
-            </fieldset>
-
-            <!-- Section: Symbols & Timeframes -->
-            <fieldset>
-              <legend class="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Symbols & Timeframes</legend>
-              <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label class="block text-xs font-medium text-gray-400 mb-2">Symbols</label>
-                  <div class="flex flex-wrap gap-1.5">
-                    @for (s of allSymbols; track s) {
-                      <label [attr.class]="symClass(s)" (click)="toggleSymbol(s)">{{ s }}</label>
-                    }
+      <div class="flex gap-6">
+        <!-- LEFT: strategy row builder -->
+        <div class="flex-1 min-w-0 space-y-5">
+          <!-- Strategies -->
+          <section>
+            <label class="block text-xs font-medium text-gray-400 mb-2">Strategies</label>
+            <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              @for (s of strategies(); track s.id) {
+                <label [attr.class]="stratClass(s.id)" (click)="toggleStrat(s.id)">
+                  <div>
+                    <div class="text-sm font-medium text-gray-200">{{ s.displayName }}</div>
+                    <div class="text-xs text-gray-500">{{ s.id }}</div>
                   </div>
-                </div>
-                <div>
-                  <label class="block text-xs font-medium text-gray-400 mb-2">Timeframes</label>
-                  <div class="flex flex-wrap gap-1.5">
-                    @for (tf of allTimeframes; track tf) {
-                      <label [attr.class]="tfClass(tf)" (click)="togglePeriod(tf)">{{ tf }}</label>
-                    }
-                  </div>
-                </div>
-              </div>
-            </fieldset>
-
-            <!-- Section: Run Plan table -->
-            <fieldset>
-              <div class="mb-2 flex items-center justify-between">
-                <legend class="text-xs font-medium uppercase tracking-wide text-gray-500">
-                  Run Plan — {{ rows().length }} row{{ rows().length === 1 ? '' : 's' }} ({{ enabledCount() }} enabled)
-                </legend>
-                @if (rows().length > 0) {
-                  <div class="flex gap-2">
-                    <button (click)="setAllEnabled(true)" class="text-xs text-emerald-400 hover:underline">enable all</button>
-                    <button (click)="setAllEnabled(false)" class="text-xs text-gray-400 hover:underline">disable all</button>
-                  </div>
-                }
-              </div>
-              @if (rows().length === 0) {
-                <div class="rounded-md border border-dashed border-gray-700 p-4 text-center text-xs text-gray-500">
-                  Pick at least one strategy, symbol and timeframe.
-                </div>
-              } @else {
-                <div class="overflow-hidden rounded-md border border-gray-800">
-                  <table class="w-full text-xs">
-                    <thead class="bg-gray-800/50 text-gray-400">
-                      <tr>
-                        <th class="px-3 py-2 text-left font-medium">On</th>
-                        <th class="px-3 py-2 text-left font-medium">Strategy</th>
-                        <th class="px-3 py-2 text-left font-medium">Symbol</th>
-                        <th class="px-3 py-2 text-left font-medium">TF</th>
-                        <th class="px-3 py-2 text-left font-medium">Add-on pack</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      @for (r of rows(); track rowKeyOf(r)) {
-                        <tr class="border-t border-gray-800" [class.opacity-40]="!r.enabled">
-                          <td class="px-3 py-1.5">
-                            <input type="checkbox" [ngModel]="r.enabled" (ngModelChange)="setRowEnabled(r, $event)"
-                              class="h-4 w-4 rounded border-gray-600 bg-gray-800 text-emerald-500" />
-                          </td>
-                          <td class="px-3 py-1.5 text-gray-200">{{ r.strategyId }}</td>
-                          <td class="px-3 py-1.5 text-gray-300">{{ r.symbol }}</td>
-                          <td class="px-3 py-1.5 uppercase text-gray-300">{{ r.timeframe }}</td>
-                          <td class="px-3 py-1.5">
-                            <select [ngModel]="r.packId" (ngModelChange)="setRowPack(r, $event)"
-                              class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200">
-                              <option value="">Defaults</option>
-                              @for (p of packs(); track p.id) {
-                                <option [value]="p.id">{{ p.name }}</option>
-                              }
-                            </select>
-                          </td>
-                        </tr>
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              }
-            </fieldset>
-
-            <!-- Section: Date Range -->
-            <fieldset>
-              <legend class="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Date Range</legend>
-              <div class="flex gap-2 mb-2">
-                <button (click)="setDateRange(1)" class="rounded-md border border-gray-700 px-3 py-1 text-xs text-gray-300 hover:bg-gray-800">1M</button>
-                <button (click)="setDateRange(3)" class="rounded-md border border-gray-700 px-3 py-1 text-xs text-gray-300 hover:bg-gray-800">3M</button>
-                <button (click)="setDateRange(6)" class="rounded-md border border-gray-700 px-3 py-1 text-xs text-gray-300 hover:bg-gray-800">6M</button>
-                <button (click)="setDateRange(12)" class="rounded-md border border-gray-700 px-3 py-1 text-xs text-gray-300 hover:bg-gray-800">1Y</button>
-              </div>
-              <div class="grid grid-cols-2 gap-3">
-                <input type="date" [(ngModel)]="startDate" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-                <input type="date" [(ngModel)]="endDate" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-              </div>
-            </fieldset>
-          </div>
-        </div>
-
-        <!-- RIGHT PANE: sticky summary -->
-        <div class="lg:col-span-1">
-          <div class="sticky top-6 space-y-4 rounded-lg border border-gray-800 bg-gray-900/50 p-5">
-            <!-- Data Coverage -->
-            <div>
-              <h3 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Data Coverage</h3>
-              @if (coverageChecked()) {
-                <div class="space-y-1 text-xs">
-                  @for (c of coverageRows(); track c.key) {
-                    <div class="flex items-center justify-between rounded px-2 py-1" [ngClass]="{ 'bg-gray-800/30': c.key.startsWith('\u2500') }">
-                      <span class="text-gray-300">{{ c.label }}</span>
-                      <span>
-                        @if (c.main) {
-                          <span class="text-emerald-400" title="Decision-bar data available">✓ decision</span>
-                        } @else {
-                          <span class="text-red-400" title="No decision-bar data">✗ decision</span>
-                        }
-                        @if (c.m1 !== null) {
-                          <span class="ml-1">
-                            @if (c.m1) {
-                              <span class="text-emerald-400" title="M1 fine-bars available for wick fidelity">· M1</span>
-                            } @else {
-                              <span class="text-amber-400" title="No M1; exit resolution will be single-bar">· no M1</span>
-                            }
-                          </span>
-                        }
-                      </span>
-                    </div>
-                  }
-                  @if (missingData().length > 0) {
-                    <div class="mt-2 rounded bg-amber-900/20 p-2 text-amber-400">
-                      Missing data for {{ missingData().length }} selection(s).
-                      <a routerLink="/data-manager" class="ml-1 underline hover:text-amber-300">Download data</a>
-                    </div>
-                  }
-                </div>
-              } @else {
-                <p class="text-xs text-gray-600">Pick symbols & timeframes to check</p>
+                </label>
               }
             </div>
+            @if (strategies().length === 0) {
+              <p class="text-xs text-gray-500">Loading strategies...</p>
+            }
+          </section>
 
-            <hr class="border-gray-800" />
-
-            <!-- Money -->
+          <!-- Symbols + Timeframes -->
+          <div class="grid grid-cols-2 gap-4">
             <div>
-              <h3 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Money</h3>
-              <div class="space-y-2">
-                <div>
-                  <label class="block text-xs text-gray-400 mb-0.5">Initial Balance <span class="text-gray-600">$</span></label>
-                  <input type="number" [(ngModel)]="balance" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <div>
-                    <label class="block text-xs text-gray-400 mb-0.5">Commission <span class="text-gray-600">/M $</span></label>
-                    <input type="number" [(ngModel)]="commission" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label class="block text-xs text-gray-400 mb-0.5">Spread <span class="text-gray-600">pips</span></label>
-                    <input type="number" [(ngModel)]="spread" step="0.1" class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <hr class="border-gray-800" />
-
-            <!-- Protections -->
-            <div>
-              <h3 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Protections</h3>
+              <label class="block text-xs font-medium text-gray-400 mb-2">Symbols</label>
               <div class="flex flex-wrap gap-1.5">
-                <button (click)="toggleProtection('governor')" [class]="protChipClass(governorEnabled)">Governor</button>
-                <button (click)="toggleProtection('dailyDd')" [class]="protChipClass(dailyDdEnabled)">Daily DD</button>
-                <button (click)="toggleProtection('maxDd')" [class]="protChipClass(maxDdEnabled)">Max DD</button>
-                <button (click)="toggleProtection('forceClose')" [class]="protChipClass(forceCloseEnabled)">Force Close</button>
-                <button (click)="toggleProtection('regime')" [class]="protChipClass(regimeEnabled)">Regime</button>
-                <button (click)="toggleProtection('stripAddOns')" [class]="protChipClass(stripAddOns) + ' border-amber-700 text-amber-400'">Raw SL/TP</button>
+                @for (s of allSymbols; track s) {
+                  <button (click)="toggleSymbol(s)" [attr.class]="symClass(s)">{{ s }}</button>
+                }
               </div>
-              <button (click)="toggleAllProtections()" class="mt-2 text-xs text-gray-500 hover:text-gray-300">
-                {{ allProtectionsOn() ? 'Turn all off' : 'Turn all on' }}
-              </button>
             </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-2">Timeframes</label>
+              <div class="flex flex-wrap gap-1.5">
+                @for (tf of allTimeframes; track tf) {
+                  <button (click)="togglePeriod(tf)" [attr.class]="tfClass(tf)">{{ tf }}</button>
+                }
+              </div>
+            </div>
+          </div>
 
-            @if (venue === 'ctrader') {
-              <div class="rounded-md bg-amber-900/20 p-2 text-xs text-amber-400">
-                cTrader runs first row only (one CLI session).
+          <!-- Run plan table -->
+          <section>
+            <div class="mb-2 flex items-center justify-between">
+              <label class="text-xs font-medium text-gray-400">
+                Run plan &mdash; {{ rows().length }} row{{ rows().length === 1 ? '' : 's' }} ({{ enabledCount() }} enabled)
+              </label>
+              @if (rows().length > 0) {
+                <div class="flex gap-2">
+                  <button (click)="setAllEnabled(true)" class="text-xs text-emerald-400 hover:underline">enable all</button>
+                  <button (click)="setAllEnabled(false)" class="text-xs text-gray-400 hover:underline">disable all</button>
+                </div>
+              }
+            </div>
+            @if (rows().length === 0) {
+              <div class="rounded-md border border-dashed border-gray-700 p-4 text-center text-xs text-gray-500">
+                Pick at least one strategy, symbol and timeframe to build the run plan.
+              </div>
+            } @else {
+              <div class="overflow-hidden rounded-md border border-gray-800">
+                <table class="w-full text-xs">
+                  <thead class="bg-gray-800/50 text-gray-400">
+                    <tr>
+                      <th class="px-3 py-2 text-left font-medium w-10">On</th>
+                      <th class="px-3 py-2 text-left font-medium">Strategy</th>
+                      <th class="px-3 py-2 text-left font-medium">Symbol</th>
+                      <th class="px-3 py-2 text-left font-medium">TF</th>
+                      <th class="px-3 py-2 text-left font-medium">Add-on pack</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (r of rows(); track rowKeyOf(r)) {
+                      <tr class="border-t border-gray-800" [class.opacity-40]="!r.enabled">
+                        <td class="px-3 py-1.5">
+                          <input type="checkbox" [ngModel]="r.enabled" (ngModelChange)="setRowEnabled(r, $event)"
+                            class="h-4 w-4 rounded border-gray-600 bg-gray-800 text-emerald-500" />
+                        </td>
+                        <td class="px-3 py-1.5 text-gray-200 font-mono text-xs">{{ r.strategyId }}</td>
+                        <td class="px-3 py-1.5 text-gray-300">{{ r.symbol }}</td>
+                        <td class="px-3 py-1.5 uppercase text-gray-300">{{ r.timeframe }}</td>
+                        <td class="px-3 py-1.5">
+                          <select [ngModel]="r.packId" (ngModelChange)="setRowPack(r, $event)"
+                            class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-200">
+                            <option value="">Strategy defaults</option>
+                            @for (p of packs(); track p.id) {
+                              <option [value]="p.id">{{ p.name }}</option>
+                            }
+                          </select>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
               </div>
             }
-            @if (venue === 'tape') {
-              <div class="rounded-md bg-blue-900/20 p-2 text-xs text-blue-400">
-                Tape replay runs in-process against downloaded market data.
+          </section>
+        </div>
+
+        <!-- RIGHT: sticky summary panel -->
+        <div class="w-80 shrink-0">
+          <div class="sticky top-6 rounded-lg border border-gray-800 bg-gray-900/50 p-5 space-y-5">
+            <!-- Data & Venue -->
+            <section>
+              <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Data &amp; Venue</h3>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Date Range</label>
+                  <div class="flex gap-1.5 mb-2">
+                    <button (click)="setDateRange(1)" class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-800">1M</button>
+                    <button (click)="setDateRange(3)" class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-800">3M</button>
+                    <button (click)="setDateRange(12)" class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-800">1Y</button>
+                  </div>
+                  <div class="space-y-1.5">
+                    <input type="date" [(ngModel)]="startDate" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                    <input type="date" [(ngModel)]="endDate" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Venue</label>
+                  <select [(ngModel)]="venue" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none">
+                    <option value="replay">Stored-bar replay (deterministic)</option>
+                    <option value="tape">Fast tape (in-process)</option>
+                    <option value="ctrader">cTrader forward-test</option>
+                  </select>
+                </div>
+
+                <!-- Coverage check -->
+                @if (venue === 'tape' && rows().length > 0) {
+                  <div class="rounded border border-gray-700 p-2 space-y-1">
+                    <div class="text-xs text-gray-500 mb-1">Data Coverage</div>
+                    @for (cov of coverageIssues(); track cov.key) {
+                      <div class="flex items-center gap-1.5 text-xs">
+                        <span [class.text-emerald-400]="cov.info.decisionTf" [class.text-red-400]="!cov.info.decisionTf">
+                          {{ cov.info.decisionTf ? '\u2713' : '\u2717' }}
+                        </span>
+                        <span class="text-gray-300">{{ cov.symbol }} {{ cov.tf }}</span>
+                        @if (!cov.info.decisionTf) {
+                          <a routerLink="/data-manager" class="ml-auto text-xs text-emerald-400 hover:underline">download</a>
+                        }
+                      </div>
+                    }
+                    @for (cov of coverageIssues(); track cov.key) {
+                      @if (!cov.info.m1) {
+                        <div class="flex items-center gap-1.5 text-xs text-amber-400">
+                          <span>\u26A0</span>
+                          <span class="text-amber-300">{{ cov.symbol }} m1</span>
+                          <span class="text-amber-500">missing (wick-fidelity fallback)</span>
+                        </div>
+                      }
+                    }
+                    @if (coverageIssues().length === 0) {
+                      <span class="text-xs text-gray-500">Select symbols and timeframes</span>
+                    }
+                  </div>
+                }
+              </div>
+            </section>
+
+            <!-- Money -->
+            <section>
+              <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Money</h3>
+              <div class="space-y-2">
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Initial Balance</label>
+                  <div class="relative">
+                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">$</span>
+                    <input type="number" [(ngModel)]="balance" class="w-full rounded border border-gray-700 bg-gray-800 pl-4 pr-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Commission</label>
+                  <div class="relative">
+                    <input type="number" [(ngModel)]="commission" class="w-full rounded border border-gray-700 bg-gray-800 pr-10 pl-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                    <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">/M</span>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Spread</label>
+                  <div class="relative">
+                    <input type="number" [(ngModel)]="spread" step="0.1" class="w-full rounded border border-gray-700 bg-gray-800 pr-10 pl-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                    <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">pips</span>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Risk Profile</label>
+                  <select [(ngModel)]="riskProfile" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none">
+                    @for (p of riskProfiles(); track p.id) {
+                      <option [value]="p.id">{{ p.displayName }}</option>
+                    }
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <!-- Protections -->
+            <section>
+              <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Protections</h3>
+              <div class="flex flex-wrap gap-1.5">
+                <button (click)="governorEnabled = !governorEnabled"
+                  [attr.class]="chipClass(governorEnabled)"
+                  title="Governor: cooling-off, profit-lock, streak management">Governor</button>
+                <button (click)="dailyDdEnabled = !dailyDdEnabled"
+                  [attr.class]="chipClass(dailyDdEnabled)"
+                  title="Daily drawdown protection">Daily DD</button>
+                <button (click)="maxDdEnabled = !maxDdEnabled"
+                  [attr.class]="chipClass(maxDdEnabled)"
+                  title="Max drawdown protection">Max DD</button>
+                <button (click)="forceCloseEnabled = !forceCloseEnabled"
+                  [attr.class]="chipClass(forceCloseEnabled)"
+                  title="Force close all positions on breach">Force Close</button>
+                <button (click)="regimeEnabled = !regimeEnabled"
+                  [attr.class]="chipClass(regimeEnabled)"
+                  title="Regime detection filter">Regime</button>
+                <button (click)="toggleAllRisk()"
+                  [attr.class]="chipClass(allRiskEnabled()) + ' font-mono text-xs'"
+                  title="Toggle all protections on/off">{{ allRiskEnabled() ? '\u2713 all on' : '\u2717 all off' }}</button>
+              </div>
+              <label class="mt-2 flex items-center gap-2 text-xs text-amber-400 cursor-pointer">
+                <input type="checkbox" [(ngModel)]="stripAddOns" class="h-3 w-3 rounded" />
+                No add-ons (raw baseline SL/TP)
+              </label>
+            </section>
+
+            <!-- Venue warnings -->
+            @if (venue === 'ctrader') {
+              <div class="rounded bg-amber-900/20 px-3 py-2 text-xs text-amber-400">
+                cTrader runs the first row only. Use replay or tape for multi-row plans.
+              </div>
+            }
+            @if (venue === 'tape' && missingCoverage().length > 0) {
+              <div class="rounded bg-red-900/20 px-3 py-2 text-xs text-red-400">
+                Missing data for {{ missingCoverage().join(', ') }}. Download in Data Manager first.
               </div>
             }
 
             @if (error()) {
-              <div class="rounded-md bg-red-900/20 p-3 text-sm text-red-400">{{ error() }}</div>
+              <div class="rounded bg-red-900/20 px-3 py-2 text-xs text-red-400">{{ error() }}</div>
             }
 
-            <button (click)="start()"
-              [disabled]="loading() || enabledCount() === 0 || tapeM1Gap()"
-              [title]="tapeM1Gap() ? 'Tape venue requires M1 bars for dual-resolution exits. Download M1 data first.' : enabledCount() === 0 ? 'Enable at least one strategy row.' : ''"
-              class="w-full rounded-md bg-emerald-600 px-4 py-3 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
-              {{ loading() ? 'Starting...' : tapeM1Gap() ? 'No M1 data (tape)' : 'Start Backtest (' + enabledCount() + ' rows)' }}
-            </button>
+            <!-- Start button -->
+            <div class="space-y-1.5">
+              <button (click)="start()" [disabled]="!canStart()"
+                class="w-full rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40">
+                {{ loading() ? 'Starting...' : 'Start Backtest (' + enabledCount() + ' rows)' }}
+              </button>
+              @if (startDisabledReason(); as reason) {
+                <p class="text-xs text-gray-500 text-center">{{ reason }}</p>
+              }
+              <div class="flex gap-1">
+                <input
+                  #nameInput
+                  type="text"
+                  placeholder="Setup name (optional)"
+                  class="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-100 placeholder-gray-500 focus:border-emerald-500 focus:outline-none"
+                  (keydown.enter)="saveNamedSetup(nameInput.value); nameInput.value = ''"
+                />
+                <button
+                  (click)="saveNamedSetup(nameInput.value); nameInput.value = ''"
+                  class="rounded border border-gray-700 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-gray-800"
+                >
+                  Save as
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -349,53 +374,71 @@ export class NewBacktestComponent implements OnInit {
   loading = this.store.isLoading;
   error = this.store.error;
 
-  inventory = signal<InventoryEntry[]>([]);
-  coverageChecked = computed(() => this.selectedSymbols().size > 0 && this.selectedPeriods().size > 0);
+  inventory = signal<InventoryItem[]>([]);
 
-  coverageRows = computed(() => {
-    const rows: { key: string; label: string; main: boolean; m1: boolean | null }[] = [];
+  coverageMap = computed(() => {
     const inv = this.inventory();
-    const startD = this.startDate ? new Date(this.startDate) : null;
-    const endD = this.endDate ? new Date(this.endDate) : null;
+    const map = new Map<string, { decisionTf: boolean; m1: boolean }>();
+    const from = this.startDate ? new Date(this.startDate).getTime() : 0;
+    const to = this.endDate ? new Date(this.endDate).getTime() : 0;
 
-    for (const sym of this.selectedSymbols()) {
-      for (const tf of this.selectedPeriods()) {
-        const symUpper = sym.toUpperCase();
-        const tfUpper = tf.toUpperCase();
-        const key = `${symUpper} ${tfUpper}`;
-        const match = inv.find(i => i.symbol === symUpper && i.timeframe === tfUpper);
-
-        let hasMain = false;
-        if (match && startD && endD && match.firstBar && match.lastBar) {
-          const first = new Date(match.firstBar);
-          const last = new Date(match.lastBar);
-          hasMain = first <= startD && last >= endD;
-        }
-
-        let hasM1: boolean | null = null;
-        if (tfUpper !== 'M1') {
-          const m1match = inv.find(i => i.symbol === symUpper && i.timeframe === 'M1');
-          if (m1match && startD && endD && m1match.firstBar && m1match.lastBar) {
-            const first = new Date(m1match.firstBar);
-            const last = new Date(m1match.lastBar);
-            hasM1 = first <= startD && last >= endD;
-          } else {
-            hasM1 = false;
-          }
-        }
-
-        rows.push({ key, label: key, main: hasMain, m1: hasM1 });
+    for (const item of inv) {
+      const key = `${item.symbol}|${item.timeframe.toLowerCase()}`;
+      const itemFrom = new Date(item.firstBar).getTime();
+      const itemTo = new Date(item.lastBar).getTime();
+      const covers = itemFrom <= from && itemTo >= to;
+      const existing = map.get(key);
+      if (existing) {
+        map.set(key, {
+          decisionTf: existing.decisionTf || covers,
+          m1: existing.m1 || covers,
+        });
+      } else {
+        map.set(key, { decisionTf: covers, m1: covers });
       }
     }
-    return rows;
+    return map;
   });
 
-  missingData = computed(() => this.coverageRows().filter(r => !r.main));
-  tapeM1Gap = computed(() => this.venue === 'tape' && this.coverageRows().some(r => r.m1 === false));
+  coverageIssues = computed(() => {
+    const map = this.coverageMap();
+    const issues: { key: string; symbol: string; tf: string; info: CoverageInfo }[] = [];
+    const seen = new Set<string>();
+    for (const r of this.rows()) {
+      if (!r.enabled) continue;
+      const tk = `${r.symbol}|${r.timeframe.toLowerCase()}`;
+      if (seen.has(tk)) continue;
+      seen.add(tk);
+      const cov = map.get(tk) ?? { decisionTf: false, m1: false };
+      // M1 coverage check
+      const m1Key = `${r.symbol}|m1`;
+      const m1Cov = map.get(m1Key) ?? { decisionTf: false, m1: false };
+      issues.push({ key: tk, symbol: r.symbol, tf: r.timeframe, info: { decisionTf: cov.decisionTf, m1: m1Cov.decisionTf } });
+    }
+    return issues;
+  });
 
-  allProtectionsOn = computed(() =>
-    this.governorEnabled && this.dailyDdEnabled && this.maxDdEnabled && this.forceCloseEnabled && this.regimeEnabled
-  );
+  missingCoverage = computed(() => {
+    return this.coverageIssues()
+      .filter((c) => !c.info.decisionTf)
+      .map((c) => `${c.symbol} ${c.tf}`);
+  });
+
+  canStart = computed(() => {
+    return this.enabledCount() > 0 && !!this.startDate && !!this.endDate
+      && new Date(this.startDate) < new Date(this.endDate)
+      && this.balance > 0
+      && (this.venue !== 'tape' || this.missingCoverage().length === 0);
+  });
+
+  startDisabledReason = computed(() => {
+    if (this.enabledCount() === 0) return 'No rows enabled';
+    if (!this.startDate || !this.endDate) return 'Select start and end dates';
+    if (new Date(this.startDate) >= new Date(this.endDate)) return 'Start date must be before end date';
+    if (!this.balance || this.balance <= 0) return 'Balance must be greater than 0';
+    if (this.venue === 'tape' && this.missingCoverage().length > 0) return 'Data coverage missing';
+    return null;
+  });
 
   rowKeyOf = (r: BuilderRow) => rowKey(r.strategyId, r.symbol, r.timeframe);
 
@@ -411,15 +454,17 @@ export class NewBacktestComponent implements OnInit {
     try { this.strategies.set(await this.strategiesApi.getAll()); } catch { /* */ }
     try {
       const profiles = await this.profilesApi.getAll();
-      if (profiles.length > 0) { this.riskProfiles.set(profiles); if (!profiles.some((p) => p.id === this.riskProfile)) this.riskProfile = profiles[0].id; }
+      if (profiles.length > 0) {
+        this.riskProfiles.set(profiles);
+        if (!profiles.some((p) => p.id === this.riskProfile)) this.riskProfile = profiles[0].id;
+      }
     } catch { /* */ }
     try {
       const pks = await this.packsApi.getAll();
       this.packs.set(pks.map((p) => ({ id: p.id, name: p.name })));
     } catch { /* */ }
     try {
-      const inv = await firstValueFrom(this.http.get<InventoryEntry[]>('/api/data-manager/inventory'));
-      this.inventory.set(inv ?? []);
+      this.inventory.set(await firstValueFrom(this.http.get<InventoryItem[]>('/api/data-manager/inventory')));
     } catch { /* */ }
 
     const sourceRunId = this.route.snapshot.queryParamMap.get('sourceRunId');
@@ -469,17 +514,25 @@ export class NewBacktestComponent implements OnInit {
   setRowPack(row: BuilderRow, packId: string): void { this.rows.update((rs) => rs.map((r) => (this.rowKeyOf(r) === this.rowKeyOf(row) ? { ...r, packId } : r))); }
   setAllEnabled(enabled: boolean): void { this.rows.update((rs) => rs.map((r) => ({ ...r, enabled }))); }
 
+  chipClass(enabled: boolean): string {
+    return 'rounded-md border px-2 py-0.5 text-xs transition cursor-pointer '
+      + (enabled ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-500');
+  }
+
   symClass(sym: string): string {
     const sel = this.selectedSymbols().has(sym);
-    return 'cursor-pointer rounded-md border px-2.5 py-1 text-xs transition ' + (sel ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-400');
+    return 'cursor-pointer rounded-md border px-2 py-1 text-xs transition '
+      + (sel ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-400');
   }
   tfClass(tf: string): string {
     const sel = this.selectedPeriods().has(tf);
-    return 'cursor-pointer rounded-md border px-2.5 py-1 text-xs uppercase transition ' + (sel ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-400');
+    return 'cursor-pointer rounded-md border px-2 py-1 text-xs uppercase transition '
+      + (sel ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-400');
   }
   stratClass(id: string): string {
     const sel = this.selectedStrategyIds().has(id);
-    return 'flex items-center gap-2 rounded-md border border-gray-700 p-3 cursor-pointer hover:border-gray-600 transition ' + (sel ? 'border-emerald-600 bg-emerald-900/10' : '');
+    return 'flex items-center gap-2 rounded-md border p-3 cursor-pointer hover:border-gray-600 transition '
+      + (sel ? 'border-emerald-600 bg-emerald-900/10' : 'border-gray-700');
   }
 
   protChipClass(on: boolean): string {
@@ -516,10 +569,17 @@ export class NewBacktestComponent implements OnInit {
 
   async start(): Promise<void> {
     const enabled = this.rows().filter((r) => r.enabled);
-    if (enabled.length === 0) { this.error.set('No enabled rows.'); return; }
-    if (!this.startDate || !this.endDate) { this.error.set('Select start and end dates'); return; }
-    if (new Date(this.startDate) >= new Date(this.endDate)) { this.error.set('Start date must be before end date'); return; }
-    if (!this.balance || this.balance <= 0) { this.error.set('Balance must be greater than 0'); return; }
+    if (enabled.length === 0) {
+      this.error.set('Select at least one strategy, symbol and timeframe.');
+      return;
+    }
+    if (!this.startDate || !this.endDate) { this.error.set('Select start and end dates.'); return; }
+    if (new Date(this.startDate) >= new Date(this.endDate)) { this.error.set('Start date must be before end date.'); return; }
+    if (!this.balance || this.balance <= 0) { this.error.set('Balance must be greater than 0.'); return; }
+    if (this.venue === 'tape' && this.missingCoverage().length > 0) {
+      this.error.set('Data coverage missing for: ' + this.missingCoverage().join(', '));
+      return;
+    }
     this.error.set(null);
 
     const rows: RunRow[] = enabled.map((r) => ({
@@ -539,14 +599,21 @@ export class NewBacktestComponent implements OnInit {
       stripAddOns: this.stripAddOns ? true : undefined,
     };
     this.saveSetup();
-    try {
-      const runId = await this.store.startBacktest(req);
-      if (!runId) { this.error.set('Run did not start (no run id returned).'); return; }
-      this.router.navigate(['/runs', runId, 'monitor']);
-    } catch (e: unknown) {
-      const httpErr = e as { error?: { error?: string; message?: string }; message?: string };
-      this.error.set(httpErr?.error?.error ?? httpErr?.error?.message ?? httpErr?.message ?? 'Failed to start backtest.');
-    }
+    const runId = await this.store.startBacktest(req);
+    this.router.navigate(['/runs', runId, 'monitor']);
+  }
+
+  allRiskEnabled = computed(() =>
+    this.governorEnabled && this.dailyDdEnabled && this.maxDdEnabled && this.forceCloseEnabled && this.regimeEnabled
+  );
+
+  toggleAllRisk(): void {
+    const all = this.allRiskEnabled();
+    this.governorEnabled = !all;
+    this.dailyDdEnabled = !all;
+    this.maxDdEnabled = !all;
+    this.forceCloseEnabled = !all;
+    this.regimeEnabled = !all;
   }
 
   private readonly SETUP_STORAGE_KEY = 'shamshir-backtest-setups';
@@ -554,11 +621,19 @@ export class NewBacktestComponent implements OnInit {
   private saveSetup(): void {
     try {
       const setup = {
-        startDate: this.startDate, endDate: this.endDate, balance: this.balance,
-        commission: this.commission, spread: this.spread, riskProfile: this.riskProfile,
-        venue: this.venue, governorEnabled: this.governorEnabled,
-        dailyDdEnabled: this.dailyDdEnabled, maxDdEnabled: this.maxDdEnabled,
-        forceCloseEnabled: this.forceCloseEnabled, regimeEnabled: this.regimeEnabled,
+        name: this._pendingSetupName || undefined,
+        startDate: this.startDate,
+        endDate: this.endDate,
+        balance: this.balance,
+        commission: this.commission,
+        spread: this.spread,
+        riskProfile: this.riskProfile,
+        venue: this.venue,
+        governorEnabled: this.governorEnabled,
+        dailyDdEnabled: this.dailyDdEnabled,
+        maxDdEnabled: this.maxDdEnabled,
+        forceCloseEnabled: this.forceCloseEnabled,
+        regimeEnabled: this.regimeEnabled,
         stripAddOns: this.stripAddOns,
         strategies: [...this.selectedStrategyIds()], symbols: [...this.selectedSymbols()],
         periods: [...this.selectedPeriods()], savedAt: Date.now(),
@@ -567,6 +642,13 @@ export class NewBacktestComponent implements OnInit {
       existing.unshift(setup);
       localStorage.setItem(this.SETUP_STORAGE_KEY, JSON.stringify(existing.slice(0, 5)));
     } catch { /* */ }
+  }
+
+  private _pendingSetupName: string | null = null;
+
+  saveNamedSetup(name: string): void {
+    this._pendingSetupName = name || null;
+    // save on next start() call
   }
 
   loadSetup(index: number): void {

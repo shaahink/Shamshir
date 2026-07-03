@@ -130,10 +130,10 @@ export interface TradeDetail {
   strategyId: string;
   durationSeconds: number;
   timeframe: string;
-  entryReason?: string | null;
-  entryRegime?: string | null;
-  entrySnapshotJson?: string | null;
-  exitDetailJson?: string | null;
+  entryReason?: string;
+  entryRegime?: string;
+  entrySnapshotJson?: string;
+  exitDetailJson?: string;
 }
 
 // iter-36 K5: the journal is now the lossless StepRecord stream (GET /api/runs/{id}/journal). eventKind
@@ -473,77 +473,45 @@ export interface AutoTunePreview {
   relaxedAtrMultiple?: number;
 }
 
-// iter-tape-enable Tier1: experiment types matching the backend ExperimentSpec/ExperimentEntity/VariantScore.
-export interface ExperimentSummary {
-  id: string;
-  name: string;
+export interface SystemInfo {
+  version: string;
+  branch: string;
+  buildDate: string;
+  dataPaths: { tradingDb: string };
+  activeRuns: number;
+  runningRuns: number;
+}
+
+export interface ResetRequest {
+  scope: 'runs' | 'config' | 'all';
+  confirm: string;
+}
+
+export interface ResetResponse {
+  scope: string;
   status: string;
-  createdUtc: string;
-  completedUtc?: string | null;
-  runCount: number;
 }
 
-export interface ExperimentRunRow {
-  id: string;
-  variantLabel: string;
-  foldIndex: number;
-  foldRole: string;
-  backtestRunId: string;
-  scoreJson: string;
+export interface InventoryItem {
+  symbol: string;
+  timeframe: string;
+  source: string;
+  firstBar: string;
+  lastBar: string;
+  barCount: number;
 }
 
-export interface ExperimentDetail {
-  id: string;
-  name: string;
-  hypothesis: string;
-  specJson: string;
-  status: string;
-  createdUtc: string;
-  completedUtc?: string | null;
-  runs: ExperimentRunRow[];
+export interface NarrativeEvent {
+  seq: number;
+  simTime: string;
+  severity: string;
+  category: string;
+  headline: string;
+  detail: string;
 }
 
-export interface FoldScore {
-  foldIndex: number;
-  foldRole: string;
-  composite: number;
-  passProbability: number;
-  expectancyR: number;
-  maxDrawdownPercent: number;
-  totalTrades: number;
-}
-
-export interface VariantScore {
-  label: string;
-  composite: number;
-  passProbability: number;
-  expectancyR: number;
-  maxDrawdownPercent: number;
-  foldConsistency: number;
-  totalTrades: number;
-  folds: FoldScore[];
-}
-
-export interface ExperimentCreateResult {
-  experimentId: string;
-  status: string;
-  variantScores: VariantScore[];
-}
-
-export interface ExperimentVariantInput {
-  label: string;
-  overrides?: Record<string, unknown>;
-}
-
-export interface ExperimentSpecInput {
-  name: string;
-  hypothesis: string;
-  symbols: string[];
-  timeframes: string[];
-  strategies: string[];
-  from: string;
-  to: string;
-  walkForward?: { folds: number; trainFraction: number } | null;
-  variants: ExperimentVariantInput[];
-  maxRuns?: number;
+export interface NarrativeResponse {
+  events: NarrativeEvent[];
+  latestSeq: number;
+  hasMore: boolean;
 }

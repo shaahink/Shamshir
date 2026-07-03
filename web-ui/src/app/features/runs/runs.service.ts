@@ -14,6 +14,7 @@ import type {
   StartRunResponse,
   StrategyPerformance,
   BarNarrative,
+  NarrativeResponse,
 } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
@@ -87,6 +88,13 @@ export class RunsApiService {
     return firstValueFrom(this.http.get<JournalEntry[]>(url));
   }
 
+  // M3.1 — server-side narrative projection (cursor-paged, cursor = afterSeq).
+  getRunNarrative(runId: string, afterSeq?: number, limit = 100): Promise<NarrativeResponse> {
+    let url = `/api/runs/${runId}/narrative?limit=${limit}`;
+    if (afterSeq != null) url += `&afterSeq=${afterSeq}`;
+    return firstValueFrom(this.http.get<NarrativeResponse>(url));
+  }
+
   // iter-redesign P5: per-bar decision narrative (regime, verdicts, proposals, gate rejections, risk)
   getRunBars(runId: string): Promise<BarNarrative[]> {
     return firstValueFrom(this.http.get<BarNarrative[]>(`/api/runs/${runId}/bars`));
@@ -123,6 +131,16 @@ export class RunsApiService {
     },
   ): Promise<StartRunResponse> {
     return firstValueFrom(this.http.post<StartRunResponse>(`/api/runs/${sourceRunId}/duplicate`, body ?? {}));
+  }
+
+  // M4.1: batch delete completed runs (FK-safe cascade).
+  deleteRuns(runIds: string[]): Promise<{ deleted: number }> {
+    return firstValueFrom(this.http.post<{ deleted: number }>('/api/runs/delete', { runIds }));
+  }
+
+  // M4.1: keep newest N runs, delete the rest.
+  pruneRuns(keep: number): Promise<{ deleted: number; kept: number }> {
+    return firstValueFrom(this.http.post<{ deleted: number; kept: number }>('/api/runs/prune', { keep }));
   }
 
   // iter-37 F3 — NDJSON download of the lossless StepRecord journal.
