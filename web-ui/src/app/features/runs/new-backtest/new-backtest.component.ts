@@ -643,8 +643,15 @@ export class NewBacktestComponent implements OnInit {
       speed: this.venue === 'tape' ? this.speed : undefined,
     };
     this.saveSetup();
-    const runId = await this.store.startBacktest(req);
-    this.router.navigate(['/runs', runId, 'monitor']);
+    try {
+      const runId = await this.store.startBacktest(req);
+      this.router.navigate(['/runs', runId, 'monitor']);
+    } catch (e: unknown) {
+      const err = (e as any)?.error;
+      const missing = (err?.missing as any[])?.map((m: any) => `${m.symbol}/${m.timeframe}: ${m.reason}`).join('; ');
+      this.error.set(err?.error || (e as any)?.message || 'Failed to start backtest');
+      if (missing) this.error.update(m => m + ' (' + missing + ')');
+    }
   }
 
   allRiskEnabled = computed(() =>
