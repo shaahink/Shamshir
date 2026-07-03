@@ -37,9 +37,9 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             OrderEntryMethod = trade.OrderEntryMethod,
             DurationSeconds = trade.DurationSeconds,
             RunId = string.IsNullOrEmpty(runId) ? null : runId,
-            EntryReason = trade.OrderEntryMethod,
-            EntryRegime = null,
-            EntrySnapshotJson = System.Text.Json.JsonSerializer.Serialize(new { sl = trade.StopLoss.Value, tp = trade.TakeProfit?.Value, entry = trade.EntryPrice.Value }),
+            EntryReason = trade.EntryReason,
+            EntryRegime = trade.EntryRegime,
+            EntrySnapshotJson = trade.EntrySnapshotJson,
             ExitDetailJson = System.Text.Json.JsonSerializer.Serialize(new { reason = trade.ExitReason, exit = trade.ExitPrice.Value, r = trade.RMultiple }),
         };
         db.Trades.Add(entity);

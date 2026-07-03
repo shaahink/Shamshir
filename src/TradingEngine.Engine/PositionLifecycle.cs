@@ -33,7 +33,7 @@ public static class PositionLifecycle
     private static (PositionState, IReadOnlyList<EngineEffect>) HandleIntendedSubmitted(
         PositionState state, OrderSubmitted evt)
     {
-        var newState = state with { Phase = PositionPhase.Submitted };
+        var newState = state with { Phase = PositionPhase.Submitted, EntryReason = evt.EntryReason, EntryRegime = evt.EntryRegime };
         var effects = new List<EngineEffect>
         {
             Record(state, evt, newState, "Accepted")
@@ -132,7 +132,8 @@ public static class PositionLifecycle
                     OrderId: state.OrderId, OrderEntryMethod: state.OrderEntryMethod,
                     HighWater: state.HighWater, LowWater: state.LowWater,
                     GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
-                    Commission: evt.Commission, Swap: evt.Swap)
+                    Commission: evt.Commission, Swap: evt.Swap,
+                    EntryReason: state.EntryReason, EntryRegime: state.EntryRegime)
             };
             return (remaining, reducingEffects);
         }
@@ -149,7 +150,8 @@ public static class PositionLifecycle
                 OrderId: closed.OrderId, OrderEntryMethod: state.OrderEntryMethod,
                 HighWater: closed.HighWater, LowWater: closed.LowWater,
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
-                Commission: evt.Commission, Swap: evt.Swap)
+                Commission: evt.Commission, Swap: evt.Swap,
+                EntryReason: state.EntryReason, EntryRegime: state.EntryRegime)
         };
         return (closed, effects);
     }
@@ -217,7 +219,8 @@ public static class PositionLifecycle
                 OrderId: closed.OrderId, OrderEntryMethod: state.OrderEntryMethod,
                 HighWater: closed.HighWater, LowWater: closed.LowWater,
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
-                Commission: evt.Commission, Swap: evt.Swap)
+                Commission: evt.Commission, Swap: evt.Swap,
+                EntryReason: state.EntryReason, EntryRegime: state.EntryRegime)
         };
         return (closed, effects);
     }
@@ -251,7 +254,8 @@ public static class PositionLifecycle
                 OrderId: closed.OrderId, OrderEntryMethod: state.OrderEntryMethod,
                 HighWater: closed.HighWater, LowWater: closed.LowWater,
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
-                Commission: evt.Commission, Swap: evt.Swap)
+                Commission: evt.Commission, Swap: evt.Swap,
+                EntryReason: state.EntryReason, EntryRegime: state.EntryRegime)
         };
         return (closed, effects);
     }

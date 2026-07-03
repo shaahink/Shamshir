@@ -164,7 +164,19 @@ public sealed class EffectExecutor : IEffectExecutor
             net, pnlPips, rMultiple, maePips, mfePips,
             effect.ExitReason, effect.StrategyId, effect.RiskProfileId ?? "standard",
             OrderEntryMethod: effect.OrderEntryMethod,
-            OrderId: effect.OrderId);
+            OrderId: effect.OrderId,
+            EntryReason: effect.EntryReason,
+            EntryRegime: effect.EntryRegime,
+            EntrySnapshotJson: System.Text.Json.JsonSerializer.Serialize(new
+            {
+                reason = effect.EntryReason,
+                regime = effect.EntryRegime,
+                direction = effect.Direction.ToString(),
+                entryPrice = effect.EntryPrice.Value,
+                stopLoss = effect.StopLoss.Value,
+                takeProfit = effect.TakeProfit?.Value,
+                lots = effect.Lots
+            }));
 
         foreach (var s in _strategies.Where(s => s.Id == effect.StrategyId))
         {

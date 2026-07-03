@@ -58,7 +58,8 @@ public sealed class Kernel(KernelConfig config) : IKernel
         var submitted = new OrderSubmitted(
             p.OrderId, p.Symbol, p.Direction, gate.Lots, p.LimitPrice, p.StrategyId,
             p.OccurredAtUtc, p.OrderType,
-            p.StopLoss, p.TakeProfit);
+            p.StopLoss, p.TakeProfit,
+            EntryReason: p.EntryReason, EntryRegime: p.EntryRegime);
         var posDecision = EngineReducer.Apply(state, submitted);
 
         var positionId = posDecision.State.Positions.Values
