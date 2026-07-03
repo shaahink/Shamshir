@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.Infrastructure.MarketData;
 
@@ -22,7 +23,14 @@ internal sealed class TempMarketData : IDisposable
 
     public void Dispose()
     {
-        try { File.Delete(_path); } catch { /* best effort */ }
+        try
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(_path);
+            File.Delete(_path + "-wal");
+            File.Delete(_path + "-shm");
+        }
+        catch { /* best effort */ }
     }
 
     private sealed class Factory(DbContextOptions<MarketDataDbContext> opts) : IDbContextFactory<MarketDataDbContext>

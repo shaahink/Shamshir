@@ -67,7 +67,7 @@ public sealed class MarketDataIngester(IMarketDataStore store, ILogger<MarketDat
                     totalInserted += await store.WriteBarsAsync(source, chunk, ct, storeProgress);
                     chunk.Clear();
                     progress?.Report(new IngestProgress(fileName, 1, lines, totalInserted,
-                        $"{lines:N0} lines parsed"));
+                        $"{lines:N0} lines, {totalInserted:N0} bars"));
                 }
             }
             if (chunk.Count > 0)

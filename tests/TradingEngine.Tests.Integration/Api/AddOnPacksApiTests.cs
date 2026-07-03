@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -36,7 +37,7 @@ public sealed class AddOnPacksApiTests : IClassFixture<WebApplicationFactory<Pro
     public void Dispose()
     {
         _client.Dispose();
-        if (Directory.Exists(_tempDir)) { try { Directory.Delete(_tempDir, true); } catch { /* best-effort */ } }
+        if (Directory.Exists(_tempDir)) { SqliteConnection.ClearAllPools(); try { Directory.Delete(_tempDir, true); } catch { /* best-effort */ } }
     }
 
     private static StringContent Json(object body) =>

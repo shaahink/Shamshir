@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -33,7 +34,7 @@ public sealed class RunEndpointsTests : IClassFixture<WebApplicationFactory<Prog
     public void Dispose()
     {
         _client.Dispose();
-        if (Directory.Exists(_tempDir)) { try { Directory.Delete(_tempDir, true); } catch { /* best-effort */ } }
+        if (Directory.Exists(_tempDir)) { SqliteConnection.ClearAllPools(); try { Directory.Delete(_tempDir, true); } catch { /* best-effort */ } }
     }
 
     private async Task<string> StartRunAsync(object? overrides = null)

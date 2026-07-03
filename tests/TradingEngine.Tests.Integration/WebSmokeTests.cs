@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -28,7 +29,7 @@ public sealed class WebSmokeTests : IClassFixture<WebApplicationFactory<Program>
         _client.Dispose();
         if (Directory.Exists(_tempDir))
         {
-            try { Directory.Delete(_tempDir, true); } catch { }
+            SqliteConnection.ClearAllPools(); try { Directory.Delete(_tempDir, true); } catch { }
         }
     }
 
