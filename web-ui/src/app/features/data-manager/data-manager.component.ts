@@ -1,7 +1,9 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { interval } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 interface MarketDataItem {
   symbol: string;
@@ -10,6 +12,17 @@ interface MarketDataItem {
   firstBar: string;
   lastBar: string;
   barCount: number;
+}
+
+interface DownloadJobResponse {
+  jobId: string;
+  symbol: string;
+  tfs: string[];
+  status: string;
+  barsRecorded?: number;
+  error?: string;
+  createdAtUtc?: string;
+  completedAtUtc?: string;
 }
 
 @Component({
@@ -59,16 +72,28 @@ interface MarketDataItem {
           </div>
           <button (click)="startDownload()" [disabled]="dlLoading()"
             class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
-            {{ dlLoading() ? 'Downloading...' : 'Download' }}
+            {{ dlLoading() ? 'Starting...' : 'Download' }}
           </button>
         </div>
-        @if (dlResult()) {
-          <div class="mt-2 rounded bg-emerald-900/20 p-2 text-xs text-emerald-400">
-            Downloaded {{ dlResult()?.barsRecorded }} bars for {{ dlResult()?.symbol }} ({{ dlResult()?.tfs?.join(', ') }}) — refresh to see updated inventory.
-          </div>
-        }
         @if (dlError()) {
           <div class="mt-2 rounded bg-red-900/20 p-2 text-xs text-red-400">{{ dlError() }}</div>
+        }
+
+        @if (activeJobs().length > 0) {
+          <div class="mt-3 space-y-1">
+            <div class="text-xs text-gray-500 mb-1">Active Jobs</div>
+            @for (job of activeJobs(); track job.jobId) {
+              <div class="flex items-center gap-2 rounded border border-gray-700 bg-gray-800/50 px-3 py-2 text-xs">
+                <span [class]="jobStatusColor(job.status)">{{ job.status }}</span>
+                <span class="text-gray-300">{{ job.symbol }} ({{ job.tfs.join(', ') }})</span>
+                @if (job.barsRecorded) { <span class="text-gray-500">{{ job.barsRecorded }} bars</span> }
+                @if (job.error) { <span class="text-red-400 truncate">{{ job.error }}</span> }
+                @if (job.status === 'done' || job.status === 'failed') {
+                  <button (click)="dismissJob(job.jobId)" class="ml-auto text-gray-500 hover:text-gray-300">dismiss</button>
+                }
+              </div>
+            }
+          </div>
         }
       </div>
 
@@ -127,6 +152,7 @@ interface MarketDataItem {
 })
 export class DataManagerComponent implements OnInit {
   private http = inject(HttpClient);
+  private destroyRef = inject(DestroyRef);
   inventory = signal<MarketDataItem[]>([]);
   loading = signal(true);
   error = signal<string | null>(null);
@@ -141,11 +167,16 @@ export class DataManagerComponent implements OnInit {
   dlTfs = signal<string[]>(['h1', 'm1']);
   dlDays = 7;
   dlLoading = signal(false);
-  dlResult = signal<{ symbol: string; tfs: string[]; barsRecorded: number } | null>(null);
   dlError = signal<string | null>(null);
+  activeJobs = signal<DownloadJobResponse[]>([]);
+  private completedJobIds = new Set<string>();
 
   ngOnInit(): void {
     this.loadInventory();
+    // Poll active jobs every 2s
+    interval(2000)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.pollActiveJobs());
   }
 
   toggleTf(tf: string): void {
@@ -155,22 +186,56 @@ export class DataManagerComponent implements OnInit {
   startDownload(): void {
     this.dlLoading.set(true);
     this.dlError.set(null);
-    this.dlResult.set(null);
-    this.http.post<{ symbol: string; tfs: string[]; barsRecorded: number }>('/api/data-manager/download', {
+    this.http.post<DownloadJobResponse>('/api/data-manager/download', {
       symbol: this.dlSymbol,
       tfs: this.dlTfs(),
       days: this.dlDays,
     }).subscribe({
       next: (r) => {
-        this.dlResult.set(r);
         this.dlLoading.set(false);
-        this.loadInventory();
+        this.activeJobs.update(jobs => [...jobs, r]);
+        // Start polling this job
+        this.pollJob(r.jobId);
       },
       error: (err) => {
         this.dlError.set(err?.error?.error ?? err?.message ?? 'Download failed');
         this.dlLoading.set(false);
-        this.loadInventory();
       },
+    });
+  }
+
+  dismissJob(jobId: string): void {
+    this.completedJobIds.add(jobId);
+    this.activeJobs.update(jobs => jobs.filter(j => j.jobId !== jobId));
+  }
+
+  jobStatusColor(status: string): string {
+    switch (status) {
+      case 'done': return 'rounded bg-emerald-900/60 px-1.5 py-0.5 text-emerald-400';
+      case 'failed': return 'rounded bg-red-900/60 px-1.5 py-0.5 text-red-400';
+      case 'running': case 'recording': case 'ingesting': return 'rounded bg-blue-900/60 px-1.5 py-0.5 text-blue-400';
+      default: return 'rounded bg-gray-700 px-1.5 py-0.5 text-gray-400';
+    }
+  }
+
+  private pollActiveJobs(): void {
+    const jobs = this.activeJobs();
+    if (jobs.length === 0) return;
+    for (const job of jobs) {
+      if (job.status === 'done' || job.status === 'failed') continue;
+      this.pollJob(job.jobId);
+    }
+  }
+
+  private pollJob(jobId: string): void {
+    this.http.get<DownloadJobResponse>(`/api/data-manager/jobs/${jobId}`).subscribe({
+      next: (updated) => {
+        this.activeJobs.update(jobs => jobs.map(j => j.jobId === jobId ? updated : j));
+        if (updated.status === 'done') {
+          this.loadInventory();
+        }
+      },
+      error: () => { /* job may not exist yet */ },
     });
   }
 
