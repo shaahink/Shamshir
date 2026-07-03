@@ -1,8 +1,21 @@
 # Progress Metrics
 
-**Updated:** 2026-07-03 (session close — 7 bugs fixed + committed, branch decision resolved)
-**Branch:** `iter/tape-trust` (authoritative — see §Branch Decision)
-**Last commit:** `6931217`
+**Updated:** 2026-07-03 (session close — merged to develop, branches/worktrees cleaned)
+**Branch:** `iter/tape-trust` (active) + `develop` (merged)
+**Last commit:** `1a7cc93` (iter/tape-trust) / `d786d3f` (develop)
+**Gates:** Unit 314/0/6 · Integration 109/0 (develop) / 94/0 (iter) · Golden 63/63 · build 0 · npm 0
+
+## Branch Summary
+
+| Branch | State | Notes |
+|--------|-------|-------|
+| `develop` | **Merged** `d786d3f` | Contains all iter/tape-trust work + experiments tier1 |
+| `iter/tape-trust` | Active `1a7cc93` | Authoritative dev branch, pushed to origin |
+| `origin/iter/merge-plan` | Stale (sibling) | Ported fixes, branch deleted locally |
+| `iter/experiments-tape-tier1` | Deleted | Merged into develop |
+| 5 other stale branches | Deleted | Fully merged into develop |
+
+**Worktrees:** 1 — `C:/Code/Shamshir` (`iter/tape-trust`). Removed `shamshir-dev` and `shamshir-trust`.
 **Gates:** Unit 314/0/6 · Integration 90/0 · Golden 63/63 · build 0 errors · npm 0 errors
 **Next:** `docs/iterations/iter-merge-plan/NEXT-ITERATION.md` — prioritized remaining work
 

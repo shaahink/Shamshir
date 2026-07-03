@@ -1,9 +1,9 @@
-# iter-merge-plan — Clean State Handover
+# iter-merge-plan — Final Clean State
 
-**Updated:** 2026-07-03 (session close — 7 bugs fixed, branch decision made)
-**Branch:** `iter/tape-trust` (main worktree, `C:\Code\Shamshir`)
-**Last commit:** `6931217` — audit: fix 7 bugs
-**Gates:** Unit 314/0/6 · Integration 90/0 · Golden 63/63 · `dotnet build` 0 errors · `npm run build` 0 errors
+**Updated:** 2026-07-03 (session close — W1+W2 ported, merged to develop, branches cleaned)
+**Branch:** `iter/tape-trust` (active) / `develop` (merged `d786d3f`)
+**Last commit:** `1a7cc93` (iter/tape-trust) / `d786d3f` (develop)
+**Gates:** Unit 314/0/6 · Integration 109/0 (develop) / 94/0 (iter) · Golden 63/63 · build 0 · npm 0
 
 ---
 
@@ -82,48 +82,35 @@ narrative polling, Report tabs + column chooser, C1 SL/TP step-lines, C2 dd-bar-
 
 ---
 
-## §4 — PRIORITIZED REMAINING WORK
+## §4 — REMAINING WORK (post W1+W2 port)
 
-### P0 — Correctness (do these first, golden-sensitive)
+All P0/P1/P2 items from the sibling branch have been ported except **C1 short-spread** (golden-sensitive).
+15 Angular fixes from `5ef3b67`: 6 applicable fixed, 9 were N/A (tied to M3.3 narrative features now ported).
 
-| # | Item | Sibling ref | Notes |
-|---|------|-------------|-------|
-| **1** | **C1 short-spread** — short entries miss half-spread cost in both replay venues. Systematic optimistic bias for shorts. | PROGRESS C1 | Golden 63/63 blocks touching fill prices. Needs re-baseline. |
-| **2** | **M3.3 EntryReason/EntryRegime real data** — current data is placeholder (EntryRegime=null, EntryReason=entryMethod). Thread OrderProposed verdict + BarEvaluator regime through to EffectExecutor. | `4933944` | Sibling has working implementation. Engine-adjacent change; port from sibling. |
+### Only Remaining Bug
 
-### P1 — Feature gaps (quick wins, sibling has reference)
+| # | Item | Severity | Impact |
+|---|------|----------|--------|
+| **C1** | **Short entries miss half-spread cost** — both `TapeReplayAdapter.cs:262` and `BacktestReplayAdapter.cs:196` fill short entries at mid instead of `mid - halfSpread`. Systematic optimistic bias for every short trade. | P0 CRITICAL | Golden 63/63 blocks touching fill prices. Needs re-baseline. |
 
-| # | Item | Sibling ref | Notes |
-|---|------|-------------|-------|
-| **3** | **M4.2 per-symbol delete** — Data Manager inventory has no delete action. Add `IMarketDataStore.DeleteBarsAsync` + API + UI. | `7a86f0e` | Port from sibling — 3 layers, each straightforward. |
-| **4** | **Keep-last-N prune** — `POST /api/runs/prune` {keep:N}. Delete oldest runs, keep active. | `2a8d40e` | Port from sibling. |
-| **5** | **Download symbols 6→12** + M5/M15 TFs in download form. | `c6ebdb1` | Match new-backtest's ALL_SYMBOLS. |
-| **6** | **Download job robustness** — seed-data endpoint, cTrader check, status polling improvements. | `a1cad43`+`3be027e` | Our `ecdb829` may partially cover; diff needed. |
-| **7** | **Port remaining 11 Angular bug fixes** from sibling's `5ef3b67`. | `5ef3b67` | 4 done this session (trade-detail, gateRejections, chart, overlap). 11 more to verify. |
+**Fix**: change `: midPrice` to `: midPrice - halfSpread` in the short-entry ternary in both adapters. Then regenerate golden snapshot.
 
-### P2 — Infrastructure + docs (no golden risk)
+### cTrader-dependent (owner only)
 
 | # | Item | Notes |
 |---|------|-------|
-| **8** | **Docs gap** — sibling has `docs/reference/SYSTEM-REFERENCE.md`, `CODE-MAP.md`, `BACKTEST-ARCHITECTURE.md`, `TEST-ARCHITECTURE.md`, `RESOLVED-ISSUES.md`. Copy from sibling. | Files exist on `origin/iter/merge-plan` — `git checkout origin/iter/merge-plan -- docs/reference/ docs/RESOLVED-ISSUES.md docs/WORKFLOW.md` |
-| **9** | **DB fragmentation (D1)** — unify `trading.db` to single configurable path. | Config-only, safe. |
-| **10** | **Hardcoded values audit (D2)** — grep for literal `EURUSD`, `H1`, `10000` defaults. | Time-intensive but safe. |
-| **11** | **Angular build race fix** — pin `RebuildAngularIfStale` to content-based staleness check. | Workaround: `-p:NgProjectDir=C:/nonexistent-skip` after `npm run build`. Hits every session. |
+| V2-V5 | Download EURUSD H1+M1, speed baseline, tape vs cTrader reconcile, engine-DB vs cTrader report | cTrader CLI required |
+| M5 | cTrader trust — oracle set, drift alarm, per-bar spread | Needs V2-V5 first |
+| cBot E2E | `RequiresCTrader=true` suite | cTrader CLI + cBot rebuild |
 
-### P3 — Owner-only (cTrader CLI)
-
-| # | Item | Notes |
-|---|------|-------|
-| **12** | **V2-V5** — download EURUSD H1+M1, speed baseline, tape vs cTrader reconcile, engine-DB vs cTrader report. | Needs cTrader CLI. |
-| **13** | **M5 cTrader trust** — oracle set, drift alarm, per-bar spread. | Blocked on V2-V5. |
-| **14** | **cBot E2E** — `RequiresCTrader=true` suite. | Needs cTrader CLI + cBot rebuild. |
-
-### P4 — Next iterations (quant roadmap + tracks)
+### Future (next iterations)
 
 | # | Item | Notes |
 |---|------|-------|
-| **15** | Q1 excursion recorder, Q2 walk-forward harness (QUANT-ROADMAP.md) | Research features. |
-| **16** | Track F1 portfolio, Track G1 symbol scorecard | Feature work. |
+| Q1/Q2 | Excursion recorder, walk-forward harness (QUANT-ROADMAP.md) | Quant research features |
+| Track F1 | Portfolio entity — named config with strategy rows + risk budgets | |
+| Track G1 | Symbol scorecard — costPerAtrPct, m1 coverage%, gap frequency | |
+| F5 | Commission half-at-open split | Golden re-baseline needed |
 
 ---
 
