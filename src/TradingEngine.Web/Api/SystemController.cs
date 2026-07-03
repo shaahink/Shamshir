@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.Infrastructure.Configuration;
+using TradingEngine.Infrastructure.MarketData;
 using TradingEngine.Infrastructure.Persistence;
 
 namespace TradingEngine.Web.Api;
@@ -12,6 +13,7 @@ namespace TradingEngine.Web.Api;
 public sealed class SystemController : ControllerBase
 {
     private readonly TradingDbContext _db;
+    private readonly IMarketDataStore? _marketDataStore;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SystemController> _logger;
 
@@ -24,11 +26,13 @@ public sealed class SystemController : ControllerBase
 
     public SystemController(
         TradingDbContext db,
-        IServiceScopeFactory scopeFactory,
+        IMarketDataStore? marketDataStore = null,
+        IServiceScopeFactory? scopeFactory = null,
         ILogger<SystemController>? logger = null)
     {
         _db = db;
-        _scopeFactory = scopeFactory;
+        _marketDataStore = marketDataStore;
+        _scopeFactory = scopeFactory!;
         _logger = logger!;
     }
 
@@ -49,6 +53,7 @@ public sealed class SystemController : ControllerBase
             },
             activeRuns = orchestrator?.GetAll().Count ?? 0,
             runningRuns = orchestrator?.GetAll().Count(r => r.Status is "running" or "starting") ?? 0,
+            marketDataAvailable = _marketDataStore is not null,
         });
     }
 
@@ -73,6 +78,9 @@ public sealed class SystemController : ControllerBase
                 case "runs":
                     await DeleteRunDataAsync();
                     break;
+                case "marketdata":
+                    await ClearMarketDataAsync();
+                    break;
                 case "config":
                     await ReseedConfigAsync(scope);
                     break;
@@ -80,7 +88,7 @@ public sealed class SystemController : ControllerBase
                     await WipeAllAsync(scope);
                     break;
                 default:
-                    return BadRequest(new { error = "Scope must be 'runs', 'config', or 'all'." });
+                    return BadRequest(new { error = "Scope must be 'runs', 'marketdata', 'config', or 'all'." });
             }
 
             return Ok(new { scope = targetScope, status = "done" });
@@ -115,6 +123,24 @@ public sealed class SystemController : ControllerBase
             await seeder.SeedAsync();
 
         _logger.LogInformation("Config tables reset and re-seeded from JSON");
+    }
+
+    private async Task ClearMarketDataAsync()
+    {
+        if (_marketDataStore is null)
+            throw new InvalidOperationException("Market data store not registered.");
+
+        _logger.LogWarning("Clearing ALL market data bars...");
+        var inventory = await _marketDataStore.GetInventoryAsync(CancellationToken.None);
+        int totalDeleted = 0;
+        foreach (var entry in inventory)
+        {
+            var deleted = await _marketDataStore.DeleteBarsAsync(
+                Symbol.Parse(entry.Symbol), entry.Timeframe, null, null, entry.Source, CancellationToken.None);
+            totalDeleted += deleted;
+        }
+
+        _logger.LogInformation("Market data cleared ({Total} bars deleted across {Count} entries)", totalDeleted, inventory.Count);
     }
 
     private async Task WipeAllAsync(IServiceScope scope)

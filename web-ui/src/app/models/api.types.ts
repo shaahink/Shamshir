@@ -475,10 +475,11 @@ export interface SystemInfo {
   dataPaths: { tradingDb: string };
   activeRuns: number;
   runningRuns: number;
+  marketDataAvailable: boolean;
 }
 
 export interface ResetRequest {
-  scope: 'runs' | 'config' | 'all';
+  scope: 'runs' | 'config' | 'marketdata' | 'all';
   confirm: string;
 }
 
