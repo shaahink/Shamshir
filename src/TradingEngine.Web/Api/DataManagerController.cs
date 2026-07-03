@@ -110,8 +110,12 @@ public sealed class DataManagerController : ControllerBase
         {
             foreach (var file in Directory.GetFiles(root, "*.ndjson", SearchOption.AllDirectories))
             {
+                var rel = Path.GetRelativePath(root, file);
+                if (rel.StartsWith("archive", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 var fi = new FileInfo(file);
-                var relativePath = Path.GetRelativePath(root, file);
+                var relativePath = rel;
 
                 var symbol = "";
                 var timeframe = "";

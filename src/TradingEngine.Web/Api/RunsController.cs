@@ -472,25 +472,9 @@ public sealed class RunsController : ControllerBase
                     continue;
 
                 var key = (sym.ToUpperInvariant(), tf);
-                if (!invBySymTf.TryGetValue(key, out var entry))
+                if (!invBySymTf.TryGetValue(key, out _))
                 {
-                    missing.Add(new { symbol = sym, timeframe = per, reason = "No data downloaded at all." });
-                    continue;
-                }
-
-                var from = req.Start.Date;
-                var to = req.End.Date;
-                if (entry.FirstOpenUtc.Date > from || entry.LastOpenUtc.Date < to)
-                {
-                    missing.Add(new
-                    {
-                        symbol = sym,
-                        timeframe = per,
-                        reason = "Coverage gap.",
-                        availableFrom = entry.FirstOpenUtc,
-                        availableTo = entry.LastOpenUtc,
-                        barCount = entry.BarCount,
-                    });
+                    missing.Add(new { symbol = sym, timeframe = per, reason = "No data downloaded." });
                 }
             }
         }
