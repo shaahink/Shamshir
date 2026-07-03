@@ -1,9 +1,9 @@
 # AGENTS.md — Session Startup Guide
 
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `develop` (active worktree: `C:\Code\shamshir-trust`)
+**Branch:** `iter/tape-trust` (active) / `develop` (authoritative, merged)
 **Created:** 2026-06-18
-**Updated:** 2026-07-02 (merge into develop — all iter/merge-plan work integrated. Main worktree C:\Code\Shamshir still pinned to iter/tape-trust, needs manual checkout to develop)
+**Updated:** 2026-07-03 (merged to develop, branches/worktrees cleaned, docs consolidated)
 
 ---
 
@@ -17,15 +17,12 @@ At the start of every session:
 4. **`docs/reference/TEST-ARCHITECTURE.md`** — Test tiers, harnesses, which tests need cTrader credentials
 5. **`docs/WORKFLOW.md`** — Agent workflow rules, code standards, handover format
 6. **`DECISIONS.md`** — All resolved decisions (D1–D96)
-7. **`docs/OPEN-ISSUES.md`** — Historical open issues (most resolved; remaining gaps → PROGRESS.md §ALL REMAINING)
-8. **`docs/NEXT-STEPS.md`** — Historical roadmap (most items mapped into merge-plan tracks)
-9. **`docs/iterations/iter-merge-plan/PLAN.md`** — **CURRENT plan** (M1–M5 phases)
-10. **`docs/iterations/iter-master-plan/PLAN.md`** — **Reference** master plan (Tracks A–G: venue fidelity, portfolio, symbol program, quant phases)
-11. **`docs/iterations/iter-marketdata-tape/HANDOVER-REVIEW.md`** — Bug/gap IDs B1–B11, F1–F8 defined here
-12. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology (Q1–Q4)
-13. **`docs/audit/PROGRESS.md`** — **Current status**: gates, what's done, ALL REMAINING ITEMS in priority order
-14. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
-15. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
+7. **`docs/OPEN-ISSUES.md`** — ALL remaining bugs + tasks (single source of truth, kept current)
+8. **`docs/iterations/iter-merge-plan/NEXT-ITERATION.md`** — Session handover: what happened, what's next
+9. **`docs/audit/PROGRESS.md`** — Progress metrics, gate history, branch state
+10. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology
+11. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
+12. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
 
 ## Build and test
 
@@ -33,7 +30,7 @@ At the start of every session:
 dotnet build                                 # Full build
 dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (~314 pass)
 dotnet test tests/TradingEngine.Tests.Simulation  # Simulation/FTMO tests
-dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (105)
+dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (109)
 ```
 
 ## Architecture at a glance
@@ -66,27 +63,23 @@ tests/
 - **`BoundedChannelFullMode.Wait`** for order/trade channels; `DropOldest` only for analytics.
 - **`IEngineClock`** for all time — never `DateTime.UtcNow` directly.
 
-## Current state (iter-merge-plan, session close 2026-07-02)
+## Current state (iter-tape-trust)
 
-- **M1–M4 done** — nav, backtest/monitor/report redesign, charts, narrative service, monitor↔narrative switch, settings+reset UI, run delete/prune, data-manager delete, SkipJournal verified.
-- **M3.3 signed off** — `EntryReason`/`EntryRegime`/`EntrySnapshotJson` populated at open (threaded OrderProposed→PositionState→PublishTradeClosed→EffectExecutor). "Why entered"/"Why exited" surfaced on trade-detail + report expanded row.
-- **All B1–B11 bugs fixed** · **F1–F4, F8 fidelity gaps fixed** · **F6–F7 documented in RECONCILE-FINDINGS.md**
-- **Golden 63/63** · **Unit 314/0/6** · **Integration 108/0** · DB migrations applied (InitialCreate + AddTradeNarrativeColumns)
-- **15 pre-flight bugs fixed** — trade-detail safeParse reject arrays, exitReason always visible, unhandled promise caught, NaN guards on accumulators, TradeChartCardComponent reloads on trade switch, gateRejections null-safe, missing OpenedAtUtc in global trade endpoint, Duplicate button null guards, trade-gallery OnDestroy import, dlResult type mismatch
+- Tape venue runs correctly — reports `completed`, `venue="tape"`, `barsPerSec` measured
+- Download pipeline: async job polling, status tracking, 12 symbols + M5/M15 TFs
+- Merge plan M1–M4 delivered: nav, Settings, Monitor, Report, Charts, Narrative, Delete, Prune
+- M3.3 EntryReason/EntryRegime/EntrySnapshotJson populated with real data (not placeholder)
+- Run-overlap protection (A6) — 409 Conflict on concurrent starts
+- `RunNarrativeService` fixed — journal lines show real symbol/direction/price/SL/TP
+- Daily-DD chart uses 22:00 UTC prop-firm roll, not calendar date
+- Data Manager: per-symbol delete, storage totals, m1 overlap badges
+- `VenueSessions` orphan rows fixed on run delete
+- B1–B11 bugs all fixed, F1–F4+F8 fidelity gaps closed
 
-### What's ready for owner testing
-- Data Manager: download symbols 12, timeframes 6 (M1/M5/M15/H1/H4/D1), M1 overlap + spread-pips chips
-- New Backtest: two-pane, coverage check, tape M1 guard disables start when missing
-- Run Monitor: 2×2 grid, narrative polling, counter bar, overlap protection (409 on concurrent start)
-- Run Report: 4 tabs, 10-col trade table with column chooser, expanded row shows why entered/exited + trade chart
-- Trade Detail: 16 stat tiles + why entered/exited sections
-- Settings: system info, prune keep-last-N, 3 reset scopes with confirm modal
+## What's NOT done
 
-### What's NOT done
-See **`docs/audit/PROGRESS.md` §ALL REMAINING GAPS** — 18 items in 5 tiers with reasons + remedies.
-Top next items (Tier 1 quick wins, ~2hr): verify violations render in journal, hardcoded values audit, DB path unification.
-Top features (Tier 2, ~days): Portfolio entity (Track F1), Symbol scorecard (Track G1), Excursion recorder (Q1).
-Owner-only (Tier 5): V2–V5 cTrader downloads + reconcile, M5.1–M5.3 oracle set + drift alarm + per-bar spread, cBot E2E.
+See `docs/OPEN-ISSUES.md` — the single source of truth.
+Key remaining: C1 short-spread (2 lines, golden-sensitive), D1 DB fragmentation, D2 hardcoded defaults.
 
 ## Rules you must not break
 
