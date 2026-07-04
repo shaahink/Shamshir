@@ -1,9 +1,9 @@
 # AGENTS.md — Session Startup Guide
 
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `iter/tape-trust` (active) / `develop` (authoritative, merged)
+**Branch:** `iter/quant-model--p1-tf-agnostic` (active) / `develop` (authoritative, merged)
 **Created:** 2026-06-18
-**Updated:** 2026-07-03 (merged to develop, branches/worktrees cleaned, docs consolidated)
+**Updated:** 2026-07-04 (P1 TF-agnostic bank delivered)
 
 ---
 
@@ -18,7 +18,7 @@ At the start of every session:
 5. **`docs/WORKFLOW.md`** — Agent workflow rules, code standards, handover format
 6. **`DECISIONS.md`** — All resolved decisions (D1–D96)
 7. **`docs/OPEN-ISSUES.md`** — ALL remaining bugs + tasks (single source of truth, kept current)
-8. **`docs/iterations/iter-merge-plan/NEXT-ITERATION.md`** — Session handover: what happened, what's next
+8. **`docs/iterations/iter-quant-model/PROGRESS.md`** — Session handover: what happened, what's next (current iteration)
 9. **`docs/audit/PROGRESS.md`** — Progress metrics, gate history, branch state
 10. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology
 11. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
@@ -28,9 +28,9 @@ At the start of every session:
 
 ```powershell
 dotnet build                                 # Full build
-dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (~314 pass)
+dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (~347 pass)
 dotnet test tests/TradingEngine.Tests.Simulation  # Simulation/FTMO tests
-dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (109)
+dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (94)
 ```
 
 ## Architecture at a glance
@@ -63,23 +63,22 @@ tests/
 - **`BoundedChannelFullMode.Wait`** for order/trade channels; `DropOldest` only for analytics.
 - **`IEngineClock`** for all time — never `DateTime.UtcNow` directly.
 
-## Current state (iter-tape-trust)
+## Current state (iter/quant-model--p1-tf-agnostic)
 
-- Tape venue runs correctly — reports `completed`, `venue="tape"`, `barsPerSec` measured
-- Download pipeline: async job polling, status tracking, 12 symbols + M5/M15 TFs
-- Merge plan M1–M4 delivered: nav, Settings, Monitor, Report, Charts, Narrative, Delete, Prune
-- M3.3 EntryReason/EntryRegime/EntrySnapshotJson populated with real data (not placeholder)
-- Run-overlap protection (A6) — 409 Conflict on concurrent starts
-- `RunNarrativeService` fixed — journal lines show real symbol/direction/price/SL/TP
-- Daily-DD chart uses 22:00 UTC prop-firm roll, not calendar date
-- Data Manager: per-symbol delete, storage totals, m1 overlap badges
-- `VenueSessions` orphan rows fixed on run delete
-- B1–B11 bugs all fixed, F1–F4+F8 fidelity gaps closed
+- P0 (truth repair) delivered: R-vs-initial-stop, full-spread convention, honest entry timing (3 commits)
+- P1 (TF-agnostic strategy bank) delivered: instance-per-row, de-hardcoded H1 in all 14 strategies, proposal TF metadata, aux-TF feed for mtf-trend, HonestFills checkbox (4 commits)
+- All 9 strategies now TF-agnostic — EntryTimeframe read from bound config, no more `Timeframe.H1` hardcoding
+- Cross-symbol state pollution fixed (per-row instances instead of singletons)
+- Tape venue: correct full-spread convention via shared `SpreadConvention` helper, both adapters unified
+- Honest entry fills: tape market entries queue at signal bar, fill at next M1 bar open (toggleable)
+- All gates green: Unit 347/0/6, Integration 94/0, golden 63/63 byte-identical, npm 0
+- Parent branch `iter/quant-model` has P0 (3 gated commits pushed to origin)
 
-## What's NOT done
+## What's next
 
-See `docs/OPEN-ISSUES.md` — the single source of truth.
-Key remaining: C1 short-spread (2 lines, golden-sensitive), D1 DB fragmentation, D2 hardcoded defaults.
+See `docs/iterations/iter-quant-model/PLAN.md` §3 for the full iteration spec.
+Next phase: **P2 — Entry surgery** (indicator series API, rsi-divergence rewrite, edge semantics, time-flatten, units doctrine, stop orders).
+Uncommitted Angular changes from `iter/data-mgmt` were stashed on this branch (`pre-P1 uncommitted changes from parent branch`).
 
 ## Rules you must not break
 
