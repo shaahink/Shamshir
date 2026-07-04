@@ -66,18 +66,24 @@ tests/
 ## Current state (iter/quant-model--p1-tf-agnostic)
 
 - P0 (truth repair) delivered: R-vs-initial-stop, full-spread convention, honest entry timing (3 commits)
-- P1 (TF-agnostic strategy bank) delivered: instance-per-row, de-hardcoded H1 in all 14 strategies, proposal TF metadata, aux-TF feed for mtf-trend, HonestFills checkbox (4 commits)
-- All 9 strategies now TF-agnostic — EntryTimeframe read from bound config, no more `Timeframe.H1` hardcoding
+- P1 (TF-agnostic strategy bank) delivered: instance-per-row, de-hardcoded H1 bar lookups in all 14 strategies, proposal TF metadata, aux-TF feed for mtf-trend, HonestFills checkbox (4 commits)
 - Cross-symbol state pollution fixed (per-row instances instead of singletons)
 - Tape venue: correct full-spread convention via shared `SpreadConvention` helper, both adapters unified
 - Honest entry fills: tape market entries queue at signal bar, fill at next M1 bar open (toggleable)
 - All gates green: Unit 347/0/6, Integration 94/0, golden 63/63 byte-identical, npm 0
 - Parent branch `iter/quant-model` has P0 (3 gated commits pushed to origin)
+- **2026-07-05 static review correction:** P1's headline claim ("non-H1 strategies now trade") is **not yet
+  true for tape runs** — 2 critical bugs found by code trace: (1) indicator *requests* (as opposed to bar
+  lookups) are still pinned to H1 in all 9 strategies, so any non-H1 row's indicators silently never compute;
+  (2) mtf-trend's aux-TF (H4) EMA is computed once from the FULL run range at warmup — a lookahead-bias bug,
+  independent of (1). See `docs/iterations/iter-quant-model/PLAN.md` §3 "P1.5" for the full trace + fix spec.
 
 ## What's next
 
 See `docs/iterations/iter-quant-model/PLAN.md` §3 for the full iteration spec.
-Next phase: **P2 — Entry surgery** (indicator series API, rsi-divergence rewrite, edge semantics, time-flatten, units doctrine, stop orders).
+**Next phase: P1.5 — close the 2026-07-05 review gaps (blocking, do first)**, then **P2 — Entry surgery**
+(indicator series API, rsi-divergence rewrite, edge semantics, time-flatten, units doctrine, stop orders).
+P1.5 is small but non-optional: P2.1 extends the exact indicator pipeline P1.5.1 patches.
 Uncommitted Angular changes from `iter/data-mgmt` were stashed on this branch (`pre-P1 uncommitted changes from parent branch`).
 
 ## Rules you must not break

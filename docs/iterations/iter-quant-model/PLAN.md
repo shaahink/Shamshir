@@ -158,6 +158,106 @@ Sequencing rule (unchanged from QUANT-ROADMAP §2): **no calibration/sweep resul
 **P1.4 UI guardrails.**
 - new-backtest: a row whose TF (or aux TF) has no inventory shows a warning chip (inventory lookup already exists); run monitor shows per-strategy verdict funnel counts (proposals / gated / MISSING_DATA / no-signal) so "0 trades" is never mute again.
 
+### P1.5 — Close the P1 static-review gaps (BLOCKING — do before P2.1)
+
+**Added 2026-07-05** after a static review of the `iter/quant-model--p1-tf-agnostic` commits (edeb3a6, e376a1b,
+71ea2d7, 6d41398). Two of the three findings below are CONFIRMED via full code trace (not guesses) and mean
+**P1's own headline claim — "non-H1 strategies now trade" — is not actually true for tape runs yet**. Do this
+phase before touching P2.1 (indicator series API), which builds directly on the same indicator pipeline and
+would otherwise inherit both bugs silently.
+
+**P1.5.1 — Indicator requests are still pinned to H1 (CRITICAL, reintroduces the exact P1 bug).**
+Root cause: `IndicatorRequest`'s `Timeframe` parameter defaults to `Timeframe.H1`
+(`src/TradingEngine.Domain/IndicatorRequest.cs:4`), and **none of the 9 strategies' `RequiredIndicators`
+getters pass `Timeframe: _config.EntryTimeframe`** when constructing their requests — P1.2 de-hardcoded the
+strategies' own bar lookups (`context.Bars.GetValueOrDefault(_config.EntryTimeframe)`) and `RequiredTimeframes`,
+but missed the indicator-request layer entirely. `MtfTrendStrategy.RequiredIndicators` (lines 35-36) makes the
+same mistake *explicitly*: its RSI/ATR requests hardcode `Timeframe: Timeframe.H1` even though only its EMA
+request correctly uses `_config.HigherTimeframe`.
+- **Effect (traced through the real pipeline, not assumed):** `IndicatorSnapshotService.RecomputeIndicatorsAsync`
+  is called per decision-bar-close with `tf` = the bar's own timeframe. For a request whose `Timeframe` (H1,
+  by default/mistake) differs from `tf`, it looks up `Bars[symbol][H1]` — but the orchestrator only ever loads
+  bars for the decision TF (plus P1.3's hardcoded mtf-trend/H4 aux). For any run-plan row whose
+  `EntryTimeframe != H1`, `Bars[symbol][H1]` was never populated, so the lookup misses and the code `continue`s
+  — the indicator is **never computed**, `context.IndicatorValues.TryGetValue(...)` always returns false, and
+  the strategy returns null unconditionally. **Every one of the 9 strategies produces zero signals on any
+  non-H1 timeframe row** — this is the identical "0 trades on M15" defect from PLAN.md §0.1 that P1 exists to
+  fix, just relocated one layer down.
+- **Why this wasn't caught:** PROGRESS.md's own "what's NOT in P1" section admits *"No M15 acceptance test
+  (requires live M15 data not guaranteed by test harness)"* — the one test that would have caught this
+  (PLAN.md's own P1.2 gate: *"M15 tape run on EURUSD produces ≥1 proposal for trend-breakout"*) was skipped.
+  The test that WAS added this session, `IndicatorCacheKeyTests.cs`, only proves `IndicatorCache.BuildKey` CAN
+  distinguish timeframes when handed hand-constructed `IndicatorRequest`s with different `Timeframe` values —
+  it never checks what the real strategies actually pass, so it gave false confidence. Similarly,
+  `StrategyScenarioTests.cs`'s `MtfTrendScenarios`/`SuperTrendScenarios` etc. compute indicators via
+  `StrategyTestHelper.ComputeIndicators` directly from a bar slice — they bypass `IndicatorSnapshotService`
+  entirely and would never exercise this bug either.
+- **Fix:** every strategy's `RequiredIndicators` getter must pass `Timeframe: _config.EntryTimeframe` explicitly
+  (mtf-trend: on the RSI/ATR entries only; keep EMA on `_config.HigherTimeframe`).
+- **Failing test first:** a real end-to-end acceptance test (drive `EngineRunner` or the tape harness over
+  synthetic M15 bars, NOT `StrategyTestHelper`) for a single-TF strategy (trend-breakout or super-trend — one
+  indicator each, simplest to fixture) asserting ≥1 `OrderProposed` on M15. This is the literal P1.2 gate that
+  was deferred — land it now, don't defer it again. Additionally, a cheap per-strategy unit test: construct
+  each real strategy with `EntryTimeframe = Timeframe.M15` and assert every `RequiredIndicators` entry's
+  `Timeframe == Timeframe.M15` (mtf-trend: RSI/ATR == M15, EMA == HigherTimeframe).
+- Gate: the new M15 acceptance test passes; golden/H1 suites stay byte-identical (H1 is still the default, so
+  existing fixtures shouldn't move).
+
+**P1.5.2 — Aux-TF preload leaks future data into every decision (CRITICAL, lookahead bias).**
+Root cause: `EngineRunner.cs`'s P1.3 aux-bar preload (`_preloadedAuxBars`) reads the **entire run's H4 bar
+range** up front (`IMarketDataStore.ReadBarsAsync(sym, auxTf, from, to, ct)` for the whole `[from,to]` window)
+and `list.AddRange(barList)`s it into `IndicatorSnapshotService.Bars[symbol][H4]` in one shot, then calls
+`RecomputeIndicatorsAsync` **once**, before the main per-bar loop even starts. Nothing re-slices that list to
+"bars closed as of the current decision time" and nothing re-triggers the aux-TF recompute as the loop
+advances — the normal per-bar call (`TradingLoop.cs:64` / `BarEvaluator.cs:67`,
+`RecomputeIndicatorsAsync(symbol, bar.Timeframe, ct)`) only ever passes the DECISION bar's own timeframe, but
+internally still recomputes any strategy's aux-TF-timeframe indicator request too, reading whatever is
+currently sitting in `Bars[symbol][H4]` — which, because the full future range was dumped in at t=0, is always
+the complete, run-end-inclusive series.
+- **Effect:** `mtf-trend`'s H4 `EMA_200` is computed exactly once, from the full date range, and that single
+  value is read for **every decision bar throughout the entire backtest** — i.e. the H4 trend filter used at
+  the START of a 6-month run already knows the H4 trend as of the END of the run. This is textbook lookahead
+  bias and it directly contradicts PLAN.md's own P1.3 design (*"aux bar emitted when its close time ≤ current
+  decision bar close; it only updates the indicator window, never drives the loop"*) — the shipped code does
+  not gate by close time at all; it does the opposite of what the plan specified. This affects mtf-trend at
+  **any** EntryTimeframe, including H1, since the H4-aux-load path is independent of P1.5.1's bug.
+  Consequence: no mtf-trend tape result (existing or future) should be trusted for P3/P4 calibration until
+  this is fixed — it undermines the exact "honest backtesting" goal P0 was built for, for this one strategy.
+- **Why this wasn't caught:** golden H1 fixtures stayed byte-identical because mtf-trend was previously DEAD
+  on tape (0 trades, per PLAN.md §0.2) — this is genuinely NEW code path with no prior baseline to diff
+  against, and the only test touching it (`MtfTrendScenarios.DoesNotThrow_DuringEvaluation`) computes
+  indicators via `StrategyTestHelper` directly (bypassing `EngineRunner`/the preload path entirely), so it
+  cannot see this bug either, by construction.
+- **Fix:** maintain a per-aux-TF cursor and feed aux bars incrementally, gated by `closeTime <= currentDecisionBar.closeTime`,
+  re-triggering `RecomputeIndicatorsAsync` for that aux TF each time a new aux bar becomes eligible — this is
+  exactly what PLAN.md's P1.3 agent-guidance section already prescribed; the implementation just didn't do it.
+- **Failing test first:** construct a synthetic H4 series where EMA computed over bars `[0..N/2]` gives a
+  DIFFERENT sign/direction than over the full `[0..N]`; assert a decision bar at sim-time `N/2` sees the
+  "as-of-then" EMA, not the full-range one. This test fails against current `main` of this branch and passes
+  once point-in-time gating lands.
+- Gate: the new lookahead test passes; a real mtf-trend tape run's H4 EMA value should now visibly change over
+  the course of the run (quote the before/after in the PR body — "constant across N bars" → "varies").
+
+**P1.5.3 — Silent H1 fallback on unparseable run-plan timeframe (LOW severity, cheap fix, same bug class).**
+`StrategyRegistry.CreateStrategies`'s run-plan branch: `EntryTimeframe = Enum.TryParse<Timeframe>(entry.Timeframe,
+ignoreCase: true, out var tf) ? tf : Timeframe.H1` — silently substitutes H1 on a parse failure instead of
+throwing. Currently unreachable in practice (`RunPlanBuilder.FromRows` always upper-cases validated dropdown
+values before this runs), but it is a silent-failure landmine of exactly the kind this whole iteration exists
+to eliminate, waiting for the first future caller (sweep runner, hand-edited `RunRows` JSON, a new API surface)
+that sends an unrecognized TF string. Change to throw `InvalidOperationException`, matching the existing
+fail-loud pattern the same method already uses for unknown strategy IDs / missing config entries.
+- Gate: a unit test constructing a run-plan row with `Timeframe: "bogus"` asserts the call throws rather than
+  silently binding H1.
+
+**P1.5.4 — MISSING_DATA verdict was never implemented (documentation gap, fold into P1.5 or P2's verdict funnel).**
+PLAN.md's P1.3 gate explicitly promises: *"with H4 absent the journal shows MISSING_DATA (not silence)"* —
+grepping the full `src/` and `tests/` trees for `MISSING_DATA` returns zero hits. This wasn't disclosed in
+PROGRESS.md's "what's NOT in P1" deviations list (which only calls out the warning chip and verdict funnel
+UI, not this specific verdict reason string). Low severity on its own — file it as a known-still-missing item
+under the existing P2/verdict-funnel work rather than a separate fix, but don't let it get lost.
+
+---
+
 ### P2 — Entry surgery (the strategy bank becomes honest hypotheses)
 
 **P2.1 Indicator series API.**
@@ -245,6 +345,7 @@ This is the owner's "utilize MAE/MFE automatically" ask, done per QUANT-ROADMAP 
 | P0.2 | 8 fill-path price tests; characterization re-baseline commit isolated | before/after net deltas quoted |
 | P0.3 | A/B characterization run | delta table in PR |
 | P1 | golden H1 identical; M15 acceptance run ≥1 proposal; cross-symbol state test; indicator-key TF test | DB query: non-H1 runs now trade |
+| P1.5 | M15 acceptance test (real, engine-driven) green; per-strategy indicator-TF unit test green; lookahead test green; bad-TF-string test throws | before/after H4-EMA-varies-over-run quote in PR |
 | P2 | divergence fixtures (pos+neg); per-change A/B tape runs; config linter fails on a raw-pip fixture | A/B tables in PRs |
 | P3 | replayer-reproduces-actual-run test; proposal ledger records unfilled-limit counterfactuals | one exit-lab heatmap screenshot |
 | P4 | stitched OOS curve renders; trials counter shown | scoreboard screenshot |
@@ -307,5 +408,5 @@ Each idea: what + why + rough method. None are commitments; the scoreboard decid
 
 ## 8. Suggested execution order & sizing
 
-`P0.1 → P0.2 → P1.1–P1.2 → P1.3–P1.4 → P2.2 → P2.1 → P2.3–P2.5 → P3 → P4 → (owner: P5, P6 in parallel) → P7`.
-Each arrow is a separately landable commit/PR with its gate. P0+P1 together are roughly one focused agent session; P2 one; P3 one-to-two; P4 one-to-two. If forced to cut: **P0, P1, P3 are the spine** — truth, reach, and the exit lab; P2 fixes ride along where cheap, and P2.2 (rsi-divergence) can simply stay disabled until rewritten.
+`P0.1 → P0.2 → P1.1–P1.2 → P1.3–P1.4 → P1.5 → P2.2 → P2.1 → P2.3–P2.5 → P3 → P4 → (owner: P5, P6 in parallel) → P7`.
+Each arrow is a separately landable commit/PR with its gate. P0+P1 together are roughly one focused agent session; P1.5 is small (half a session — two targeted bug fixes plus their failing tests) but **non-optional**: P2.1 (indicator series API) extends the exact pipeline P1.5.1 patches, and would silently inherit the H1-pinning bug into the new ring-buffer series if built on top of it unfixed. P2 one session; P3 one-to-two; P4 one-to-two. If forced to cut: **P0, P1, P1.5, P3 are the spine** — truth, reach (actually verified, not just claimed), and the exit lab; P2 fixes ride along where cheap, and P2.2 (rsi-divergence) can simply stay disabled until rewritten.

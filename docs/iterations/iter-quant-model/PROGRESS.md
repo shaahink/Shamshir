@@ -14,7 +14,15 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P1 is fully committed on `iter/quant-model--p1-tf-agnostic` — all gates green.** Next up is P2 — Entry surgery (indicator series, divergence rewrite, edge semantics). See PLAN.md §3 P2 for the phase spec.
+→ **P1 is committed on `iter/quant-model--p1-tf-agnostic` — gates green, BUT a 2026-07-05 static review found
+2 CRITICAL bugs that mean P1's own headline claim ("non-H1 strategies now trade") is not actually true yet for
+tape runs.** Do **P1.5 first** (small — two targeted fixes + their failing tests, roughly half a session),
+THEN P2 — Entry surgery. See PLAN.md §3 "P1.5 — Close the P1 review gaps" for the full findings/fix spec, and
+§3 P2 for what follows it.
+
+**Why this matters before touching P2.1:** P2.1 (indicator series API) extends
+`IndicatorSnapshotService`/`IndicatorCache` — the exact pipeline P1.5.1 patches. Building the new ring-buffer
+series on top of the unfixed H1-pinning bug would silently bake the same defect into the new API.
 
 This branch: 4 commits on top of `iter/quant-model` (9b9dbfc):
 - `edeb3a6` P1.1 — instance-per-row, de-hardcoded H1 in all 14 strategies
@@ -22,7 +30,30 @@ This branch: 4 commits on top of `iter/quant-model` (9b9dbfc):
 - `71ea2d7` P1.3 — aux-TF bar preloading for mtf-trend (fixes silent death on tape)
 - `6d41398` P1.4 — HonestFills checkbox on new-backtest form
 
-### What's NOT in P1 (deferred)
+### Static-review findings (2026-07-05) — see PLAN.md P1.5 for full detail, traced via code + call-site grep, not guesses
+1. **[CRITICAL, CONFIRMED] Indicator requests are still pinned to H1.** `IndicatorRequest`'s `Timeframe`
+   parameter defaults to H1, and none of the 9 strategies' `RequiredIndicators` pass
+   `Timeframe: _config.EntryTimeframe` (mtf-trend hardcodes it explicitly for RSI/ATR). Effect: any run-plan
+   row with `EntryTimeframe != H1` never gets its indicators computed (the TF's bars were never loaded) →
+   every strategy silently returns null on any non-H1 timeframe — the exact "0 trades on M15" bug P1 exists to
+   fix, moved one layer down. Not caught because the M15 acceptance test was skipped (see below) and the one
+   test added this session (`IndicatorCacheKeyTests`) only tests `BuildKey` in isolation with hand-picked
+   distinct-TF requests, never what the real strategies pass.
+2. **[CRITICAL, CONFIRMED] Aux-TF preload leaks future data (lookahead bias).** `EngineRunner.cs`'s P1.3 code
+   loads mtf-trend's ENTIRE run H4 bar range up front and computes `EMA_200` exactly ONCE before the loop
+   starts — that single, run-end-inclusive value is then read for every decision throughout the whole
+   backtest. Contradicts PLAN.md's own P1.3 design (aux bars should be gated by `closeTime <= decision bar
+   closeTime`); the shipped code has no such gating. Affects mtf-trend at ANY EntryTimeframe (independent of
+   finding 1). No existing/future mtf-trend tape result should be trusted for calibration until fixed.
+3. **[LOW, CONFIRMED] Silent H1 fallback on unparseable run-plan TF string** in
+   `StrategyRegistry.CreateStrategies` (`Enum.TryParse(...) ? tf : Timeframe.H1`) — unreachable today (UI
+   always sends valid values) but a landmine of the exact bug class this iteration exists to kill. Should
+   throw, not silently default.
+4. **[LOW, documentation gap] MISSING_DATA verdict was never implemented** — PLAN.md's P1.3 gate promised it;
+   grep of `src/`+`tests/` for `MISSING_DATA` returns zero hits, and it wasn't disclosed in the deviations list
+   below. Fold into P2's verdict-funnel work.
+
+### What's NOT in P1 (deferred, by design — distinct from the bugs above)
 - Warning chip for "strategy TF has no inventory data" — the infrastructure exists (inventory in Data Manager) but the per-row warning chip wasn't added to new-backtest. This is genuinely P2 scope (when scoreboard/triage make it matter).
 - Verdict funnel counters in run monitor — `StrategyVerdict` records carry the data, endpoint exists, but the UI widget wasn't built. P2 scope.
 - Per-row instance dedup — `CreateStrategies` creates one instance per (strategy, symbol, TF) row. Duplicate rows create duplicate instances. Harmless (each evaluates independently) but wasteful. Fix if it shows up in perf profiling.
@@ -36,8 +67,8 @@ This branch: 4 commits on top of `iter/quant-model` (9b9dbfc):
 | P0.1 R vs initial stop | **Done** | Forward fix + backfill endpoint. |
 | P0.2 Spread convention | **Done** | Both adapters unified via shared `SpreadConvention` helper. |
 | P0.3 Honest entry timing | **Done** | Tape only, per plan. |
-| P1 TF-agnostic bank | **Done** | P1.1–P1.4 on `iter/quant-model--p1-tf-agnostic`. |
-| P2 Entry surgery | Not started | |
+| P1 TF-agnostic bank | **Done, but review found 2 critical bugs** | P1.1–P1.4 on `iter/quant-model--p1-tf-agnostic`. See P1.5 below/PLAN.md — headline claim not yet true for tape. |
+| P1.5 Close review gaps | **Not started — do next, before P2.1** | 2 critical + 2 low findings, see PLAN.md §3 P1.5 |
 | P2 Entry surgery | Not started | |
 | P3 Excursion recorder + Exit Lab | Not started | |
 | P4 Research metrics | Not started | |
@@ -244,3 +275,9 @@ P0 stayed scoped to engine correctness. The next agent touching the new-backtest
 Gates: build 0, Unit 347/0/6, Integration 94/0, golden 63/63 byte-identical, npm 0, non-E2E Simulation 112/0.
 
 Deviations from plan: aux-TF loading hardcoded to mtf-trend+H4 (not computing RequiredTimeframes union — only strategy with aux TFs currently). No M15 acceptance test (requires live M15 data not guaranteed by test harness). Warning chip and verdict funnel deferred to P2. Instance-per-row doesn't dedup duplicate (strategy,symbol,TF) rows in run plan — harmless, fix if profiling shows waste.
+
+**2026-07-05 static review update:** the skipped M15 acceptance test turned out to be load-bearing — a
+full code-trace review found the indicator-request layer never got de-hardcoded (still implicitly/explicitly
+pinned to H1 in all 9 strategies) and a lookahead-bias bug in the aux-TF preload (mtf-trend's H4 EMA is
+computed once from the full run range instead of point-in-time). See "Static-review findings" under
+"Resume here" above and PLAN.md §3 P1.5 for the full trace and fix spec — P1.5 must land before P2.1.
