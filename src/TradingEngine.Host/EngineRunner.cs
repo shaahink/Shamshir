@@ -45,6 +45,7 @@ public sealed class EngineRunner
     private readonly IndicatorSnapshotService _indicatorSnapshot;
     private readonly BarEvaluator _evaluator;
     private readonly KernelTrailingEvaluator _trailing;
+    private readonly IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? _preloadedAuxBars;
 
     private long _barCount;
 
@@ -73,6 +74,7 @@ public sealed class EngineRunner
         _scopeFactory = deps.Persistence.ScopeFactory;
         _journal = deps.Persistence.StepJournal ?? new NullJournalWriter();
         _logger = logger;
+        _preloadedAuxBars = deps.Persistence.PreloadedAuxBars;
 
         _indicatorSnapshot = new IndicatorSnapshotService(deps.Market.Indicators, _strategies);
         _evaluator = new BarEvaluator(
@@ -122,6 +124,23 @@ public sealed class EngineRunner
         }
 
         await _indicatorSnapshot.WarmUpIndicatorsAsync(ct);
+
+        // P1.3: pre-load auxiliary-timeframe bars (e.g. H4 for mtf-trend) so multi-TF strategies have the
+        // higher-timeframe data they need before the first decision bar is evaluated.
+        if (_preloadedAuxBars is { Count: > 0 })
+        {
+            foreach (var (symStr, byTf) in _preloadedAuxBars)
+            {
+                var symbol = Symbol.Parse(symStr);
+                var bars = _indicatorSnapshot.Bars.GetOrAdd(symbol, _ => new());
+                foreach (var (tf, barList) in byTf)
+                {
+                    var list = bars.GetOrAdd(tf, _ => new());
+                    lock (list) { list.AddRange(barList); }
+                    await _indicatorSnapshot.RecomputeIndicatorsAsync(symbol, tf, ct);
+                }
+            }
+        }
 
         // Build the kernel loop now — RiskManager constraints/ruleset are set by WireRiskRules during the
         // connect/warmup window above, so they're populated by here.

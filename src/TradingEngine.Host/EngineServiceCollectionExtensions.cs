@@ -245,6 +245,7 @@ public static class EngineServiceCollectionExtensions
                 Journal = sp.GetRequiredService<IPipelineJournal>(),
                 StepJournal = sp.GetRequiredService<IJournalWriter>(),
                 ScopeFactory = sp.GetRequiredService<IServiceScopeFactory>(),
+                PreloadedAuxBars = options.PreloadedAuxBars,
             },
         });
 

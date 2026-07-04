@@ -33,5 +33,7 @@ public sealed record EngineHostOptions
 
     public IRunDataCache? RunDataCache { get; init; }
 
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? PreloadedAuxBars { get; init; }
+
     public bool SkipJournal { get; init; }
 }

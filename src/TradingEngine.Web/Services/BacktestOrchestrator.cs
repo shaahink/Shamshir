@@ -960,6 +960,27 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             state.PassIndex = passIndex;
             state.PassTotal = passes.Count;
 
+            // P1.3: compute auxiliary-timeframe bars needed by multi-TF strategies (e.g. mtf-trend needs H4).
+            IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? auxBars = null;
+            if (useTape && marketDataStore is not null && activeStrategyIds.Contains("mtf-trend"))
+            {
+                var auxTf = Timeframe.H4;
+                if (tf != auxTf)
+                {
+                    var auxBarList = await marketDataStore.ReadBarsAsync(sym, auxTf, from, to, userCt);
+                    if (auxBarList.Count > 0)
+                    {
+                        auxBars = new Dictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>
+                        {
+                            [sym.ToString()] = new Dictionary<Timeframe, IReadOnlyList<Bar>>
+                            {
+                                [auxTf] = auxBarList,
+                            },
+                        };
+                    }
+                }
+            }
+
             var innerHost = EngineHostFactory.Create(new EngineHostOptions
             {
                 RunId = runId,
@@ -996,6 +1017,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 DiagnosticsEnabled = _configuration.GetSection("Engine:Diagnostics").GetValue<bool>("Enabled"),
                 RunDataCache = _runDataCache,
                 SkipJournal = string.Equals(cfg.CustomParams.GetValueOrDefault("SkipJournal"), "true", StringComparison.OrdinalIgnoreCase),
+                PreloadedAuxBars = auxBars,
             });
             state.EngineHost = innerHost;
             EngineHostFactory.WireEventHandlers(innerHost);
