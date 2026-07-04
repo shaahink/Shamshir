@@ -14,12 +14,18 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P0 (P0.1, P0.2, P0.3) is fully committed — all gates green** (Unit/Integration/golden, no re-baselines
-needed anywhere). Next up is P1 — TF-agnostic strategy bank (de-hardcode H1, instance-per-row, aux-TF
-feed). See PLAN.md §3 P1 for the phase spec; nothing P1-specific has been started yet. Known gap carried
-from P0.3: the `HonestFills` toggle is wired at the engine/orchestrator layer
-(`BacktestConfig.CustomParams["HonestFills"]`) but has no REST DTO field or UI checkbox yet — that's
-P1.4-shaped work (UI guardrails), intentionally left out of P0's engine-correctness scope.
+→ **P1 is fully committed on `iter/quant-model--p1-tf-agnostic` — all gates green.** Next up is P2 — Entry surgery (indicator series, divergence rewrite, edge semantics). See PLAN.md §3 P2 for the phase spec.
+
+This branch: 4 commits on top of `iter/quant-model` (9b9dbfc):
+- `edeb3a6` P1.1 — instance-per-row, de-hardcoded H1 in all 14 strategies
+- `e376a1b` P1.2 — EntryTimeframe on OrderProposed for per-TF analytics
+- `71ea2d7` P1.3 — aux-TF bar preloading for mtf-trend (fixes silent death on tape)
+- `6d41398` P1.4 — HonestFills checkbox on new-backtest form
+
+### What's NOT in P1 (deferred)
+- Warning chip for "strategy TF has no inventory data" — the infrastructure exists (inventory in Data Manager) but the per-row warning chip wasn't added to new-backtest. This is genuinely P2 scope (when scoreboard/triage make it matter).
+- Verdict funnel counters in run monitor — `StrategyVerdict` records carry the data, endpoint exists, but the UI widget wasn't built. P2 scope.
+- Per-row instance dedup — `CreateStrategies` creates one instance per (strategy, symbol, TF) row. Duplicate rows create duplicate instances. Harmless (each evaluates independently) but wasteful. Fix if it shows up in perf profiling.
 
 ---
 
@@ -27,10 +33,11 @@ P1.4-shaped work (UI guardrails), intentionally left out of P0's engine-correctn
 
 | Phase | Status | Notes |
 |---|---|---|
-| P0.1 R vs initial stop | **Done** | Forward fix + backfill endpoint. Deviated from plan's literal backfill source (see log). |
-| P0.2 Spread convention | **Done** | Both adapters unified via shared `SpreadConvention` helper; 16 new fill-path tests |
-| P0.3 Honest entry timing | **Done** | Tape only, per plan. Toggle wired at engine layer, no UI yet (P1.4 territory) |
-| P1 TF-agnostic bank | Not started | |
+| P0.1 R vs initial stop | **Done** | Forward fix + backfill endpoint. |
+| P0.2 Spread convention | **Done** | Both adapters unified via shared `SpreadConvention` helper. |
+| P0.3 Honest entry timing | **Done** | Tape only, per plan. |
+| P1 TF-agnostic bank | **Done** | P1.1–P1.4 on `iter/quant-model--p1-tf-agnostic`. |
+| P2 Entry surgery | Not started | |
 | P2 Entry surgery | Not started | |
 | P3 Excursion recorder + Exit Lab | Not started | |
 | P4 Research metrics | Not started | |
@@ -227,3 +234,13 @@ P0 stayed scoped to engine correctness. The next agent touching the new-backtest
 - The `Journal` table's `EventJson` is PascalCase, enums as member-name strings, value objects nested as
   `{"Value": ...}` (confirmed against live data, matches `RunNarrativeService.cs`'s doc-comment). Any future
   parsing code (P3 excursion recorder, P4 walk-forward) should reuse that same shape/casing assumption.
+
+---
+
+## P1 — TF-agnostic strategy bank — Done on `iter/quant-model--p1-tf-agnostic` (2026-07-04)
+
+4 commits: P1.1 instance-per-row + de-harden H1, P1.2 EntryTimeframe on OrderProposed, P1.3 aux-TF bar preloading for mtf-trend, P1.4 HonestFills checkbox.
+
+Gates: build 0, Unit 347/0/6, Integration 94/0, golden 63/63 byte-identical, npm 0, non-E2E Simulation 112/0.
+
+Deviations from plan: aux-TF loading hardcoded to mtf-trend+H4 (not computing RequiredTimeframes union — only strategy with aux TFs currently). No M15 acceptance test (requires live M15 data not guaranteed by test harness). Warning chip and verdict funnel deferred to P2. Instance-per-row doesn't dedup duplicate (strategy,symbol,TF) rows in run plan — harmless, fix if profiling shows waste.
