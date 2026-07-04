@@ -27,8 +27,8 @@ public sealed class MtfTrendStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1, _config.HigherTimeframe];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe, _config.HigherTimeframe];
     public int RequiredBarCount => _config.Parameters.EmaPeriod + _config.Parameters.RsiPeriod + _config.Parameters.SwingLookback + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
@@ -43,10 +43,10 @@ public sealed class MtfTrendStrategy : IStrategy
     {
         try
         {
-            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
+            if (bars is null || bars.Count < RequiredBarCount)
             {
-                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|tf={Tf} has={Count} needs={Need}", Id, Timeframe.H1, h1Bars?.Count ?? 0, RequiredBarCount);
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|tf={Tf} has={Count} needs={Need}", Id, _config.EntryTimeframe, bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
@@ -65,8 +65,8 @@ public sealed class MtfTrendStrategy : IStrategy
             if (atr <= 0)
                 return null;
 
-            var h1Close = (double)h1Bars[^1].Close;
-            var h4Bullish = h1Close > h4Ema200;
+            var close = (double)bars[^1].Close;
+            var h4Bullish = close > h4Ema200;
 
             if (_prevRsi is null)
             {
@@ -83,12 +83,12 @@ public sealed class MtfTrendStrategy : IStrategy
             if (h4Bullish && prevRsi < p.RsiBullishPullback && rsi >= p.RsiBullishPullback)
             {
                 direction = TradeDirection.Long;
-                reason = $"H4 bullish (close={h1Close:F5} > EMA{p.EmaPeriod}={h4Ema200:F5}), RSI crossed above {p.RsiBullishPullback} (prev={prevRsi:F2} now={rsi:F2})";
+                reason = $"H4 bullish (close={close:F5} > EMA{p.EmaPeriod}={h4Ema200:F5}), RSI crossed above {p.RsiBullishPullback} (prev={prevRsi:F2} now={rsi:F2})";
             }
             else if (!h4Bullish && prevRsi > p.RsiBearishPullback && rsi <= p.RsiBearishPullback)
             {
                 direction = TradeDirection.Short;
-                reason = $"H4 bearish (close={h1Close:F5} <= EMA{p.EmaPeriod}={h4Ema200:F5}), RSI crossed below {p.RsiBearishPullback} (prev={prevRsi:F2} now={rsi:F2})";
+                reason = $"H4 bearish (close={close:F5} <= EMA{p.EmaPeriod}={h4Ema200:F5}), RSI crossed below {p.RsiBearishPullback} (prev={prevRsi:F2} now={rsi:F2})";
             }
             else
             {
@@ -98,7 +98,7 @@ public sealed class MtfTrendStrategy : IStrategy
             var entryPrice = new Price(context.LatestTick.Mid);
             var symbolInfo = _symbolRegistry.Get(context.Symbol);
 
-            var swingSl = SlTpHelpers.SwingBased(entryPrice, direction.Value, h1Bars, p.SwingLookback, new Pips(0), symbolInfo);
+            var swingSl = SlTpHelpers.SwingBased(entryPrice, direction.Value, bars, p.SwingLookback, new Pips(0), symbolInfo);
             var resolver = new SlTpResolver();
             var (sl, tp) = resolver.Resolve(entryPrice, direction.Value, atr, symbolInfo,
                 _config.PositionManagement, swingSl);
@@ -145,6 +145,8 @@ public sealed class MtfTrendStrategy : IStrategy
             OrderEntry = entry.OrderEntry ?? new(),
             PositionManagement = entry.PositionManagement ?? new(),
             Parameters = StrategyFactoryHelper.DeserializeParams<MtfTrendParameters>(entry.Parameters),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
         };
         return new MtfTrendStrategy(config,
             sp.GetRequiredService<ISymbolInfoRegistry>(),

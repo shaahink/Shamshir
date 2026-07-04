@@ -10,5 +10,8 @@ public interface IStrategyConfig
     OrderEntryOptions OrderEntry { get; }
     PositionManagementOptions PositionManagement { get; }
     ReentryOptions Reentry { get; }
+    Timeframe EntryTimeframe { get; }
+    string? Symbol { get; }
+    IReadOnlyList<Timeframe> RequiredTimeframes { get; }
 }
 

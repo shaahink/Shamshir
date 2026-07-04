@@ -194,7 +194,7 @@ public static class ServiceRegistration
             var activeIds = configs.Where(c => c.Enabled).Select(c => c.Id).ToList();
             if (activeIds.Count == 0 && configs.Count > 0)
                 activeIds = [configs[0].Id];
-            return reg.CreateStrategies(activeIds, loaded, sp).ToList();
+            return reg.CreateStrategies(activeIds, loaded, RunPlan.Empty, sp).ToList();
         });
         services.AddSingleton<IEnumerable<IStrategy>>(sp => sp.GetRequiredService<IReadOnlyList<IStrategy>>());
 

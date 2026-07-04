@@ -14,8 +14,8 @@ public sealed class EmaAlignmentStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => Math.Max(_config.Parameters.SlowPeriod, _config.Parameters.AtrPeriod) + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats { get; private set; } = new(0, 0, 0, 0);
@@ -38,10 +38,10 @@ public sealed class EmaAlignmentStrategy : IStrategy
     {
         try
         {
-            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
+            if (bars is null || bars.Count < RequiredBarCount)
             {
-                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
@@ -103,6 +103,8 @@ public sealed class EmaAlignmentStrategy : IStrategy
             RegimeFilter = entry.RegimeFilter ?? new(),
             OrderEntry = entry.OrderEntry ?? new(),
             PositionManagement = entry.PositionManagement ?? new(),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
         };
         return new EmaAlignmentStrategy(config,
             sp.GetRequiredService<ISymbolInfoRegistry>(),

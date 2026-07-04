@@ -27,8 +27,8 @@ public sealed class MacdMomentumStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => _config.Parameters.MacdSlow + _config.Parameters.SmaPeriod + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
@@ -44,7 +44,7 @@ public sealed class MacdMomentumStrategy : IStrategy
     {
         try
         {
-            var bars = context.Bars.GetValueOrDefault(Timeframe.H1);
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
             if (bars is null || bars.Count < RequiredBarCount)
             {
                 _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
@@ -148,6 +148,8 @@ public sealed class MacdMomentumStrategy : IStrategy
             OrderEntry = entry.OrderEntry ?? new(),
             PositionManagement = entry.PositionManagement ?? new(),
             Parameters = StrategyFactoryHelper.DeserializeParams<MacdMomentumParameters>(entry.Parameters),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
         };
         return new MacdMomentumStrategy(config,
             sp.GetRequiredService<ISymbolInfoRegistry>(),

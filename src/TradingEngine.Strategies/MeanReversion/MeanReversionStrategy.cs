@@ -13,8 +13,8 @@ public sealed class MeanReversionStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => Math.Max(_config.Parameters.BbPeriod, _config.Parameters.AtrPeriod) + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats { get; private set; } = new(0, 0, 0, 0);
@@ -37,10 +37,10 @@ public sealed class MeanReversionStrategy : IStrategy
     {
         try
         {
-            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
+            if (bars is null || bars.Count < RequiredBarCount)
             {
-                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
@@ -50,7 +50,7 @@ public sealed class MeanReversionStrategy : IStrategy
             if (rsi <= 0 || atr <= 0) return null;
 
             var currentPrice = context.LatestTick.Mid;
-            var latestBar = h1Bars[^1];
+            var latestBar = bars[^1];
             TradeDirection? dir = null;
 
             // Close must sit in the lower (long) / upper (short) fraction of the bar's own range —
@@ -113,6 +113,8 @@ public sealed class MeanReversionStrategy : IStrategy
             RegimeFilter = entry.RegimeFilter ?? new(),
             OrderEntry = entry.OrderEntry ?? new(),
             PositionManagement = entry.PositionManagement ?? new(),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
         };
         return new MeanReversionStrategy(config,
             sp.GetRequiredService<ISymbolInfoRegistry>(),

@@ -51,35 +51,81 @@ public sealed class StrategyRegistry
     public IReadOnlyList<IStrategy> CreateStrategies(
         IReadOnlyList<string> activeIds,
         LoadedConfig config,
+        RunPlan runPlan,
         IServiceProvider services)
     {
         var strategies = new List<IStrategy>();
 
-        foreach (var id in activeIds)
+        // P1.1: when no run-plan is provided (legacy/test paths), create one instance per
+        // configured strategy WITHOUT binding a symbol — all strategies match all symbols (old behaviour).
+        // When a run-plan IS provided, bind each row's symbol+timeframe.
+        if (runPlan.Entries.Count == 0)
         {
-            if (!_strategyTypes.TryGetValue(id, out var type) && !_factories.ContainsKey(id))
+            foreach (var id in activeIds)
             {
-                throw new InvalidOperationException(
-                    $"Active strategy ID '{id}' has no matching [StrategyId] class. " +
-                    $"Available: [{string.Join(", ", _strategyTypes.Keys)}]");
-            }
+                if (!_strategyTypes.ContainsKey(id) && !_factories.ContainsKey(id))
+                {
+                    throw new InvalidOperationException(
+                        $"Active strategy ID '{id}' has no matching [StrategyId] class. " +
+                        $"Available: [{string.Join(", ", _strategyTypes.Keys)}]");
+                }
 
-            var configEntry = config.StrategyConfigs.FirstOrDefault(s => s.Id == id);
-            if (configEntry is null)
-            {
-                throw new InvalidOperationException(
-                    $"Strategy '{id}' has no config file in config/strategies/.");
-            }
+                var configEntry = config.StrategyConfigs.FirstOrDefault(s => s.Id == id);
+                if (configEntry is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Strategy '{id}' has no config file in config/strategies/.");
+                }
 
-            if (_factories.TryGetValue(id, out var factory))
-            {
-                var strategy = factory(configEntry, services);
-                strategies.Add(strategy);
+                if (_factories.TryGetValue(id, out var factory))
+                {
+                    var strategy = factory(configEntry, services);
+                    strategies.Add(strategy);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Strategy '{id}' has no static Create method.");
+                }
             }
-            else
+        }
+        else
+        {
+            foreach (var entry in runPlan.Entries)
             {
-                throw new InvalidOperationException(
-                    $"Strategy '{id}' has no static Create method. Add a public static Create(StrategyConfigEntry, IServiceProvider) method.");
+                var id = entry.StrategyId;
+                if (!_strategyTypes.ContainsKey(id) && !_factories.ContainsKey(id))
+                {
+                    throw new InvalidOperationException(
+                        $"Run-plan row has strategy ID '{id}' with no matching [StrategyId] class. " +
+                        $"Available: [{string.Join(", ", _strategyTypes.Keys)}]");
+                }
+
+                var configEntry = config.StrategyConfigs.FirstOrDefault(s => s.Id == id);
+                if (configEntry is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Strategy '{id}' has no config file in config/strategies/.");
+                }
+
+                var boundEntry = configEntry with
+                {
+                    Symbol = entry.Symbol,
+                    EntryTimeframe = Enum.TryParse<Timeframe>(entry.Timeframe, ignoreCase: true, out var tf)
+                        ? tf
+                        : Timeframe.H1
+                };
+
+                if (_factories.TryGetValue(id, out var factory))
+                {
+                    var strategy = factory(boundEntry, services);
+                    strategies.Add(strategy);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Strategy '{id}' has no static Create method.");
+                }
             }
         }
 

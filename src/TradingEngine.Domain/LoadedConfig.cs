@@ -21,6 +21,8 @@ public sealed record StrategyConfigEntry(
     string RiskProfileId,
     JsonElement Parameters)
 {
+    public string? Symbol { get; init; }
+    public Timeframe? EntryTimeframe { get; init; }
     public RegimeFilterOptions? RegimeFilter { get; init; }
     public OrderEntryOptions? OrderEntry { get; init; }
     public PositionManagementOptions? PositionManagement { get; init; }

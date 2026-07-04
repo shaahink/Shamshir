@@ -21,8 +21,8 @@ public sealed class RsiDivergenceStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => _config.Parameters.DivergenceLookback + _config.Parameters.RsiPeriod + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => [
         new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod),
@@ -40,9 +40,8 @@ public sealed class RsiDivergenceStrategy : IStrategy
         if (!context.IndicatorValues.TryGetValue($"ATR_{_config.Parameters.AtrPeriod}", out var atr))
             return null;
 
-        var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
-        if (h1Bars is null || h1Bars.Count < RequiredBarCount) return null;
-        var bars = h1Bars;
+        var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
+        if (bars is null || bars.Count < RequiredBarCount) return null;
 
         var lookback = _config.Parameters.DivergenceLookback;
         var currentBar = bars[^1];
@@ -96,6 +95,8 @@ public sealed class RsiDivergenceStrategy : IStrategy
             OrderEntry = entry.OrderEntry ?? new(),
             PositionManagement = entry.PositionManagement ?? new(),
             Parameters = StrategyFactoryHelper.DeserializeParams<RsiDivergenceParameters>(entry.Parameters),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
         };
         return new RsiDivergenceStrategy(config,
             sp.GetRequiredService<ISymbolInfoRegistry>(),

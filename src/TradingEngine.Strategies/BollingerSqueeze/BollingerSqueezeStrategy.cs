@@ -29,8 +29,8 @@ public sealed class BollingerSqueezeStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => _config.Parameters.BbPeriod + _config.Parameters.AtrPeriod + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
@@ -44,7 +44,7 @@ public sealed class BollingerSqueezeStrategy : IStrategy
     {
         try
         {
-            var bars = context.Bars.GetValueOrDefault(Timeframe.H1);
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
             if (bars is null || bars.Count < RequiredBarCount)
             {
                 _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
@@ -180,6 +180,8 @@ public sealed class BollingerSqueezeStrategy : IStrategy
             OrderEntry = entry.OrderEntry ?? new(),
             PositionManagement = entry.PositionManagement ?? new(),
             Parameters = StrategyFactoryHelper.DeserializeParams<BollingerSqueezeParameters>(entry.Parameters),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
         };
         return new BollingerSqueezeStrategy(config,
             sp.GetRequiredService<ISymbolInfoRegistry>(),

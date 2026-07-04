@@ -4,8 +4,6 @@ public sealed class StrategyBankService : IStrategyBank
 {
     private readonly StrategyRegistry _registry;
     private readonly StrategyRotationOptions? _rotation;
-    private readonly RunPlan? _runPlan;
-    private readonly IReadOnlySet<string>? _runPlanEntries;
     private readonly Dictionary<string, bool> _enabledOverrides = new();
     private readonly Dictionary<string, StrategyPerformanceStats> _stats = new();
     private readonly ILogger<StrategyBankService> _logger;
@@ -18,36 +16,17 @@ public sealed class StrategyBankService : IStrategyBank
     {
         _registry = registry;
         _rotation = rotation;
-        _runPlan = runPlan;
         _logger = logger;
-
-        if (runPlan is { Entries.Count: > 0 })
-        {
-            _runPlanEntries = runPlan.Entries
-                .Select(e => $"{e.StrategyId}|{e.Symbol}|{e.Timeframe}")
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        }
     }
 
     public IReadOnlyList<IStrategy> GetActive(Symbol symbol, Timeframe timeframe, MarketRegime regime, bool ignoreRegime = false)
     {
-        var timeframeStr = timeframe.ToString();
-        var symbolStr = symbol.Value;
-
         return _registry.GetAll()
             .Where(s => _enabledOverrides.TryGetValue(s.Id, out var en) ? en : s.Config.Enabled)
-            .Where(s => IsInRunPlan(s.Id, symbolStr, timeframeStr))
-            .Where(s => s.EntryTimeframe == timeframe)
+            .Where(s => s.Config.EntryTimeframe == timeframe)
+            .Where(s => s.Config.Symbol is null || s.Config.Symbol == symbol.Value)
             .Where(s => ignoreRegime || s.Config.RegimeFilter.Allows(regime))
             .ToList();
-    }
-
-    private bool IsInRunPlan(string strategyId, string symbol, string timeframe)
-    {
-        if (_runPlanEntries is null)
-            return true;
-
-        return _runPlanEntries.Contains($"{strategyId}|{symbol}|{timeframe}");
     }
 
     public IReadOnlyList<IStrategy> GetAll() => _registry.GetAll();

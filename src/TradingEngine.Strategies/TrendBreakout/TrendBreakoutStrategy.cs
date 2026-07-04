@@ -20,8 +20,8 @@ public sealed class TrendBreakoutStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => Math.Max(
         Math.Max(_config.Parameters.LookbackBars, _config.Parameters.MaPeriod),
         _config.Parameters.AtrPeriod) + 5;
@@ -49,14 +49,14 @@ public sealed class TrendBreakoutStrategy : IStrategy
     {
         try
         {
-            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
+            if (bars is null || bars.Count < RequiredBarCount)
             {
-                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
-            var latestBar = h1Bars[^1];
+            var latestBar = bars[^1];
             var p = _config.Parameters;
 
             var atr = context.IndicatorValues.GetValueOrDefault($"ATR_{p.AtrPeriod}");
@@ -68,7 +68,7 @@ public sealed class TrendBreakoutStrategy : IStrategy
                 return null;
             }
 
-            var priorBars = h1Bars.TakeLast(p.LookbackBars + 1).SkipLast(1).ToList();
+            var priorBars = bars.TakeLast(p.LookbackBars + 1).SkipLast(1).ToList();
             var highestHigh = priorBars.Count > 0 ? priorBars.Max(b => b.High) : latestBar.High;
             var lowestLow = priorBars.Count > 0 ? priorBars.Min(b => b.Low) : latestBar.Low;
 
@@ -151,6 +151,8 @@ public sealed class TrendBreakoutStrategy : IStrategy
             OrderEntry = entry.OrderEntry ?? new(),
             PositionManagement = entry.PositionManagement ?? new(),
             Parameters = StrategyFactoryHelper.DeserializeParams<TrendBreakoutParameters>(entry.Parameters),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
         };
         return new TrendBreakoutStrategy(config,
             sp.GetRequiredService<ISymbolInfoRegistry>(),
