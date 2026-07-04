@@ -55,7 +55,6 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     private readonly Dictionary<Guid, PendingLimit> _pendingLimits = new();
     private decimal _balance;
     private decimal _lastClose;
-    private readonly decimal _tickSpread;
     private Task _feedTask = Task.CompletedTask;
     private CancellationTokenSource? _feedCts;
     private volatile float _speed = 10f;
@@ -130,8 +129,6 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         _logger = logger;
         _decisionInterval = decisionTf.ToTimeSpan();
         _exitInterval = exitTf.ToTimeSpan();
-        try { _tickSpread = symbolRegistry.Get(symbol).PipSize; }
-        catch { _tickSpread = 0.0001m; }
     }
 
     public async Task ConnectAsync(CancellationToken ct)
@@ -190,7 +187,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 if (delayMs > 0) await Task.Delay(delayMs, ct);
                 await _barChannel.Writer.WriteAsync(bar, ct);
                 await _tickChannel.Writer.WriteAsync(
-                    new Tick(bar.Symbol, bar.Close, bar.Close + _tickSpread, bar.OpenTimeUtc), ct);
+                    new Tick(bar.Symbol, bar.Close, SpreadConvention.AskPrice(bar.Close, GetSpread()), bar.OpenTimeUtc), ct);
             }
         }
         catch (OperationCanceledException) { _logger.LogDebug("TapeReplay: feed cancelled"); }
@@ -274,8 +271,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         }
 
         var midPrice = _lastClose > 0 ? _lastClose : 1m;
-        var halfSpread = GetHalfSpread();
-        var fillPrice = request.Direction == TradeDirection.Long ? midPrice + halfSpread : midPrice;
+        var spread = GetSpread();
+        var fillPrice = request.Direction == TradeDirection.Long ? SpreadConvention.AskPrice(midPrice, spread) : midPrice;
         FillEntry(orderId, request.Direction, fillPrice, request.Lots, sl, tp);
         return Task.FromResult(orderId);
     }
@@ -286,10 +283,11 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             _logger.LogError("TapeReplay: execution channel full — event dropped; orderId={OrderId}", evt.OrderId);
     }
 
-    private decimal GetHalfSpread()
+    // P0.2 (D3): FULL spread — bars are bid, ask = bid + spread. See SpreadConvention.
+    private decimal GetSpread()
     {
-        try { return _symbolRegistry.Get(_symbol).TypicalSpread / 2m; }
-        catch { return 0.00005m; }
+        try { return _symbolRegistry.Get(_symbol).TypicalSpread; }
+        catch { return 0.0001m; }
     }
 
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
@@ -307,13 +305,15 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     {
         if (_pendingLimits.Count == 0) return;
 
-        var halfSpread = GetHalfSpread();
+        var spread = GetSpread();
 
         foreach (var (orderId, limit) in _pendingLimits.ToList())
         {
+            // Buy limit: fills once the ASK (bid-low + spread) reaches it. Sell limit: fills once the
+            // raw bid-high reaches it (a sell-to-open trades at bid — no spread adjustment).
             var reached = limit.Direction == TradeDirection.Long
-                ? bar.Low <= limit.LimitPrice
-                : bar.High + halfSpread >= limit.LimitPrice;
+                ? SpreadConvention.AskPrice(bar.Low, spread) <= limit.LimitPrice
+                : bar.High >= limit.LimitPrice;
 
             if (reached)
             {
@@ -341,24 +341,22 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     {
         if (_openTrades.Count == 0) return;
 
-        var halfSpread = GetHalfSpread();
+        var spread = GetSpread();
 
         foreach (var (orderId, trade) in _openTrades.ToList())
         {
-            var checkBar = bar;
-            if (trade.Direction == TradeDirection.Short)
-            {
-                checkBar = new Bar(bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
-                    bar.Open + halfSpread, bar.High + halfSpread,
-                    bar.Low + halfSpread, bar.Close + halfSpread, bar.Volume);
-            }
+            // A short's SL/TP is crossed by the ASK (it closes by buying back); shift the whole bar to
+            // the ask side for detection. A long's SL/TP is crossed by the raw bid bar (unchanged).
+            var checkBar = trade.Direction == TradeDirection.Short
+                ? SpreadConvention.AskBar(bar, spread)
+                : bar;
 
             var reason = EngineReducer.DetectSlTpExit(trade.Direction, trade.StopLoss, trade.TakeProfit, checkBar);
             if (reason is null) continue;
 
             var fillPrice = reason == "TP" && trade.TakeProfit is { } tp ? tp.Value : trade.StopLoss.Value;
             if (trade.Direction == TradeDirection.Short)
-                fillPrice += halfSpread;
+                fillPrice = SpreadConvention.AskPrice(fillPrice, spread);
 
             if (reason == "SL")
             {
@@ -396,13 +394,12 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
     {
-        var halfSpread = GetHalfSpread();
+        var spread = GetSpread();
         var mid = _lastClose > 0 ? _lastClose : 1m;
-        // Default close: longs exit at bid (mid - halfSpread in floating PnL model), shorts at ask (mid + halfSpread).
-        // We compute half-spread-adjusted mid so the exit price aligns with the directional fill model.
+        // Long closes by selling at bid (raw); short closes by buying at ask (bid + full spread).
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
-            var exitPrice = trade.Direction == TradeDirection.Long ? mid - halfSpread : mid + halfSpread;
+            var exitPrice = trade.Direction == TradeDirection.Long ? mid : SpreadConvention.AskPrice(mid, spread);
             return CloseAtAsync(positionId, new Price(exitPrice));
         }
         return CloseAtAsync(positionId, new Price(mid));
@@ -502,12 +499,14 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         try
         {
             var symbolInfo = _symbolRegistry.Get(_symbol);
-            var halfSpread = symbolInfo.TypicalSpread / 2m;
+            var spread = symbolInfo.TypicalSpread;
             var pipValue = PipCalculator.PipValuePerLot(symbolInfo, close, _crossRateProvider);
             var total = 0m;
             foreach (var (_, t) in _openTrades)
             {
-                var effectiveClose = t.Direction == TradeDirection.Long ? close - halfSpread : close + halfSpread;
+                // P0.2 (D3): a long's exit is a sell at bid (raw close); a short's exit is a buy at ask
+                // (close + full spread).
+                var effectiveClose = t.Direction == TradeDirection.Long ? close : SpreadConvention.AskPrice(close, spread);
                 var diff = t.Direction == TradeDirection.Long ? effectiveClose - t.EntryPrice : t.EntryPrice - effectiveClose;
                 total += (diff / symbolInfo.PipSize) * pipValue * t.Lots;
             }

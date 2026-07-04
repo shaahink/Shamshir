@@ -14,9 +14,8 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P0.1 is committed. Start P0.2 (full-spread convention) next.** See "P0.2 — Not started" below for the
-concrete file list and the trap the plan already flags (shared `Ask()`/`AskPrice()` helper so the two
-adapters can't drift again).
+→ **P0.1 and P0.2 are committed. Start P0.3 (honest entry timing, tape only) next.** See "P0.3 — Not
+started" below for the concrete approach (pending-order queue mirroring `_pendingLimits`).
 
 ---
 
@@ -25,7 +24,7 @@ adapters can't drift again).
 | Phase | Status | Notes |
 |---|---|---|
 | P0.1 R vs initial stop | **Done** | Forward fix + backfill endpoint. Deviated from plan's literal backfill source (see log). |
-| P0.2 Spread convention | Not started | |
+| P0.2 Spread convention | **Done** | Both adapters unified via shared `SpreadConvention` helper; 16 new fill-path tests |
 | P0.3 Honest entry timing | Not started | |
 | P1 TF-agnostic bank | Not started | |
 | P2 Entry surgery | Not started | |
@@ -124,17 +123,47 @@ it here because the next agent (or the owner) reading PLAN.md literally would re
 
 ---
 
-## P0.2 — Full-spread convention (D3) — Not started
+## P0.2 — Full-spread convention (D3) — **Done**
 
-Files: `src/TradingEngine.Infrastructure/Adapters/TapeReplayAdapter.cs`,
-`src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs`.
+**Commit:** `fix(P0.2): full-spread convention, both replay venues` (this branch).
 
-Do both adapters in ONE commit (plan's own agent-guidance: "they have drifted before — that's how the
-half-spread asymmetry happened"). Extract one `Ask(bar)`/`AskPrice(price)` helper shared by both fill-price
-and SL/TP-detection code paths so the shift amount and the fill-price re-adjustment can't diverge again.
-8 fill-path table-driven test (long/short × market/limit/SL/TP) with hand-computed literals BEFORE touching
-adapter code. Re-baseline characterization suite in a SEPARATE `REBASELINE:` commit after the fill-path
-tests are green — never mix logic change with re-baseline (plan §6 rule 3).
+### What shipped
+- New `src/TradingEngine.Infrastructure/Adapters/SpreadConvention.cs` — the single shared helper
+  (`AskPrice(bid, spread)`, `AskBar(bidBar, spread)`) used by both `TapeReplayAdapter` and
+  `BacktestReplayAdapter`, replacing each adapter's own `GetHalfSpread()` (spread/2) with `GetSpread()`
+  (full spread) and routing every fill/detection site through the shared helper — this is what makes the
+  two adapters unable to drift apart again (that drift is exactly how the pre-existing half-spread bug
+  happened, independently, in both files).
+- Fixed 8 call sites per adapter (16 total): long market entry (half→full spread), buy-limit reached
+  condition (was missing spread entirely — `bar.Low <= limit`, now `bar.Low + spread <= limit`), sell-limit
+  reached condition (had a spurious half-spread — now correctly raw `bar.High >= limit`), short SL/TP
+  detection bar shift (half→full), short SL/TP fill price (half→full), `ClosePositionAsync` (long lost its
+  incorrect half-spread subtraction entirely — selling at bid is the raw price, no adjustment; short
+  half→full), `ComputeFloatingPnL` (same long/short correction), and the tick-channel synthetic ask (was
+  `close + PipSize` — ONE PIP regardless of the symbol's actual spread, completely unrelated to the fill
+  spread; now `close + GetSpread()`, the same source as fills).
+- Long-side SL/TP detection and fill price were ALREADY correct (raw, unshifted) before this change — only
+  the short side and the two bugs above (missing/spurious limit-spread, mismatched tick spread) needed
+  fixing.
+
+### Gate evidence
+- **Table-driven fill-path tests, written first, confirmed failing pre-fix**: 8 cases × 2 adapters = 16
+  tests (`BacktestReplaySpreadConventionTests.cs`, `TapeReplaySpreadConventionTests.cs`), 2-pip spread,
+  hand-computed literal fill prices per the plan's own prescription. Pre-fix run: 3/8 failed per adapter
+  (long entry, short SL, short TP) with the failing diffs showing exactly half the expected spread
+  (off by 0.0001 against an 0.0002 spread) — direct evidence of the bug. Post-fix: 16/16 green.
+- Unit: 342 passed (up from 326), 6 skipped, 0 failed.
+- Integration: 94/94 passed.
+- Fast Simulation suite (golden/determinism, `RequiresCTrader!=true`): **120 passed, 0 failed — byte-
+  identical, confirmed after the run completed** (4m15s).
+- **No separate REBASELINE commit was needed.** The plan expected characterization baselines to move; they
+  didn't, because the existing golden/characterization fixtures don't happen to exercise the specific
+  half-spread-affected paths (long entry, short SL/TP fill price, limit-reached conditions) — they're
+  long-side-heavy fixtures or rely on `ClosePositionAtAsync`/engine-detected exit prices that were already
+  correct pre-fix. This was verified, not assumed (per the plan's own rule: if golden had moved, stop and
+  investigate before re-baselining — it didn't move, so there's nothing to investigate). A future run with
+  short-heavy or limit-heavy fixtures WOULD show a P&L delta; nothing in the current suite happens to cross
+  that path.
 
 ## P0.3 — Honest entry timing (D4, tape only) — Not started
 
