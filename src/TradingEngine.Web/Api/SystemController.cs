@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using TradingEngine.Infrastructure.Configuration;
 using TradingEngine.Infrastructure.MarketData;
 using TradingEngine.Infrastructure.Persistence;
+using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Web.Api;
 
@@ -98,6 +99,95 @@ public sealed class SystemController : ControllerBase
             _logger.LogError(ex, "DB reset failed: scope={Scope}", targetScope);
             return Problem($"Reset failed: {ex.Message}");
         }
+    }
+
+    // P0.1: one-off, idempotent backfill for TradeResults persisted before InitialStopLoss existed.
+    // Only touches rows where InitialStopLoss IS NULL, so it is safe to re-run (e.g. after a new backtest
+    // adds fresh rows that already carry the field, or to pick up a run whose journal wasn't queryable
+    // on a prior pass). Takes a file-copy backup of the live db first — see docs/iterations/
+    // iter-quant-model/PROGRESS.md (P0.1) for why the journal, not EntrySnapshotJson, is the primary source.
+    [HttpPost("backfill-initial-stop")]
+    public async Task<IActionResult> BackfillInitialStop(CancellationToken ct)
+    {
+        string? backupPath = null;
+        try
+        {
+            backupPath = BackupDatabaseFile();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Backfill: DB backup copy failed, continuing without one");
+        }
+
+        var candidates = await _db.Trades
+            .Where(t => t.InitialStopLoss == null)
+            .ToListAsync(ct);
+
+        var updatedFromJournal = 0;
+        var updatedFromSnapshotFallback = 0;
+        var skippedNoSource = 0;
+
+        foreach (var group in candidates.GroupBy(t => t.RunId))
+        {
+            var runId = group.Key;
+            var journalStops = string.IsNullOrEmpty(runId)
+                ? new Dictionary<Guid, decimal>()
+                : InitialStopBackfiller.ParseOrderProposedStops(
+                    await _db.JournalEntries
+                        .Where(j => j.RunId == runId && j.EventKind == "OrderProposed")
+                        .Select(j => j.EventJson)
+                        .ToListAsync(ct));
+
+            foreach (var trade in group)
+            {
+                var resolution = InitialStopBackfiller.Resolve(trade.OrderId, journalStops, trade.EntrySnapshotJson);
+                if (resolution.StopLoss is not { } stop)
+                {
+                    skippedNoSource++;
+                    continue;
+                }
+
+                trade.InitialStopLoss = stop;
+                var direction = Enum.Parse<TradeDirection>(trade.Direction);
+                trade.RMultiple = PipCalculator.RMultiple(
+                    direction, new Price(trade.EntryPrice), new Price(trade.ExitPrice), new Price(stop));
+                trade.ExitDetailJson = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    reason = trade.ExitReason,
+                    exit = trade.ExitPrice,
+                    r = trade.RMultiple,
+                    finalStopLoss = trade.StopLoss,
+                    initialStopLoss = stop,
+                });
+
+                if (resolution.Source == InitialStopBackfiller.Source.Journal) updatedFromJournal++;
+                else updatedFromSnapshotFallback++;
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new
+        {
+            backupPath,
+            totalCandidates = candidates.Count,
+            updatedFromJournal,
+            updatedFromSnapshotFallback,
+            skippedNoSource,
+        });
+    }
+
+    private string? BackupDatabaseFile()
+    {
+        var dataSource = (_db.Database.GetDbConnection() as SqliteConnection)?.DataSource;
+        if (string.IsNullOrEmpty(dataSource) || !System.IO.File.Exists(dataSource)) return null;
+
+        var backupPath = Path.Combine(
+            Path.GetDirectoryName(dataSource) ?? ".",
+            $"{Path.GetFileNameWithoutExtension(dataSource)}.bak-{DateTime.UtcNow:yyyyMMdd-HHmmss}{Path.GetExtension(dataSource)}");
+        System.IO.File.Copy(dataSource, backupPath);
+        _logger.LogWarning("Backfill: DB backed up to {BackupPath}", backupPath);
+        return backupPath;
     }
 
     private async Task DeleteRunDataAsync()

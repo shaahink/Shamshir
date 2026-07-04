@@ -40,7 +40,17 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             EntryReason = trade.EntryReason,
             EntryRegime = trade.EntryRegime,
             EntrySnapshotJson = trade.EntrySnapshotJson,
-            ExitDetailJson = System.Text.Json.JsonSerializer.Serialize(new { reason = trade.ExitReason, exit = trade.ExitPrice.Value, r = trade.RMultiple }),
+            InitialStopLoss = trade.InitialStopLoss?.Value,
+            // P0.1: finalStopLoss/initialStopLoss alongside the existing reason/exit/r so exit-lab /
+            // giveback analysis can see both without re-joining EntrySnapshotJson.
+            ExitDetailJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                reason = trade.ExitReason,
+                exit = trade.ExitPrice.Value,
+                r = trade.RMultiple,
+                finalStopLoss = trade.StopLoss.Value,
+                initialStopLoss = trade.InitialStopLoss?.Value,
+            }),
         };
         db.Trades.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -82,6 +92,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             e.ExitReason, e.StrategyId, e.RiskProfileId,
             Enum.Parse<EngineMode>(e.Mode),
             OrderEntryMethod: e.OrderEntryMethod,
-            OrderId: e.OrderId);
+            OrderId: e.OrderId,
+            InitialStopLoss: e.InitialStopLoss.HasValue ? new Price(e.InitialStopLoss.Value) : null);
     }
 }

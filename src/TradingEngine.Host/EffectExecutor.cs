@@ -144,8 +144,9 @@ public sealed class EffectExecutor : IEffectExecutor
 
         var pnlPips = new Pips((double)(signedMove / pipSize));
 
-        var riskDistance = Math.Abs(entry - effect.StopLoss.Value);
-        var rMultiple = riskDistance > 0 ? (double)(signedMove / riskDistance) : 0d;
+        // P0.1: R against the stop taken AT ENTRY (InitialStopLoss), never effect.StopLoss (the
+        // current/final stop — breakeven/trailing may have moved it to near-zero risk by close time).
+        var rMultiple = PipCalculator.RMultiple(effect.Direction, effect.EntryPrice, effect.ExitPrice, effect.InitialStopLoss);
 
         // Most-favorable / most-adverse prices over the position's life. HighWater/LowWater are the
         // per-bar extremes carried on the effect; fold in entry & exit so a same-bar close still yields
@@ -167,13 +168,17 @@ public sealed class EffectExecutor : IEffectExecutor
             OrderId: effect.OrderId,
             EntryReason: effect.EntryReason,
             EntryRegime: effect.EntryRegime,
+            InitialStopLoss: effect.InitialStopLoss,
             EntrySnapshotJson: System.Text.Json.JsonSerializer.Serialize(new
             {
                 reason = effect.EntryReason,
                 regime = effect.EntryRegime,
                 direction = effect.Direction.ToString(),
                 entryPrice = effect.EntryPrice.Value,
-                stopLoss = effect.StopLoss.Value,
+                // P0.1: this used to be effect.StopLoss (the current/final stop AT CLOSE, which
+                // breakeven/trailing may have moved) despite the "entry snapshot" name. Now the actual
+                // stop the trade risked at entry, matching the name.
+                stopLoss = effect.InitialStopLoss.Value,
                 takeProfit = effect.TakeProfit?.Value,
                 lots = effect.Lots
             }));

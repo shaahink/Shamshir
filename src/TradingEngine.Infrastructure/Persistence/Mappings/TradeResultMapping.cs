@@ -13,6 +13,7 @@ public sealed class TradeResultMapping : IEntityTypeConfiguration<TradeResultEnt
         builder.Property(e => e.ExitPrice).HasColumnType("REAL");
         builder.Property(e => e.StopLoss).HasColumnType("REAL");
         builder.Property(e => e.TakeProfit).HasColumnType("REAL");
+        builder.Property(e => e.InitialStopLoss).HasColumnType("REAL");
         builder.Property(e => e.OpenedAtUtc).HasColumnType("TEXT");
         builder.Property(e => e.ClosedAtUtc).HasColumnType("TEXT");
         builder.Property(e => e.GrossPnLAmount).HasColumnType("REAL");

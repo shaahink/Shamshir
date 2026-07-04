@@ -33,7 +33,10 @@ public record RecordDecisionEvent(DecisionRecord Decision) : EngineEffect;
 // OrderId is the venue-facing clientOrderId (the position's originating order), carried through to the
 // persisted trade so the venue ledger (cBot report.json) joins to DB trades exactly. PositionId remains
 // the engine-internal position identity.
-public record PublishTradeClosed(Guid PositionId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price ExitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, string ExitReason, DateTime ClosedAtUtc, DateTime OpenedAtUtc, Guid OrderId = default, string? RiskProfileId = null, string OrderEntryMethod = "Market", decimal? GrossProfit = null, decimal? NetProfit = null, decimal? Commission = null, decimal? Swap = null, decimal HighWater = 0, decimal LowWater = 0, string? EntryReason = null, string? EntryRegime = null, string? EntrySnapshotJson = null) : EngineEffect;
+// InitialStopLoss (P0.1): the stop-loss price at order creation (PositionState.InitialStopLoss),
+// distinct from StopLoss above (the current/final stop at close time, possibly moved by breakeven or
+// trailing). EffectExecutor uses InitialStopLoss — never StopLoss — for the R-multiple calculation.
+public record PublishTradeClosed(Guid PositionId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price ExitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, string ExitReason, DateTime ClosedAtUtc, DateTime OpenedAtUtc, Guid OrderId = default, string? RiskProfileId = null, string OrderEntryMethod = "Market", decimal? GrossProfit = null, decimal? NetProfit = null, decimal? Commission = null, decimal? Swap = null, decimal HighWater = 0, decimal LowWater = 0, string? EntryReason = null, string? EntryRegime = null, string? EntrySnapshotJson = null, Price InitialStopLoss = default) : EngineEffect;
 
 public record RegisterRisk(Guid PositionId, string StrategyId, decimal RiskAmount) : EngineEffect;
 

@@ -42,4 +42,5 @@ public sealed class TradeResultEntity : IAuditableEntity
     public string? EntryRegime { get; set; }
     public string? EntrySnapshotJson { get; set; }
     public string? ExitDetailJson { get; set; }
+    public decimal? InitialStopLoss { get; set; }
 }
