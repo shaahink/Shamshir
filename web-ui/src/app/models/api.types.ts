@@ -245,6 +245,7 @@ export interface StartRunRequest {
   stripAddOns?: boolean;
   // Tape replay playback speed: 0 = paused, 0.1–10 = multiplier. Default 10.
   speed?: number;
+  honestFills?: boolean;
 }
 
 export interface RiskProfile {

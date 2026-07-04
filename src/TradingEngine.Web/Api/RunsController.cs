@@ -147,6 +147,7 @@ public sealed class RunsController : ControllerBase
             cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
         cfg.CustomParams["Venue"] = venue;
         cfg.CustomParams["Speed"] = req.Speed.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+        cfg.CustomParams["HonestFills"] = req.HonestFills ? "true" : "false";
         if (req.StrategyOverrides is { Count: > 0 })
             cfg.CustomParams["StrategyOverrides"] = System.Text.Json.JsonSerializer.Serialize(req.StrategyOverrides);
         if (!string.IsNullOrWhiteSpace(req.UsePackId))

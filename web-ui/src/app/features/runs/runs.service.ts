@@ -52,6 +52,7 @@ export class RunsApiService {
       forceCloseOnBreachEnabled: req.forceCloseOnBreachEnabled ?? true,
       stripAddOns: req.stripAddOns ?? false,
       speed: req.speed ?? 10,
+      honestFills: req.honestFills ?? true,
     };
     return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }

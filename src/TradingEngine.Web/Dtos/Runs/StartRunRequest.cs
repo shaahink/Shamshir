@@ -40,6 +40,10 @@ public sealed record StartRunRequest
 
     // Tape replay playback speed: 0 = paused, 0.1–10 = speed multiplier. Default 10 = max speed.
     public float Speed { get; init; } = 10f;
+
+    // P0.3 (D4): when true (default), tape market entries fill at the next fine bar's open.
+    // When false, fills at the signal bar's close (old optimistic behavior). Only relevant for tape venue.
+    public bool HonestFills { get; init; } = true;
 }
 
 public sealed record RunRowRequest

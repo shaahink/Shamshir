@@ -293,10 +293,15 @@ interface CoverageInfo {
                   [attr.class]="chipClass(allRiskEnabled()) + ' font-mono text-xs'"
                   title="Toggle all protections on/off">{{ allRiskEnabled() ? '\u2713 all on' : '\u2717 all off' }}</button>
               </div>
-              <label class="mt-2 flex items-center gap-2 text-xs text-amber-400 cursor-pointer">
-                <input type="checkbox" [(ngModel)]="stripAddOns" class="h-3 w-3 rounded" />
-                No add-ons (raw baseline SL/TP)
-              </label>
+            <label class="mt-2 flex items-center gap-2 text-xs text-amber-400 cursor-pointer">
+              <input type="checkbox" [(ngModel)]="stripAddOns" class="h-3 w-3 rounded" />
+              No add-ons (raw baseline SL/TP)
+            </label>
+            <label class="mt-2 flex items-center gap-2 text-xs text-gray-300 cursor-pointer"
+              title="Market entries fill at next bar's open (more realistic); off = fill at signal bar close (optimistic)">
+              <input type="checkbox" [(ngModel)]="honestFills" class="h-3 w-3 rounded" />
+              Honest fills (next-bar open)
+            </label>
             </section>
 
             <!-- Venue warnings -->
@@ -380,6 +385,7 @@ export class NewBacktestComponent implements OnInit {
   forceCloseEnabled = true;
   regimeEnabled = true;
   stripAddOns = false;
+  honestFills = true;
 
   packs = signal<{ id: string; name: string }[]>([]);
   strategies = signal<StrategySummary[]>([]);
@@ -641,6 +647,7 @@ export class NewBacktestComponent implements OnInit {
       disableRegime: this.regimeEnabled ? undefined : true,
       stripAddOns: this.stripAddOns ? true : undefined,
       speed: this.venue === 'tape' ? this.speed : undefined,
+      honestFills: this.honestFills ? undefined : false,
     };
     this.saveSetup();
     try {
@@ -686,6 +693,7 @@ export class NewBacktestComponent implements OnInit {
         forceCloseEnabled: this.forceCloseEnabled,
         regimeEnabled: this.regimeEnabled,
         stripAddOns: this.stripAddOns,
+        honestFills: this.honestFills,
         strategies: [...this.selectedStrategyIds()],
         symbols: [...this.selectedSymbols()],
         periods: [...this.selectedPeriods()],
@@ -722,6 +730,7 @@ export class NewBacktestComponent implements OnInit {
       this.forceCloseEnabled = setup.forceCloseEnabled ?? this.forceCloseEnabled;
       this.regimeEnabled = setup.regimeEnabled ?? this.regimeEnabled;
       this.stripAddOns = setup.stripAddOns ?? this.stripAddOns;
+      this.honestFills = setup.honestFills ?? this.honestFills;
       if (setup.strategies?.length) this.selectedStrategyIds.set(new Set(setup.strategies));
       if (setup.symbols?.length) this.selectedSymbols.set(new Set(setup.symbols));
       if (setup.periods?.length) this.selectedPeriods.set(new Set(setup.periods));
