@@ -188,7 +188,7 @@ public sealed class BarEvaluator(
                 intent.Symbol, intent.Direction, intent.OrderType,
                 intent.LimitPrice, intent.StopLoss, intent.TakeProfit, intent.StrategyId,
                 entryPrice.Value, slPips, pipValuePerLot, simTime, external, resolvedProfile,
-                EntryReason: intent.Reason, EntryRegime: regimeLabel);
+                EntryReason: intent.Reason, EntryRegime: regimeLabel, EntryTimeframe: strategy.EntryTimeframe);
 
             proposals.Add(proposal);
             verdicts.Add(new StrategyVerdict(strategy.Id, HadEnoughBars: true, SignalFired: true,
