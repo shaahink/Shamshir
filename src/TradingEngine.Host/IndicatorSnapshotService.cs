@@ -12,6 +12,19 @@ public sealed class IndicatorSnapshotService
     public ConcurrentDictionary<string, double> IndicatorValues { get; } = new();
     public Dictionary<string, double> ReusableIndicatorDict { get; } = new();
 
+    // P1.5.2: aux-timeframe bars (e.g. H4 for mtf-trend) are known for the WHOLE run up front (loaded once
+    // by the orchestrator), but must only become visible to indicator computation point-in-time — as of the
+    // sim-time of the decision bar currently being evaluated — or a strategy's higher-TF indicator silently
+    // sees the future for the rest of the run (the P1.3 lookahead-bias bug this cursor fixes). The full list
+    // is held here; AdvanceAuxBarsAsync reveals bars one at a time, gated by close time.
+    private sealed class AuxBarCursor
+    {
+        public required IReadOnlyList<Bar> All { get; init; }
+        public int NextIndex;
+    }
+
+    private readonly ConcurrentDictionary<(Symbol Symbol, Timeframe Timeframe), AuxBarCursor> _auxSources = new();
+
     public IndicatorSnapshotService(
         IIndicatorService indicators,
         IReadOnlyList<IStrategy> strategies)
@@ -25,6 +38,52 @@ public sealed class IndicatorSnapshotService
         Bars.Clear();
         IndicatorValues.Clear();
         ReusableIndicatorDict.Clear();
+        _auxSources.Clear();
+    }
+
+    /// <summary>
+    /// Register the full known range of an auxiliary timeframe's bars for a symbol (e.g. mtf-trend's H4).
+    /// Does NOT make them visible yet — <see cref="AdvanceAuxBarsAsync"/> reveals them incrementally as the
+    /// decision-bar loop advances, so no indicator computed from this TF ever sees a bar that hasn't
+    /// "happened yet" in sim-time.
+    /// </summary>
+    public void SetAuxBarSource(Symbol symbol, Timeframe tf, IReadOnlyList<Bar> allBars)
+    {
+        _auxSources[(symbol, tf)] = new AuxBarCursor { All = allBars };
+    }
+
+    /// <summary>
+    /// Reveal any aux-TF bars whose close time has arrived as of <paramref name="decisionBarCloseUtc"/>
+    /// (the current decision bar's own close), then recompute indicators for any aux TF that advanced —
+    /// so a strategy's higher-TF indicator (e.g. mtf-trend's H4 EMA) only ever reflects bars closed as of
+    /// "now" in the replay, never the full run's future range.
+    /// </summary>
+    public async Task AdvanceAuxBarsAsync(Symbol symbol, DateTime decisionBarCloseUtc, CancellationToken ct)
+    {
+        foreach (var ((sym, tf), cursor) in _auxSources)
+        {
+            if (sym != symbol) continue;
+
+            var advanced = false;
+            while (cursor.NextIndex < cursor.All.Count)
+            {
+                var auxBar = cursor.All[cursor.NextIndex];
+                var auxCloseUtc = auxBar.OpenTimeUtc + tf.ToTimeSpan();
+                if (auxCloseUtc > decisionBarCloseUtc) break;
+
+                var byTf = Bars.GetOrAdd(symbol, _ => new());
+                var list = byTf.GetOrAdd(tf, _ => new());
+                lock (list)
+                {
+                    list.Add(auxBar);
+                    while (list.Count > 500) list.RemoveAt(0);
+                }
+                cursor.NextIndex++;
+                advanced = true;
+            }
+
+            if (advanced) await RecomputeIndicatorsAsync(symbol, tf, ct);
+        }
     }
 
     public Task RecomputeIndicatorsAsync(Symbol symbol, Timeframe tf, CancellationToken ct)

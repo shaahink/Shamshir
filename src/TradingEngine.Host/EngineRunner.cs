@@ -125,19 +125,19 @@ public sealed class EngineRunner
 
         await _indicatorSnapshot.WarmUpIndicatorsAsync(ct);
 
-        // P1.3: pre-load auxiliary-timeframe bars (e.g. H4 for mtf-trend) so multi-TF strategies have the
-        // higher-timeframe data they need before the first decision bar is evaluated.
+        // P1.3/P1.5.2: register the full known range of auxiliary-timeframe bars (e.g. H4 for mtf-trend) —
+        // but do NOT make them visible yet. Dumping the whole run's aux range in at t=0 leaked future bars
+        // into every decision (a strategy's higher-TF indicator saw the run-end value from bar 1 onward —
+        // lookahead bias). BarEvaluator.EvaluateAsync reveals aux bars incrementally, gated by close time,
+        // via IndicatorSnapshotService.AdvanceAuxBarsAsync, one decision bar at a time.
         if (_preloadedAuxBars is { Count: > 0 })
         {
             foreach (var (symStr, byTf) in _preloadedAuxBars)
             {
                 var symbol = Symbol.Parse(symStr);
-                var bars = _indicatorSnapshot.Bars.GetOrAdd(symbol, _ => new());
                 foreach (var (tf, barList) in byTf)
                 {
-                    var list = bars.GetOrAdd(tf, _ => new());
-                    lock (list) { list.AddRange(barList); }
-                    await _indicatorSnapshot.RecomputeIndicatorsAsync(symbol, tf, ct);
+                    _indicatorSnapshot.SetAuxBarSource(symbol, tf, barList);
                 }
             }
         }

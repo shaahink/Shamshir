@@ -108,12 +108,16 @@ public sealed class StrategyRegistry
                         $"Strategy '{id}' has no config file in config/strategies/.");
                 }
 
+                if (!Enum.TryParse<Timeframe>(entry.Timeframe, ignoreCase: true, out var tf))
+                {
+                    throw new InvalidOperationException(
+                        $"Run-plan row for strategy '{id}' has an unparseable timeframe '{entry.Timeframe}'.");
+                }
+
                 var boundEntry = configEntry with
                 {
                     Symbol = entry.Symbol,
-                    EntryTimeframe = Enum.TryParse<Timeframe>(entry.Timeframe, ignoreCase: true, out var tf)
-                        ? tf
-                        : Timeframe.H1
+                    EntryTimeframe = tf,
                 };
 
                 if (_factories.TryGetValue(id, out var factory))

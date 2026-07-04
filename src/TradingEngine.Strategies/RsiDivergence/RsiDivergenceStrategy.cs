@@ -25,8 +25,8 @@ public sealed class RsiDivergenceStrategy : IStrategy
     public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => _config.Parameters.DivergenceLookback + _config.Parameters.RsiPeriod + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => [
-        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);

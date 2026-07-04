@@ -21,9 +21,9 @@ public sealed class MeanReversionStrategy : IStrategy
 
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod),
-        new($"BB_{_config.Parameters.BbPeriod}_{_config.Parameters.BbStdDev}", IndicatorType.BollingerBands, _config.Parameters.BbPeriod, _config.Parameters.BbStdDev),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod, Timeframe: _config.EntryTimeframe),
+        new($"BB_{_config.Parameters.BbPeriod}_{_config.Parameters.BbStdDev}", IndicatorType.BollingerBands, _config.Parameters.BbPeriod, _config.Parameters.BbStdDev, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
 
     public MeanReversionStrategy(MeanReversionConfig config, ISymbolInfoRegistry symbolRegistry, ILogger<MeanReversionStrategy> logger)

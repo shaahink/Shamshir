@@ -34,8 +34,8 @@ public sealed class BollingerSqueezeStrategy : IStrategy
     public int RequiredBarCount => _config.Parameters.BbPeriod + _config.Parameters.AtrPeriod + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"BB_{_config.Parameters.BbPeriod}_{_config.Parameters.BbStdDev}", IndicatorType.BollingerBands, _config.Parameters.BbPeriod, _config.Parameters.BbStdDev),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"BB_{_config.Parameters.BbPeriod}_{_config.Parameters.BbStdDev}", IndicatorType.BollingerBands, _config.Parameters.BbPeriod, _config.Parameters.BbStdDev, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);

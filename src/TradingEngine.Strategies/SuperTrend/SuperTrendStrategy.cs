@@ -32,9 +32,9 @@ public sealed class SuperTrendStrategy : IStrategy
     public int RequiredBarCount => Math.Max(_config.Parameters.AtrPeriod, _config.Parameters.AdxPeriod) * 2 + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"ST_{_config.Parameters.AtrPeriod}_{_config.Parameters.AtrMultiplier}", IndicatorType.SuperTrend, _config.Parameters.AtrPeriod) { Param2 = _config.Parameters.AtrMultiplier },
-        new($"ADX_{_config.Parameters.AdxPeriod}", IndicatorType.Adx, _config.Parameters.AdxPeriod),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"ST_{_config.Parameters.AtrPeriod}_{_config.Parameters.AtrMultiplier}", IndicatorType.SuperTrend, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe) { Param2 = _config.Parameters.AtrMultiplier },
+        new($"ADX_{_config.Parameters.AdxPeriod}", IndicatorType.Adx, _config.Parameters.AdxPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);

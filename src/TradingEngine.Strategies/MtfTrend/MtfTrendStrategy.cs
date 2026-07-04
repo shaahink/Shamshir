@@ -32,8 +32,8 @@ public sealed class MtfTrendStrategy : IStrategy
     public int RequiredBarCount => _config.Parameters.EmaPeriod + _config.Parameters.RsiPeriod + _config.Parameters.SwingLookback + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod, Timeframe: Timeframe.H1),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: Timeframe.H1),
+        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
         new($"EMA_{_config.Parameters.EmaPeriod}", IndicatorType.Ema, _config.Parameters.EmaPeriod, Timeframe: _config.HigherTimeframe),
     ];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];

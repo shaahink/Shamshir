@@ -22,9 +22,9 @@ public sealed class EmaAlignmentStrategy : IStrategy
 
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"EMA_{_config.Parameters.FastPeriod}", IndicatorType.Ema, _config.Parameters.FastPeriod),
-        new($"EMA_{_config.Parameters.SlowPeriod}", IndicatorType.Ema, _config.Parameters.SlowPeriod),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"EMA_{_config.Parameters.FastPeriod}", IndicatorType.Ema, _config.Parameters.FastPeriod, Timeframe: _config.EntryTimeframe),
+        new($"EMA_{_config.Parameters.SlowPeriod}", IndicatorType.Ema, _config.Parameters.SlowPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
 
     public EmaAlignmentStrategy(EmaAlignmentConfig config, ISymbolInfoRegistry symbolRegistry, ILogger<EmaAlignmentStrategy> logger)

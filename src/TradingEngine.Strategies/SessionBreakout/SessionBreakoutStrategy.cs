@@ -24,7 +24,7 @@ public sealed class SessionBreakoutStrategy : IStrategy
 
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
 
     public SessionBreakoutStrategy(SessionBreakoutConfig config, ISymbolInfoRegistry symbolRegistry, ILogger<SessionBreakoutStrategy> logger)

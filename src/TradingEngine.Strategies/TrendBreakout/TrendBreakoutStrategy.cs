@@ -28,8 +28,8 @@ public sealed class TrendBreakoutStrategy : IStrategy
 
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
-        new($"EMA_{_config.Parameters.MaPeriod}", IndicatorType.Ema, _config.Parameters.MaPeriod),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
+        new($"EMA_{_config.Parameters.MaPeriod}", IndicatorType.Ema, _config.Parameters.MaPeriod, Timeframe: _config.EntryTimeframe),
     ];
 
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];

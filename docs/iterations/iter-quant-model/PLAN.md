@@ -158,7 +158,7 @@ Sequencing rule (unchanged from QUANT-ROADMAP §2): **no calibration/sweep resul
 **P1.4 UI guardrails.**
 - new-backtest: a row whose TF (or aux TF) has no inventory shows a warning chip (inventory lookup already exists); run monitor shows per-strategy verdict funnel counts (proposals / gated / MISSING_DATA / no-signal) so "0 trades" is never mute again.
 
-### P1.5 — Close the P1 static-review gaps (BLOCKING — do before P2.1)
+### P1.5 — Close the P1 static-review gaps — **Done** (2026-07-05, same session)
 
 **Added 2026-07-05** after a static review of the `iter/quant-model--p1-tf-agnostic` commits (edeb3a6, e376a1b,
 71ea2d7, 6d41398). Two of the three findings below are CONFIRMED via full code trace (not guesses) and mean

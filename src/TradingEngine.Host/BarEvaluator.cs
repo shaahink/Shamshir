@@ -64,6 +64,9 @@ public sealed class BarEvaluator(
             while (list.Count > 500) list.RemoveAt(0);
         }
 
+        // P1.5.2: reveal any aux-TF bars (e.g. mtf-trend's H4) whose close time has arrived as of THIS
+        // decision bar's close — point-in-time, not the whole run's range — before recomputing indicators.
+        await indicatorSnapshot.AdvanceAuxBarsAsync(symbol, simTime + GetBarDuration(tf), ct);
         await indicatorSnapshot.RecomputeIndicatorsAsync(symbol, tf, ct);
 
         var halfSpread = ResolveHalfSpread(symbol);

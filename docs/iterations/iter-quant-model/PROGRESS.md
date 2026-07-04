@@ -14,21 +14,17 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P1 is committed on `iter/quant-model--p1-tf-agnostic` — gates green, BUT a 2026-07-05 static review found
-2 CRITICAL bugs that mean P1's own headline claim ("non-H1 strategies now trade") is not actually true yet for
-tape runs.** Do **P1.5 first** (small — two targeted fixes + their failing tests, roughly half a session),
-THEN P2 — Entry surgery. See PLAN.md §3 "P1.5 — Close the P1 review gaps" for the full findings/fix spec, and
-§3 P2 for what follows it.
+→ **P1.5 is fully committed and gated green — the P1.5.1/P1.5.2/P1.5.3 findings below are FIXED and verified
+(each with a failing-test-first regression test, confirmed to fail against the pre-fix code, then pass after).**
+Next up is P2 — Entry surgery (indicator series, divergence rewrite, edge semantics). See PLAN.md §3 P2 for the
+phase spec. P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
 
-**Why this matters before touching P2.1:** P2.1 (indicator series API) extends
-`IndicatorSnapshotService`/`IndicatorCache` — the exact pipeline P1.5.1 patches. Building the new ring-buffer
-series on top of the unfixed H1-pinning bug would silently bake the same defect into the new API.
-
-This branch: 4 commits on top of `iter/quant-model` (9b9dbfc):
+This branch: 5 commits on top of `iter/quant-model` (9b9dbfc):
 - `edeb3a6` P1.1 — instance-per-row, de-hardcoded H1 in all 14 strategies
 - `e376a1b` P1.2 — EntryTimeframe on OrderProposed for per-TF analytics
 - `71ea2d7` P1.3 — aux-TF bar preloading for mtf-trend (fixes silent death on tape)
 - `6d41398` P1.4 — HonestFills checkbox on new-backtest form
+- (P1.5 commit — indicator-timeframe fix + aux-TF point-in-time cursor + fail-loud TF parse)
 
 ### Static-review findings (2026-07-05) — see PLAN.md P1.5 for full detail, traced via code + call-site grep, not guesses
 1. **[CRITICAL, CONFIRMED] Indicator requests are still pinned to H1.** `IndicatorRequest`'s `Timeframe`
@@ -51,7 +47,39 @@ This branch: 4 commits on top of `iter/quant-model` (9b9dbfc):
    throw, not silently default.
 4. **[LOW, documentation gap] MISSING_DATA verdict was never implemented** — PLAN.md's P1.3 gate promised it;
    grep of `src/`+`tests/` for `MISSING_DATA` returns zero hits, and it wasn't disclosed in the deviations list
-   below. Fold into P2's verdict-funnel work.
+   below. Deferred to P2's verdict-funnel work (unchanged — not part of the P1.5 fix below).
+
+### P1.5 fixes — Done (2026-07-05, same session as the review)
+
+All three findings above independently re-verified by direct code trace (not just re-reading the review)
+before fixing, and each has a failing-test-first regression test confirmed to fail against the pre-fix code:
+
+- **P1.5.1** — every strategy's `RequiredIndicators` now passes `Timeframe: _config.EntryTimeframe`
+  (mtf-trend: RSI/ATR only; EMA keeps `_config.HigherTimeframe`). New tests:
+  `StrategyIndicatorTimeframeTests` (per-strategy, all 9) + `NonH1AcceptanceTests` (real
+  `BarEvaluator`+`IndicatorSnapshotService`-driven M15 tape run, ≥1 trend-breakout proposal — the literal
+  P1.2 gate the plan asked for and P1 skipped). Found and fixed an unrelated pre-existing gap while writing
+  the acceptance test: `StrategyTestHelper.MakeContext` hardcodes bars under the `Timeframe.H1` key
+  regardless of the actual bar's TF — a test-helper limitation, not a production bug; left as-is since
+  `NonH1AcceptanceTests` doesn't use that helper.
+- **P1.5.2** — `IndicatorSnapshotService` gained `SetAuxBarSource`/`AdvanceAuxBarsAsync`: the full aux-TF
+  range is registered but held back in a cursor, revealed one bar at a time gated by
+  `auxBar.OpenTimeUtc + tf.ToTimeSpan() <= decisionBarCloseUtc`, recomputing that aux TF's indicators only
+  when new bars actually became eligible. `BarEvaluator.EvaluateAsync` calls `AdvanceAuxBarsAsync` before
+  `RecomputeIndicatorsAsync` each decision bar. `EngineRunner.RunAsync`'s old bulk-load-and-recompute-once
+  block replaced with a `SetAuxBarSource` registration call. New test `AuxTfLookaheadTests` (real
+  `BarEvaluator` pipeline, synthetic H4 series with a step-change midway) — confirmed to fail
+  (`Observed` stayed empty) with the `AdvanceAuxBarsAsync` call temporarily commented out, confirmed to pass
+  restored.
+- **P1.5.3** — `StrategyRegistry.CreateStrategies`'s run-plan branch now throws `InvalidOperationException`
+  on an unparseable TF string instead of silently binding H1. New tests: `StrategyRegistryTests` (throws on
+  `"bogus"`, binds correctly on `"M15"`).
+
+Gate: `dotnet build` 0 errors; Unit 356/0/6 (skips pre-existing, up from 347 — +9 new); Integration 94/0;
+fast Simulation (`RequiresCTrader!=true`, includes golden/determinism) 124/0 (4m30s, byte-identical — expected,
+since the fix only changes behavior for non-H1 runs and mtf-trend's aux path, neither exercised by the
+existing H1-only golden fixtures); Architecture 6/8 (2 pre-existing failures, same as documented in the P0.1
+section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file touched this session).
 
 ### What's NOT in P1 (deferred, by design — distinct from the bugs above)
 - Warning chip for "strategy TF has no inventory data" — the infrastructure exists (inventory in Data Manager) but the per-row warning chip wasn't added to new-backtest. This is genuinely P2 scope (when scoreboard/triage make it matter).
@@ -67,8 +95,8 @@ This branch: 4 commits on top of `iter/quant-model` (9b9dbfc):
 | P0.1 R vs initial stop | **Done** | Forward fix + backfill endpoint. |
 | P0.2 Spread convention | **Done** | Both adapters unified via shared `SpreadConvention` helper. |
 | P0.3 Honest entry timing | **Done** | Tape only, per plan. |
-| P1 TF-agnostic bank | **Done, but review found 2 critical bugs** | P1.1–P1.4 on `iter/quant-model--p1-tf-agnostic`. See P1.5 below/PLAN.md — headline claim not yet true for tape. |
-| P1.5 Close review gaps | **Not started — do next, before P2.1** | 2 critical + 2 low findings, see PLAN.md §3 P1.5 |
+| P1 TF-agnostic bank | **Done** | P1.1–P1.4 on `iter/quant-model--p1-tf-agnostic`. |
+| P1.5 Close review gaps | **Done** | P1.5.1–P1.5.3 fixed+tested; P1.5.4 (MISSING_DATA) deferred to P2. |
 | P2 Entry surgery | Not started | |
 | P3 Excursion recorder + Exit Lab | Not started | |
 | P4 Research metrics | Not started | |

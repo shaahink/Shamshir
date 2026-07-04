@@ -32,10 +32,10 @@ public sealed class MacdMomentumStrategy : IStrategy
     public int RequiredBarCount => _config.Parameters.MacdSlow + _config.Parameters.SmaPeriod + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new("MACD_12_26_9", IndicatorType.Macd, 12) { Param1 = 26, Param2 = 9 },
-        new($"SMA_{_config.Parameters.SmaPeriod}", IndicatorType.Sma, _config.Parameters.SmaPeriod),
-        new($"ADX_{_config.Parameters.AdxPeriod}", IndicatorType.Adx, _config.Parameters.AdxPeriod),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new("MACD_12_26_9", IndicatorType.Macd, 12, Timeframe: _config.EntryTimeframe) { Param1 = 26, Param2 = 9 },
+        new($"SMA_{_config.Parameters.SmaPeriod}", IndicatorType.Sma, _config.Parameters.SmaPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ADX_{_config.Parameters.AdxPeriod}", IndicatorType.Adx, _config.Parameters.AdxPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);
