@@ -968,10 +968,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 {
                     if (useTape && marketDataStore is not null)
                     {
+                        // P0.3 (D4): honest entry timing default ON; CustomParams["HonestFills"]="false"
+                        // preserves the old optimistic (fill-at-signal-bar-close) behavior for A/B.
+                        var honestFills = cfg.CustomParams.GetValueOrDefault("HonestFills") != "false";
                         var tapeAdapter = new TapeReplayAdapter(marketDataStore, sym, tf, exitTf, from, to,
                             cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
                             sp.GetRequiredService<Func<string, string, decimal>>(),
-                            sp.GetRequiredService<ILogger<TapeReplayAdapter>>());
+                            sp.GetRequiredService<ILogger<TapeReplayAdapter>>(),
+                            honestFills);
                         tapeAdapter.Speed = state.Speed;
                         state.TapeAdapter = tapeAdapter;
                         return tapeAdapter;

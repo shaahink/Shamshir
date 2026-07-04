@@ -14,8 +14,12 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P0.1 and P0.2 are committed. Start P0.3 (honest entry timing, tape only) next.** See "P0.3 — Not
-started" below for the concrete approach (pending-order queue mirroring `_pendingLimits`).
+→ **P0 (P0.1, P0.2, P0.3) is fully committed — all gates green** (Unit/Integration/golden, no re-baselines
+needed anywhere). Next up is P1 — TF-agnostic strategy bank (de-hardcode H1, instance-per-row, aux-TF
+feed). See PLAN.md §3 P1 for the phase spec; nothing P1-specific has been started yet. Known gap carried
+from P0.3: the `HonestFills` toggle is wired at the engine/orchestrator layer
+(`BacktestConfig.CustomParams["HonestFills"]`) but has no REST DTO field or UI checkbox yet — that's
+P1.4-shaped work (UI guardrails), intentionally left out of P0's engine-correctness scope.
 
 ---
 
@@ -25,7 +29,7 @@ started" below for the concrete approach (pending-order queue mirroring `_pendin
 |---|---|---|
 | P0.1 R vs initial stop | **Done** | Forward fix + backfill endpoint. Deviated from plan's literal backfill source (see log). |
 | P0.2 Spread convention | **Done** | Both adapters unified via shared `SpreadConvention` helper; 16 new fill-path tests |
-| P0.3 Honest entry timing | Not started | |
+| P0.3 Honest entry timing | **Done** | Tape only, per plan. Toggle wired at engine layer, no UI yet (P1.4 territory) |
 | P1 TF-agnostic bank | Not started | |
 | P2 Entry surgery | Not started | |
 | P3 Excursion recorder + Exit Lab | Not started | |
@@ -165,12 +169,49 @@ it here because the next agent (or the owner) reading PLAN.md literally would re
   short-heavy or limit-heavy fixtures WOULD show a P&L delta; nothing in the current suite happens to cross
   that path.
 
-## P0.3 — Honest entry timing (D4, tape only) — Not started
+## P0.3 — Honest entry timing (D4, tape only) — **Done**
 
-`TapeReplayAdapter`: pending-market-order queue mirroring `_pendingLimits`, fills at next fine (M1) bar's
-open ± spread. `HonestFills` toggle on run config, default ON, read once at construction (not per-bar).
-Flush pending orders at disconnect using `_lastClose` so end-of-run orders still fill. A/B characterization
-run, delta table in the PR body.
+**Commit:** `fix(P0.3): honest entry timing — market fills at next fine bar's open` (this branch).
+
+### What shipped
+- `TapeReplayAdapter`: new `_pendingMarketOrders` dictionary (mirrors `_pendingLimits` exactly). When
+  `HonestFills` is on (default) AND finer (M1) exit bars exist (`_exitBars.Count > 0`), a market order
+  queues in `SubmitOrderAsync` instead of filling instantly; `ProcessPendingMarketOrders(fine)` — called
+  first in the fine-bar loop inside `OnBarObserved`, before `ProcessPendingLimits`/`ProcessSlTpHits` so a
+  freshly-filled position's SL/TP still gets checked against the SAME bar it entered on (correct intrabar
+  behaviour) — fills each pending order at that fine bar's `Open` (± full spread via `SpreadConvention`,
+  same directional convention as every other fill path).
+- `HonestFills` constructor param (default `true`) read ONCE at construction, not branched per-bar (plan's
+  own trap warning). Wired through `BacktestOrchestrator.cs` via `cfg.CustomParams["HonestFills"]`, same
+  pattern as the existing `GovernorEnabled`/`DisableRegime` toggles — `!= "false"` defaults it ON.
+- Flush trap (plan's own warning, hit exactly as predicted while writing the disconnect test): an order
+  queued on the last fine bar of the run has no more bars to fill it — `FlushPendingMarketOrders()` fills
+  any still-pending orders at `_lastClose` (± spread) inside `DisconnectAsync`, before the channels
+  complete. `DisposeAsync` clears (doesn't fill) any survivors, matching the existing precedent for
+  `_pendingLimits` (dispose is a hard stop, disconnect is the graceful flush point).
+- When no finer data exists (`_exitBars.Count == 0` — single-resolution mode, or `HonestFills=false`),
+  behavior is BYTE-IDENTICAL to before: instant fill at the decision bar's close. `BacktestReplayAdapter`
+  is untouched — P0.3 is tape-only per the plan (`BacktestReplayAdapter` has no finer-than-decision-TF
+  bars to honestly queue against).
+
+### Known gap (intentionally out of scope here)
+`HonestFills` is only settable via `BacktestConfig.CustomParams` at the engine/orchestrator layer — there
+is no REST request DTO field or Angular UI checkbox yet. Adding one is P1.4-shaped work (UI guardrails);
+P0 stayed scoped to engine correctness. The next agent touching the new-backtest UI should wire it then.
+
+### Gate evidence
+- 5 new unit tests (`TapeReplayHonestFillsTests.cs`): queues instead of filling at submit; fills at the
+  next fine bar's open with the correct directional spread (long +spread, short raw); `HonestFills=false`
+  preserves the exact old instant-fill behavior (A/B, both paths asserted against the same fixture);
+  a pending order on the last bar of the run still fills at `DisconnectAsync` (the flush trap the plan
+  itself warned about — implemented alongside the queue, then confirmed by this test, rather than written
+  test-first; the queue/flush pairing was designed as one unit since an unflushed queue is an obvious
+  trade-count leak, not a subtle case worth discovering via a failing test first).
+- Unit: 347/347 passed (up from 342), 6 skipped.
+- Integration: 94/94 passed.
+- Fast Simulation suite (golden/determinism, `RequiresCTrader!=true`): 120/120 passed, byte-identical
+  (4m18s) — expected, since `HonestFills` defaults ON but the existing golden fixtures don't happen to run
+  the tape venue in dual-resolution mode with a distinguishing M1 fixture; nothing to re-baseline.
 
 ---
 

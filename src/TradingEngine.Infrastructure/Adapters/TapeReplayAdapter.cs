@@ -53,6 +53,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
     private readonly Dictionary<Guid, OpenTrade> _openTrades = new();
     private readonly Dictionary<Guid, PendingLimit> _pendingLimits = new();
+    private readonly Dictionary<Guid, PendingMarketOrder> _pendingMarketOrders = new();
+    private readonly bool _honestFills;
     private decimal _balance;
     private decimal _lastClose;
     private Task _feedTask = Task.CompletedTask;
@@ -89,6 +91,17 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         public int BarsRemaining { get; set; }
     }
 
+    // P0.3 (D4): a market order queued for honest-fill timing — fills at the NEXT fine bar's open
+    // instead of the current decision bar's close (the old behavior filled optimistically at the
+    // signal bar's own close, before the bar it triggered on had even finished forming).
+    private sealed class PendingMarketOrder
+    {
+        public required TradeDirection Direction { get; init; }
+        public required decimal Lots { get; init; }
+        public required Price StopLoss { get; init; }
+        public Price? TakeProfit { get; init; }
+    }
+
     public bool IsConnected { get; private set; }
     public ChannelReader<Tick> TickStream => _tickChannel.Reader;
     public ChannelReader<Bar> BarStream => _barChannel.Reader;
@@ -114,7 +127,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         decimal initialBalance,
         ISymbolInfoRegistry symbolRegistry,
         Func<string, string, decimal> crossRateProvider,
-        ILogger<TapeReplayAdapter> logger)
+        ILogger<TapeReplayAdapter> logger,
+        bool honestFills = true)
     {
         _store = store;
         _symbol = symbol;
@@ -127,6 +141,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         _symbolRegistry = symbolRegistry;
         _crossRateProvider = crossRateProvider;
         _logger = logger;
+        _honestFills = honestFills;
         _decisionInterval = decisionTf.ToTimeSpan();
         _exitInterval = exitTf.ToTimeSpan();
     }
@@ -225,6 +240,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             if (fine.OpenTimeUtc < decisionBar.OpenTimeUtc) continue;
             _lastClose = fine.Close;
             BrokerTimeUtc = fine.OpenTimeUtc + _exitInterval;
+            ProcessPendingMarketOrders(fine);
             ProcessPendingLimits(fine, decrementExpiry: true);
             ProcessSlTpHits(fine);
             var floatingEquity = _balance + ComputeFloatingPnL(fine.Close);
@@ -238,6 +254,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
     public Task DisconnectAsync(CancellationToken ct)
     {
+        FlushPendingMarketOrders();
         IsConnected = false;
         _feedCts?.Cancel();
         _barChannel.Writer.TryComplete();
@@ -270,11 +287,63 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             return Task.FromResult(orderId);
         }
 
+        // P0.3 (D4): when finer (M1) exit bars are available, a market order queues and fills at the
+        // NEXT fine bar's open instead of filling instantly at the current decision bar's close — the
+        // old behavior let a signal fill at the very close of the bar that produced it, before that bar
+        // (or any subsequent one) had actually happened yet. HonestFills=false preserves the old
+        // behavior for A/B comparison. Read once at construction, not branched per-bar.
+        if (_honestFills && _exitBars.Count > 0)
+        {
+            _pendingMarketOrders[orderId] = new PendingMarketOrder
+            {
+                Direction = request.Direction,
+                Lots = request.Lots,
+                StopLoss = sl,
+                TakeProfit = tp,
+            };
+            return Task.FromResult(orderId);
+        }
+
         var midPrice = _lastClose > 0 ? _lastClose : 1m;
         var spread = GetSpread();
         var fillPrice = request.Direction == TradeDirection.Long ? SpreadConvention.AskPrice(midPrice, spread) : midPrice;
         FillEntry(orderId, request.Direction, fillPrice, request.Lots, sl, tp);
         return Task.FromResult(orderId);
+    }
+
+    // P0.3: fills queued market orders at the fine bar's OPEN (± spread per side), same directional
+    // convention as every other fill path (SpreadConvention).
+    private void ProcessPendingMarketOrders(Bar fineBar)
+    {
+        if (_pendingMarketOrders.Count == 0) return;
+
+        var spread = GetSpread();
+        foreach (var (orderId, order) in _pendingMarketOrders.ToList())
+        {
+            _pendingMarketOrders.Remove(orderId);
+            var fillPrice = order.Direction == TradeDirection.Long
+                ? SpreadConvention.AskPrice(fineBar.Open, spread)
+                : fineBar.Open;
+            FillEntry(orderId, order.Direction, fillPrice, order.Lots, order.StopLoss, order.TakeProfit);
+        }
+    }
+
+    // Trap (plan P0.3): an order queued on the LAST fine bar of the run must still fill, or trade counts
+    // silently differ from the HonestFills=false baseline. Flush at disconnect using the last known close.
+    private void FlushPendingMarketOrders()
+    {
+        if (_pendingMarketOrders.Count == 0) return;
+
+        var spread = GetSpread();
+        var mid = _lastClose > 0 ? _lastClose : 1m;
+        foreach (var (orderId, order) in _pendingMarketOrders.ToList())
+        {
+            _pendingMarketOrders.Remove(orderId);
+            var fillPrice = order.Direction == TradeDirection.Long
+                ? SpreadConvention.AskPrice(mid, spread)
+                : mid;
+            FillEntry(orderId, order.Direction, fillPrice, order.Lots, order.StopLoss, order.TakeProfit);
+        }
     }
 
     private void EmitExecutionEvent(ExecutionEvent evt)
@@ -528,6 +597,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         _executionChannel.Writer.TryComplete();
         _openTrades.Clear();
         _pendingLimits.Clear();
+        _pendingMarketOrders.Clear();
         try { await _feedTask; } catch (OperationCanceledException) { }
         _feedCts?.Dispose();
     }
