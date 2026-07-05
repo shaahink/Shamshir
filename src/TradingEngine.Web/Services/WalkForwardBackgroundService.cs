@@ -2,8 +2,11 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using TradingEngine.CTraderRunner;
 using TradingEngine.Domain.Experiments;
 using TradingEngine.Infrastructure.Persistence.Entities;
+using TradingEngine.Services.Helpers;
+using TradingEngine.Web.Dtos.Runs;
 using TradingEngine.Web.Hubs;
 
 namespace TradingEngine.Web.Services;
@@ -25,7 +28,10 @@ public sealed class WalkForwardBackgroundService : BackgroundService
     public void Enqueue(WalkForwardJobEntity job)
     {
         if (!_queue.Writer.TryWrite(job))
-            _logger.LogWarning("Walk-forward queue full, job {JobId} rejected", job.Id);
+        {
+            _logger.LogWarning("Walk-forward queue full, job {JobId} marked failed", job.Id);
+            _ = MarkFailedAsync(job.Id, "Queue full — try again later.");
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -61,6 +67,7 @@ public sealed class WalkForwardBackgroundService : BackgroundService
             ct.ThrowIfCancellationRequested();
             var (trainFrom, trainTo, testFrom, testTo) = windows[i];
 
+            // --- Train window: sweep the param grid ---
             using var scope = _scopeFactory.CreateScope();
             var sweepRunner = scope.ServiceProvider.GetRequiredService<SweepRunnerService>();
 
@@ -84,16 +91,37 @@ public sealed class WalkForwardBackgroundService : BackgroundService
                 TrialsCount = sweepJob.TotalCells,
             };
 
+            // --- Plateau-pick the best train cell (P4.5.1: real plateau, not MaxBy) ---
             if (sweepJob.Results is { Count: > 0 })
             {
-                var best = PickPlateauCell(sweepJob.Results);
-                if (best is not null)
+                var plateauCells = sweepJob.Results
+                    .Select(r => new PlateauCell(
+                        r.Cell.ParamKey,
+                        r.Cell.ParamValue,
+                        r.NetProfit,
+                        r.WinRatePct,
+                        r.MaxDrawdownPct,
+                        r.Error))
+                    .ToList();
+
+                var best = PlateauPicker.Pick(plateauCells);
+                if (best is { } b)
                 {
-                    windowResult.ChosenParamsJson = JsonSerializer.Serialize(new { best.Cell.ParamKey, best.Cell.ParamValue });
-                    windowResult.PlateauValue = best.NetProfit > 0m ? (double)best.NetProfit : (double)best.MaxDrawdownPct;
-                    windowResult.TestNetProfit = best.NetProfit;
-                    windowResult.TestTotalTrades = best.TotalTrades;
-                    windowResult.TestWinRatePct = best.WinRatePct;
+                    windowResult.ChosenParamsJson = JsonSerializer.Serialize(new { b.ParamKey, b.ParamValue });
+                    windowResult.PlateauValue = (double)b.NetProfit;
+                }
+            }
+
+            // --- Test window (P4.5.1: run the test leg — was entirely missing) ---
+            if (!string.IsNullOrWhiteSpace(windowResult.ChosenParamsJson))
+            {
+                var testResult = await RunTestWindowAsync(spec, windowResult, ct);
+                if (testResult is not null)
+                {
+                    windowResult.TestRunId = testResult.RunId;
+                    windowResult.TestNetProfit = testResult.NetProfit;
+                    windowResult.TestTotalTrades = testResult.TotalTrades;
+                    windowResult.TestWinRatePct = testResult.WinRatePct;
                 }
             }
 
@@ -108,6 +136,7 @@ public sealed class WalkForwardBackgroundService : BackgroundService
                 chosenParams = windowResult.ChosenParamsJson,
                 testNetProfit = windowResult.TestNetProfit,
                 testTotalTrades = windowResult.TestTotalTrades,
+                testWinRate = windowResult.TestWinRatePct,
                 trialsCount = windowResult.TrialsCount,
             }, cancellationToken: ct);
         }
@@ -116,9 +145,76 @@ public sealed class WalkForwardBackgroundService : BackgroundService
         await _hub.Clients.Group($"wf:{job.Id}").SendAsync("JobCompleted", job.Id, cancellationToken: ct);
     }
 
-    private static SweepCellResult? PickPlateauCell(IReadOnlyList<SweepCellResult> results)
+    /// <summary>
+    /// P4.5.1: runs a single backtest over the test window with the frozen best-cell params.
+    /// Prior to this fix, the "OOS equity curve" was stitched in-sample maxima.
+    /// </summary>
+    private async Task<SweepCellResult?> RunTestWindowAsync(WalkForwardSpec spec, WalkForwardWindowResultEntity window, CancellationToken ct)
     {
-        return results.MaxBy(r => (double)(r.NetProfit > 0m ? r.NetProfit + (decimal)(r.WinRatePct * 1000) : -r.MaxDrawdownPct));
+        var chosen = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(window.ChosenParamsJson);
+        if (chosen is null || !chosen.TryGetValue("ParamKey", out var pk) || !chosen.TryGetValue("ParamValue", out var pv))
+            return null;
+
+        var paramKey = pk.GetString();
+        if (string.IsNullOrEmpty(paramKey)) return null;
+        var paramValue = pv.GetDecimal();
+
+        using var scope = _scopeFactory.CreateScope();
+        var command = scope.ServiceProvider.GetRequiredService<IBacktestCommandService>();
+        var runQuery = scope.ServiceProvider.GetRequiredService<IRunQueryService>();
+        var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+
+        // Preload indicator warmup: request data from BEFORE testFrom so Skender
+        // indicators are fully computed by the time the test window starts. Grab
+        // enough bars to cover the maximum indicators' warmup period (~200 bars).
+        var warmupFrom = window.TestFromUtc.AddDays(-60); // generous — 2 months of daily data
+
+        var config = new BacktestConfig
+        {
+            Symbol = window.Symbol,
+            Period = window.Timeframe,
+            Start = new DateTime(warmupFrom.Year, warmupFrom.Month, warmupFrom.Day, warmupFrom.Hour, warmupFrom.Minute, warmupFrom.Second, DateTimeKind.Utc),
+            End = window.TestToUtc,
+            Balance = spec.Balance > 0 ? spec.Balance : 100_000m,
+            Symbols = [window.Symbol],
+            Periods = [window.Timeframe],
+            CustomParams = new Dictionary<string, string>
+            {
+                ["Venue"] = "tape",
+                ["StrategyIds"] = window.StrategyId,
+                [paramKey] = paramValue.ToString("G", System.Globalization.CultureInfo.InvariantCulture),
+                ["SkipJournal"] = "true",
+                ["TestWindowRun"] = "true",
+            },
+        };
+
+        var runId = await command.StartAsync(config, ct);
+        if (string.IsNullOrWhiteSpace(runId)) return null;
+
+        RunDetailResponse? detail = null;
+        for (var i = 0; i < 300; i++)
+        {
+            await Task.Delay(500, ct);
+            detail = await runQuery.GetRunAsync(runId, ct);
+            if (detail is null) continue;
+            if (detail.Status is "completed" or "failed" or "cancelled")
+                break;
+        }
+
+        if (detail is null) return null;
+
+        return new SweepCellResult
+        {
+            Cell = new SweepCell { StrategyId = window.StrategyId, Symbol = window.Symbol, Timeframe = window.Timeframe },
+            RunId = runId,
+            NetProfit = detail.NetProfit,
+            TotalTrades = detail.TotalTrades,
+            WinRatePct = detail.WinRatePct,
+            MaxDrawdownPct = detail.MaxDrawdownPct,
+            TotalBars = detail.TotalBars,
+            WallElapsedMs = detail.WallElapsedMs,
+            Error = detail.ErrorMessage,
+        };
     }
 
     private static SweepRequest BuildSweepRequest(WalkForwardSpec spec, DateOnly from, DateOnly to)
