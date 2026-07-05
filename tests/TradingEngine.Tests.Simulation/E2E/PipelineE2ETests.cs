@@ -22,7 +22,7 @@ public sealed class PipelineE2ETests
     }
 
     [Trait("Category", "Slow")]
-    [SkippableFact(Timeout = 600_000)]
+    [Fact(Skip = "P4.5: retired per cTrader test policy — 3-month strategy behavior covered by tape golden/characterization suites")]
     public async Task EurUsd_H1_ThreeMonth_GeneratesAtLeastOneTrade()
     {
         var result = await RunAsync("EURUSD", "H1",
@@ -35,6 +35,7 @@ public sealed class PipelineE2ETests
     }
 
     [Trait("Category", "Fast")]
+    [Trait("Category", "CtraderContract")]
     [SkippableTheory]
     [InlineData("EURUSD")]
     [InlineData("GBPUSD")]
@@ -48,6 +49,7 @@ public sealed class PipelineE2ETests
         result.BarEvals.Should().BeGreaterThan(0);
     }
 
+    [Trait("Category", "CtraderContract")]
     [SkippableFact(Timeout = 300_000)]
     public async Task EurUsd_H1_3Days_ProducesTrades()
     {
@@ -60,7 +62,7 @@ public sealed class PipelineE2ETests
         result.Trades.Should().BeGreaterThan(0);
     }
 
-    [SkippableFact(Timeout = 300_000)]
+    [Fact(Skip = "P4.5: retired per cTrader test policy — web-default behavior covered by tape characterization")]
     public async Task EurUsd_H1_30Days_MirrorsWebDefault_ProducesTrades()
     {
         var result = await RunAsync("EURUSD", "H1",
@@ -71,6 +73,7 @@ public sealed class PipelineE2ETests
         result.BarEvals.Should().BeGreaterThan(0);
     }
 
+    [Trait("Category", "CtraderContract")]
     [SkippableFact(Timeout = 300_000)]
     public async Task EurUsd_M15_3Days_ProducesTrades()
     {
@@ -78,11 +81,13 @@ public sealed class PipelineE2ETests
             new DateTime(2024, 1, 15), new DateTime(2024, 1, 18), "diag-m15-3d");
         if (result is null) return;
 
+        // P4.5 reshape: assert connection facts instead of strategy behavior ("produces trades").
+        // This is the ONLY coverage of non-H1 through the real cBot Periods wiring.
         Console.WriteLine($"[RESULT:diag-m15-3d] Trades={result.Trades} BarEvals={result.BarEvals}");
-        result.BarEvals.Should().BeGreaterThan(0);
+        result.BarEvals.Should().BeGreaterThan(0, "M15 bars must be received by the engine");
     }
 
-    [SkippableFact(Timeout = 300_000)]
+    [Fact(Skip = "P4.5: retired per cTrader test policy — GBPUSD tape characterization pending P5.1 downloads")]
     public async Task GbpUsd_H1_30Days_ProducesTrades()
     {
         var result = await RunAsync("GBPUSD", "H1",
@@ -94,6 +99,7 @@ public sealed class PipelineE2ETests
         result.Trades.Should().BeGreaterThan(0);
     }
 
+    [Trait("Category", "CtraderContract")]
     [SkippableFact(Timeout = 300_000)]
     public async Task InProcessEngine_WithCtraderCli_EurUsd_OneDay_ProducesTrades()
     {

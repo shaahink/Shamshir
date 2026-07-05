@@ -119,6 +119,12 @@ public sealed class ExitLabController : ControllerBase
     [HttpPost("calibrations")]
     public async Task<IActionResult> SaveCalibration(SaveCalibrationRequest req, CancellationToken ct)
     {
+        // P4.5.4: normalise the timeframe string so "h1" / "H1" / "h1 " all map to the enum's ToString()
+        // (which is always "H1"). The lookup uses e.EntryTimeframe == timeframe.ToString() case-sensitively.
+        if (!Enum.TryParse<Timeframe>(req.EntryTimeframe, ignoreCase: true, out var tf))
+            return BadRequest(new { error = $"Invalid timeframe '{req.EntryTimeframe}'. Must be one of: {string.Join(", ", Enum.GetNames<Timeframe>())}" });
+
+        var normTf = tf.ToString();
         var regime = string.IsNullOrEmpty(req.Regime) ? null : req.Regime;
 
         // Upsert: remove any existing row with the same key, then insert.
@@ -127,7 +133,7 @@ public sealed class ExitLabController : ControllerBase
             var existingNull = await _db.ExitCalibrations
                 .Where(e => e.StrategyId == req.StrategyId
                     && e.Symbol == req.Symbol
-                    && e.EntryTimeframe == req.EntryTimeframe
+                    && e.EntryTimeframe == normTf
                     && e.Regime == null)
                 .ToListAsync(ct);
             _db.ExitCalibrations.RemoveRange(existingNull);
@@ -137,7 +143,7 @@ public sealed class ExitLabController : ControllerBase
             var existing = await _db.ExitCalibrations
                 .Where(e => e.StrategyId == req.StrategyId
                     && e.Symbol == req.Symbol
-                    && e.EntryTimeframe == req.EntryTimeframe
+                    && e.EntryTimeframe == normTf
                     && e.Regime == regime)
                 .ToListAsync(ct);
             _db.ExitCalibrations.RemoveRange(existing);
@@ -148,7 +154,7 @@ public sealed class ExitLabController : ControllerBase
             Id = Guid.NewGuid(),
             StrategyId = req.StrategyId,
             Symbol = req.Symbol,
-            EntryTimeframe = req.EntryTimeframe,
+            EntryTimeframe = normTf,
             Regime = regime,
             SlAtrMultiple = req.Rule.SlAtrMultiple,
             TpRrMultiple = req.Rule.TpRrMultiple,
@@ -171,6 +177,14 @@ public sealed class ExitLabController : ControllerBase
         return Ok(new { saved = true });
     }
 
+    /// <summary>P4.5.7 — fetch all excursion paths for a run (replaces hand-typed GUID-pair flow).</summary>
+    [HttpGet("runs/{runId}/excursions")]
+    public async Task<IActionResult> GetRunExcursions(string runId, CancellationToken ct)
+    {
+        var paths = await _excursions.GetByRunAsync(runId, ct);
+        return Ok(new { runId, count = paths.Count, paths });
+    }
+
     /// <summary>P3.4 — list calibrations, optionally filtered by strategy/symbol.</summary>
     [HttpGet("calibrations")]
     public async Task<IActionResult> ListCalibrations(
@@ -190,19 +204,23 @@ public sealed class ExitLabController : ControllerBase
     {
         if (rValues.Count == 0) return 0.0;
 
-        var riskPct = 0.005; // 0.5% risk per trade — standard calibration assumption
-        var dailyPnL = rValues.Select(r => (decimal)(r * riskPct * 100_000)).ToList();
+        // P4.5.5: fresh-challenge framing — start from initial balance, full 30-day challenge.
+        // Per-trade R values are converted to dollar PnL at 0.5% risk on 100k and sampled as
+        // daily PnL (one trade = one day for simplicity). The old code started from an equity
+        // that already included every trade (mid-challenge) with DaysRemaining = 30 - tradeCount
+        // (unit nonsense: trades≠days).
+        var riskPct = 0.005;
         var initialBalance = 100_000m;
-        var currentEquity = initialBalance + dailyPnL.Sum();
+        var dailyPnL = rValues.Select(r => (decimal)(r * riskPct) * initialBalance).ToList();
 
         var input = new PassProbabilityInput
         {
-            CurrentEquity = currentEquity,
+            CurrentEquity = initialBalance,
             InitialBalance = initialBalance,
             ProfitTargetPercent = 0.10,
             MaxDailyLossPercent = 0.05,
             MaxTotalLossPercent = 0.10,
-            DaysRemaining = Math.Max(1, 30 - dailyPnL.Count),
+            DaysRemaining = 30,
             HistoricalDailyPnL = dailyPnL,
             MonteCarloRuns = 2_000,
             DailyDdBase = DailyDdBase.InitialBalance,

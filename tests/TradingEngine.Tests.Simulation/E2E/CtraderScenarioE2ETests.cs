@@ -4,6 +4,7 @@ namespace TradingEngine.Tests.Simulation.E2E;
 
 [Trait("Category", "E2E")]
 [Trait("Category", "Slow")]
+[Trait("Category", "CtraderContract")]
 [Trait("RequiresCTrader", "true")]
 [Collection("CtraderSerial")]
 public sealed class CtraderScenarioE2ETests

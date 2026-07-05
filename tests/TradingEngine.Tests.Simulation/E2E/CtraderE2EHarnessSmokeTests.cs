@@ -7,6 +7,7 @@ namespace TradingEngine.Tests.Simulation.E2E;
 
 [Trait("Category", "E2E")]
 [Trait("Category", "Slow")]
+[Trait("Category", "CtraderContract")]
 [Trait("RequiresCTrader", "true")]
 [Collection("CtraderSerial")]
 public sealed class CtraderE2EHarnessSmokeTests
@@ -14,7 +15,7 @@ public sealed class CtraderE2EHarnessSmokeTests
     private static bool HasCredentials =>
         !string.IsNullOrEmpty(CtraderTestHelpers.ResolveCredential("CtId", "CTrader__CtId"));
 
-    [SkippableFact(Timeout = 300_000)]
+    [Fact(Skip = "P4.5: retired per cTrader test policy — UsingRunAsync covers the same harness path")]
     public async Task EurUsd_H1_3Days_ProducesTrades_UsingPhasedHarness()
     {
         // iter-38 CT-1: genuinely SKIP when the live cTrader env is absent (was a misleading PASS).

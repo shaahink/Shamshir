@@ -25,7 +25,7 @@ public sealed class DiscoveryAuditTests
             .UseSqlite($"Data Source={dbPath}")
             .Options);
 
-    [SkippableFact(Timeout = 600_000)]
+    [SkippableFact(Timeout = 600_000, Skip = "P4.5: retired per cTrader test policy — strategy audit covered by tape run + Journal assertions")]
     public async Task EurUsd_H1_1Month_MeanReversion_FullAudit()
     {
         Skip.IfNot(HasCredentials, "No cTrader credentials — see .claude/skills/ctrader-e2e (CT-1).");

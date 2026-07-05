@@ -135,6 +135,29 @@ public sealed class StrategyRegistry
                     };
                 }
 
+                // P4.5.4: if a calibration row exists for this (strategy, symbol, TF), override SL/TP
+                // options with the calibrated values. This is the bind-time consumption path that was
+                // missing — previously "Save Calibration" was a write-only table.
+                var calLookup = services.GetService<IExitCalibrationLookup>();
+                if (calLookup is not null)
+                {
+                    var cal = calLookup.Get(id, entry.Symbol, tf, null);
+                    if (cal is not null)
+                    {
+                        var pm = boundEntry.PositionManagement ?? new();
+                        boundEntry = boundEntry with
+                        {
+                            PositionManagement = pm with
+                            {
+                                StopLoss = pm.StopLoss with { Method = "AtrMultiple", AtrMultiple = cal.SlAtrMultiple },
+                                TakeProfit = cal.TpRrMultiple is { } tpRr
+                                    ? pm.TakeProfit with { Method = "RrMultiple", RrMultiple = tpRr }
+                                    : pm.TakeProfit with { Method = "None" },
+                            },
+                        };
+                    }
+                }
+
                 if (_factories.TryGetValue(id, out var factory))
                 {
                     var strategy = factory(boundEntry, services);

@@ -7,6 +7,7 @@ using TradingEngine.Tests.Simulation.Harness;
 namespace TradingEngine.Tests.Simulation.Pipeline;
 
 [Trait("Category", "NetMQ")]
+[Trait("Category", "CtraderContract")]
 [Trait("RequiresCTrader", "true")]
 public sealed class NetMQBridgeTest
 {

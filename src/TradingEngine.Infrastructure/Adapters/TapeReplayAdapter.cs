@@ -521,6 +521,20 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 path = [];
                 _excursionPaths[orderId] = path;
             }
+
+            // P4.5.7: cap excursion path at ~10k points with 2× downsample.
+            // A months-open exploration trade on M1 grows unbounded otherwise.
+            const int PathCap = 10_000;
+            if (path.Count >= PathCap)
+            {
+                // Keep every 2nd point and replace the list in-place.
+                var downsampled = new List<ExcursionPoint>(PathCap / 2);
+                for (var j = 0; j < path.Count; j += 2)
+                    downsampled.Add(path[j]);
+                path.Clear();
+                path.AddRange(downsampled);
+            }
+
             path.Add(point);
         }
     }

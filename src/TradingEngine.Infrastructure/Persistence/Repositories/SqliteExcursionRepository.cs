@@ -21,4 +21,14 @@ public sealed class SqliteExcursionRepository(TradingDbContext db) : IExcursionR
             .FirstOrDefaultAsync(ct);
         return entity?.PathJson;
     }
+
+    public async Task<IReadOnlyList<(string RunId, Guid PositionId, string PathJson)>> GetByRunAsync(string runId, CancellationToken ct)
+    {
+        var entities = await db.TradeExcursions
+            .Where(e => e.RunId == runId)
+            .ToListAsync(ct);
+        return entities
+            .Select(e => (e.RunId, e.PositionId, e.PathJson))
+            .ToList();
+    }
 }

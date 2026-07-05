@@ -3,7 +3,7 @@
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
 **Branch:** `iter/quant-model--p1-tf-agnostic` (active) / `develop` (authoritative, merged)
 **Created:** 2026-06-18
-**Updated:** 2026-07-05 (P3.2 Exploration mode + P3.3 ExitReplayer delivered)
+**Updated:** 2026-07-05 (P4.5 delivery — 3 sub-phases done + cTrader test triage)
 
 ---
 
@@ -23,14 +23,15 @@ At the start of every session:
 10. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology
 11. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
 12. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
+13. **`docs/CTRADER-TEST-POLICY.md`** — cTrader test triage: which tests stay, which move to tape
 
 ## Build and test
 
 ```powershell
 dotnet build                                 # Full build
-dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (~347 pass)
+dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (~459 pass)
 dotnet test tests/TradingEngine.Tests.Simulation  # Simulation/FTMO tests
-dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (94)
+dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (100)
 ```
 
 ## Architecture at a glance
@@ -65,33 +66,26 @@ tests/
 
 ## Current state (iter/quant-model--p1-tf-agnostic)
 
-- P0 (truth repair) delivered: R-vs-initial-stop, full-spread convention, honest entry timing (3 commits)
-- P1 (TF-agnostic strategy bank) delivered: instance-per-row, de-hardcoded H1 bar lookups in all 14 strategies, proposal TF metadata, aux-TF feed for mtf-trend, HonestFills checkbox (4 commits)
-- P1.5 (static-review fixes) delivered: indicator *requests* now bound to EntryTimeframe in all 9 strategies (bar lookups alone weren't enough), aux-TF (H4) bars revealed point-in-time via a cursor instead of bulk-loaded (fixed a lookahead-bias bug), run-plan TF parse failures now throw instead of silently binding H1
-- P2.1 (indicator series API) delivered: IndicatorSnapshotService keeps a capped ring buffer (64, latest last) per sig key via one write point; MarketContext.IndicatorSeries carries it to strategies. Ported macd-momentum/super-trend/mtf-trend/bb-squeeze off private cadence-fragile fields onto the series (deleted `_lastHist`/`_prevDirection`/`_prevRsi`/`_bbWidthQueue`)
-- P2.2 (rsi-divergence rewrite) delivered: deleted the P0-era tautology; new `PivotFinder` (pure fractal swing detector) + real pivot-based divergence (price lower-low/RSI higher-low or mirror, confirmed by a breakout close). `DivergenceLookback` grew 10→50 (a real double-bottom/top span is dozens of bars, not a handful)
-- P2.3 (edge semantics) delivered: bb-squeeze latch now expires after BbPeriod bars unarmed (D8); trend-breakout single-fires on a false→true rolling-window transition instead of every bar of a continuing trend, plus a CooldownBars gate (D5); ema-alignment converted from a state CONDITION to a real crossover+first-pullback-touch edge, fully derived from bars+series with no private state (D5)
-- P2.4 (time-flatten) delivered: `IStrategyConfig.FlattenAtUtc` (default interface member) + `SessionBreakoutConfig` wiring its previously-dead `FlattenTimeUtc`; new `KernelTimeFlattenEvaluator` (mirrors `KernelTrailingEvaluator`) closes a strategy's open positions once the bar's time-of-day reaches it, reusing the existing-but-never-called `CloseRequested` event/reducer path (no new kernel event needed)
-- P2.5 (thesis metadata) delivered: `thesis`/`expectedTradesPerWeek`/`expectedHoldBars` on `StrategyConfigEntry`/`StrategyConfigEntity` (EF migration M35, persisted+editable, not a hardcoded map), all 9 `config/strategies/*.json` seeded with a real falsifiable thesis, surfaced in the Strategies API + Angular UI. Drive-by fixes: `rsi-divergence.json`'s stale `divergenceLookback: 10` (silently overrode P2.2's new default of 50) and `StrategyMetadataMap`'s dead `"bollinger-squeeze"` key (real id is `"bb-squeeze"`)
-- P2.6 (units doctrine, D9) delivered: 5 raw-pip config fields (`offsetPips`, `limitOffsetPips`, `stopLoss.maxPips`, `RiskProfile.MaxSlPips`, `maxSlippagePips`) each gain a nullable normalized companion (ATR-multiple/ATR-fraction/spread-multiple); new pure `UnitConversion` helper resolves a companion into the SAME existing raw-pip field at exactly 2 injection points (`StrategyRegistry.CreateStrategies` for per-instance PositionManagement/OrderEntry, `BarEvaluator`'s per-proposal RiskProfile resolve) — zero changes to SlTpResolver/PreTradeGate/EntryPlanner/PositionManager. New `ConfigLinter` fails startup (wired into `StrategyConfigSeeder.SeedAsync`, unconditional) and a `dotnet run --project src/TradingEngine.Host -- lint-config` CLI verb on any raw-pip JSON key set without its companion. All 13 configs (9 strategies + 4 risk profiles) migrated using the EURUSD-H1 reference scale — numerically a no-op for EURUSD H1 but now correctly scales for other symbols (e.g. `standard` profile's flat 100-pip SL cap no longer silently applies to XAUUSD — resolves to 3000 pips there instead)
-- P2.7 (stop orders) delivered — **P2 is now fully done.** `OrderType.Stop` end-to-end: found+fixed a kernel-path plumbing bug (`SubmitOrder` effect had no `OrderType` field, so a Stop proposal silently collapsed to Market/Limit before reaching the venue — same bug class this phase exists to close) plus a drive-by fix in the legacy live path (`PositionTracker.TrackOrder` hardcoded `OrderType.Market`). Both replay venues gained mirror-image `_pendingStops` fill logic (buy stop triggers on an UP breakout, sell stop on a DOWN breakout — opposite of a limit — with the same gap-through-at-open rule already used for SL gap-through). `CTraderBrokerAdapter`/cBot gained real `Stop` wire support (`PlaceStopOrder`). New `EntryPlanner.PlanStopConfirm` (`OrderEntryMethod.StopConfirm`): buy stop at signal-bar-High + spread-multiple buffer, sell mirrors on the Low. Deliberately did NOT switch any shipped strategy config to `StopConfirm` — that's a tuning decision, not part of the plumbing.
-- P3.2 (exploration mode) + P3.3 (ExitReplayer) delivered: one-click preset (ATR×4 SL, no TP, governor off, RecordExcursions=true) wired through UI→API→orchestrator→strategy config; pure ExitReplayer + grid evaluator in `TradingEngine.Services/ExitLab/` (11 new tests).
-- Cross-symbol state pollution fixed (per-row instances instead of singletons)
-- Tape venue: correct full-spread convention via shared `SpreadConvention` helper, both adapters unified
-- Honest entry fills: tape market entries queue at signal bar, fill at next M1 bar open (toggleable)
-- Non-H1 strategy runs are now actually verified end-to-end (M15 tape run produces proposals) — this is the claim P1 made but hadn't tested
-- All gates green: Unit 434/0/6, Integration 100/0, fast Simulation 127/0 (~11s), Architecture 6/8 (2 pre-existing, undisturbed)
+- P0–P2 (all phases) delivered and gated
+- P3.1 (excursion recorder), P3.2 (exploration mode), P3.3 (ExitReplayer*), P3.4 (calibration tables*), P3.5 (Exit Lab UI*) delivered — * = P4.5 fixed fidelity gaps
+- P4.1–P4.4 (research metrics) delivered but P4.5 fixed the walk-forward harness + scoreboard + P(pass)
+- **P4.5 (static-review fixes): 7 sub-phases** — P4.5.2/.3/.1/.4/.5/.6/.7. P4.5.2/.3/.1 DONE (Exit Lab JSON mismatch, ExitReplayer 4 fixes, walk-forward test leg + PlateauPicker). P4.5.4/.5/.6/.7 + cTrader test triage DONE (calibration wiring, P(pass) framing, scoreboard frequency+filter, path cap+fetch-by-run, cTrader retire+keep tags).
+- **All gates green:** Unit 459/0/6, Integration 100/0, Simulation 127/0 byte-identical
+- **Gate filter:** `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ&Category!=CtraderContract"`
+- cTrader-backed tests are now triaged: keep-set tagged `Category=CtraderContract`, 5 tests retired (skipped). cTrader tests NEVER run as phase gates for engine/research/UI work.
 - Parent branch `iter/quant-model` has P0 (3 gated commits pushed to origin)
-- **Gate filter note (owner request, 2026-07-05):** cTrader E2E tests are slow/flaky here even with real credentials present (confirmed — they run for real, not skip, and cost 10-25+ min under contention). Gate each phase with `--filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ"` (NOT `RequiresCTrader!=true` alone — `PipelineE2ETests` has no `RequiresCTrader` trait, only `Category=E2E/Slow`). Run the full suite once at the end of P3 (not P2 — P2's box is effectively already checked, see above), not per-phase.
 
 ## What's next
 
 See `docs/iterations/iter-quant-model/PLAN.md` §3 for the full iteration spec.
-**Next phase: P3.2** — Exploration mode: a named one-click run preset (SL=ATR×4, TP=none, BE/trail/partials
-OFF, governor OFF, `RecordExcursions=true`). All the underlying toggles already exist (including
-`RecordExcursions` as of P3.1) — this phase is just wiring a preset in the UI + orchestrator.
-P1.5.4 (MISSING_DATA verdict) is folded into P2's verdict-funnel work (still not done — P4/scoreboard-adjacent).
-Uncommitted Angular changes from `iter/data-mgmt` were stashed on this branch (`pre-P1 uncommitted changes from parent branch`).
+**Next phase: P5 — Data + triage (owner-driven program).** Download 7 symbols × {M1,M15,H1,H4}, non-FX
+correctness tests, exploration triage, portfolio assembly. P4.5 is now COMPLETE — P5 is unblocked.
+See PLAN.md §3 P5 + §9.3 for per-phase agent direction.
+
+Carried-forward debts (not P5 blockers, but keep visible):
+- `MISSING_DATA` verdict (P1.5.4) — zero hits repo-wide; deferred to verdict-funnel UI
+- `ReferenceScales` population (P3.4b) — schema exists, table empty; must land inside P5.1 ingest
+- Kernel-path limit orders reach cTrader as Market (P2.7 carry-forward) — investigate in P6 reconcile
 
 ## Rules you must not break
 

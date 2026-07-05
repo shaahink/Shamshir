@@ -38,7 +38,9 @@ public sealed class ScoreboardController : ControllerBase
                 var key = $"{row.StrategyId}|{row.Symbol}|{row.Timeframe}";
                 if (!seen.Add(key)) continue;
 
-                var cellTrades = trades.Where(t => t.RunId == run.RunId && t.StrategyId == row.StrategyId).ToList();
+                var cellTrades = trades.Where(t => t.RunId == run.RunId
+                    && t.StrategyId == row.StrategyId
+                    && t.Symbol == row.Symbol).ToList();   // P4.5.6: filter by symbol+TF (was RunId+StrategyId only)
                 var avgR = cellTrades.Count > 0 ? cellTrades.Average(t => t.RMultiple) : 0.0;
                 var tradesPerWeek = 0.0;
                 if (run.BacktestFrom != default && run.BacktestTo != default)

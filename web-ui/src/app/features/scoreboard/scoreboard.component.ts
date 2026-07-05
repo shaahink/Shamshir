@@ -79,6 +79,8 @@ interface ScoreboardCell {
                         <span class="rounded bg-emerald-900/30 px-2 py-0.5 text-emerald-400">OK</span>
                       } @else if (trafficLevel(c) === 'yellow') {
                         <span class="rounded bg-yellow-900/30 px-2 py-0.5 text-yellow-400">LOW</span>
+                      } @else if (trafficLevel(c) === 'grey') {
+                        <span class="rounded bg-gray-800 px-2 py-0.5 text-gray-500">N/A</span>
                       } @else {
                         <span class="rounded bg-red-900/30 px-2 py-0.5 text-red-400">NONE</span>
                       }
@@ -146,14 +148,17 @@ export class ScoreboardComponent implements OnInit {
     return this.cells();
   }
 
-  trafficLevel(c: ScoreboardCell): 'green' | 'yellow' | 'red' {
-    const needed = c.totalTrades > 0 && c.latestAvgR !== 0
-      ? Math.log(0.05) / Math.log(1 - (c.totalTrades > 0 ? 0.005 * (c.latestAvgR > 0 ? c.latestAvgR : 0.01) : 0.001))
-      : 999;
-    if (isNaN(needed) || !isFinite(needed)) return 'green';
+  trafficLevel(c: ScoreboardCell): 'green' | 'yellow' | 'red' | 'grey' {
+    // P4.5.6: use QUANT-ROADMAP §3.3 arithmetic: neededTrades = target% / (risk% × avgR).
+    // Old formula was `ln(0.05)/ln(1 − risk·avgR)` — off ~30× and NaN→green (wrong).
+    if (c.latestAvgR <= 0 || c.totalTrades === 0) return 'red';
+    const targetPct = 0.10;
+    const riskPct = 0.005;
+    const needed = targetPct / (riskPct * c.latestAvgR);
+    if (!isFinite(needed) || isNaN(needed)) return 'grey';
     const perWeek = c.tradesPerWeek || 0;
-    if (perWeek * 4 >= needed) return 'green';
-    if (perWeek * 12 >= needed) return 'yellow';
+    if (perWeek * 4 >= needed) return 'green';   // 4 weeks = one FTMO challenge
+    if (perWeek * 12 >= needed) return 'yellow';  // 12 weeks = extended
     return 'red';
   }
 

@@ -67,14 +67,18 @@ public sealed class PassProbabilityService
         if (ruleSet is null)
             throw new ArgumentException($"Prop firm rule set '{profile.PropFirmRuleSetId}' not found.");
 
+        // P4.5.5: fresh-challenge framing for research surfaces.
+        // Start from initial balance, full challenge duration — the run's per-day PnL is
+        // a distribution to sample FROM, not a history that gets subtracted from DaysRemaining.
+        // The old code clamped DaysRemaining to 1 for any long completed run, giving P(pass) ≈ 0.
         var input = new PassProbabilityInput
         {
-            CurrentEquity = currentEquity,
+            CurrentEquity = initialBalance,
             InitialBalance = initialBalance,
             ProfitTargetPercent = ruleSet.ProfitTargetPercent,
             MaxDailyLossPercent = ruleSet.MaxDailyLossPercent,
             MaxTotalLossPercent = ruleSet.MaxTotalLossPercent,
-            DaysRemaining = Math.Max(1, daysRemaining - dailyPnL.Count),
+            DaysRemaining = daysRemaining,
             HistoricalDailyPnL = dailyPnL,
             MonteCarloRuns = 10_000,
             DailyDdBase = ruleSet.DailyDdBase,
