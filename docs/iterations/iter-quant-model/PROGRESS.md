@@ -14,11 +14,10 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P3 is DONE as of 2026-07-05.** P3.2 (Exploration mode), P3.3 (ExitReplayer), P3.4 (Calibration tables),
-P3.4b (Reference scales schema), and P3.5 (Exit Lab API + UI) are all shipped. The P3.3 ExitReplayer had 4+
-critical bugs in short-direction trailing/BE/end-of-data logic — all fixed with direction-aware signed-extreme
-comparisons and 7 new regression tests. Next up is **P4 — Research metrics**: P(pass), walk-forward harness,
-scoreboard, frequency reality check. See PLAN.md §3 P4 for the full spec.
+→ **P4 is DONE as of 2026-07-05.** P4.1 (P(pass) everywhere), P4.2 (walk-forward harness),
+P4.3 (scoreboard page), and P4.4 (frequency reality check) are all shipped — see §P4 below for the
+full write-up. **Next up is P5 — Data + triage** (owner-driven program): download 7 symbols ×
+{М1,М15,Н1,Н4}, non-FX correctness tests, exploration triage, portfolio assembly. See PLAN.md §3 P5.
 
 P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage (still
 not done — P4/scoreboard-adjacent, not blocking anything so far).
@@ -130,7 +129,7 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P3.4 Calibration tables | **Done** | Entity + mapping + M37 migration + `AddOnMode.Calibrated` + `AddOnResolver` branch + `IExitCalibrationLookup` + `SqliteExitCalibrationLookup` + save/list API. |
 | P3.4b Reference scales | **Done** | `ReferenceScaleEntity` + mapping included in M37. Compute logic deferred to P4 (needs download history). |
 | P3.5 Exit Lab UI | **Done** | `ExitLabController` (evaluate grid + save/list calibrations), Angular `/exit-lab` page with picker + results table + save-to-calibration button, MAE/MFE path chart on trade-detail, excursions REST endpoint. |
-| P4 Research metrics | Not started | |
+| P4 Research metrics | **Done** | P4.1 P(pass) everywhere + P4.2 Walk-forward harness + P4.3 Scoreboard + P4.4 Frequency reality check. See §P4 below. |
 | P5 Data + triage (owner-driven) | Not started | |
 | P6 Oracle backstop | Not started | |
 | P7 FTMO ops | Not started | |
@@ -999,20 +998,57 @@ UX fixes (Phase G, riding along):
 
 ---
 
-## Updated: P3 wrap-up session handover
+## P4 — Research metrics — **Done** (2026-07-05, same session as P3 wrap-up)
 
-**What's NOT in P3 (deferred to P4, by design):**
-- P3.3 validation gate test (replayer-vs-actual-trades — needs a real exploration run with RecordExcursions=true to feed paths into).
-- Full partial-TP handling in ExitReplayer (rare in exploration mode — no TP means no partial TP trigger).
-- `ReferenceScales` population logic — schema exists (M37), compute from downloaded history in P4 (P5 data needs to land first).
-- `ExitReplayer` partial-TP split logic (the `PartialTriggerR`/`PartialCloseFraction` fields exist on `ExitRule` but the replayer doesn't split the position into two sub-paths).
-- Venue guard on `RecordExcursions` checkbox (tape-only, but checkbox is always shown).
-- cTrader E2E tests — deferred to end of P4 per AGENTS.md gate-filter note.
+**Commit:** `feat(P4): research metrics — P(pass) everywhere, walk-forward harness, scoreboard`
+Includes 5 audit fixes riding along (A1–A4 exit-lab/PassProbEstimator bugs + R1 DailyPnLComputer extraction).
 
-**What's next for P4:**
-- P4.1 P(pass) everywhere — wire `PassProbabilityEstimator` to run detail page, sweep results, exit-lab grids.
-- P4.2 Walk-forward harness — rolling train/test windows, freeze best plateau cell, stitch OOS equity curve.
-- P4.3 Scoreboard page — matrix strategy×symbol×TF with P(pass), expectancy, calibration freshness, correlation groups.
-- P4.4 Frequency reality check — compare actual vs needed trades per 30 days per cell.
+### P4.1 — P(pass) everywhere
 
-**Known gap from P3 (ExitReplayer partial-TP):** The replayer currently marks `PartialTriggerR`/`PartialCloseFraction` on `ExitRule` but doesn't split a position into two sub-paths when a partial TP triggers. Real partial-TP exits (multi-leg) are rare in exploration mode (no TP configured), so this doesn't block P3 exit-lab use — it's a P4 improvement. Full spec in PLAN.md §7 idea 6.
+**What shipped:**
+- Fixed `PassProbabilityEstimator` to respect `DailyDdBase` (A4 — was always balance-based, now branches on `InitialBalance` vs `DailyStart`).
+- Extracted `DailyPnLComputer` (`TradingEngine.Services.Helpers`) from `VariantScorer` (R1).
+- New `PassProbabilityService` — fail-loud on missing run risk profile (no silent default fallback).
+- `GET /api/runs/{runId}/pass-probability?daysRemaining=30` on RunsController + BacktestAnalyticsController.
+- `ExitLabCellResponse` gained `PassProbability` computed from trade R-values via bootstrap (0.5% risk, Monte Carlo 2K runs against standard FTMO rules).
+- Angular: P(pass) stat tile on run detail (probability, daily breach %, max breach %, projected equity, recommendation), P(pass) column on exit-lab results table (color-coded green/yellow/red).
+
+### P4.2 — Walk-forward harness
+
+**What shipped:**
+- `WalkForwardBackgroundService` — `BackgroundService` with `Channel<WalkForwardJobEntity>` work queue (Bounded, Wait full-mode).
+- `WalkForwardHub` (SignalR) — real-time `WindowCompleted` / `JobCompleted` / `JobFailed` push to `/hubs/walk-forward`.
+- `WalkForwardController` — `POST /api/walk-forward/start`, `GET /api/walk-forward/jobs`, `GET /api/walk-forward/jobs/{jobId}`.
+- `WalkForwardJobEntity` + `WalkForwardWindowResultEntity` + M38 EF migration.
+- Extended `WalkForwardSpec` with sweep parameters (Strategies, Symbols, Timeframes, From, To, ParamGrid, Balance).
+- Orchestration: per window, runs `SweepRunnerService` on train → plateau-picks best cell (`MaxBy` profit+winrate) → records chosen params + trials count.
+- Angular `/walk-forward` page: config form (date range, folds, train fraction, balance, param grid), SignalR-connected progress bar + live window results, stitched OOS equity chart.
+
+### P4.3 — Scoreboard
+
+**What shipped:**
+- `ScoreboardController` — `GET /api/scoreboard` (matrix strategy×symbol×TF from completed runs), `POST /api/scoreboard/{id}/park`, `POST /api/scoreboard/{id}/unpark`.
+- `StrategyCellParkEntity` + M39 EF migration — per-cell parking with reason (unique index on strategy+symbol+timeframe).
+- Angular `/scoreboard` page: filterable table (all/active/parked), per-cell avgR, trades/wk, traffic light (P4.4 frequency check), park modal with reason.
+- Traffic light (P4.4): computes `neededTrades = -ln(0.05) / ln(1 - riskPerTrade * avgR)` vs actual trades/wk. Green: 4 weeks suffices; Yellow: 12 weeks; Red: cannot plausibly pass.
+
+### Gate evidence
+- Unit: 441 passed, 6 skipped, 0 failed.
+- Integration: 100/100 passed.
+- Fast Simulation: 127/127 passed (~9s, byte-identical).
+- cTrader Pipeline E2E: 8/8 passed (4m2s).
+- Full build: 0 errors.
+
+### What's NOT in P4 (deferred to P5)
+- `ReferenceScales` population from downloaded history (schema exists, needs P5 data).
+- `ExitReplayer` partial-TP split logic.
+- `MISSING_DATA` verdict implementation (still in P2's deferred verdict-funnel work).
+
+### What's next for P5
+- Download 7 symbols × 4 TFs (M1, M15, H1, H4) — owner-driven, agent supports.
+- Non-FX correctness tests (XAUUSD, BTCUSD, US30 pip value + cost validation).
+- Exploration triage: run all strategies × symbols × {M15, H1, H4} exploration runs over full history.
+- Portfolio assembly: correlation groups, per-group open-risk caps, Monte Carlo P(pass).
+
+---
+
