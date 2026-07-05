@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using TradingEngine.Services.Helpers;
 using TradingEngine.Services.SLTPCalculation;
 
 namespace TradingEngine.Strategies.RsiDivergence;
@@ -11,6 +12,12 @@ public sealed class RsiDivergenceStrategy : IStrategy
     private readonly ISymbolInfoRegistry _symbolRegistry;
     private int _winStreak;
     private int _lossStreak;
+
+    // One-shot guard: the OpenTimeUtc of the most recent pivot this strategy already traded, so a
+    // confirmed breakout doesn't re-fire on every subsequent bar while price stays past the confirmation
+    // level (the pivot pair itself doesn't change until a new one forms). Legitimate trade-state, not the
+    // cadence-fragile "previous indicator value" class P2.1 targeted.
+    private DateTime? _lastTradedPivotTime;
 
     public RsiDivergenceStrategy(RsiDivergenceConfig config, ISymbolInfoRegistry symbolRegistry, ILogger<RsiDivergenceStrategy> logger)
     {
@@ -31,50 +38,128 @@ public sealed class RsiDivergenceStrategy : IStrategy
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);
 
+    /// <summary>
+    /// P2.2: real pivot-based divergence, replacing the P0-era tautology
+    /// (`rsiAtLowest = lowestIdx >= 0 ? rsi : rsi` — always the current RSI, so "divergence" was never
+    /// actually tested). Bullish: the two most recent confirmed swing lows show price making a LOWER low
+    /// while RSI (read from its own series at those exact bar positions — P2.1) makes a HIGHER low;
+    /// entry fires once price confirms by closing above the more recent pivot's High. Bearish mirrors on
+    /// swing highs / a lower RSI high / closing below the pivot's Low.
+    /// </summary>
     public TradeIntent? Evaluate(MarketContext context)
     {
-        // Indicator keys are bare (e.g. "RSI_14"), matching IndicatorSnapshotService —
-        // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
-        if (!context.IndicatorValues.TryGetValue($"RSI_{_config.Parameters.RsiPeriod}", out var rsi))
+        try
+        {
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
+            if (bars is null || bars.Count < RequiredBarCount) return null;
+
+            if (!context.IndicatorValues.TryGetValue($"ATR_{_config.Parameters.AtrPeriod}", out var atr) || atr <= 0)
+                return null;
+
+            var rsiSeries = context.GetSeries($"RSI_{_config.Parameters.RsiPeriod}");
+            if (rsiSeries.Count < 2) return null;
+
+            // Align bars and RSI series: both grow by exactly one entry per evaluated decision bar, so
+            // bars[^k] and rsiSeries[^k] are always the SAME bar for k <= min(both counts) — see P2.1
+            // (IndicatorSnapshotService's ring buffer and the bar list are both append-only, per-bar).
+            // DivergenceLookback is the TOTAL span searched for the pivot pair — a real double-bottom/top
+            // (decline, bounce, second decline) easily spans dozens of bars, so this must be generous, not
+            // just `strength`-sized margin around a single point.
+            var lookback = _config.Parameters.DivergenceLookback;
+            var strength = _config.Parameters.PivotStrength;
+            var windowSize = Math.Min(bars.Count, Math.Min(rsiSeries.Count, lookback));
+            if (windowSize < strength * 2 + 3) return null; // need room for at least 2 confirmable pivots
+
+            var barsWindow = bars.TakeLast(windowSize).ToList();
+            var rsiWindow = rsiSeries.TakeLast(windowSize).ToList();
+
+            var symbolInfo = _symbolRegistry.Get(context.Symbol);
+            var pm = _config.PositionManagement;
+
+            var bullish = TryBullishDivergence(barsWindow, rsiWindow, strength, atr, symbolInfo, pm, out var bullishIntent, out var bullishPivotTime);
+            if (bullish && bullishPivotTime != _lastTradedPivotTime)
+            {
+                _lastTradedPivotTime = bullishPivotTime;
+                return bullishIntent;
+            }
+
+            var bearish = TryBearishDivergence(barsWindow, rsiWindow, strength, atr, symbolInfo, pm, out var bearishIntent, out var bearishPivotTime);
+            if (bearish && bearishPivotTime != _lastTradedPivotTime)
+            {
+                _lastTradedPivotTime = bearishPivotTime;
+                return bearishIntent;
+            }
+
             return null;
-        if (!context.IndicatorValues.TryGetValue($"ATR_{_config.Parameters.AtrPeriod}", out var atr))
+        }
+        catch
+        {
             return null;
+        }
+    }
 
-        var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
-        if (bars is null || bars.Count < RequiredBarCount) return null;
+    private bool TryBullishDivergence(
+        List<Bar> barsWindow, List<double> rsiWindow, int strength, double atr,
+        SymbolInfo symbolInfo, PositionManagementOptions pm,
+        out TradeIntent? intent, out DateTime pivotTime)
+    {
+        intent = null;
+        pivotTime = default;
 
-        var lookback = _config.Parameters.DivergenceLookback;
-        var currentBar = bars[^1];
-        var priorBars = bars.Skip(bars.Count - lookback - 1).Take(lookback).ToList();
+        var swingLows = PivotFinder.FindSwingLows(barsWindow, strength);
+        if (swingLows.Count < 2) return false;
 
-        // Bullish divergence: price makes lower low but RSI makes higher low
-        var lowestLow = priorBars.Min(b => (double)b.Low);
-        var lowestIdx = priorBars.FindIndex(b => (double)b.Low == lowestLow);
-        var rsiAtLowest = lowestIdx >= 0 ? rsi : rsi;
+        var prior = swingLows[^2];
+        var recent = swingLows[^1];
 
-        var bullish = (double)currentBar.Low < lowestLow
-                   && rsi > rsiAtLowest * 0.98  // approximate RSI comparison
-                   && rsi < 50;
+        var priceLowerLow = barsWindow[recent.Index].Low < barsWindow[prior.Index].Low;
+        var rsiHigherLow = rsiWindow[recent.Index] > rsiWindow[prior.Index];
+        var confirmed = barsWindow[^1].Close > barsWindow[recent.Index].High;
+        if (!priceLowerLow || !rsiHigherLow || !confirmed) return false;
 
-        // Bearish divergence: price makes higher high but RSI makes lower high
-        var highestHigh = priorBars.Max(b => (double)b.High);
-        var highestIdx = priorBars.FindIndex(b => (double)b.High == highestHigh);
-        var rsiAtHighest = highestIdx >= 0 ? rsi : rsi;
+        var entry = new Price(barsWindow[^1].Close);
+        var sl = new Price(recent.Price - (decimal)(pm.StopLoss.AtrMultiple * atr));
+        var tp = SlTpHelpers.RRMultiple(entry, sl, TradeDirection.Long, pm.TakeProfit.RrMultiple, symbolInfo);
 
-        var bearish = (double)currentBar.High > highestHigh
-                   && rsi < rsiAtHighest * 1.02
-                   && rsi > 50;
+        intent = new TradeIntent(symbolInfo.Symbol, TradeDirection.Long, OrderType.Market, null, sl, tp,
+            _config.Id, _config.RiskProfileId,
+            $"Bullish RSI divergence: price lower-low ({barsWindow[prior.Index].Low:F5}→{barsWindow[recent.Index].Low:F5}), " +
+            $"RSI higher-low ({rsiWindow[prior.Index]:F2}→{rsiWindow[recent.Index]:F2}), confirmed close {barsWindow[^1].Close:F5} > pivot high {barsWindow[recent.Index].High:F5}",
+            barsWindow[^1].OpenTimeUtc);
+        pivotTime = barsWindow[recent.Index].OpenTimeUtc;
+        return true;
+    }
 
-        if (!bullish && !bearish) return null;
+    private bool TryBearishDivergence(
+        List<Bar> barsWindow, List<double> rsiWindow, int strength, double atr,
+        SymbolInfo symbolInfo, PositionManagementOptions pm,
+        out TradeIntent? intent, out DateTime pivotTime)
+    {
+        intent = null;
+        pivotTime = default;
 
-        var dir = bullish ? TradeDirection.Long : TradeDirection.Short;
-        var entry = new Price(dir == TradeDirection.Long ? currentBar.High + 0.00001m : currentBar.Low - 0.00001m);
-        var pm = _config.PositionManagement;
-        var sl = SlTpHelpers.AtrBased(entry, dir, atr, pm.StopLoss.AtrMultiple, _symbolRegistry.Get(context.Symbol));
-        var tp = SlTpHelpers.RRMultiple(entry, sl, dir, pm.TakeProfit.RrMultiple, _symbolRegistry.Get(context.Symbol));
+        var swingHighs = PivotFinder.FindSwingHighs(barsWindow, strength);
+        if (swingHighs.Count < 2) return false;
 
-        return new TradeIntent(context.Symbol, dir, OrderType.Market, null, sl, tp,
-            _config.Id, _config.RiskProfileId, bullish ? "bullish-rsi-div" : "bearish-rsi-div", context.EngineTimeUtc);
+        var prior = swingHighs[^2];
+        var recent = swingHighs[^1];
+
+        var priceHigherHigh = barsWindow[recent.Index].High > barsWindow[prior.Index].High;
+        var rsiLowerHigh = rsiWindow[recent.Index] < rsiWindow[prior.Index];
+        var confirmed = barsWindow[^1].Close < barsWindow[recent.Index].Low;
+        if (!priceHigherHigh || !rsiLowerHigh || !confirmed) return false;
+
+        var entry = new Price(barsWindow[^1].Close);
+        var sl = new Price(recent.Price + (decimal)(pm.StopLoss.AtrMultiple * atr));
+        var tp = SlTpHelpers.RRMultiple(entry, sl, TradeDirection.Short, pm.TakeProfit.RrMultiple, symbolInfo);
+
+        intent = new TradeIntent(symbolInfo.Symbol, TradeDirection.Short, OrderType.Market, null, sl, tp,
+            _config.Id, _config.RiskProfileId,
+            $"Bearish RSI divergence: price higher-high ({barsWindow[prior.Index].High:F5}→{barsWindow[recent.Index].High:F5}), " +
+            $"RSI lower-high ({rsiWindow[prior.Index]:F2}→{rsiWindow[recent.Index]:F2}), confirmed close {barsWindow[^1].Close:F5} < pivot low {barsWindow[recent.Index].Low:F5}",
+            barsWindow[^1].OpenTimeUtc);
+        pivotTime = barsWindow[recent.Index].OpenTimeUtc;
+        return true;
     }
 
     public void OnTradeResult(TradeResult result)
@@ -83,7 +168,7 @@ public sealed class RsiDivergenceStrategy : IStrategy
         else { _lossStreak++; _winStreak = 0; }
     }
 
-    public void Reset() { _winStreak = 0; _lossStreak = 0; }
+    public void Reset() { _winStreak = 0; _lossStreak = 0; _lastTradedPivotTime = null; }
 
     public static RsiDivergenceStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
     {

@@ -264,7 +264,7 @@ under the existing P2/verdict-funnel work rather than a separate fix, but don't 
 - `IndicatorSnapshotService` keeps a ring buffer (last 64 values) per sig key; `MarketContext` gains `IndicatorSeries: IReadOnlyDictionary<string, IReadOnlyList<double>>` (latest last). `BuildStrategyIndicatorValues` populates both.
 - Port `_lastHist` (macd), `_prevRsi` (mtf), `_prevDirection` (supertrend), bb-width queue to read the series — deletes cadence-fragile private state. (Instance-per-row already removed the pollution; this removes the fragility.)
 
-**P2.2 rsi-divergence rewrite (real divergence).**
+**P2.2 rsi-divergence rewrite (real divergence) — Done (2026-07-05).** See PROGRESS.md §P2.2 for the full write-up (DivergenceLookback default is 50, not 10 — grew to fit a real double-bottom/top span).
 - Pivot-based: find the two most recent swing lows (bullish case) in the lookback window from bars (fractal 2-2 or N-bar pivot); require price lower-low AND RSI(series at those pivot bars) higher-low; entry on confirmation (close above the divergence bar's high), SL below the second pivot low. Mirror for bearish.
 - **Failing test first** with a constructed fixture (synthetic bars producing a known divergence) + a negative fixture (no divergence → no signal).
 - Delete the tautology lines with prejudice.

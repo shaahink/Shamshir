@@ -19,6 +19,14 @@ public sealed record RsiDivergenceConfig : IStrategyConfig
 public sealed record RsiDivergenceParameters
 {
     public int RsiPeriod { get; init; } = 14;
-    public int DivergenceLookback { get; init; } = 10;
+
+    /// <summary>P2.2: the total span searched for a divergence pivot pair (decline → bounce → second
+    /// decline easily spans dozens of bars for a real double-bottom/top — this is not just margin around
+    /// a single point).</summary>
+    public int DivergenceLookback { get; init; } = 50;
     public int AtrPeriod { get; init; } = 14;
+
+    /// <summary>P2.2: fractal pivot confirmation strength — a swing point needs this many bars with a
+    /// strictly worse extreme on EACH side to confirm. 2 is a standard, fast-confirming default.</summary>
+    public int PivotStrength { get; init; } = 2;
 }

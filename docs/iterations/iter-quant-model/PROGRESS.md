@@ -14,9 +14,18 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P1.5 and P2.1 (indicator series API) are committed and gated green.** Next up is P2.2 — rsi-divergence
-rewrite (pivot-based, real divergence), which builds directly on P2.1's series. See PLAN.md §3 P2 for the
-phase spec. P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
+→ **P1.5, P2.1 (indicator series API), and P2.2 (rsi-divergence rewrite) are committed and gated green.**
+Next up is P2.3 — edge semantics (ema-alignment/trend-breakout/bb-squeeze). See PLAN.md §3 P2 for the phase
+spec. P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
+
+**Gate filter note (owner request, 2026-07-05):** cTrader-backed E2E tests (`Category=E2E`, `Category=Slow`,
+`Category=NetMQ`, `RequiresCTrader=true`) are slow/flaky in this sandbox even though credentials ARE present
+(confirmed — they actually run for real, not skip) and cost 10-25+ minutes per run under contention. For the
+rest of P2, gate with:
+`dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ"`
+(120/120 green, ~9s) instead of the previous `RequiresCTrader!=true` alone (which does NOT exclude
+`PipelineE2ETests` — it has no `RequiresCTrader` trait, only `Category=E2E`/`Slow`). Run the FULL suite
+(including cTrader E2E) once at the end of P2, not per-phase.
 
 This branch: 5 commits on top of `iter/quant-model` (9b9dbfc):
 - `edeb3a6` P1.1 — instance-per-row, de-hardcoded H1 in all 14 strategies
@@ -97,7 +106,7 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P1 TF-agnostic bank | **Done** | P1.1–P1.4 on `iter/quant-model--p1-tf-agnostic`. |
 | P1.5 Close review gaps | **Done** | P1.5.1–P1.5.3 fixed+tested; P1.5.4 (MISSING_DATA) deferred to P2. |
 | P2.1 Indicator series API | **Done** | Ring buffer + 4 strategies ported off private fragile state. |
-| P2.2 rsi-divergence rewrite | Not started | |
+| P2.2 rsi-divergence rewrite | **Done** | Real pivot-based divergence via PivotFinder + P2.1's series. |
 | P2.3–P2.7 (edge semantics, time-flatten, thesis metadata, units doctrine, stop orders) | Not started | |
 | P3 Excursion recorder + Exit Lab | Not started | |
 | P4 Research metrics | Not started | |
@@ -366,3 +375,61 @@ replaced, including the SuperTrend invalid-warmup-reading edge case above).
 E2E test under load, `GbpUsd_H1_30Days_ProducesTrades`, which passed in 41s standalone and in the full suite
 on rerun (4m41s) — confirmed pre-existing environmental flake, not a P2.1 regression); Architecture 6/8 (2
 pre-existing, unrelated files, undisturbed).
+
+---
+
+## P2.2 — rsi-divergence rewrite — Done (2026-07-05, same session as P2.1)
+
+**What shipped:** deleted the P0-era tautology
+(`rsiAtLowest = lowestIdx >= 0 ? rsi : rsi` — always the current RSI, so "divergence" was never actually
+tested; net effect was "fade any fresh N-bar breakout with RSI on the expected side of 50", not divergence).
+
+New `TradingEngine.Services.Helpers.PivotFinder` — a pure static fractal swing-high/low detector
+(`FindSwingLows`/`FindSwingHighs`, non-repainting: a pivot needs `strength` bars with a strictly worse
+extreme on EACH side, so the most recent `strength` bars can never themselves be a pivot). Built and unit
+tested standalone (8 tests: single V, monotonic-no-pivot, tied-lows-not-a-pivot, W-shape two-pivot-in-order,
+inverted-V high, too-few-bars, zero-strength-throws, non-repainting-at-the-tail) before touching the
+strategy, per PLAN.md's own agent guidance.
+
+`RsiDivergenceStrategy` rewritten: finds the two most recent confirmed swing lows (bullish) / highs
+(bearish) within a `DivergenceLookback`-bar window (default bumped 10→**40→50** — see deviation below), reads
+RSI at those EXACT bar positions from `context.GetSeries("RSI_{period}")` (P2.1), and requires: bullish =
+price makes a LOWER low while RSI makes a HIGHER low, confirmed by the current bar's close breaking above
+the more recent pivot's High; bearish mirrors on highs/a lower RSI high/breaking below the pivot's Low. SL
+sits just beyond the confirming pivot (ATR-buffered). A new `_lastTradedPivotTime` field (legitimate
+one-shot trade-state, not the cadence-fragility class P2.1 targeted) stops the same confirmed divergence
+from re-firing every bar while price stays past the confirmation level.
+
+**Deviation from plan — `DivergenceLookback` had to grow, twice.** The plan didn't specify a value; the
+existing default (10) was sized for the OLD single-swing heuristic, not real divergence. A genuine
+double-bottom/top (decline → bounce → second decline) easily spans 30-50+ bars — my first fixture's two
+pivots landed 41 bars apart and were invisible to a `lookback+strength*2+1`-sized window (an even tighter
+formula than the raw lookback). Fixed by (a) redefining the window as `min(bars, series, lookback)` — lookback
+IS the total span searched, not margin around one point — and (b) raising the default to 50 (just under the
+P2.1 series' 64-entry cap, leaving headroom). `RequiredBarCount` simplified to
+`DivergenceLookback + RsiPeriod + 5`.
+
+**Test-infrastructure fallout (caught by running the real gate, not assumed):**
+`StrategySignalContractTests.CountSignals` only started accumulating its per-key series history from
+`RequiredBarCount` onward, not from bar 0 — production's ring buffer fills from the engine's very first bar,
+so by the time a strategy first gets evaluated it may already hold history reaching bars well before
+`RequiredBarCount` (exactly the case for a divergence pivot pair straddling that boundary). Fixed by starting
+accumulation at `i=0` and capping the history at 64 to mirror `IndicatorSnapshotService.SeriesCapacity`
+exactly, evaluating the strategy only once `i >= RequiredBarCount` as before. Also replaced
+`RsiDivergence_emits_on_reversal`'s fixture (`Reversal(140,140)`, a single monotonic reversal) — it tested
+the OLD tautology's behavior (fires on any fresh breakout), not real divergence, which structurally needs a
+SECOND pivot to diverge against. New `DoubleBottomDivergence()` fixture: a steep first decline (deeply
+oversold RSI), a partial bounce, then a shallower/slower second decline reaching a lower absolute price
+(textbook divergence — lower price low, higher RSI low), each leg ending in an explicit exaggerated-wick
+pivot bar (adjacent legs otherwise share the exact transition price + wiggle, which **ties** under
+PivotFinder's strict inequality and confirms no pivot at all — caught via a scratch diagnostic, not guessed).
+
+New tests: `PivotFinderTests` (8), `RsiDivergenceStrategyTests` (4 — hand-injected series proving a real
+bullish divergence fires, a same-direction "no divergence" case doesn't, a single-pivot case doesn't, and
+the bar-count gate).
+
+**Gate:** `dotnet build` 0 errors; Unit 380/0/6 (+18 new: 8 PivotFinder + 4 RsiDivergence + 6 carried from
+P2.1's SeriesBasedCrossDetectionTests already counted); Integration 94/0; Simulation (owner request — see
+gate-filter note above, cTrader-touching categories excluded for the rest of P2)
+`RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 120/0 (~9s); Architecture 6/8 (2
+pre-existing, unrelated files, undisturbed). Full cTrader-inclusive suite deferred to end-of-P2 per owner.
