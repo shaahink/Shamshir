@@ -39,6 +39,7 @@ public sealed class ExitLabController : ControllerBase
 
         // Load excursion paths for the requested trades
         var inputs = new List<TradeExcursionInput>();
+        var malformedCount = 0;
         for (var i = 0; i < req.PositionIds.Count && i < req.RunIds.Count; i++)
         {
             var pathJson = await _excursions.GetAsync(req.RunIds[i], req.PositionIds[i], ct);
@@ -52,7 +53,16 @@ public sealed class ExitLabController : ControllerBase
             var sym = trade.Symbol;
             if (!_symbols.TryGet(new Symbol(sym), out var si)) continue;
 
-            var points = ParsePoints(pathJson);
+            IReadOnlyList<ExcursionPoint> points;
+            try
+            {
+                points = ExcursionPathCodec.Parse(pathJson);
+            }
+            catch
+            {
+                malformedCount++;
+                continue;
+            }
             if (points.Count == 0) continue;
 
             inputs.Add(new TradeExcursionInput
@@ -71,6 +81,7 @@ public sealed class ExitLabController : ControllerBase
             return Ok(new ExitLabEvaluateResponse
             {
                 TotalTrades = 0, TotalCells = 0, Cells = [],
+                MalformedPathCount = malformedCount,
                 DefaultSlMultiples = slMultiples, DefaultTpMultiples = tpMultiples,
             });
         }
@@ -82,6 +93,7 @@ public sealed class ExitLabController : ControllerBase
         {
             TotalTrades = inputs.Count,
             TotalCells = cells.Count,
+            MalformedPathCount = malformedCount,
             Cells = cells.Select(c =>
             {
                 var passProb = ComputeExitLabPassProbability(c.Result.TradeRValues);
@@ -199,17 +211,4 @@ public sealed class ExitLabController : ControllerBase
         return _passEstimator.Estimate(input).ProbabilityOfPass;
     }
 
-    private static List<ExcursionPoint> ParsePoints(string pathJson)
-    {
-        try
-        {
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<List<List<double>>>(pathJson);
-            if (parsed is null) return [];
-            return parsed
-                .Where(a => a.Count >= 3)
-                .Select(a => new ExcursionPoint((int)a[0], a[1], a[2]))
-                .ToList();
-        }
-        catch { return []; }
-    }
 }

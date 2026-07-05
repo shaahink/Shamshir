@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using TradingEngine.Domain;
 using TradingEngine.Engine;
+using TradingEngine.Services.ExitLab;
 using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Infrastructure.Adapters;
@@ -61,11 +62,9 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     private readonly bool _recordExcursions;
     private readonly Dictionary<Guid, List<ExcursionPoint>> _excursionPaths = new();
 
-    // Compact: minutes-since-entry (fine bars are typically M1, so whole-minute resolution is exact, not
-    // approximate) + the bar's high/low vs entry in pips. Direction-agnostic storage — the sign tells you
-    // whether the bar's extreme was above/below entry; MAE/MFE interpretation (which side is favorable)
-    // is a downstream (P3.3 ExitReplayer) concern, not baked in here.
-    private readonly record struct ExcursionPoint(int MinutesSinceEntry, double HiPips, double LoPips);
+
+    // P4.5.2: uses the shared ExcursionPoint from TradingEngine.Services.ExitLab — one definition,
+    // one codec (ExcursionPathCodec.Serialize/Parse), no format mismatch between recorder and consumer.
     private decimal _balance;
     private decimal _lastClose;
     private Task _feedTask = Task.CompletedTask;
@@ -526,13 +525,12 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         }
     }
 
-    // Serializes + removes the accumulated path for a trade that just fully closed. Null if nothing was
-    // recorded (RecordExcursions off, or the trade never saw a fine bar before closing).
+    // P4.5.2: delegates serialization to ExcursionPathCodec.Serialize — one shared format,
+    // one codec, no mismatch between recorder and consumer.
     private string? TakeExcursionPathJson(Guid orderId)
     {
         if (!_excursionPaths.Remove(orderId, out var path) || path.Count == 0) return null;
-        return System.Text.Json.JsonSerializer.Serialize(
-            path.Select(p => new { t = p.MinutesSinceEntry, hi = Math.Round(p.HiPips, 1), lo = Math.Round(p.LoPips, 1) }));
+        return ExcursionPathCodec.Serialize(path);
     }
 
     // Detect SL/TP hits against a bar's OHLC using the SAME stateless detection as the kernel/replay, so exit

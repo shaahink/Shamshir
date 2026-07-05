@@ -29,6 +29,7 @@ public sealed record ExitLabEvaluateResponse
 {
     public int TotalTrades { get; init; }
     public int TotalCells { get; init; }
+    public int MalformedPathCount { get; init; }
     public required List<ExitLabCellResponse> Cells { get; init; }
     public double[]? DefaultSlMultiples { get; init; }
     public double?[]? DefaultTpMultiples { get; init; }

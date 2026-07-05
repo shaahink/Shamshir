@@ -559,6 +559,7 @@ export interface ExitLabCellResponse {
 export interface ExitLabEvaluateResponse {
   totalTrades: number;
   totalCells: number;
+  malformedPathCount: number;
   cells: ExitLabCellResponse[];
   defaultSlMultiples: number[];
   defaultTpMultiples: (number | null)[];
