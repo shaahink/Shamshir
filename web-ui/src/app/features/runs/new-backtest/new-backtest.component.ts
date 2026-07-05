@@ -302,6 +302,16 @@ interface CoverageInfo {
               <input type="checkbox" [(ngModel)]="honestFills" class="h-3 w-3 rounded" />
               Honest fills (next-bar open)
             </label>
+            <label class="mt-2 flex items-center gap-2 text-xs text-gray-300 cursor-pointer"
+              title="Record per-trade MAE/MFE excursion paths for exit-lab analysis (tape-only)">
+              <input type="checkbox" [(ngModel)]="recordExcursions" class="h-3 w-3 rounded" />
+              Record excursions (MAE/MFE path)
+            </label>
+            <button (click)="applyExplorationPreset()"
+              [class]="chipClass(explorationMode) + ' w-full mt-2'"
+              title="SL=ATR×4, TP=none, no add-ons, governor off, record excursions — the entry signal runs bare for exit-lab calibration">
+              {{ explorationMode ? '\u2713 Exploration Mode' : 'Exploration Mode (ATR×4 SL, no TP, no add-ons)' }}
+            </button>
             </section>
 
             <!-- Venue warnings -->
@@ -386,6 +396,8 @@ export class NewBacktestComponent implements OnInit {
   regimeEnabled = true;
   stripAddOns = false;
   honestFills = true;
+  recordExcursions = false;
+  explorationMode = false;
 
   packs = signal<{ id: string; name: string }[]>([]);
   strategies = signal<StrategySummary[]>([]);
@@ -648,6 +660,8 @@ export class NewBacktestComponent implements OnInit {
       stripAddOns: this.stripAddOns ? true : undefined,
       speed: this.venue === 'tape' ? this.speed : undefined,
       honestFills: this.honestFills ? undefined : false,
+      recordExcursions: this.recordExcursions ? true : undefined,
+      explorationMode: this.explorationMode ? true : undefined,
     };
     this.saveSetup();
     try {
@@ -674,6 +688,20 @@ export class NewBacktestComponent implements OnInit {
     this.regimeEnabled = !all;
   }
 
+  applyExplorationPreset(): void {
+    this.explorationMode = !this.explorationMode;
+    if (this.explorationMode) {
+      this.stripAddOns = true;
+      this.governorEnabled = false;
+      this.recordExcursions = true;
+      this.honestFills = true;
+    } else {
+      this.stripAddOns = false;
+      this.governorEnabled = true;
+      this.recordExcursions = false;
+    }
+  }
+
   private readonly SETUP_STORAGE_KEY = 'shamshir-backtest-setups';
 
   private saveSetup(): void {
@@ -694,6 +722,8 @@ export class NewBacktestComponent implements OnInit {
         regimeEnabled: this.regimeEnabled,
         stripAddOns: this.stripAddOns,
         honestFills: this.honestFills,
+        recordExcursions: this.recordExcursions,
+        explorationMode: this.explorationMode,
         strategies: [...this.selectedStrategyIds()],
         symbols: [...this.selectedSymbols()],
         periods: [...this.selectedPeriods()],
@@ -731,6 +761,8 @@ export class NewBacktestComponent implements OnInit {
       this.regimeEnabled = setup.regimeEnabled ?? this.regimeEnabled;
       this.stripAddOns = setup.stripAddOns ?? this.stripAddOns;
       this.honestFills = setup.honestFills ?? this.honestFills;
+      this.recordExcursions = setup.recordExcursions ?? this.recordExcursions;
+      this.explorationMode = setup.explorationMode ?? this.explorationMode;
       if (setup.strategies?.length) this.selectedStrategyIds.set(new Set(setup.strategies));
       if (setup.symbols?.length) this.selectedSymbols.set(new Set(setup.symbols));
       if (setup.periods?.length) this.selectedPeriods.set(new Set(setup.periods));

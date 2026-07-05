@@ -643,6 +643,11 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         var fillPrice = new Price(_lastClose > 0 ? _lastClose : 1m);
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
+            // P3.1: partial close does NOT attach an excursion path here — the position stays open and
+            // its path keeps accumulating (_excursionPaths remains keyed by positionId). The full-close
+            // paths (ProcessSlTpHits + CloseAtAsync) take the complete accumulated path. PositionLifecycle
+            // carries ExcursionPathJson on partial PublishTradeClosed (nullable — the venue never sets
+            // it here), so TradePersistenceHandler correctly skips the null.
             var partialTrade = trade with { Lots = lots };
             var costs = ComputeCosts(partialTrade, fillPrice.Value);
             _balance += costs.NetProfit;

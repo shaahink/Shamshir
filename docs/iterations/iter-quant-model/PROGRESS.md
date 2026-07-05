@@ -14,13 +14,18 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P2 is fully done** (P1.5, P2.1–P2.7 all committed and gated green with the per-phase filter below).
-**P3.1 (excursion recorder) is also done.** Next up is **P3.2 — Exploration mode**: a named one-click run
-preset (SL=ATR×4, TP=none, BE/trail/partials OFF, governor OFF, `RecordExcursions=true`) — all the
-underlying toggles already exist (including `RecordExcursions` as of P3.1), this phase is just wiring a
-preset in the UI + orchestrator. See PLAN.md §3 P3 for the full phase spec. P1.5.4 (MISSING_DATA verdict)
-stays folded into P2's verdict-funnel work per the original triage (still not done — P4/scoreboard-adjacent,
-not blocking anything so far).
+→ **P3.2 (Exploration mode) + P3.3 (ExitReplayer service) are DONE as of 2026-07-05.** Next up is **P3.4 —
+Calibration tables**: store the chosen exit-rule survivors (per strategy×symbol×TF, optionally ×regime) in
+a `ExitCalibrations` table, stamp them with dataset id + IS/OOS windows + fit date, and teach
+`AddOnResolver` to read the table in `Mode=Calibrated` (falling back to `Auto` heuristics when absent).
+See PLAN.md §3 P3.4 for the full spec. Also adjacent: **P3.4b — Measured reference scales (D11)** — replace
+the `AddOnAutoTuner`'s spread-derived `ReferenceAtrPips` guess with measured per-symbol×TF rolling-median
+ATR from actual downloaded history (stored in a `ReferenceScales` table, refreshed at ingest). The ExitReplayer
+(P3.3) already takes `ReferenceAtrPips` as a pure input — when P3.4b lands, the measured value feeds it
+directly.
+
+P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage (still
+not done — P4/scoreboard-adjacent, not blocking anything so far).
 
 **Gate filter note (owner request, 2026-07-05, UPDATED same day):** cTrader-backed E2E tests
 (`Category=E2E`, `Category=Slow`, `Category=NetMQ`, `RequiresCTrader=true`) are slow/flaky in this sandbox
@@ -124,7 +129,9 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P2.6 Units doctrine | **Done** | Normalized pip fields + config linter (D9). |
 | P2.7 Stop orders | **Done** | `OrderType.Stop` end-to-end: kernel plumbing bug fix + both replay venues + cTrader adapter/cBot + EntryPlanner.StopConfirm. |
 | P3.1 Excursion recorder | **Done** | Tape-only per-trade MAE/MFE path capture, opt-in via `RecordExcursions` (default off). |
-| P3.2+ Exit Lab (rest of P3) | Not started | |
+| P3.2 Exploration mode | **Done** | One-click preset (SL=ATR×4, TP=none, governor off, RecordExcursions=true). |
+| P3.3 ExitReplayer service | **Done** | Pure static replayer + grid evaluator in `TradingEngine.Services/ExitLab/`. |
+| P3.4 Calibration tables | Not started | |
 | P4 Research metrics | Not started | |
 | P5 Data + triage (owner-driven) | Not started | |
 | P6 Oracle backstop | Not started | |
@@ -840,3 +847,134 @@ Simulation `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 
 identical, since `RecordExcursions` defaults off and no existing fixture turns it on); Architecture 6/8
 (same 2 pre-existing failures, `TradeExcursionEntity` itself correctly implements `IAuditableEntity` so it
 is NOT a new item in that failure's list).
+
+---
+
+## P3.2 — Exploration mode (one-click preset) — Done (2026-07-05, same session)
+
+Per PLAN.md §P3.2: a named one-click run preset (SL=ATR×4, TP=none, BE/trail/partials OFF, governor OFF,
+`RecordExcursions=true`). All underlying toggles already existed; this phase wired them into one preset.
+
+### What shipped
+
+**Backend:**
+- `StartRunRequest` (DTO) gained `RecordExcursions` and `ExplorationMode` boolean fields (additive, defaults
+  false — zero change for existing callers).
+- `RunsController.Start` wires both into `CustomParams` (same pattern as `HonestFills`/`StripAddOns`).
+- `EffectiveConfigResolver.ApplyExplorationPreset` (new static, parallels `StripAddOns`): forces every
+  strategy to SL=ATR×4 (`Method="AtrMultiple", AtrMultiple=4.0`), TP=none (`Method="None"` — already
+  supported by `SlTpResolver.ResolveTakeProfit` which returns `null` for it), and all enrichments off.
+- `BacktestOrchestrator.BuildLoadedConfigFromDbAsync`: exploration preset applied AFTER strip-add-ons
+  (when both are on), so it's the final word — an exploration run is provably free of packs AND add-ons.
+- `BacktestRunState` gained `ExplorationMode`/`RecordExcursions` fields set from CustomParams at `Start()`.
+
+**Frontend:**
+- Angular `StartRunRequest` interface gained `recordExcursions?` / `explorationMode?`.
+- New "Record excursions (MAE/MFE path)" checkbox in the Protections section alongside Honest Fills.
+- New "Exploration Mode" toggle button: when on, forces stripAddOns+governorOff+recordExcursions+honestFills
+  all at once. Toggle off restores the previous state.
+- Both fields persisted/restored in saved setups (localStorage).
+
+**Static-audit fixes riding along:**
+- **B1 fix:** `WriteStartRecordAsync`'s content-address identity now includes `honestFills`, `recordExcursions`,
+  and `exitTimeframe` — a re-run with only these toggles changed now gets a genuinely different `ConfigSetId`
+  (was silently colliding before).
+- **B2 comment:** `TapeReplayAdapter.ClosePartialPositionAsync` now has a code comment explaining why
+  `ExcursionPathJson` is absent (position stays open, path keeps accumulating — the full close takes the
+  complete path).
+- **B3 doc:** `OPEN-ISSUES.md` C1 marked RESOLVED by P0.2 (full-spread convention already fixed it; the
+  issue was stale since 2026-07-03).
+
+**New tests:** `ExplorationPresetTests` (3 — `ApplyExplorationPreset` forces wide SL+no TP+no add-ons;
+  idempotent on already stripped input; chaining strip-then-preset produces same final state as
+  direct-from-original).
+
+**Gate:** `dotnet build` 0 errors (full solution incl. Angular); Unit 434/0/6 (+15 new — 3 exploration
+preset + 12 P3.3 tests below); Integration 100/0; Simulation
+`RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 127/0 (~11s, byte-identical since
+exploration mode defaults off and no existing fixture turns it on); Angular `tsc --noEmit` clean.
+
+---
+
+## P3.3 — ExitReplayer service (pure exit lab) — Done (2026-07-05, same session)
+
+Per PLAN.md §P3.3: a pure function that replays exit rules against recorded excursion paths to compute
+expectancy/win%/avg-hold/DD-contribution per cell — thousands of exit configs × thousands of trades in
+milliseconds, zero engine re-runs.
+
+### Architecture: where logic vs app lives
+
+Following existing convention, the pure engine/logic stays close to the engine in
+`TradingEngine.Services/ExitLab/`; the app-facing pieces (controller, UI) are deferred to P3.5 (Exit Lab UI):
+
+| Component | Where | Rationale |
+|---|---|---|
+| `ExitReplayer.cs` | `TradingEngine.Services/ExitLab/` | Pure static math over paths — engine-adjacent |
+| `ExitGridEvaluator.cs` | `TradingEngine.Services/ExitLab/` | Parallel grid runner — engine-adjacent |
+| `ExitModels.cs` | `TradingEngine.Services/ExitLab/` | Data types (ExitRule, ExitOutcome, etc.) |
+| Exit Lab API controller | P3.5 (future) | `TradingEngine.Web/Api/` — app layer |
+| Exit Lab heatmap UI | P3.5 (future) | `web-ui/` Angular component |
+| `ExitCalibrations` table | P3.4 (future) | Persistence — next phase |
+
+### What shipped
+
+**`ExitModels.cs`** — core data types:
+- `ExcursionPoint(int MinutesSinceEntry, double HiPips, double LoPips)` — path point format (signed pip
+  distances from entry, same as P3.1's recorded format).
+- `TradeExcursionInput` — one trade: direction, entry price, initial SL, pip size, spread, path.
+- `ExitRule` — one cell: SL multiple, TP multiple (nullable = no TP), BE trigger, trail multiple,
+  partial TP, reference ATR in pips.
+- `ExitOutcome` — per-trade output: ExitKind, bars held, R-pips, R-multiple, MAE/MFE.
+- `ExitGridResult` — per-cell aggregate: trade count, win rate, avg/median R, avg hold, worst DD, R values
+  (for P(pass) feed).
+
+**`ExitReplayer.cs`** — pure static `Replay(TradeExcursionInput, ExitRule) → ExitOutcome`. Key design
+decisions (documented in code, matching the venue's behavior):
+1. **SL-first-conservative:** when both SL and TP hit the same bar, SL wins.
+2. **Bar-processing order matches venue:** check exits at CURRENT stop/target levels, THEN update BE/trail
+   from the bar's extreme (the venue's `KernelTrailingEvaluator` runs AFTER bar-close, not during).
+3. **Direction-handling via pips from entry:** hiPips/loPips are signed (positive = above entry). The
+   replayer derives favorable/adverse interpretation from trade direction — long: hi=favorable, lo=adverse;
+   short: lo=favorable, hi=adverse.
+4. **Short TP detection fix:** during construction, the original `-loPips >= tpTgt` (which passes for any
+   positive lo vs negative TP target) was corrected to `loPips <= tpTgt` (both negative for short winners).
+5. **End-of-data:** if no exit fires by path end, closes at the last bar's adverse extreme (bid for long,
+   ask for short).
+6. **R-multiple vs initial stop (P0.1-honest):** `R = (exit_pips / risk_pips) × dir_sign`, computed from the
+   initial SL distance, not the trailed SL.
+
+**`ExitGridEvaluator.cs`** — `Evaluate(trades, rules) → ExitGridCell[]`. Runs cells in parallel via
+`Parallel.ForEach` (trivially parallel — each cell is independent). `GenerateGrid(referenceAtrPips,
+slMultiples, tpMultiples, beTriggers, trailMultiples)` produces the Cartesian product. Default dimensions
+(9 SL × 9 TP × 5 BE × 8 trail = 3,240 cells) complete in milliseconds.
+
+**New tests (12):**
+- `ExitReplayerTests` (9 — Long TP hit, Long SL hit, SL-first when both hit same bar, Short SL hit, Short
+  TP hit, BE triggers then SL at BE level, Trail follows then stops out, EndOfData returns last bar close,
+  Empty path returns zero R).
+- `ExitGridEvaluatorTests` (3 — single-cell aggregate correctness, multi-cell parallel runs correctly, no-TP
+  rule produces only SL/EndOfData outcomes).
+
+**Validation gate note:** PLAN.md's P3.3 validation gate ("replaying the exit rule an actual run used must
+reproduce that run's exits within one fine bar / tick-size tolerance") is currently deferred — it requires
+a real completed tape run with `RecordExcursions=true` + actual `TradeResults` in the DB to feed paths into.
+The first real exploration-mode run (P3.2) will produce that data. This test should be written as an
+integration test (`Phase33Tests/ExitReplayerValidationGateTests.cs`) once that data exists, fed via
+`IExcursionRepository.GetAsync` + `ITradeRepository`.
+
+---
+
+## Updated: session carryover
+
+**What's NOT in P3.2/P3.3 (deferred, by design):**
+- P3.3 validation gate test (needs real excursion data from an exploration run — run one first, then write
+  the replayer-vs-actual-trades comparison test).
+- P3.5 Exit Lab UI (Angular heatmap page — P3.5 scope).
+- P3.4 Calibration tables (persistence + Auto→Calibrated resolver mode — next phase).
+- P3.4b Measured reference scales (D11, replace spread-derived `ReferenceAtrPips` with measured medians).
+
+**Known gap carried from audit:** the ExitReplayer does NOT yet handle partial-TP exits (the `PartialTriggerR`
+/ `PartialCloseFraction` fields are defined on `ExitRule` but the replayer's trail logic doesn't split the
+position into two sub-paths). This is noted for P3.5 when the replayer is exercised against real multi-leg
+excursion data — partial-TP exits are rare in exploration mode (no TP means no partial TP trigger), so this
+is not a blocking gap for the current workflow.

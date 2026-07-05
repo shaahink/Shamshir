@@ -148,6 +148,10 @@ public sealed class RunsController : ControllerBase
         cfg.CustomParams["Venue"] = venue;
         cfg.CustomParams["Speed"] = req.Speed.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
         cfg.CustomParams["HonestFills"] = req.HonestFills ? "true" : "false";
+        if (req.RecordExcursions)
+            cfg.CustomParams["RecordExcursions"] = "true";
+        if (req.ExplorationMode)
+            cfg.CustomParams["ExplorationMode"] = "true";
         if (req.StrategyOverrides is { Count: > 0 })
             cfg.CustomParams["StrategyOverrides"] = System.Text.Json.JsonSerializer.Serialize(req.StrategyOverrides);
         if (!string.IsNullOrWhiteSpace(req.UsePackId))

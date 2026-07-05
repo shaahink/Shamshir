@@ -246,6 +246,10 @@ export interface StartRunRequest {
   // Tape replay playback speed: 0 = paused, 0.1–10 = multiplier. Default 10.
   speed?: number;
   honestFills?: boolean;
+  // P3.2: record per-trade MAE/MFE excursion paths (tape-only, opt-in).
+  recordExcursions?: boolean;
+  // P3.2: one-click exploration preset — SL=ATR×4, TP=none, add-ons OFF, governor OFF.
+  explorationMode?: boolean;
 }
 
 export interface RiskProfile {

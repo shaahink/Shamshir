@@ -104,6 +104,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         // Reference to the tape adapter for live speed changes.
         public TapeReplayAdapter? TapeAdapter;
+
+        // P3.2: exploration mode — one-click preset run (SL=ATR×4, TP=none, add-ons off).
+        public bool ExplorationMode;
+
+        // P3.2: whether excursion paths were recorded for this run (tape-only, opt-in).
+        public bool RecordExcursions;
     }
 
     public BacktestOrchestrator(
@@ -263,6 +269,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             BacktestTo = cfg.End,
             RiskProfileId = cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
             Speed = float.TryParse(cfg.CustomParams.GetValueOrDefault("Speed"), NumberStyles.Float, CultureInfo.InvariantCulture, out var spd) ? Math.Clamp(spd, 0f, 10f) : 10f,
+            ExplorationMode = cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
+            RecordExcursions = cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true",
         };
         _runs[runId] = state;
         state.CancellationSource = new CancellationTokenSource();
@@ -549,6 +557,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 exposureEnabled = cfg.CustomParams.GetValueOrDefault("ExposureEnabled"),
                 budgetEnabled = cfg.CustomParams.GetValueOrDefault("BudgetEnabled"),
                 maxPositionsEnabled = cfg.CustomParams.GetValueOrDefault("MaxPositionsEnabled"),
+                honestFills = cfg.CustomParams.GetValueOrDefault("HonestFills"),
+                recordExcursions = cfg.CustomParams.GetValueOrDefault("RecordExcursions"),
+                exitTimeframe = cfg.CustomParams.GetValueOrDefault("ExitTimeframe"),
             });
             var configSetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(configIdentity);
             var parentRunId = cfg.CustomParams.GetValueOrDefault("ParentRunId");
@@ -705,6 +716,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 // partial/ride/dynamic-SL/TP (baseline SL/TP preserved).
                 if (stripAddOns)
                     c = c with { PositionManagement = EffectiveConfigResolver.StripAddOns(c.PositionManagement) };
+
+                // P3.2 exploration mode: after stripping add-ons (if requested), force every strategy
+                // to the exploration preset — SL=ATR×4, TP=none, zero enrichments — so the entry signal
+                // runs bare. The recorded excursion paths (RecordExcursions=true) are the raw measure of
+                // entry quality that the P3.3 ExitReplayer calibrates exits from.
+                if (cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true")
+                    c = c with { PositionManagement = EffectiveConfigResolver.ApplyExplorationPreset(c.PositionManagement) };
 
                 strategyConfigs.Add(c);
             }

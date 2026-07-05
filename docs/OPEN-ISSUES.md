@@ -13,7 +13,7 @@
 
 | # | Item | Status |
 |---|------|--------|
-| C1 | Short entries miss half-spread cost | NOT fixed (golden-sensitive) |
+| C1 | Short entries miss half-spread cost | RESOLVED by P0.2 full-spread convention (iter/quant-model) |
 | A4.3 | Journal close-fill visibility | ✅ Fixed |
 | — | Angular build race | ✅ Fixed (MSBuild target + PS 5.1 compat) |
 | — | Tape limit expiry dual-res | ✅ Fixed |
