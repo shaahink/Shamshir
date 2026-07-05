@@ -43,6 +43,8 @@ public sealed record StrategyServices
     // ModifyStopLoss effects (the imperative TradingLoop.UpdateTrailingStopsAsync used it the same way).
     public required IPositionManager PositionManager { get; init; }
     public ISignalGate? SignalGate { get; init; }
+    // P3.4: calibrated exit-rule lookup for Mode=Calibrated add-on resolution.
+    public IExitCalibrationLookup? ExitCalibrationLookup { get; init; }
 }
 
 public sealed record PersistenceServices

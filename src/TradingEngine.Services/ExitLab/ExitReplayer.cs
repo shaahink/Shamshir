@@ -47,6 +47,9 @@ public static class ExitReplayer
         for (; idx < trade.Path.Count; idx++)
         {
             var point = trade.Path[idx];
+            // Signed favorable extreme (for threshold comparisons and trailing level)
+            var signedFavorableExtreme = dir > 0 ? point.HiPips : point.LoPips;
+            // Absolute extremes (for MAE/MFE display)
             var favorableExtreme = dir > 0 ? point.HiPips : -point.LoPips;
             var adverseExtreme = dir > 0 ? -point.LoPips : point.HiPips;
 
@@ -59,8 +62,8 @@ public static class ExitReplayer
                 : point.HiPips >= currentSlPips;
 
             var tpHit = tpPips is { } tpTgt && (dir > 0
-                ? point.HiPips >= tpTgt               // long: bar high crosses TP above entry
-                : point.LoPips <= tpTgt);             // short: bar low crosses TP below entry (both negative)
+                ? point.HiPips >= tpTgt
+                : point.LoPips <= tpTgt);
 
             if (slHit)
             {
@@ -75,32 +78,48 @@ public static class ExitReplayer
             }
 
             // --- STEP 2: No exit — update BE / trail / partial from this bar ---
-            // Partial TP (before BE/trail so partial fires on the triggering bar)
-            if (!partialFired && partialTargetPips is { } pTgt && favorableExtreme >= pTgt)
+            // Partial TP (before BE/trail so partial fires on the triggering bar).
+            // Direction-aware threshold: long reaches ABOVE trigger, short reaches BELOW trigger.
+            if (!partialFired && partialTargetPips is { } pTgt
+                && (dir > 0 ? signedFavorableExtreme >= pTgt : signedFavorableExtreme <= pTgt))
             {
                 tradeSize -= partialFraction;
                 partialFired = true;
-                currentSlPips = Math.Max(currentSlPips, beOffsetPips * dir);
+                // Partial-to-BE: move SL to BE offset. Direction-aware tighten.
+                var beMove = beOffsetPips * dir;
+                currentSlPips = dir > 0
+                    ? Math.Max(currentSlPips, beMove)
+                    : Math.Min(currentSlPips, beMove);
+                beArmed = true; // partial-to-BE is a BE event
             }
 
             // Breakeven
-            if (!beArmed && beTargetPips is { } beTgt && favorableExtreme >= beTgt)
+            if (!beArmed && beTargetPips is { } beTgt
+                && (dir > 0 ? signedFavorableExtreme >= beTgt : signedFavorableExtreme <= beTgt))
             {
                 beArmed = true;
-                currentSlPips = Math.Max(currentSlPips, beOffsetPips * dir);
+                var beMove = beOffsetPips * dir;
+                currentSlPips = dir > 0
+                    ? Math.Max(currentSlPips, beMove)
+                    : Math.Min(currentSlPips, beMove);
             }
 
-            // Trailing: move SL up to favExtreme - trailDist, but only tighten (Math.Max)
+            // Trailing: move SL behind the signed favorable extreme.
+            // Direction-aware: long tightens UP (Math.Max), short tightens DOWN (Math.Min).
             if (trailDistPips is { } trailD && trailD > 0)
             {
-                var trailLevel = favorableExtreme - dir * trailD;
-                currentSlPips = Math.Max(currentSlPips, trailLevel);
+                var trailLevel = dir > 0
+                    ? signedFavorableExtreme - trailD
+                    : signedFavorableExtreme + trailD;
+                currentSlPips = dir > 0
+                    ? Math.Max(currentSlPips, trailLevel)
+                    : Math.Min(currentSlPips, trailLevel);
             }
         }
 
         // End of data — close at last bar's adverse extreme (bid/long = bar low, ask/short = bar high)
         var closePips = trade.Path.Count > 0
-            ? (dir > 0 ? trade.Path[^1].LoPips : -trade.Path[^1].HiPips)
+            ? (dir > 0 ? trade.Path[^1].LoPips : trade.Path[^1].HiPips)
             : 0.0;
 
         return MakeOutcome(ExitKind.EndOfData, trade.Path.Count, closePips, riskPips, dir, maePips, mfePips);

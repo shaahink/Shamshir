@@ -223,4 +223,193 @@ public sealed class ExitReplayerTests
         outcome.BarsHeld.Should().Be(0);
         outcome.RMultiple.Should().Be(0);
     }
+
+    // ── P3.3 critical fix: Short-direction bugs (A1–A6) ──
+
+    [Fact]
+    public void A1_Short_Trail_Tightens_Not_Widens()
+    {
+        // Short: entry 1.1000, SL 1.1030 (slPips=+30, risk=30).
+        // Trail at 1.0×ATR=20 pips behind the best signed low.
+        // Bar 0: lo=-50 → trail=-50+20=-30. Math.Min(+30,-30)=-30. SL→-30.
+        // Bar 1: hi=-25 >= -30 → trail hit at -30 pips = 1R profit.
+        var trade = MakeShort(1.1000m, new Price(1.1030m), 0.0001m,
+            (0,  -5.0, -50.0),    // lo=-50: trail moves SL to -30
+            (60, -25.0, -45.0));   // hi=-25 >= -30 → trail hit
+
+        var rule = new ExitRule
+        {
+            SlAtrMultiple = 1.5,
+            TpRrMultiple = null,
+            TrailAtrMultiple = 1.0,
+            ReferenceAtrPips = ReferenceAtrPips,
+        };
+
+        var outcome = ExitReplayer.Replay(trade, rule);
+
+        outcome.Kind.Should().Be(ExitKind.TrailingStop);
+        outcome.BarsHeld.Should().Be(2);
+        outcome.RPips.Should().BeApproximately(-30.0, 0.01);
+        outcome.RMultiple.Should().BeApproximately(1.0, 0.01); // 30 profit / 30 risk
+    }
+
+    [Fact]
+    public void A2_Short_BE_Moves_SL_Below_Entry()
+    {
+        // Short BE: trigger at 1.0R = -30 pips (signed). Offset 2 pips.
+        // Bar 1 step 2: lo=-35 <= -30 → BE arms. SL → -2 (offset below entry).
+        // Bar 2 step 1: hi=+5 >= -2 → BE hit. RPips=-2, RMultiple=+2/30≈+0.067.
+        var trade = MakeShort(1.1000m, new Price(1.1030m), 0.0001m,
+            (0,  3.0, -10.0),     // lo=-10: BE not yet (-10 > -30)
+            (60, 5.0, -35.0),     // step 2: lo=-35 <= -30 → BE arms, SL→-2
+            (120, 5.0, -15.0));    // step 1: hi=+5 >= -2 → BE hit
+
+        var rule = new ExitRule
+        {
+            SlAtrMultiple = 1.5,
+            TpRrMultiple = null,
+            BeTriggerR = 1.0,
+            BeOffsetPips = 2,
+            ReferenceAtrPips = ReferenceAtrPips,
+        };
+
+        var outcome = ExitReplayer.Replay(trade, rule);
+
+        outcome.Kind.Should().Be(ExitKind.Breakeven);
+        outcome.BarsHeld.Should().Be(3);
+        outcome.RPips.Should().BeApproximately(-2.0, 0.01);
+        outcome.RMultiple.Should().BeApproximately(2.0 / 30.0, 0.01); // tiny profit from BE offset
+    }
+
+    [Fact]
+    public void A3_Short_Partial_Moves_Remaining_Sl_To_Be()
+    {
+        // Short: partial trigger 0.5R=-15 pips. Offset 2 pips.
+        // Bar 0 step 2: lo=-20 <= -15 → partial fires. SL→-2. Also set beArmed=true.
+        // Bar 1 step 1: hi=+5 >= -2 → hit. Kind=Breakeven. RPips=-2, RMultiple≈+0.067.
+        var trade = MakeShort(1.1000m, new Price(1.1030m), 0.0001m,
+            (0,  5.0, -20.0),     // lo=-20 <= -15 → partial fires, SL→-2
+            (60, 5.0, -10.0));     // hi=+5 >= -2 → hit
+
+        var rule = new ExitRule
+        {
+            SlAtrMultiple = 1.5,
+            TpRrMultiple = null,
+            PartialTriggerR = 0.5,
+            PartialCloseFraction = 0.5,
+            BeOffsetPips = 2,
+            ReferenceAtrPips = ReferenceAtrPips,
+        };
+
+        var outcome = ExitReplayer.Replay(trade, rule);
+
+        outcome.Kind.Should().Be(ExitKind.Breakeven);
+        outcome.BarsHeld.Should().Be(2);
+        outcome.RPips.Should().BeApproximately(-2.0, 0.01);
+        outcome.RMultiple.Should().BeApproximately(2.0 / 30.0, 0.01);
+    }
+
+    [Fact]
+    public void A4_Short_EndOfData_Returns_Adverse_HiPips()
+    {
+        // Short: last bar hi=+15 (adverse move). No exits triggered.
+        // closePips should be +15 (loss), NOT -15 (buggy inverted sign).
+        var trade = MakeShort(1.1000m, new Price(1.1030m), 0.0001m,
+            (0,  5.0, -10.0),
+            (60, 15.0, -5.0));   // hi=+15, lo=-5 — no SL/TP hit
+
+        var rule = new ExitRule
+        {
+            SlAtrMultiple = 1.5,
+            TpRrMultiple = null,
+            ReferenceAtrPips = ReferenceAtrPips,
+        };
+
+        var outcome = ExitReplayer.Replay(trade, rule);
+
+        outcome.Kind.Should().Be(ExitKind.EndOfData);
+        outcome.RPips.Should().BeApproximately(15.0, 0.01);  // +15 = adverse for short
+        outcome.RMultiple.Should().BeApproximately(-0.5, 0.01); // 15/30 = -0.5R
+    }
+
+    [Fact]
+    public void A5_Short_Partial_Requires_Signed_Threshold()
+    {
+        // Short: partial trigger 0.5R=-15 pips. Bar 0 lo=-5 → too small (5 pips profit).
+        // Bar 1 lo=-20 <= -15 → partial fires. SL→-2, beArmed=true.
+        // Bar 1 step 1 (before partial): hi=3 < +30 → no SL hit yet.
+        // Bar 1 step 2: partial fires, SL→-2, beArmed=true.
+        // Bar 2 step 1: hi=0 >= -2 → hit. Kind=Breakeven.
+        var trade = MakeShort(1.1000m, new Price(1.1030m), 0.0001m,
+            (0,  3.0, -5.0),      // lo=-5 → NOT enough for partial (-5 > -15)
+            (60, 3.0, -20.0),     // step 2: lo=-20 <= -15 → partial fires, SL→-2
+            (120, 0.0, -25.0));    // step 1: hi=0 >= -2 → hit
+
+        var rule = new ExitRule
+        {
+            SlAtrMultiple = 1.5,
+            TpRrMultiple = null,
+            PartialTriggerR = 0.5,
+            PartialCloseFraction = 0.5,
+            BeOffsetPips = 2,
+            ReferenceAtrPips = ReferenceAtrPips,
+        };
+
+        var outcome = ExitReplayer.Replay(trade, rule);
+
+        outcome.Kind.Should().Be(ExitKind.Breakeven);
+        outcome.BarsHeld.Should().Be(3);
+    }
+
+    [Fact]
+    public void A6_Short_BE_Arms_On_Signed_Threshold()
+    {
+        // Short: BE trigger 1.0R=-30 pips. Offset 0.
+        // Bar 0: lo=-5 → too small for BE (-5 > -30).
+        // Bar 1 step 2: lo=-35 <= -30 → BE arms. SL→0.
+        // Bar 2 step 1: hi=0 >= 0 → BE hit. Kind=Breakeven. 0R.
+        var trade = MakeShort(1.1000m, new Price(1.1030m), 0.0001m,
+            (0,  5.0, -5.0),      // lo=-5: BE not yet
+            (60, 8.0, -35.0),     // lo=-35 <= -30 → BE arms, SL→0
+            (120, 0.0, -15.0));    // hi=0 >= 0 → BE hit
+
+        var rule = new ExitRule
+        {
+            SlAtrMultiple = 1.5,
+            TpRrMultiple = null,
+            BeTriggerR = 1.0,
+            BeOffsetPips = 0,
+            ReferenceAtrPips = ReferenceAtrPips,
+        };
+
+        var outcome = ExitReplayer.Replay(trade, rule);
+
+        outcome.Kind.Should().Be(ExitKind.Breakeven);
+        outcome.BarsHeld.Should().Be(3);
+        outcome.RMultiple.Should().BeApproximately(0.0, 0.01);
+    }
+
+    [Fact]
+    public void A6b_Short_BE_Does_Not_Fire_On_Shallow_Favorable_Move()
+    {
+        // Short: BE trigger 1.0R=-30 pips. Both bars only drop -5 and -8.
+        // With BUGGY magnitude comparison: bar 0 favorableExtreme=+5 >= -30 → fires on bar 0.
+        // FIXED: lo=-5 > -30 and lo=-8 > -30 → BE never arms. EndOfData.
+        var trade = MakeShort(1.1000m, new Price(1.1030m), 0.0001m,
+            (0,  5.0, -5.0),      // lo=-5 → too small
+            (60, 8.0, -8.0));     // lo=-8 → too small
+
+        var rule = new ExitRule
+        {
+            SlAtrMultiple = 1.5,
+            TpRrMultiple = null,
+            BeTriggerR = 1.0,
+            BeOffsetPips = 0,
+            ReferenceAtrPips = ReferenceAtrPips,
+        };
+
+        var outcome = ExitReplayer.Replay(trade, rule);
+
+        outcome.Kind.Should().Be(ExitKind.EndOfData);
+    }
 }

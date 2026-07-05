@@ -67,7 +67,7 @@ public sealed class KernelTrailingEvaluator(
                 // position's config. Auto-mode add-ons get tuner-derived numbers from this bar's volatility;
                 // a position with no add-ons enabled resolves to an identical config (pass-through), so the
                 // default/golden path stays byte-identical.
-                var resolution = addOnResolver.ResolveAtEntry(pmOptions, bar.Timeframe, BuildVolatility(bar, recentBars));
+                var resolution = addOnResolver.ResolveAtEntry(pmOptions, position.StrategyId, bar.Symbol.Value, bar.Timeframe, BuildVolatility(bar, recentBars));
                 positionManager.RegisterPosition(position, PositionManager.BuildConfig(position.StrategyId, resolution.Resolved, 0m));
                 // iter-38 A7 (ADDON_RESOLVED): journal the resolved add-on numbers once at entry — but only
                 // when this position actually has add-ons enabled, so the default/golden path emits nothing.

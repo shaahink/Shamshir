@@ -1,7 +1,7 @@
 ﻿import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import type { TradeSummary, TradeDetail, BarData, TradeListResponse, TradeChartResponse } from '../../models/api.types';
+import type { TradeSummary, TradeDetail, BarData, TradeListResponse, TradeChartResponse, TradeExcursionResponse } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
 export class TradesApiService {
@@ -16,9 +16,13 @@ export class TradesApiService {
     return firstValueFrom(this.http.get<TradeDetail>(`/api/trades/${id}`));
   }
 
-  // iter-redesign P6.2: bars + entry/exit/SL/TP markers around the trade window.
   getChart(id: string): Promise<TradeChartResponse> {
     return firstValueFrom(this.http.get<TradeChartResponse>(`/api/trades/${id}/chart`));
+  }
+
+  // P3.5: per-bar MAE/MFE excursion path for one trade.
+  getExcursions(id: string): Promise<TradeExcursionResponse> {
+    return firstValueFrom(this.http.get<TradeExcursionResponse>(`/api/trades/${id}/excursions`));
   }
 
   getBars(symbol: string, timeframe: string, from: string, to: string): Promise<BarData[]> {

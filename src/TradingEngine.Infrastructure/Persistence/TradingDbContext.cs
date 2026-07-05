@@ -23,6 +23,8 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<AddOnPackEntity> AddOnPacks => Set<AddOnPackEntity>();   // iter-38 PK1
     public DbSet<VenueSessionEntity> VenueSessions => Set<VenueSessionEntity>();
     public DbSet<TradeExcursionEntity> TradeExcursions => Set<TradeExcursionEntity>();
+    public DbSet<ExitCalibrationEntity> ExitCalibrations => Set<ExitCalibrationEntity>();
+    public DbSet<ReferenceScaleEntity> ReferenceScales => Set<ReferenceScaleEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,6 +35,8 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
         modelBuilder.ApplyConfiguration(new EquitySnapshotMapping());
         modelBuilder.ApplyConfiguration(new BarMapping());
         modelBuilder.ApplyConfiguration(new TradeExcursionMapping());
+        modelBuilder.ApplyConfiguration(new ExitCalibrationMapping());
+        modelBuilder.ApplyConfiguration(new ReferenceScaleMapping());
 
         modelBuilder.Entity<BacktestRunEntity>(e =>
         {

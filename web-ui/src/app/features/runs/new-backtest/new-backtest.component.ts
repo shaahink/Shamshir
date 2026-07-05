@@ -699,6 +699,7 @@ export class NewBacktestComponent implements OnInit {
       this.stripAddOns = false;
       this.governorEnabled = true;
       this.recordExcursions = false;
+      this.honestFills = true;
     }
   }
 

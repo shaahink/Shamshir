@@ -123,6 +123,8 @@ public static class ServiceRegistration
         services.AddScoped<IExperimentRepository, SqliteExperimentRepository>();
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+        services.AddScoped<IExcursionRepository, SqliteExcursionRepository>();
+        services.AddScoped<IExitCalibrationLookup, SqliteExitCalibrationLookup>();
         services.AddMemoryCache();
         services.AddScoped<IStrategyConfigStore, SqliteStrategyConfigStore>();
         services.AddScoped<IRiskProfileStore, SqliteRiskProfileStore>();

@@ -526,3 +526,62 @@ export interface NarrativeResponse {
   latestSeq: number;
   hasMore: boolean;
 }
+
+// P3.5 — exit-lab types
+export interface TradeExcursionResponse {
+  tradeId: string;
+  pathJson: string;
+}
+
+export interface ExitRule {
+  slAtrMultiple: number;
+  tpRrMultiple: number | null;
+  beTriggerR: number | null;
+  beOffsetPips: number | null;
+  trailAtrMultiple: number | null;
+  partialTriggerR: number | null;
+  partialCloseFraction: number | null;
+  referenceAtrPips: number;
+}
+
+export interface ExitLabCellResponse {
+  rule: ExitRule;
+  tradeCount: number;
+  winRate: number;
+  avgR: number;
+  medianR: number;
+  avgHoldBars: number;
+  maxDdContributionR: number;
+  tradeRValues: number[];
+}
+
+export interface ExitLabEvaluateResponse {
+  totalTrades: number;
+  totalCells: number;
+  cells: ExitLabCellResponse[];
+  defaultSlMultiples: number[];
+  defaultTpMultiples: (number | null)[];
+}
+
+export interface ExitLabEvaluateRequest {
+  runIds: string[];
+  positionIds: string[];
+  referenceAtrPips: number;
+  slMultiples?: number[];
+  tpMultiples?: (number | null)[];
+  beTriggers?: (number | null)[];
+  trailMultiples?: (number | null)[];
+}
+
+export interface SaveCalibrationRequest {
+  strategyId: string;
+  symbol: string;
+  entryTimeframe: string;
+  regime?: string | null;
+  rule: ExitRule;
+  datasetId: string;
+  isStartUtc: string;
+  isEndUtc: string;
+  oosStartUtc?: string | null;
+  oosEndUtc?: string | null;
+}

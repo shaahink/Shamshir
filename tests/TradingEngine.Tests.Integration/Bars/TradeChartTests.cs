@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using NSubstitute;
+using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
 using TradingEngine.Tests.Integration.Support;
@@ -71,7 +73,7 @@ public sealed class TradeChartTests : IDisposable
     public async Task GetChart_ReturnsBarsAndEntryExitSlTpMarkers()
     {
         await using var db = NewContext();
-        var controller = new TradesController(db, new BarQueryService(db));
+        var controller = new TradesController(db, new BarQueryService(db), Substitute.For<IExcursionRepository>());
 
         var result = await controller.GetChart(_tradeId, padBars: 50, CancellationToken.None);
 
@@ -96,7 +98,7 @@ public sealed class TradeChartTests : IDisposable
     public async Task GetChart_UnknownTrade_ReturnsNotFound()
     {
         await using var db = NewContext();
-        var controller = new TradesController(db, new BarQueryService(db));
+        var controller = new TradesController(db, new BarQueryService(db), Substitute.For<IExcursionRepository>());
 
         var result = await controller.GetChart(Guid.NewGuid(), padBars: 50, CancellationToken.None);
 

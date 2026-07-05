@@ -235,6 +235,7 @@ public static class EngineServiceCollectionExtensions
                 EntryPlanner = sp.GetRequiredService<EntryPlanner>(),
                 PositionManager = sp.GetRequiredService<IPositionManager>(),
                 SignalGate = sp.GetRequiredService<ISignalGate>(),
+                ExitCalibrationLookup = sp.GetService<IExitCalibrationLookup>(),
             },
             Persistence = new PersistenceServices
             {

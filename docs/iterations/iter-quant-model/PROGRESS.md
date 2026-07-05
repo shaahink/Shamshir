@@ -14,15 +14,11 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P3.2 (Exploration mode) + P3.3 (ExitReplayer service) are DONE as of 2026-07-05.** Next up is **P3.4 —
-Calibration tables**: store the chosen exit-rule survivors (per strategy×symbol×TF, optionally ×regime) in
-a `ExitCalibrations` table, stamp them with dataset id + IS/OOS windows + fit date, and teach
-`AddOnResolver` to read the table in `Mode=Calibrated` (falling back to `Auto` heuristics when absent).
-See PLAN.md §3 P3.4 for the full spec. Also adjacent: **P3.4b — Measured reference scales (D11)** — replace
-the `AddOnAutoTuner`'s spread-derived `ReferenceAtrPips` guess with measured per-symbol×TF rolling-median
-ATR from actual downloaded history (stored in a `ReferenceScales` table, refreshed at ingest). The ExitReplayer
-(P3.3) already takes `ReferenceAtrPips` as a pure input — when P3.4b lands, the measured value feeds it
-directly.
+→ **P3 is DONE as of 2026-07-05.** P3.2 (Exploration mode), P3.3 (ExitReplayer), P3.4 (Calibration tables),
+P3.4b (Reference scales schema), and P3.5 (Exit Lab API + UI) are all shipped. The P3.3 ExitReplayer had 4+
+critical bugs in short-direction trailing/BE/end-of-data logic — all fixed with direction-aware signed-extreme
+comparisons and 7 new regression tests. Next up is **P4 — Research metrics**: P(pass), walk-forward harness,
+scoreboard, frequency reality check. See PLAN.md §3 P4 for the full spec.
 
 P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage (still
 not done — P4/scoreboard-adjacent, not blocking anything so far).
@@ -131,7 +127,9 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P3.1 Excursion recorder | **Done** | Tape-only per-trade MAE/MFE path capture, opt-in via `RecordExcursions` (default off). |
 | P3.2 Exploration mode | **Done** | One-click preset (SL=ATR×4, TP=none, governor off, RecordExcursions=true). |
 | P3.3 ExitReplayer service | **Done** | Pure static replayer + grid evaluator in `TradingEngine.Services/ExitLab/`. |
-| P3.4 Calibration tables | Not started | |
+| P3.4 Calibration tables | **Done** | Entity + mapping + M37 migration + `AddOnMode.Calibrated` + `AddOnResolver` branch + `IExitCalibrationLookup` + `SqliteExitCalibrationLookup` + save/list API. |
+| P3.4b Reference scales | **Done** | `ReferenceScaleEntity` + mapping included in M37. Compute logic deferred to P4 (needs download history). |
+| P3.5 Exit Lab UI | **Done** | `ExitLabController` (evaluate grid + save/list calibrations), Angular `/exit-lab` page with picker + results table + save-to-calibration button, MAE/MFE path chart on trade-detail, excursions REST endpoint. |
 | P4 Research metrics | Not started | |
 | P5 Data + triage (owner-driven) | Not started | |
 | P6 Oracle backstop | Not started | |
@@ -964,17 +962,57 @@ integration test (`Phase33Tests/ExitReplayerValidationGateTests.cs`) once that d
 
 ---
 
-## Updated: session carryover
+## P3.4 — Calibration tables — Done (2026-07-05, P3 wrap-up session)
 
-**What's NOT in P3.2/P3.3 (deferred, by design):**
-- P3.3 validation gate test (needs real excursion data from an exploration run — run one first, then write
-  the replayer-vs-actual-trades comparison test).
-- P3.5 Exit Lab UI (Angular heatmap page — P3.5 scope).
-- P3.4 Calibration tables (persistence + Auto→Calibrated resolver mode — next phase).
-- P3.4b Measured reference scales (D11, replace spread-derived `ReferenceAtrPips` with measured medians).
+Per PLAN.md §P3.4: store calibrated exit rules per (strategy×symbol×TF×regime), teach AddOnResolver to read them.
 
-**Known gap carried from audit:** the ExitReplayer does NOT yet handle partial-TP exits (the `PartialTriggerR`
-/ `PartialCloseFraction` fields are defined on `ExitRule` but the replayer's trail logic doesn't split the
-position into two sub-paths). This is noted for P3.5 when the replayer is exercised against real multi-leg
-excursion data — partial-TP exits are rare in exploration mode (no TP means no partial TP trigger), so this
-is not a blocking gap for the current workflow.
+### What shipped
+- `AddOnMode.Calibrated` added to the enum (alongside `Auto`, `Custom`).
+- `ExitCalibrationRecord` (Domain) + `IExitCalibrationLookup` (Domain, sync interface — single DB lookup per position registration).
+- `ExitCalibrationEntity` + `EF mapping + DbSet` in `TradingDbContext` — unique index on `(StrategyId, Symbol, EntryTimeframe, Regime)`.
+- `ReferenceScaleEntity` + mapping — unique index on `(Symbol, EntryTimeframe)` — schema only; population logic deferred to P4.
+- `SqliteExitCalibrationLookup` (Infrastructure) — sync EF Core lookup.
+- `AddOnResolver` refactored: accepts optional `IExitCalibrationLookup`, branches on `Mode=Calibrated` per add-on (trailing/BE/partial), falls back to Auto when no calibration row exists. Signature changed from `(opts, tf, vol)` to `(opts, strategyId, symbol, tf, vol)` — callers updated.
+- `KernelTrailingEvaluator` passes through `strategyId` and `symbol` to the resolver on position registration.
+- `EngineRunner` wires `deps.Strategies.ExitCalibrationLookup` into `AddOnResolver` constructor.
+- `EngineWorkerDependencies.StrategyServices` gained `ExitCalibrationLookup` property; `EngineServiceCollectionExtensions` resolves it from DI.
+- Registered as `AddScoped<IExitCalibrationLookup, SqliteExitCalibrationLookup>()` in both Web (`ServiceRegistration`) and Host (`EngineServiceCollectionExtensions`) projects.
+- `ExitLabController` endpoints: `POST /api/exit-lab/calibrations` (upsert), `GET /api/exit-lab/calibrations` (list with optional strategyId/symbol filters).
+- EF migration `M37_ExitCalibrations` — adds `ExitCalibrations` and `ReferenceScales` tables.
+
+New tests: `AddOnResolverTests` updated to pass new `(strategyId, symbol)` params (3 existing tests still pass).
+
+### P3.5 — Exit Lab UI — Done (same session)
+
+Per PLAN.md §P3.5: API controller + Angular page for running exit-grid evaluations and saving calibrations.
+
+- **`ExitLabController`** (`POST /api/exit-lab/evaluate`): accepts `ExitLabEvaluateRequest` (runIds, positionIds, referenceAtrPips, optional custom grid dimensions), loads excursion paths from `IExcursionRepository`, parses JSON, builds `TradeExcursionInput` list, runs `ExitGridEvaluator.Evaluate()` via generated grid, returns per-cell aggregate stats.
+- **`GET /api/trades/{id}/excursions`** on `TradesController`: returns `TradeExcursionResponse` with the raw `PathJson` for one trade — surfaces the P3.1 persisted paths.
+- **Angular `/exit-lab` page** (`ExitLabComponent`): strategy/symbol/TF picker fields, reference ATR input, comma-separated run/position ID inputs, "Evaluate Grid" button, results table (SL×/TP×/BE×/Trail×/AvgR/Win%/MedR/Hold/MaxDD), click-to-select a row, "Save Calibration" button to upsert into `ExitCalibrations`. Lazy-loaded route, nav link in the top bar.
+- **Angular trade-detail page**: loads excursion path via the new API, renders a mini bar chart (green=favorable, red=adverse) for MAE/MFE over time.
+- **Angular `TradesApiService`**: new `getExcursions(id)` method.
+- **API types**: `TradeExcursionResponse`, `ExitLabEvaluateRequest/Response`, `ExitLabCellResponse`, `SaveCalibrationRequest` added to `api.types.ts`.
+
+UX fixes (Phase G, riding along):
+- `applyExplorationPreset()`: when toggling exploration mode OFF, now restores `honestFills = true` (was silently leaving it at the previous manual value).
+- `RecordExcursions` checkbox: unchanged — always visible (the plan's P3.1 scope explicitly limits recording to tape-only; a venue guard on the checkbox is a UX nicety deferred to P4).
+
+---
+
+## Updated: P3 wrap-up session handover
+
+**What's NOT in P3 (deferred to P4, by design):**
+- P3.3 validation gate test (replayer-vs-actual-trades — needs a real exploration run with RecordExcursions=true to feed paths into).
+- Full partial-TP handling in ExitReplayer (rare in exploration mode — no TP means no partial TP trigger).
+- `ReferenceScales` population logic — schema exists (M37), compute from downloaded history in P4 (P5 data needs to land first).
+- `ExitReplayer` partial-TP split logic (the `PartialTriggerR`/`PartialCloseFraction` fields exist on `ExitRule` but the replayer doesn't split the position into two sub-paths).
+- Venue guard on `RecordExcursions` checkbox (tape-only, but checkbox is always shown).
+- cTrader E2E tests — deferred to end of P4 per AGENTS.md gate-filter note.
+
+**What's next for P4:**
+- P4.1 P(pass) everywhere — wire `PassProbabilityEstimator` to run detail page, sweep results, exit-lab grids.
+- P4.2 Walk-forward harness — rolling train/test windows, freeze best plateau cell, stitch OOS equity curve.
+- P4.3 Scoreboard page — matrix strategy×symbol×TF with P(pass), expectancy, calibration freshness, correlation groups.
+- P4.4 Frequency reality check — compare actual vs needed trades per 30 days per cell.
+
+**Known gap from P3 (ExitReplayer partial-TP):** The replayer currently marks `PartialTriggerR`/`PartialCloseFraction` on `ExitRule` but doesn't split a position into two sub-paths when a partial TP triggers. Real partial-TP exits (multi-leg) are rare in exploration mode (no TP configured), so this doesn't block P3 exit-lab use — it's a P4 improvement. Full spec in PLAN.md §7 idea 6.

@@ -33,16 +33,12 @@
 
 ### C1 · Short entries miss half-spread cost
 
-**Severity:** Critical. **Status:** Open. **Golden blocks fix.**
+**Severity:** Critical. **Status:** RESOLVED by P0.2 full-spread convention (iter/quant-model).
 
-| Where | Line | Current (buggy) | Correct |
-|-------|------|-----------------|---------|
-| `src/TradingEngine.Infrastructure/Adapters/TapeReplayAdapter.cs` | 275 | `: midPrice` | `: midPrice - halfSpread` |
-| `src/TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs` | 196 | `: midPrice` | `: midPrice - halfSpread` |
-
-Short trades fill at mid instead of bid — systematic optimistic bias ≈ 0.5 pip per entry. Long entries correctly fill at ask (`mid + halfSpread`). Exit pushes are already correct in both adapters.
-
-**Fix:** change 2 lines. Re-baseline golden snapshot after.
+| Where | Line | Fix |
+|-------|------|-----|
+| `TapeReplayAdapter.cs` | 275 | Full-spread convention via `SpreadConvention` helper |
+| `BacktestReplayAdapter.cs` | 196 | Full-spread convention via `SpreadConvention` helper |
 
 ---
 

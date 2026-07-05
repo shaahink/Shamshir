@@ -85,7 +85,7 @@ public sealed class EngineRunner
             deps.Risk.Governor, logger, deps.Market.Indicators);
         _trailing = new KernelTrailingEvaluator(
             deps.Strategies.PositionManager, _symbolRegistry, _indicatorSnapshot, _strategies,
-            new TradingEngine.Services.AddOns.AddOnResolver(), deps.Market.Indicators);
+            new TradingEngine.Services.AddOns.AddOnResolver(deps.Strategies.ExitCalibrationLookup), deps.Market.Indicators);
         _timeFlatten = new KernelTimeFlattenEvaluator(_strategies);
     }
 
