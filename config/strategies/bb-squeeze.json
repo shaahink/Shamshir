@@ -3,6 +3,9 @@
     "displayName":  "Bollinger Squeeze",
     "enabled":  true,
     "riskProfileId":  "standard",
+    "thesis":  "A Bollinger Band contraction (squeeze) resolves in the direction of the breakout that ends it, provided the squeeze hasn't gone stale (D8: latch expires after BbPeriod bars).",
+    "expectedTradesPerWeek":  1,
+    "expectedHoldBars":  15,
     "regimeFilter":  {
                          "allowHighVolatility":  false
                      },

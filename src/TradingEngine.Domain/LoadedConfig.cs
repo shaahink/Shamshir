@@ -27,4 +27,10 @@ public sealed record StrategyConfigEntry(
     public OrderEntryOptions? OrderEntry { get; init; }
     public PositionManagementOptions? PositionManagement { get; init; }
     public ReentryOptions? Reentry { get; init; }
+
+    // P2.5: falsifiable-hypothesis metadata (thesis one-sentence claim + expected frequency/hold),
+    // used by P4's frequency reality check.
+    public string? Thesis { get; init; }
+    public int? ExpectedTradesPerWeek { get; init; }
+    public int? ExpectedHoldBars { get; init; }
 }

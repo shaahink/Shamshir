@@ -3,6 +3,9 @@
     "displayName":  "MACD Momentum",
     "enabled":  true,
     "riskProfileId":  "standard",
+    "thesis":  "A MACD histogram zero-cross with price on the trend side of SMA(200) confirms fresh momentum worth trading toward a 3R target.",
+    "expectedTradesPerWeek":  2,
+    "expectedHoldBars":  20,
     "regimeFilter":  {
                          "allowRanging":  false
                      },

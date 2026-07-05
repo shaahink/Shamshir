@@ -3,6 +3,9 @@
     "displayName":  "Trend Breakout v1",
     "enabled":  true,
     "riskProfileId":  "standard",
+    "thesis":  "A fresh N-bar high/low breakout above the trend EMA, confirmed by ADX>20, continues rather than immediately failing.",
+    "expectedTradesPerWeek":  3,
+    "expectedHoldBars":  20,
     "regimeFilter":  {
                          "allowTrending":  true,
                          "allowRanging":  true,

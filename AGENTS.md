@@ -72,18 +72,19 @@ tests/
 - P2.2 (rsi-divergence rewrite) delivered: deleted the P0-era tautology; new `PivotFinder` (pure fractal swing detector) + real pivot-based divergence (price lower-low/RSI higher-low or mirror, confirmed by a breakout close). `DivergenceLookback` grew 10→50 (a real double-bottom/top span is dozens of bars, not a handful)
 - P2.3 (edge semantics) delivered: bb-squeeze latch now expires after BbPeriod bars unarmed (D8); trend-breakout single-fires on a false→true rolling-window transition instead of every bar of a continuing trend, plus a CooldownBars gate (D5); ema-alignment converted from a state CONDITION to a real crossover+first-pullback-touch edge, fully derived from bars+series with no private state (D5)
 - P2.4 (time-flatten) delivered: `IStrategyConfig.FlattenAtUtc` (default interface member) + `SessionBreakoutConfig` wiring its previously-dead `FlattenTimeUtc`; new `KernelTimeFlattenEvaluator` (mirrors `KernelTrailingEvaluator`) closes a strategy's open positions once the bar's time-of-day reaches it, reusing the existing-but-never-called `CloseRequested` event/reducer path (no new kernel event needed)
+- P2.5 (thesis metadata) delivered: `thesis`/`expectedTradesPerWeek`/`expectedHoldBars` on `StrategyConfigEntry`/`StrategyConfigEntity` (EF migration M35, persisted+editable, not a hardcoded map), all 9 `config/strategies/*.json` seeded with a real falsifiable thesis, surfaced in the Strategies API + Angular UI. Drive-by fixes: `rsi-divergence.json`'s stale `divergenceLookback: 10` (silently overrode P2.2's new default of 50) and `StrategyMetadataMap`'s dead `"bollinger-squeeze"` key (real id is `"bb-squeeze"`)
 - Cross-symbol state pollution fixed (per-row instances instead of singletons)
 - Tape venue: correct full-spread convention via shared `SpreadConvention` helper, both adapters unified
 - Honest entry fills: tape market entries queue at signal bar, fill at next M1 bar open (toggleable)
 - Non-H1 strategy runs are now actually verified end-to-end (M15 tape run produces proposals) — this is the claim P1 made but hadn't tested
-- All gates green: Unit 386/0/6, Integration 94/0, fast Simulation 125/0 (~9s, cTrader-touching categories excluded — see below), Architecture 6/8 (2 pre-existing, undisturbed)
+- All gates green: Unit 386/0/6, Integration 98/0, fast Simulation 125/0 (~9s, cTrader-touching categories excluded — see below), Architecture 6/8 (2 pre-existing, undisturbed)
 - Parent branch `iter/quant-model` has P0 (3 gated commits pushed to origin)
 - **Gate filter note (owner request, 2026-07-05):** cTrader E2E tests are slow/flaky here even with real credentials present (confirmed — they run for real, not skip, and cost 10-25+ min under contention). For P2's remaining phases, gate with `--filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ"` (NOT `RequiresCTrader!=true` alone — `PipelineE2ETests` has no `RequiresCTrader` trait, only `Category=E2E/Slow`). Run the full suite once at the end of P2, not per-phase.
 
 ## What's next
 
 See `docs/iterations/iter-quant-model/PLAN.md` §3 for the full iteration spec.
-**Next phase: P2.5** — thesis metadata, then P2.6–P2.7 (units doctrine + linter, stop orders).
+**Next phase: P2.6** — units doctrine + config linter, then P2.7 (stop orders).
 P1.5.4 (MISSING_DATA verdict) is folded into P2's verdict-funnel work.
 Uncommitted Angular changes from `iter/data-mgmt` were stashed on this branch (`pre-P1 uncommitted changes from parent branch`).
 

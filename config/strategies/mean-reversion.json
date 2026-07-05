@@ -3,6 +3,9 @@
     "displayName":  "Mean Reversion v1",
     "enabled":  true,
     "riskProfileId":  "standard",
+    "thesis":  "RSI oversold/overbought readings combined with price rejecting the outer Bollinger Band snap back toward the mean within a few bars.",
+    "expectedTradesPerWeek":  3,
+    "expectedHoldBars":  8,
     "regimeFilter":  {
                          "allowTrending":  false,
                          "allowRanging":  true,

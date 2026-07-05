@@ -3,6 +3,9 @@
     "displayName":  "SuperTrend",
     "enabled":  true,
     "riskProfileId":  "standard",
+    "thesis":  "A SuperTrend direction flip confirmed by ADX>=20 marks the start of a new trend leg worth riding to a 2R target.",
+    "expectedTradesPerWeek":  2,
+    "expectedHoldBars":  20,
     "regimeFilter":  {
                          "allowRanging":  false
                      },

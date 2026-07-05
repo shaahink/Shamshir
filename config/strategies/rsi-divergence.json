@@ -3,6 +3,9 @@
     "displayName":  "RSI Divergence",
     "enabled":  true,
     "riskProfileId":  "standard",
+    "thesis":  "Price making a fresh extreme while RSI fails to confirm (divergence) signals exhaustion; a confirmed break of the divergence pivot marks the reversal entry.",
+    "expectedTradesPerWeek":  1,
+    "expectedHoldBars":  20,
     "regimeFilter":  {
                          "allowTrending":  false,
                          "allowHighVolatility":  false
@@ -23,7 +26,7 @@
                            },
     "parameters":  {
                        "rsiPeriod":  14,
-                       "divergenceLookback":  10,
+                       "divergenceLookback":  50,
                        "atrPeriod":  14,
                        "slAtrMultiple":  1.5,
                        "tpRrMultiple":  2.0

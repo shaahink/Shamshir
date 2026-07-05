@@ -3,6 +3,9 @@
     "displayName":  "EMA Alignment v1",
     "enabled":  true,
     "riskProfileId":  "standard",
+    "thesis":  "After a fast/slow EMA crossover, the FIRST pullback touch of the fast EMA is a low-risk continuation entry in the new trend's direction.",
+    "expectedTradesPerWeek":  1,
+    "expectedHoldBars":  15,
     "regimeFilter":  {
                          "allowTrending":  true,
                          "allowRanging":  true,

@@ -3,6 +3,9 @@
     "displayName":  "Session Breakout v1",
     "enabled":  true,
     "riskProfileId":  "standard",
+    "thesis":  "Price breaking out of the quiet Asian/early-European range during the London/NY window continues in that direction before the session's daily flatten.",
+    "expectedTradesPerWeek":  2,
+    "expectedHoldBars":  6,
     "regimeFilter":  {
                          "allowTrending":  true,
                          "allowRanging":  true,

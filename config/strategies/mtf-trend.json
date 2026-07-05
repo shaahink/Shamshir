@@ -3,6 +3,9 @@
     "displayName":  "Multi-Timeframe Trend",
     "enabled":  true,
     "riskProfileId":  "standard",
+    "thesis":  "An H1 RSI pullback that resumes in the direction of the H4 trend is a higher-probability entry than a counter-trend fade.",
+    "expectedTradesPerWeek":  1,
+    "expectedHoldBars":  15,
     "regimeFilter":  {
                          "allowRanging":  false
                      },

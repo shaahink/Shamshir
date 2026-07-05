@@ -57,6 +57,9 @@ public class StrategiesController : ControllerBase
                 entryRule = meta?.EntryRule,
                 exitFormula = meta?.ExitFormula,
                 orderEntryMethod = c.OrderEntry?.Method.ToString() ?? "",
+                thesis = c.Thesis,
+                expectedTradesPerWeek = c.ExpectedTradesPerWeek,
+                expectedHoldBars = c.ExpectedHoldBars,
             };
         }).ToList();
 
@@ -81,6 +84,9 @@ public class StrategiesController : ControllerBase
             orderEntryJson = Serialize(c.OrderEntry),
             regimeFilterJson = Serialize(c.RegimeFilter),
             reentryJson = Serialize(c.Reentry),
+            thesis = c.Thesis,
+            expectedTradesPerWeek = c.ExpectedTradesPerWeek,
+            expectedHoldBars = c.ExpectedHoldBars,
         });
     }
 
@@ -124,6 +130,9 @@ public class StrategiesController : ControllerBase
             Parameters = root.TryGetProperty("parameters", out var p) && p.ValueKind == JsonValueKind.Object
                 ? p.Clone()
                 : existing.Parameters,
+            Thesis = GetString(root, "thesis") ?? existing.Thesis,
+            ExpectedTradesPerWeek = GetInt(root, "expectedTradesPerWeek") ?? existing.ExpectedTradesPerWeek,
+            ExpectedHoldBars = GetInt(root, "expectedHoldBars") ?? existing.ExpectedHoldBars,
         };
         updated = updated with
         {
@@ -287,6 +296,9 @@ public class StrategiesController : ControllerBase
 
     private static string? GetString(JsonElement root, string name) =>
         root.TryGetProperty(name, out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+
+    private static int? GetInt(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var e) && e.ValueKind == JsonValueKind.Number ? e.GetInt32() : null;
 
     private static string RawText(JsonElement e) =>
         e.ValueKind == JsonValueKind.Undefined ? "{}" : e.GetRawText();

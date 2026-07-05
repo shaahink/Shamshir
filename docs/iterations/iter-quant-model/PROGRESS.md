@@ -14,9 +14,10 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P1.5, P2.1 (indicator series API), P2.2 (rsi-divergence rewrite), P2.3 (edge semantics), and P2.4
-(time-flatten) are committed and gated green.** Next up is P2.5 — thesis metadata. See PLAN.md §3 P2 for the
-phase spec. P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
+→ **P1.5, P2.1 (indicator series API), P2.2 (rsi-divergence rewrite), P2.3 (edge semantics), P2.4
+(time-flatten), and P2.5 (thesis metadata) are committed and gated green.** Next up is P2.6 — units doctrine
++ config linter. See PLAN.md §3 P2 for the phase spec. P1.5.4 (MISSING_DATA verdict) stays folded into P2's
+verdict-funnel work per the original triage.
 
 **Gate filter note (owner request, 2026-07-05):** cTrader-backed E2E tests (`Category=E2E`, `Category=Slow`,
 `Category=NetMQ`, `RequiresCTrader=true`) are slow/flaky in this sandbox even though credentials ARE present
@@ -109,7 +110,8 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P2.2 rsi-divergence rewrite | **Done** | Real pivot-based divergence via PivotFinder + P2.1's series. |
 | P2.3 Edge semantics | **Done** | ema-alignment/trend-breakout/bb-squeeze real edges, not conditions. |
 | P2.4 Time-flatten behavior | **Done** | Loop-level, wired via the previously-dead CloseRequested event. |
-| P2.5–P2.7 (thesis metadata, units doctrine, stop orders) | Not started | |
+| P2.5 Thesis metadata | **Done** | thesis/expectedTradesPerWeek/expectedHoldBars, all 9 strategies. |
+| P2.6–P2.7 (units doctrine, stop orders) | Not started | |
 | P3 Excursion recorder + Exit Lab | Not started | |
 | P4 Research metrics | Not started | |
 | P5 Data + triage (owner-driven) | Not started | |
@@ -526,3 +528,47 @@ they need `TradingEngine.Host`); Integration 94/0; Simulation
 `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 125/0 (+5 new, ~9s); Architecture 6/8
 (2 pre-existing, unrelated files, undisturbed). Golden suite unaffected (`evaluateTimeFlatten` defaults
 null on every existing call site).
+
+---
+
+## P2.5 — Thesis metadata — Done (2026-07-05, same session as P2.1–P2.4)
+
+**What shipped:** each strategy config gains `thesis` (one-sentence falsifiable claim),
+`expectedTradesPerWeek`, `expectedHoldBars` — persisted (not a hardcoded map), editable via the Strategies
+API/UI, seeded from `config/strategies/*.json`. Used later by P4's frequency reality check (needed trades
+≈ target% / (risk% × OOS avgR) vs actual).
+
+- `StrategyConfigEntry` (Domain) + `StrategyConfigEntity` (Infrastructure) gain the 3 nullable fields.
+  New EF migration `M35_StrategyThesis` (additive, nullable columns — no data loss on existing rows).
+- `SqliteStrategyConfigStore` wires them through `ToEntity`/`ToEntry`/`UpsertAsync` (both insert and update
+  paths).
+- `StrategyConfigSeeder.LoadFromJson` parses `thesis`/`expectedTradesPerWeek`/`expectedHoldBars` from each
+  strategy's JSON file.
+- All 9 `config/strategies/*.json` files got a genuine one-sentence thesis + plausible
+  expectedTradesPerWeek/expectedHoldBars, informed by each strategy's actual (post-P1/P2) entry logic —
+  e.g. ema-alignment's thesis states the NEW P2.3 pullback-entry edge, not the old condition.
+- **Found and fixed in passing:** `rsi-divergence.json`'s `parameters.divergenceLookback: 10` was still the
+  OLD value — P2.2 changed the C# default to 50, but an explicit JSON value overrides the record default,
+  so the SHIPPED config was still using the too-tight lookback that made real divergence unobservable
+  (the exact bug P2.2 fixed in code silently didn't apply to the deployed default). Fixed to 50.
+- **Found and fixed in passing:** `StrategyMetadataMap`'s entry-rule/exit-formula map (a separate,
+  pre-existing static metadata table) had a dead entry keyed `"bollinger-squeeze"` — the real
+  `[StrategyId]` is `"bb-squeeze"` (confirmed in `BollingerSqueezeStrategy.cs`), so this entry never
+  matched anything `StrategiesController` looked up. Fixed the key.
+- `StrategiesController` surfaces the 3 fields on both the list and detail GET endpoints, and accepts them
+  in `UpdateConfig`. Angular `StrategySummary`/`StrategyDetail` types + the strategy list card + strategy
+  detail edit form/read-only view all updated.
+
+New tests: `StrategyConfigStoreTests` (3 — new-entry round-trip, update-existing round-trip, null-metadata
+round-trip, all against a real in-memory SQLite `TradingDbContext`) and `StrategyConfigSeederTests` (1 —
+seeds the REAL `config/strategies/*.json` files via the real seeder and asserts all 9 have non-blank thesis
+metadata, so a future edit that silently drops a strategy's thesis fails loudly). The `rsi-divergence.json`
+`divergenceLookback` regression above was caught by manual review while writing this section, not by a
+test — noted here as a reminder that P2.2's C# default change doesn't retroactively fix an explicit JSON
+override, and worth a general sweep if other P2 default changes (e.g. trend-breakout's new `CooldownBars`)
+were ever made explicit in a JSON file too (checked: none were).
+
+**Gate:** `dotnet build` 0 errors (including a retry past the known Angular build-race flake); Unit 386/0/6;
+Integration 98/0 (+4 new); Simulation
+`RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 125/0 (~9s); Architecture 6/8 (2
+pre-existing, unrelated files, undisturbed). Angular `tsc --noEmit` clean.

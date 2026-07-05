@@ -295,6 +295,10 @@ export interface StrategySummary {
   stats: StrategyStats;
   entryRule?: string | null;
   exitFormula?: string | null;
+  // P2.5: falsifiable-hypothesis metadata.
+  thesis?: string | null;
+  expectedTradesPerWeek?: number | null;
+  expectedHoldBars?: number | null;
 }
 
 export interface StrategyStats {
@@ -319,6 +323,10 @@ export interface StrategyDetail {
   orderEntryJson: string | null;
   regimeFilterJson: string | null;
   reentryJson?: string | null;
+  // P2.5: falsifiable-hypothesis metadata.
+  thesis?: string | null;
+  expectedTradesPerWeek?: number | null;
+  expectedHoldBars?: number | null;
 }
 
 export interface BarData {

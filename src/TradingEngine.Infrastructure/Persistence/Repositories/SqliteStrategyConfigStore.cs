@@ -43,6 +43,9 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db, IMemoryCache?
             existing.OrderEntryJson = SerializeOptional(entry.OrderEntry);
             existing.RegimeFilterJson = SerializeOptional(entry.RegimeFilter);
             existing.ReentryJson = SerializeOptional(entry.Reentry);
+            existing.Thesis = entry.Thesis;
+            existing.ExpectedTradesPerWeek = entry.ExpectedTradesPerWeek;
+            existing.ExpectedHoldBars = entry.ExpectedHoldBars;
             existing.Version++;
             existing.UpdatedAtUtc = DateTime.UtcNow;
         }
@@ -73,6 +76,9 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db, IMemoryCache?
             OrderEntryJson = SerializeOptional(entry.OrderEntry),
             RegimeFilterJson = SerializeOptional(entry.RegimeFilter),
             ReentryJson = SerializeOptional(entry.Reentry),
+            Thesis = entry.Thesis,
+            ExpectedTradesPerWeek = entry.ExpectedTradesPerWeek,
+            ExpectedHoldBars = entry.ExpectedHoldBars,
             UpdatedAtUtc = DateTime.UtcNow,
         };
     }
@@ -92,6 +98,9 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db, IMemoryCache?
             OrderEntry = DeserializeOptional<OrderEntryOptions>(entity.OrderEntryJson),
             PositionManagement = DeserializeOptional<PositionManagementOptions>(entity.PositionManagementJson),
             Reentry = DeserializeOptional<ReentryOptions>(entity.ReentryJson),
+            Thesis = entity.Thesis,
+            ExpectedTradesPerWeek = entity.ExpectedTradesPerWeek,
+            ExpectedHoldBars = entity.ExpectedHoldBars,
         };
     }
 

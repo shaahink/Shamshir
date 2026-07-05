@@ -276,7 +276,7 @@ under the existing P2/verdict-funnel work rather than a separate fix, but don't 
 **P2.4 Time-flatten behavior (D6) — Done (2026-07-05).** See PROGRESS.md §P2.4 — reused the existing (previously-unwired) `CloseRequested` event rather than adding a new one.
 - Loop-level: a per-strategy optional `FlattenAtUtc` (from config) closes that strategy's open positions at the first bar ≥ the time. Session-breakout config already carries `12:00` — wire it. (Also the building block for P7 news/weekend flattening.)
 
-**P2.5 Thesis metadata.**
+**P2.5 Thesis metadata — Done (2026-07-05).** See PROGRESS.md §P2.5 — persisted (EF migration), not a hardcoded map; also fixed a stale `rsi-divergence.json` param that silently defeated P2.2's fix.
 - Each strategy config gains `thesis` (one sentence), `expectedTradesPerWeek`, `expectedHoldBars`. Surfaced on the strategy page; used by the P4 frequency reality check. Forces every hypothesis to state its falsifiable claim.
 
 **P2.6 Units doctrine (D9) — normalize the raw-pip fields.**
