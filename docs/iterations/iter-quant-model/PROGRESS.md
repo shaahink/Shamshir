@@ -14,19 +14,19 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P1.5, P2.1 (indicator series API), P2.2 (rsi-divergence rewrite), P2.3 (edge semantics), P2.4
-(time-flatten), P2.5 (thesis metadata), and P2.6 (units doctrine + config linter) are committed and gated
-green.** Next up is P2.7 — stop orders (`OrderType.Stop` end-to-end). See PLAN.md §3 P2 for the phase spec.
-P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
+→ **P2 is fully done** (P1.5, P2.1–P2.7 all committed and gated green with the per-phase filter below).
+**Next: run the FULL suite once (including cTrader E2E) as the end-of-P2 gate the owner asked for, then
+start P3.1 — the excursion recorder.** See PLAN.md §3 P3 for the phase spec. P1.5.4 (MISSING_DATA verdict)
+stays folded into P2's verdict-funnel work per the original triage (still not done — P4/scoreboard-adjacent,
+not blocking anything so far).
 
 **Gate filter note (owner request, 2026-07-05):** cTrader-backed E2E tests (`Category=E2E`, `Category=Slow`,
 `Category=NetMQ`, `RequiresCTrader=true`) are slow/flaky in this sandbox even though credentials ARE present
-(confirmed — they actually run for real, not skip) and cost 10-25+ minutes per run under contention. For the
-rest of P2, gate with:
+(confirmed — they actually run for real, not skip) and cost 10-25+ minutes per run under contention. Gate
+each phase with:
 `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ"`
-(120/120 green, ~9s) instead of the previous `RequiresCTrader!=true` alone (which does NOT exclude
-`PipelineE2ETests` — it has no `RequiresCTrader` trait, only `Category=E2E`/`Slow`). Run the FULL suite
-(including cTrader E2E) once at the end of P2, not per-phase.
+instead of the full Simulation suite. Run the FULL suite (including cTrader E2E) once at the end of P2 (next
+step), not per-phase.
 
 This branch: 5 commits on top of `iter/quant-model` (9b9dbfc):
 - `edeb3a6` P1.1 — instance-per-row, de-hardcoded H1 in all 14 strategies
@@ -111,8 +111,10 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P2.3 Edge semantics | **Done** | ema-alignment/trend-breakout/bb-squeeze real edges, not conditions. |
 | P2.4 Time-flatten behavior | **Done** | Loop-level, wired via the previously-dead CloseRequested event. |
 | P2.5 Thesis metadata | **Done** | thesis/expectedTradesPerWeek/expectedHoldBars, all 9 strategies. |
-| P2.6–P2.7 (units doctrine, stop orders) | Not started | |
+| P2.6 Units doctrine | **Done** | Normalized pip fields + config linter (D9). |
+| P2.7 Stop orders | **Done** | `OrderType.Stop` end-to-end: kernel plumbing bug fix + both replay venues + cTrader adapter/cBot + EntryPlanner.StopConfirm. |
 | P3 Excursion recorder + Exit Lab | Not started | |
+| P4 Research metrics | Not started | |
 | P4 Research metrics | Not started | |
 | P5 Data + triage (owner-driven) | Not started | |
 | P6 Oracle backstop | Not started | |
@@ -634,3 +636,101 @@ config to EURUSD vs XAUUSD via `ISymbolInfoRegistry.TryGet` produces `MaxPips` 1
 `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 126/0 (+1, ~10s); Architecture 6/8 (2
 pre-existing, unrelated files, undisturbed); `dotnet run --project src/TradingEngine.Host -- lint-config`
 against the real repo → "Config lint: OK".
+
+---
+
+## P2.7 — Stop orders (`OrderType.Stop` end-to-end) — Done (2026-07-05, same session as P2.1–P2.6)
+
+**Bug found and fixed (same bug class this phase exists to close):** `OrderType.Stop` already existed in
+the enum and flowed correctly through `OrderProposed`/`OrderSubmitted`/`PositionLifecycle`, but TWO places
+silently collapsed it back to Market/Limit before reaching a venue — both traced by direct code read, not
+guessed:
+1. The `SubmitOrder` effect record (`EngineEffects.cs`) carried NO `OrderType` field at all, so
+   `Kernel.DecideProposed` (the kernel/production path per iter-36) had nowhere to put `p.OrderType` when
+   building the effect — it silently dropped it.
+2. `EffectExecutor`'s `SubmitOrder` handler re-derived the type from `submit.LimitPrice is not null ?
+   OrderType.Limit : OrderType.Market` — a derivation that can't distinguish Stop from Limit (both ride on
+   a resting trigger price). Any kernel-path Stop proposal would have gone out to the venue as `Limit`.
+3. **Drive-by fix, same bug class:** `PositionTracker.TrackOrder` (the legacy imperative live-trading path)
+   hardcoded `OrderType.Market` on the `OrderSubmitted` event instead of reading `request.Type` — the
+   `OrderRequest` passed in already carried the correct type (`TradingLoop.cs` sets it from
+   `intent.OrderType` before calling `TrackOrder`), so this was pure data loss with no reason to exist.
+   `PositionTracker.SeedOpenPositions`'s own `OrderType.Market` hardcode is untouched — that one is correct
+   (reconciling an already-filled venue position, no live order-type decision there).
+
+**Fix:** `SubmitOrder` gained an `OrderType OrderType = OrderType.Market` field (additive default — every
+pre-existing direct-construct call site stays source-compatible); `Kernel.cs` threads `p.OrderType` through;
+`EffectExecutor` uses `submit.OrderType` directly for both the rebuilt `TradeIntent` and `OrderRequest.Type`;
+`PositionTracker.TrackOrder` reads `request.Type`. New regression test
+`Kernel_PreservesStopOrderType_ThroughSubmitOrderEffect` (`KernelEvaluatorEquivalenceTests.cs`) proves a
+Stop-typed proposal survives `OrderProposed → Kernel.DecideProposed → SubmitOrder` effect without
+collapsing to Market or Limit.
+
+**Venue fill logic — both replay adapters.** Added `_pendingStops`/`PendingStop` (mirrors
+`_pendingLimits`/`PendingLimit` exactly) to `BacktestReplayAdapter` and `TapeReplayAdapter`. `SubmitOrderAsync`
+branches on `request.Type == OrderType.Stop && request.LimitPrice is { } stop` — reusing the SAME
+`LimitPrice` field as the generic "resting trigger price" for both Limit and Stop (the domain convention
+already established; a distinct `StopPrice` field would have been unnecessary churn). Trigger direction is
+the MIRROR of a limit order: a buy stop fills when the ask crosses UP THROUGH the trigger (breakout
+confirmation, same long-entry spread convention as a market/limit buy); a sell stop fills when the raw bid
+crosses DOWN THROUGH it (same short-entry no-spread-adjustment convention). Gap-through-at-open reuses the
+exact rule `ProcessSlTpHits` already applies to SL gap-through (F6): if the bar's open already lies beyond
+the trigger, fill at the (worse) open instead of the trigger price. Same expiry semantics as limits
+(`BarsRemaining` from `LimitOrderExpiryBars`, `ENTRY_EXPIRED` on expiry). `ProcessPendingStops` wired into
+`OnBarObserved` alongside every existing `ProcessPendingLimits` call site, including TapeReplayAdapter's
+dual-resolution fine-bar loop. `_pendingStops` cleared in both adapters' dispose paths.
+
+**cTrader adapter — drive-by correctness fix.** `CTraderBrokerAdapter.SubmitOrderAsync` used to derive
+`isLimit` from `entryOpts?.Method == OrderEntryMethod.LimitOffset` — NOT from `request.Type`, unlike both
+replay adapters. A `Stop`-typed request would have silently gone out as `orderType: "Market"` with its
+trigger price discarded. Generalized to switch on `request.Type` directly (`Market`/`Limit`/`Stop`),
+reusing the existing `limitPrice`/`expiryBars` wire fields as the generic trigger/expiry for either resting
+type. New test `StopIntent_ProducesStopOrderFrame` (`FakeTransportTests.cs`) proves the wire frame carries
+`orderType: "Stop"` with the trigger price populated.
+
+**cBot.** `ExecuteSubmitOrder` gained an `orderType == "Stop" && limitPrice > 0` branch calling the cAlgo
+Robot API's `PlaceStopOrder` (same obsolete-overload pattern already used for `PlaceLimitOrder`, confirmed
+by a full solution build — the cAlgo.API method exists and compiles clean, no cTrader-cli needed to verify
+this). Widened the pending-registration condition to `(orderType == "Limit" || orderType == "Stop")` so a
+resting stop also gets tracked for expiry. Renamed `_pendingLimits`/`PendingLimitEntry` →
+`_pendingEntryOrders`/`PendingEntryOrder` (small, contained) since the dict now tracks both kinds — the
+expiry/cancel logic (`ProcessLimitExpiry`) was already order-kind-agnostic and needed no logic change.
+
+**`EntryPlanner` — new `StopConfirm` method.** Per the plan: "buy stop at signal bar high + spread-multiple
+buffer" (sell mirrors on the bar's Low). `Plan`'s signature gained an optional `Bar? bar` parameter (default
+null, so it's source-compatible) — needed because `StopConfirm` requires the signal bar's High/Low, which
+the pre-existing `signalPrice` (tick mid) can't provide. Both real call sites already had the bar in scope
+(`BarEvaluator.cs` already builds a domain `Bar` locally for its indicator window; `TradingLoop.cs`'s
+`ProcessBarAsync(Bar bar, ...)` parameter IS the domain `Bar`) — updated both to pass it through. New
+`OrderEntryOptions.StopConfirmBufferSpreadMultiple` (default 1.0) — a dedicated field, not a reuse of
+`MaxSlippagePips`/`MaxSlippageSpreadMultiple` (those govern post-fill slippage tolerance, a different
+concept from this pre-fill trigger buffer). Extracted the SL/TP distance-preserving shift logic (previously
+inline in `PlanLimitOffset`) into a shared `ShiftSlTp` helper, reused by both `PlanLimitOffset` and
+`PlanStopConfirm`. New `EntryPlannerTests.cs` (none existed before — 8 tests): Market/MarketWithSlippage
+unaffected (regression), LimitOffset long+short (regression, extracted from the pre-existing inline logic),
+StopConfirm long (bar.High + buffer) and short (bar.Low − buffer) with hand-computed SL/TP shifts, buffer
+scales with the configured multiple, and a defensive no-bar-supplied fallback (signalPrice as the bar
+extreme — shouldn't happen from the real call sites, both of which always have the bar, but keeps `Plan`
+total rather than throwing if a future/test caller omits it).
+
+**Scope boundary (deliberate, not an oversight):** none of the 9 shipped `config/strategies/*.json` configs
+were switched to `StopConfirm` in this phase. Which strategy should demand confirmation vs. instant entry is
+a strategy-tuning/experiment decision, not part of "add the order-type plumbing end-to-end" — the plan text
+lists rsi-divergence and "any breakout strategy" as *future consumers* of this mechanism, not a mandate to
+convert them now. Deferred, same as P0.3 documented its own known-gap section.
+
+New tests: `BacktestReplayStopOrderTests` (5 — buy/sell stop reached with no gap, buy/sell gap-through-at-open,
+expiry), `TapeReplayStopOrderTests` (5 — same cases, single-resolution mode), `EntryPlannerTests` (8, see
+above), `Kernel_PreservesStopOrderType_ThroughSubmitOrderEffect` (1), `StopIntent_ProducesStopOrderFrame` (1,
+`FakeTransportTests.cs`). All fill-price/gap-through numbers hand-computed against a 2-pip spread fixture
+before running, mirroring `BacktestReplaySpreadConventionTests`'/`TapeReplaySpreadConventionTests`' existing
+convention — every new test passed on the first run, which is corroborating (not conclusive) evidence the
+hand-derived fill-direction logic was reasoned correctly rather than reverse-fit to whatever the code did.
+
+**Gate:** `dotnet build` 0 errors (full solution, including the cBot's net6.0/cAlgo.API target — confirms
+`PlaceStopOrder` compiles without a running cTrader-cli); Unit 416/0/6 (+19); Integration 99/0 (unchanged —
+no new integration tests this phase); Simulation
+`RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 127/0 (+1, ~10s, byte-identical golden
+fixtures — `Plan`'s new `bar` parameter defaults null and every existing call site passes the bar, but no
+existing config uses `StopConfirm` so no existing fixture's behavior changes); Architecture 6/8 (same 2
+pre-existing failures — `EngineReducer.cs:436`, `VenueSessionEntity` — neither file touched this phase).

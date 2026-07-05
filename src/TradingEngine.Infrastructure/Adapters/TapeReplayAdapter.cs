@@ -53,6 +53,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
     private readonly Dictionary<Guid, OpenTrade> _openTrades = new();
     private readonly Dictionary<Guid, PendingLimit> _pendingLimits = new();
+    private readonly Dictionary<Guid, PendingStop> _pendingStops = new();
     private readonly Dictionary<Guid, PendingMarketOrder> _pendingMarketOrders = new();
     private readonly bool _honestFills;
     private decimal _balance;
@@ -86,6 +87,19 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         public required TradeDirection Direction { get; init; }
         public required decimal Lots { get; init; }
         public required decimal LimitPrice { get; init; }
+        public required Price StopLoss { get; init; }
+        public Price? TakeProfit { get; init; }
+        public int BarsRemaining { get; set; }
+    }
+
+    // P2.7: a resting STOP entry order — the mirror image of PendingLimit. A buy stop fills when price
+    // rises UP THROUGH the trigger (breakout confirmation); a sell stop fills when price falls DOWN
+    // THROUGH it. Same expiry semantics as a limit (BarsRemaining from LimitOrderExpiryBars).
+    private sealed class PendingStop
+    {
+        public required TradeDirection Direction { get; init; }
+        public required decimal Lots { get; init; }
+        public required decimal StopPrice { get; init; }
         public required Price StopLoss { get; init; }
         public Price? TakeProfit { get; init; }
         public int BarsRemaining { get; set; }
@@ -226,6 +240,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             _lastClose = decisionBar.Close;
             BrokerTimeUtc = decisionBar.OpenTimeUtc + _decisionInterval;
             ProcessPendingLimits(decisionBar, decrementExpiry: isNewDecisionBar);
+            ProcessPendingStops(decisionBar, decrementExpiry: isNewDecisionBar);
             ProcessSlTpHits(decisionBar);
             EmitAccountUpdate(BrokerTimeUtc);
             return;
@@ -242,6 +257,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             BrokerTimeUtc = fine.OpenTimeUtc + _exitInterval;
             ProcessPendingMarketOrders(fine);
             ProcessPendingLimits(fine, decrementExpiry: true);
+            ProcessPendingStops(fine, decrementExpiry: true);
             ProcessSlTpHits(fine);
             var floatingEquity = _balance + ComputeFloatingPnL(fine.Close);
             if (floatingEquity < minEquity) minEquity = floatingEquity;
@@ -280,6 +296,22 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 Direction = request.Direction,
                 Lots = request.Lots,
                 LimitPrice = limit.Value,
+                StopLoss = sl,
+                TakeProfit = tp,
+                BarsRemaining = request.Intent.Entry?.LimitOrderExpiryBars ?? 3,
+            };
+            return Task.FromResult(orderId);
+        }
+
+        // P2.7: resting STOP entry order — reuses the same LimitPrice field as the generic "resting
+        // trigger price" (OrderType tags which semantics apply).
+        if (request.Type == OrderType.Stop && request.LimitPrice is { } stop)
+        {
+            _pendingStops[orderId] = new PendingStop
+            {
+                Direction = request.Direction,
+                Lots = request.Lots,
+                StopPrice = stop.Value,
                 StopLoss = sl,
                 TakeProfit = tp,
                 BarsRemaining = request.Intent.Entry?.LimitOrderExpiryBars ?? 3,
@@ -397,6 +429,55 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             if (limit.BarsRemaining <= 0)
             {
                 _pendingLimits.Remove(orderId);
+                EmitExecutionEvent(new ExecutionEvent(
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
+            }
+        }
+    }
+
+    // P2.7: match resting STOP entry orders against the bar that just became current — the mirror image
+    // of ProcessPendingLimits. A buy stop fills when price rises UP THROUGH the trigger (the ask side,
+    // same long-entry spread convention as a market/limit buy); a sell stop fills when price falls DOWN
+    // THROUGH it (raw bid, same short-entry convention as a market/limit sell). Gap-through: if the
+    // bar's OPEN already lies beyond the trigger (price gapped past it before this bar started), fill at
+    // the bar's OPEN instead of the trigger price — the same rule ProcessSlTpHits applies to SL
+    // gap-through (F6), reused here for stop-entry gap-through. Same expiry semantics as limits.
+    private void ProcessPendingStops(Bar bar, bool decrementExpiry = true)
+    {
+        if (_pendingStops.Count == 0) return;
+
+        var spread = GetSpread();
+
+        foreach (var (orderId, stop) in _pendingStops.ToList())
+        {
+            var reached = stop.Direction == TradeDirection.Long
+                ? SpreadConvention.AskPrice(bar.High, spread) >= stop.StopPrice
+                : bar.Low <= stop.StopPrice;
+
+            if (reached)
+            {
+                _pendingStops.Remove(orderId);
+                var fillPrice = stop.StopPrice;
+                if (stop.Direction == TradeDirection.Long)
+                {
+                    var askOpen = SpreadConvention.AskPrice(bar.Open, spread);
+                    if (askOpen >= stop.StopPrice) fillPrice = askOpen;
+                }
+                else if (bar.Open <= stop.StopPrice)
+                {
+                    fillPrice = bar.Open;
+                }
+
+                FillEntry(orderId, stop.Direction, fillPrice, stop.Lots, stop.StopLoss, stop.TakeProfit);
+                continue;
+            }
+
+            if (!decrementExpiry) continue;
+
+            stop.BarsRemaining--;
+            if (stop.BarsRemaining <= 0)
+            {
+                _pendingStops.Remove(orderId);
                 EmitExecutionEvent(new ExecutionEvent(
                     orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
             }
@@ -597,6 +678,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         _executionChannel.Writer.TryComplete();
         _openTrades.Clear();
         _pendingLimits.Clear();
+        _pendingStops.Clear();
         _pendingMarketOrders.Clear();
         try { await _feedTask; } catch (OperationCanceledException) { }
         _feedCts?.Dispose();

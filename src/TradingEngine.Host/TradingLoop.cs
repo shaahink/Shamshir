@@ -122,7 +122,7 @@ public sealed class TradingLoop(
                 continue;
             }
 
-            intent = entryPlanner.Plan(intent, strategy.Config.OrderEntry, closeTick.Mid);
+            intent = entryPlanner.Plan(intent, strategy.Config.OrderEntry, closeTick.Mid, bar);
 
             if (signalGate is not null)
             {

@@ -63,10 +63,12 @@ public partial class TradingEngineCBot : Robot
     private readonly List<Bars> _subscriptions = new();
     private readonly Dictionary<long, Guid> _positionMap = new();
     private readonly HashSet<long> _commandCloses = new();
-    private readonly Dictionary<string, PendingLimitEntry> _pendingLimits = new(); // key = clientOrderId
+    // key = clientOrderId. Tracks BOTH resting Limit and Stop entry orders (P2.7) — expiry/cancel logic
+    // is identical for either kind, so one dict/class covers both.
+    private readonly Dictionary<string, PendingEntryOrder> _pendingEntryOrders = new();
     private volatile bool _connected;
 
-    private sealed class PendingLimitEntry
+    private sealed class PendingEntryOrder
     {
         public int BarsRemaining;
         public string Symbol = "";
@@ -390,6 +392,13 @@ public partial class TradingEngineCBot : Robot
                 slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null);
 #pragma warning restore CS0618
         }
+        else if (orderType == "Stop" && limitPrice > 0)
+        {
+#pragma warning disable CS0618
+            result = PlaceStopOrder(tradeType, symbol, volumeInUnits, limitPrice, "Shamshir",
+                slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null);
+#pragma warning restore CS0618
+        }
         else
         {
             result = ExecuteMarketOrder(tradeType, symbol, volumeInUnits, "Shamshir",
@@ -400,9 +409,9 @@ public partial class TradingEngineCBot : Robot
         {
             var pos = result.Position;
 
-            if (orderType == "Limit" && expiryBars > 0 && pos is null)
+            if ((orderType == "Limit" || orderType == "Stop") && expiryBars > 0 && pos is null)
             {
-                _pendingLimits[clientOrderId] = new PendingLimitEntry
+                _pendingEntryOrders[clientOrderId] = new PendingEntryOrder
                 {
                     BarsRemaining = expiryBars,
                     Symbol = symbol,
@@ -444,10 +453,10 @@ public partial class TradingEngineCBot : Robot
 
     private void ProcessLimitExpiry(string symbol, string timeframe)
     {
-        if (_pendingLimits.Count == 0) return;
+        if (_pendingEntryOrders.Count == 0) return;
 
         var expired = new List<string>();
-        foreach (var (clientOrderId, entry) in _pendingLimits)
+        foreach (var (clientOrderId, entry) in _pendingEntryOrders)
         {
             if (!string.Equals(entry.Symbol, symbol, StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -462,7 +471,7 @@ public partial class TradingEngineCBot : Robot
 
         foreach (var id in expired)
         {
-            _pendingLimits.Remove(id);
+            _pendingEntryOrders.Remove(id);
             foreach (var order in PendingOrders)
             {
                 if (!string.Equals(order.Label, id, StringComparison.OrdinalIgnoreCase)) continue;

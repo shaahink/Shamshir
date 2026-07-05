@@ -230,6 +230,28 @@ public sealed class KernelEvaluatorEquivalenceTests
     }
 
     [Fact]
+    public void Kernel_PreservesStopOrderType_ThroughSubmitOrderEffect()
+    {
+        // P2.7 regression: SubmitOrder's OrderType used to have nowhere to live on the effect record, so
+        // Kernel.DecideProposed silently dropped it and EffectExecutor re-derived Market/Limit from
+        // LimitPrice presence alone — which can't distinguish a Stop trigger from a Limit trigger (both
+        // ride on LimitPrice). Proves a Stop-typed proposal survives OrderProposed -> Kernel.DecideProposed
+        // -> SubmitOrder effect without collapsing to Market or Limit.
+        var kernel = new Kernel(BuildConfig());
+        var state = InitialState() with { Account = new AccountView(10_000m, 10_000m, 0m) };
+        var simTime = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var proposal = new OrderProposed(
+            new Guid("33333333-3333-3333-3333-333333333333"), Eurusd, TradeDirection.Long, OrderType.Stop,
+            new Price(1.1050m), new Price(1.0920m), new Price(1.1100m), "trend-breakout", 1.0970m, 50m, 10m, simTime);
+
+        var decision = kernel.Decide(state, proposal);
+        var submit = decision.Effects.OfType<SubmitOrder>().Should().ContainSingle().Subject;
+        submit.OrderType.Should().Be(OrderType.Stop, "the proposal's order type must reach the venue unchanged");
+        submit.LimitPrice.Should().Be(new Price(1.1050m), "the resting trigger price must ride along with the type");
+    }
+
+    [Fact]
     public void Kernel_AppliesTrailingStopMove_UpdatesStateAndEmitsModifyEffect()
     {
         // K4 gap-3: a StopLossModifyRequested (the trailing/breakeven decision, computed outside the kernel)

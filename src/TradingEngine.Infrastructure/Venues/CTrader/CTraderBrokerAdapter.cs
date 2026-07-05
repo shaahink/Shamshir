@@ -444,7 +444,12 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         _logger.LogInformation("CTRADER|SUBMIT_ORDER|id={Id}|symbol={Symbol}|dir={Dir}|lots={Lots}|connected={Connected}",
             clientOrderId, request.Symbol, request.Direction, request.Lots, connected);
         var entryOpts = request.Intent.Entry;
-        var isLimit = entryOpts?.Method == OrderEntryMethod.LimitOffset;
+        // P2.7: derive the wire order type from request.Type directly (Market/Limit/Stop) instead of
+        // re-deriving it from entryOpts.Method — the old derivation only recognised LimitOffset, so a
+        // Stop-typed request would have silently gone out as "Market" with its trigger price discarded.
+        // Both replay venues already key off request.Type; this brings the cTrader adapter in line.
+        var orderTypeStr = request.Type switch { OrderType.Limit => "Limit", OrderType.Stop => "Stop", _ => "Market" };
+        var isResting = orderTypeStr != "Market";
         var cmd = new
         {
             type = "submit_order",
@@ -452,9 +457,9 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             symbol = request.Symbol.Value,
             direction = request.Direction.ToString(),
             lots = (double)request.Lots,
-            orderType = isLimit ? "Limit" : "Market",
-            limitPrice = isLimit ? (double)request.Intent.LimitPrice!.Value.Value : 0.0,
-            expiryBars = isLimit ? (entryOpts!.LimitOrderExpiryBars) : 0,
+            orderType = orderTypeStr,
+            limitPrice = isResting ? (double)request.Intent.LimitPrice!.Value.Value : 0.0,
+            expiryBars = isResting ? (entryOpts?.LimitOrderExpiryBars ?? 3) : 0,
             maxSlippagePips = entryOpts?.MaxSlippagePips ?? 2.0,
             slPrice = (double)request.Intent.StopLoss.Value,
             tpPrice = request.Intent.TakeProfit.HasValue ? (double)request.Intent.TakeProfit.Value.Value : 0.0

@@ -125,7 +125,7 @@ public sealed class BarEvaluator(
                 continue;
             }
 
-            intent = entryPlanner.Plan(intent, strategy.Config.OrderEntry, closeTick.Mid);
+            intent = entryPlanner.Plan(intent, strategy.Config.OrderEntry, closeTick.Mid, barModel);
 
             if (signalGate is not null)
             {

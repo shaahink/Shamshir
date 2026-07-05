@@ -31,6 +31,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
 
     private readonly Dictionary<Guid, OpenTrade> _openTrades = new();
     private readonly Dictionary<Guid, PendingLimit> _pendingLimits = new();
+    private readonly Dictionary<Guid, PendingStop> _pendingStops = new();
     private decimal _balance;
     private decimal _lastClose;
     private Task _feedTask = Task.CompletedTask;
@@ -48,6 +49,19 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         public required TradeDirection Direction { get; init; }
         public required decimal Lots { get; init; }
         public required decimal LimitPrice { get; init; }
+        public required Price StopLoss { get; init; }
+        public Price? TakeProfit { get; init; }
+        public int BarsRemaining { get; set; }
+    }
+
+    // P2.7: a resting STOP entry order — the mirror image of PendingLimit. A buy stop fills when price
+    // rises UP THROUGH the trigger (breakout confirmation); a sell stop fills when price falls DOWN
+    // THROUGH it. Same expiry semantics as a limit (BarsRemaining from LimitOrderExpiryBars).
+    private sealed class PendingStop
+    {
+        public required TradeDirection Direction { get; init; }
+        public required decimal Lots { get; init; }
+        public required decimal StopPrice { get; init; }
         public required Price StopLoss { get; init; }
         public Price? TakeProfit { get; init; }
         public int BarsRemaining { get; set; }
@@ -188,6 +202,25 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
             return Task.FromResult(orderId);
         }
 
+        // P2.7: resting STOP entry order — reuses the same LimitPrice field as the generic "resting
+        // trigger price" (OrderType tags which semantics apply). Held until a later bar's range crosses
+        // the trigger, or until it expires.
+        if (request.Type == OrderType.Stop && request.LimitPrice is { } stop)
+        {
+            _pendingStops[orderId] = new PendingStop
+            {
+                Direction = request.Direction,
+                Lots = request.Lots,
+                StopPrice = stop.Value,
+                StopLoss = sl,
+                TakeProfit = tp,
+                BarsRemaining = request.Intent.Entry?.LimitOrderExpiryBars ?? 3,
+            };
+            _logger.LogDebug("BacktestReplay: stop rest {Id} at {Price:F5} dir={Dir} lots={Lots} expiry={Bars}b",
+                orderId, stop.Value, request.Direction, request.Lots, _pendingStops[orderId].BarsRemaining);
+            return Task.FromResult(orderId);
+        }
+
         var midPrice = _lastClose > 0 ? _lastClose : 1m;
         var spread = GetSpread();
         var fillPrice = new Price(request.Direction == TradeDirection.Long ? SpreadConvention.AskPrice(midPrice, spread) : midPrice);
@@ -282,8 +315,59 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         _lastClose = bar.Close;
         BrokerTimeUtc = bar.OpenTimeUtc + BarDuration(bar.Timeframe);
         ProcessPendingLimits(bar);
+        ProcessPendingStops(bar);
         ProcessSlTpHits(bar);
         EmitAccountUpdate(BrokerTimeUtc);
+    }
+
+    // P2.7: match resting STOP entry orders against the bar that just became current — the mirror image
+    // of ProcessPendingLimits. A buy stop fills when price rises UP THROUGH the trigger (the ask side,
+    // same long-entry spread convention as a market/limit buy); a sell stop fills when price falls DOWN
+    // THROUGH it (raw bid, same short-entry convention as a market/limit sell). Gap-through: if the
+    // bar's OPEN already lies beyond the trigger (price gapped past it before this bar started), fill at
+    // the bar's OPEN instead of the trigger price — the same rule ProcessSlTpHits already applies to SL
+    // gap-through, reused here for stop-entry gap-through. Same expiry semantics as limits.
+    private void ProcessPendingStops(Bar bar)
+    {
+        if (_pendingStops.Count == 0) return;
+
+        var spread = GetSpread();
+
+        foreach (var (orderId, stop) in _pendingStops.ToList())
+        {
+            var reached = stop.Direction == TradeDirection.Long
+                ? SpreadConvention.AskPrice(bar.High, spread) >= stop.StopPrice
+                : bar.Low <= stop.StopPrice;
+
+            if (reached)
+            {
+                _pendingStops.Remove(orderId);
+                var fillPrice = stop.StopPrice;
+                if (stop.Direction == TradeDirection.Long)
+                {
+                    var askOpen = SpreadConvention.AskPrice(bar.Open, spread);
+                    if (askOpen >= stop.StopPrice) fillPrice = askOpen;
+                }
+                else if (bar.Open <= stop.StopPrice)
+                {
+                    fillPrice = bar.Open;
+                }
+
+                FillEntry(orderId, stop.Direction, fillPrice, stop.Lots, stop.StopLoss, stop.TakeProfit);
+                _logger.LogDebug("BacktestReplay: stop fill {Id} at {Price:F5} dir={Dir}",
+                    orderId, fillPrice, stop.Direction);
+                continue;
+            }
+
+            stop.BarsRemaining--;
+            if (stop.BarsRemaining <= 0)
+            {
+                _pendingStops.Remove(orderId);
+                EmitExecutionEvent(new ExecutionEvent(
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
+                _logger.LogDebug("BacktestReplay: stop expired {Id} at {Price:F5}", orderId, stop.StopPrice);
+            }
+        }
     }
 
     // iter-redesign-ctrader P1.4: detect SL/TP hits against the bar's OHLC and emit reasoned close
@@ -526,6 +610,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         _executionChannel.Writer.TryComplete();
         _openTrades.Clear();
         _pendingLimits.Clear();
+        _pendingStops.Clear();
         try { await _feedTask; } catch (OperationCanceledException) { }
         _feedCts?.Dispose();
     }

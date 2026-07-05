@@ -61,11 +61,14 @@ public sealed class EffectExecutor : IEffectExecutor
         switch (effect)
         {
             case SubmitOrder submit:
-                var intent = new TradeIntent(submit.Symbol, submit.Direction, OrderType.Market,
+                // P2.7: OrderType now travels on the effect itself (set by the kernel from the proposal),
+                // not re-derived from LimitPrice presence — that derivation couldn't distinguish Stop from
+                // Limit (both carry a resting trigger price on LimitPrice).
+                var intent = new TradeIntent(submit.Symbol, submit.Direction, submit.OrderType,
                     submit.LimitPrice, submit.StopLoss, submit.TakeProfit,
                     submit.StrategyId, "standard", "", _clock.UtcNow);
                 var orderReq = new OrderRequest(intent, submit.Lots, submit.Symbol, submit.Direction,
-                    submit.LimitPrice is not null ? OrderType.Limit : OrderType.Market, submit.LimitPrice,
+                    submit.OrderType, submit.LimitPrice,
                     // Submit under the kernel's order id (= PositionId) so the venue fill/close + the
                     // feedback bridge all key off ONE id — no venue-id↔kernel-id translation (K2).
                     ClientOrderId: submit.OrderId);

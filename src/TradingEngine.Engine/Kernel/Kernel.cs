@@ -67,7 +67,7 @@ public sealed class Kernel(KernelConfig config) : IKernel
 
         var effects = new List<EngineEffect>(posDecision.Effects)
         {
-            new SubmitOrder(p.OrderId, p.Symbol, p.Direction, gate.Lots, p.LimitPrice, p.StopLoss, p.TakeProfit, p.StrategyId),
+            new SubmitOrder(p.OrderId, p.Symbol, p.Direction, gate.Lots, p.LimitPrice, p.StopLoss, p.TakeProfit, p.StrategyId, p.OrderType),
             new RegisterRisk(positionId, p.StrategyId, gate.RiskAmount),
         };
         return new EngineDecision(posDecision.State, effects);
