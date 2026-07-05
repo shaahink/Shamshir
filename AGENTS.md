@@ -68,18 +68,20 @@ tests/
 - P0 (truth repair) delivered: R-vs-initial-stop, full-spread convention, honest entry timing (3 commits)
 - P1 (TF-agnostic strategy bank) delivered: instance-per-row, de-hardcoded H1 bar lookups in all 14 strategies, proposal TF metadata, aux-TF feed for mtf-trend, HonestFills checkbox (4 commits)
 - P1.5 (static-review fixes) delivered: indicator *requests* now bound to EntryTimeframe in all 9 strategies (bar lookups alone weren't enough), aux-TF (H4) bars revealed point-in-time via a cursor instead of bulk-loaded (fixed a lookahead-bias bug), run-plan TF parse failures now throw instead of silently binding H1
+- P2.1 (indicator series API) delivered: IndicatorSnapshotService keeps a capped ring buffer (64, latest last) per sig key via one write point; MarketContext.IndicatorSeries carries it to strategies. Ported macd-momentum/super-trend/mtf-trend/bb-squeeze off private cadence-fragile fields onto the series (deleted `_lastHist`/`_prevDirection`/`_prevRsi`/`_bbWidthQueue`)
 - Cross-symbol state pollution fixed (per-row instances instead of singletons)
 - Tape venue: correct full-spread convention via shared `SpreadConvention` helper, both adapters unified
 - Honest entry fills: tape market entries queue at signal bar, fill at next M1 bar open (toggleable)
 - Non-H1 strategy runs are now actually verified end-to-end (M15 tape run produces proposals) — this is the claim P1 made but hadn't tested
-- All gates green: Unit 356/0/6, Integration 94/0, fast Simulation 124/0 byte-identical, Architecture 6/8 (2 pre-existing, undisturbed)
+- All gates green: Unit 362/0/6, Integration 94/0, fast Simulation 128/0 byte-identical, Architecture 6/8 (2 pre-existing, undisturbed)
 - Parent branch `iter/quant-model` has P0 (3 gated commits pushed to origin)
 
 ## What's next
 
 See `docs/iterations/iter-quant-model/PLAN.md` §3 for the full iteration spec.
-**Next phase: P2 — Entry surgery** (indicator series API, rsi-divergence rewrite, edge semantics, time-flatten,
-units doctrine, stop orders). P1.5.4 (MISSING_DATA verdict) is folded into P2's verdict-funnel work.
+**Next phase: P2.2 — rsi-divergence rewrite** (pivot-based real divergence, builds on P2.1's series), then
+P2.3–P2.7 (edge semantics, time-flatten, thesis metadata, units doctrine, stop orders).
+P1.5.4 (MISSING_DATA verdict) is folded into P2's verdict-funnel work.
 Uncommitted Angular changes from `iter/data-mgmt` were stashed on this branch (`pre-P1 uncommitted changes from parent branch`).
 
 ## Rules you must not break

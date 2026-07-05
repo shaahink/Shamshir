@@ -260,7 +260,7 @@ under the existing P2/verdict-funnel work rather than a separate fix, but don't 
 
 ### P2 — Entry surgery (the strategy bank becomes honest hypotheses)
 
-**P2.1 Indicator series API.**
+**P2.1 Indicator series API — Done (2026-07-05).** See PROGRESS.md §P2.1 for the full write-up.
 - `IndicatorSnapshotService` keeps a ring buffer (last 64 values) per sig key; `MarketContext` gains `IndicatorSeries: IReadOnlyDictionary<string, IReadOnlyList<double>>` (latest last). `BuildStrategyIndicatorValues` populates both.
 - Port `_lastHist` (macd), `_prevRsi` (mtf), `_prevDirection` (supertrend), bb-width queue to read the series — deletes cadence-fragile private state. (Instance-per-row already removed the pollution; this removes the fragility.)
 

@@ -10,7 +10,6 @@ public sealed class BollingerSqueezeStrategy : IStrategy
     private readonly BollingerSqueezeConfig _config;
     private readonly ILogger<BollingerSqueezeStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
-    private readonly Queue<double> _bbWidthQueue = new();
     private int _cooldownRemaining;
     private bool _squeezeActive;
     private int _winStreak;
@@ -72,15 +71,28 @@ public sealed class BollingerSqueezeStrategy : IStrategy
 
             var bbWidth = (upperBand - lowerBand) / middleBand;
 
+            // P2.1: derive the prior-width window from the Upper/Lower/Middle series instead of a private
+            // queue — avoids desync if a bar is ever skipped/replayed out of order. The three series are
+            // always the same length (written together every recompute), so index i is one bar's reading.
+            var upperSeries = context.GetSeries($"BB_{p.BbPeriod}_{p.BbStdDev}_Upper");
+            var lowerSeries = context.GetSeries($"BB_{p.BbPeriod}_{p.BbStdDev}_Lower");
+            var middleSeries = context.GetSeries($"BB_{p.BbPeriod}_{p.BbStdDev}");
+            var seriesLen = Math.Min(upperSeries.Count, Math.Min(lowerSeries.Count, middleSeries.Count));
+
             // Squeeze = bandwidth contracted to <= SqueezeThreshold (e.g. 0.8 = 80%) of its recent
-            // AVERAGE, measured over the PRIOR window (before enqueuing the current width). The old code
+            // AVERAGE, measured over the PRIOR window (excluding the current bar's width). The old code
             // compared to Min() of a window that already included the current width, so `bbWidth < 0.8*min`
             // (min ≤ bbWidth) was mathematically impossible and the squeeze never triggered.
-            var priorCount = _bbWidthQueue.Count;
-            var avgPriorWidth = priorCount > 0 ? _bbWidthQueue.Average() : bbWidth;
-            _bbWidthQueue.Enqueue(bbWidth);
-            while (_bbWidthQueue.Count > p.BbPeriod)
-                _bbWidthQueue.Dequeue();
+            var priorStart = Math.Max(0, seriesLen - 1 - p.BbPeriod);
+            var priorWidths = new List<double>();
+            for (var i = priorStart; i < seriesLen - 1; i++)
+            {
+                if (middleSeries[i] <= 0) continue;
+                priorWidths.Add((upperSeries[i] - lowerSeries[i]) / middleSeries[i]);
+            }
+
+            var priorCount = priorWidths.Count;
+            var avgPriorWidth = priorCount > 0 ? priorWidths.Average() : bbWidth;
 
             if (priorCount < p.BbPeriod / 2)
                 return null;
@@ -163,7 +175,6 @@ public sealed class BollingerSqueezeStrategy : IStrategy
 
     public void Reset()
     {
-        _bbWidthQueue.Clear();
         _cooldownRemaining = 0;
         _squeezeActive = false;
         _winStreak = 0;

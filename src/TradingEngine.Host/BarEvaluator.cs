@@ -105,6 +105,7 @@ public sealed class BarEvaluator(
             if (totalBars == 0)
                 totalBars = barSnapshot.Values.Sum(b => b.Count);
             var strategyIndicators = indicatorSnapshot.BuildStrategyIndicatorValues(symbol, strategy);
+            var strategySeries = indicatorSnapshot.BuildStrategyIndicatorSeries(symbol, strategy);
 
             if (totalBars < strategy.RequiredBarCount)
             {
@@ -114,7 +115,7 @@ public sealed class BarEvaluator(
                 continue;
             }
 
-            var context = new MarketContext(symbol, closeTick, barSnapshot, strategyIndicators, simTime);
+            var context = new MarketContext(symbol, closeTick, barSnapshot, strategyIndicators, simTime, strategySeries);
             var intent = strategy.Evaluate(context);
 
             if (intent is null)

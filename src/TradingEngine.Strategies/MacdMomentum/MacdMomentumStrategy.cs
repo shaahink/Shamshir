@@ -10,7 +10,6 @@ public sealed class MacdMomentumStrategy : IStrategy
     private readonly MacdMomentumConfig _config;
     private readonly ILogger<MacdMomentumStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
-    private double? _lastHist;
     private int _winStreak;
     private int _lossStreak;
 
@@ -57,8 +56,6 @@ public sealed class MacdMomentumStrategy : IStrategy
             // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
             if (!context.IndicatorValues.TryGetValue($"SMA_{p.SmaPeriod}", out var sma200))
                 return null;
-            if (!context.IndicatorValues.TryGetValue("MACD_12_26_9_Histogram", out var histNow))
-                return null;
             if (!context.IndicatorValues.TryGetValue($"ADX_{p.AdxPeriod}", out var adx))
                 return null;
             if (!context.IndicatorValues.TryGetValue($"ATR_{p.AtrPeriod}", out var atr))
@@ -74,14 +71,12 @@ public sealed class MacdMomentumStrategy : IStrategy
             var close = (double)latestBar.Close;
             var priceAboveSma = close > sma200;
 
-            if (_lastHist is null)
-            {
-                _lastHist = histNow;
-                return null;
-            }
-
-            var histPrev = _lastHist.Value;
-            _lastHist = histNow;
+            // P2.1: read the MACD histogram series instead of caching a private field — a private
+            // "previous value" field silently desyncs if a bar is ever skipped/replayed out of order.
+            var histSeries = context.GetSeries("MACD_12_26_9_Histogram");
+            if (histSeries.Count < 2) return null;
+            var histPrev = histSeries[^2];
+            var histNow = histSeries[^1];
 
             TradeDirection? direction = null;
             string reason;
@@ -133,7 +128,6 @@ public sealed class MacdMomentumStrategy : IStrategy
 
     public void Reset()
     {
-        _lastHist = null;
         _winStreak = 0;
         _lossStreak = 0;
     }

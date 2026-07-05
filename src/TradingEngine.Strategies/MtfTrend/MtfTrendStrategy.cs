@@ -10,7 +10,6 @@ public sealed class MtfTrendStrategy : IStrategy
     private readonly MtfTrendConfig _config;
     private readonly ILogger<MtfTrendStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
-    private double? _prevRsi;
     private int _winStreak;
     private int _lossStreak;
 
@@ -57,8 +56,6 @@ public sealed class MtfTrendStrategy : IStrategy
             // computed on the higher timeframe, so it is only present when HigherTimeframe bars are fed.
             if (!context.IndicatorValues.TryGetValue($"EMA_{p.EmaPeriod}", out var h4Ema200))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"RSI_{p.RsiPeriod}", out var rsi))
-                return null;
             if (!context.IndicatorValues.TryGetValue($"ATR_{p.AtrPeriod}", out var atr))
                 return null;
 
@@ -68,14 +65,12 @@ public sealed class MtfTrendStrategy : IStrategy
             var close = (double)bars[^1].Close;
             var h4Bullish = close > h4Ema200;
 
-            if (_prevRsi is null)
-            {
-                _prevRsi = rsi;
-                return null;
-            }
-
-            var prevRsi = _prevRsi.Value;
-            _prevRsi = rsi;
+            // P2.1: read the RSI series instead of caching a private field — avoids desync if a bar is
+            // ever skipped/replayed out of order.
+            var rsiSeries = context.GetSeries($"RSI_{p.RsiPeriod}");
+            if (rsiSeries.Count < 2) return null;
+            var prevRsi = rsiSeries[^2];
+            var rsi = rsiSeries[^1];
 
             TradeDirection? direction = null;
             string reason;
@@ -130,7 +125,6 @@ public sealed class MtfTrendStrategy : IStrategy
 
     public void Reset()
     {
-        _prevRsi = null;
         _winStreak = 0;
         _lossStreak = 0;
     }

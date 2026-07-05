@@ -12,6 +12,13 @@ public sealed class IndicatorSnapshotService
     public ConcurrentDictionary<string, double> IndicatorValues { get; } = new();
     public Dictionary<string, double> ReusableIndicatorDict { get; } = new();
 
+    // P2.1: a capped ring buffer per sig key (latest last), so strategies that need a short lookback
+    // (macd histogram cross, RSI pullback cross, SuperTrend direction flip, BB-width history) can read it
+    // from MarketContext.IndicatorSeries instead of keeping their own private cadence-fragile field, which
+    // silently desyncs if a bar is ever skipped/replayed out of order.
+    private const int SeriesCapacity = 64;
+    private readonly ConcurrentDictionary<string, Queue<double>> _series = new();
+
     // P1.5.2: aux-timeframe bars (e.g. H4 for mtf-trend) are known for the WHOLE run up front (loaded once
     // by the orchestrator), but must only become visible to indicator computation point-in-time — as of the
     // sim-time of the decision bar currently being evaluated — or a strategy's higher-TF indicator silently
@@ -39,6 +46,28 @@ public sealed class IndicatorSnapshotService
         IndicatorValues.Clear();
         ReusableIndicatorDict.Clear();
         _auxSources.Clear();
+        _series.Clear();
+    }
+
+    // Single write point (per the P2.1 spec): every indicator value assignment goes through here, so the
+    // ring buffer can never drift out of sync with IndicatorValues.
+    private void Emit(string key, double value)
+    {
+        IndicatorValues[key] = value;
+        var q = _series.GetOrAdd(key, _ => new Queue<double>());
+        lock (q)
+        {
+            q.Enqueue(value);
+            while (q.Count > SeriesCapacity) q.Dequeue();
+        }
+    }
+
+    /// <summary>Snapshot of the last <see cref="SeriesCapacity"/> values for a sig key, oldest first
+    /// (latest last). Empty if the key has never been computed.</summary>
+    public IReadOnlyList<double> GetSeries(string key)
+    {
+        if (!_series.TryGetValue(key, out var q)) return [];
+        lock (q) { return q.ToArray(); }
     }
 
     /// <summary>
@@ -125,40 +154,40 @@ public sealed class IndicatorSnapshotService
                 switch (req.Type)
                 {
                     case IndicatorType.Atr:
-                        IndicatorValues[sigKey] = ind.Atr(reqQuotes, req.Period);
+                        Emit(sigKey, ind.Atr(reqQuotes, req.Period));
                         break;
                     case IndicatorType.Ema:
-                        IndicatorValues[sigKey] = ind.Ema(reqQuotes, req.Period);
+                        Emit(sigKey, ind.Ema(reqQuotes, req.Period));
                         break;
                     case IndicatorType.Rsi:
-                        IndicatorValues[sigKey] = ind.Rsi(reqQuotes, req.Period);
+                        Emit(sigKey, ind.Rsi(reqQuotes, req.Period));
                         break;
                     case IndicatorType.Sma:
-                        IndicatorValues[sigKey] = ind.Sma(reqQuotes, req.Period);
+                        Emit(sigKey, ind.Sma(reqQuotes, req.Period));
                         break;
                     case IndicatorType.Adx:
-                        IndicatorValues[sigKey] = ind.Adx(reqQuotes, req.Period);
+                        Emit(sigKey, ind.Adx(reqQuotes, req.Period));
                         break;
                     case IndicatorType.BollingerBands:
                         var (upper, middle, lower) = ind.BollingerBands(reqQuotes, req.Period, req.StdDev);
-                        IndicatorValues[sigKey] = middle;
-                        IndicatorValues[$"{sigKey}_Upper"] = upper;
-                        IndicatorValues[$"{sigKey}_Lower"] = lower;
+                        Emit(sigKey, middle);
+                        Emit($"{sigKey}_Upper", upper);
+                        Emit($"{sigKey}_Lower", lower);
                         break;
                     case IndicatorType.Macd:
                         var macdFast = req.Period;
                         var macdSlow = req.Param1 > 0 ? req.Param1 : 26;
                         var macdSig = (int)(req.Param2 > 0 ? req.Param2 : 9);
                         var macd = ind.Macd(reqQuotes, macdFast, macdSlow, macdSig);
-                        IndicatorValues[sigKey] = macd.MacdLine;
-                        IndicatorValues[$"{sigKey}_Signal"] = macd.Signal;
-                        IndicatorValues[$"{sigKey}_Histogram"] = macd.Histogram;
+                        Emit(sigKey, macd.MacdLine);
+                        Emit($"{sigKey}_Signal", macd.Signal);
+                        Emit($"{sigKey}_Histogram", macd.Histogram);
                         break;
                     case IndicatorType.SuperTrend:
                         var stMult = req.Param2 > 0 ? req.Param2 : 3.0;
                         var st = ind.SuperTrend(reqQuotes, req.Period, stMult);
-                        IndicatorValues[sigKey] = st.Line;
-                        IndicatorValues[$"{sigKey}_Direction"] = st.Direction;
+                        Emit(sigKey, st.Line);
+                        Emit($"{sigKey}_Direction", st.Direction);
                         break;
                 }
             }
@@ -231,6 +260,29 @@ public sealed class IndicatorSnapshotService
                 dict[$"{req.Key}_Histogram"] = hist;
             if (IndicatorValues.TryGetValue($"{sigKey}_Direction", out var dir))
                 dict[$"{req.Key}_Direction"] = dir;
+        }
+        return dict;
+    }
+
+    /// <summary>P2.1: same shape as <see cref="BuildStrategyIndicatorValues"/> but the ring-buffer series
+    /// (oldest first, latest last) per key instead of the single latest value.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<double>> BuildStrategyIndicatorSeries(Symbol symbol, IStrategy strategy)
+    {
+        var dict = new Dictionary<string, IReadOnlyList<double>>();
+        foreach (var req in strategy.RequiredIndicators)
+        {
+            var sigKey = IndicatorCache.BuildKey(symbol, req);
+            void AddIfPresent(string fullKey, string outputKey)
+            {
+                var series = GetSeries(fullKey);
+                if (series.Count > 0) dict[outputKey] = series;
+            }
+            AddIfPresent(sigKey, req.Key);
+            AddIfPresent($"{sigKey}_Upper", $"{req.Key}_Upper");
+            AddIfPresent($"{sigKey}_Lower", $"{req.Key}_Lower");
+            AddIfPresent($"{sigKey}_Signal", $"{req.Key}_Signal");
+            AddIfPresent($"{sigKey}_Histogram", $"{req.Key}_Histogram");
+            AddIfPresent($"{sigKey}_Direction", $"{req.Key}_Direction");
         }
         return dict;
     }

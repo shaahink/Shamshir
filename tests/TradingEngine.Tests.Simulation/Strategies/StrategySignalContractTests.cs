@@ -27,6 +27,11 @@ public sealed class StrategySignalContractTests
     private static int CountSignals(IStrategy strategy, List<Bar> bars)
     {
         int signals = 0;
+        // P2.1: several strategies now read MarketContext.IndicatorSeries instead of a private "previous
+        // value" field, so this loop must accumulate a real per-key history alongside the growing window
+        // (mirroring IndicatorSnapshotService's ring buffer) or every series-based cross/flip check sees
+        // fewer than 2 points and never fires.
+        var history = new Dictionary<string, List<double>>();
         for (int i = strategy.RequiredBarCount; i < bars.Count; i++)
         {
             // Recompute indicators over the growing window every bar — exactly what production does in
@@ -34,7 +39,17 @@ public sealed class StrategySignalContractTests
             // crossover indicators (SuperTrend direction, MACD histogram, RSI) and never fire.
             var window = bars.Take(i + 1).ToList();
             var indicators = StrategyTestHelper.ComputeIndicators(window, strategy.RequiredIndicators);
-            var ctx = StrategyTestHelper.MakeContext(bars[i], "EURUSD", window, indicators);
+            foreach (var (key, value) in indicators)
+            {
+                if (!history.TryGetValue(key, out var list))
+                {
+                    list = [];
+                    history[key] = list;
+                }
+                list.Add(value);
+            }
+            var series = history.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<double>)kv.Value);
+            var ctx = StrategyTestHelper.MakeContext(bars[i], "EURUSD", window, indicators, series);
             if (strategy.Evaluate(ctx) is not null) signals++;
         }
         return signals;

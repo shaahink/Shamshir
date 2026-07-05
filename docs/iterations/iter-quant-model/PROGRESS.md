@@ -14,9 +14,8 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P1.5 is fully committed and gated green — the P1.5.1/P1.5.2/P1.5.3 findings below are FIXED and verified
-(each with a failing-test-first regression test, confirmed to fail against the pre-fix code, then pass after).**
-Next up is P2 — Entry surgery (indicator series, divergence rewrite, edge semantics). See PLAN.md §3 P2 for the
+→ **P1.5 and P2.1 (indicator series API) are committed and gated green.** Next up is P2.2 — rsi-divergence
+rewrite (pivot-based, real divergence), which builds directly on P2.1's series. See PLAN.md §3 P2 for the
 phase spec. P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
 
 This branch: 5 commits on top of `iter/quant-model` (9b9dbfc):
@@ -97,7 +96,9 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P0.3 Honest entry timing | **Done** | Tape only, per plan. |
 | P1 TF-agnostic bank | **Done** | P1.1–P1.4 on `iter/quant-model--p1-tf-agnostic`. |
 | P1.5 Close review gaps | **Done** | P1.5.1–P1.5.3 fixed+tested; P1.5.4 (MISSING_DATA) deferred to P2. |
-| P2 Entry surgery | Not started | |
+| P2.1 Indicator series API | **Done** | Ring buffer + 4 strategies ported off private fragile state. |
+| P2.2 rsi-divergence rewrite | Not started | |
+| P2.3–P2.7 (edge semantics, time-flatten, thesis metadata, units doctrine, stop orders) | Not started | |
 | P3 Excursion recorder + Exit Lab | Not started | |
 | P4 Research metrics | Not started | |
 | P5 Data + triage (owner-driven) | Not started | |
@@ -309,3 +310,59 @@ full code-trace review found the indicator-request layer never got de-hardcoded 
 pinned to H1 in all 9 strategies) and a lookahead-bias bug in the aux-TF preload (mtf-trend's H4 EMA is
 computed once from the full run range instead of point-in-time). See "Static-review findings" under
 "Resume here" above and PLAN.md §3 P1.5 for the full trace and fix spec — P1.5 must land before P2.1.
+
+---
+
+## P2.1 — Indicator series API — Done (2026-07-05, same session as P1.5)
+
+**What shipped:** `IndicatorSnapshotService` gained a capped ring buffer (last 64 values, latest last) per
+sig key, written through a single `Emit(key, value)` point inside `RecomputeIndicatorsAsync` (replacing every
+direct `IndicatorValues[key] = ...` assignment) so the series can never drift out of sync with the latest
+value. New `GetSeries(key)` + `BuildStrategyIndicatorSeries(symbol, strategy)` (mirrors
+`BuildStrategyIndicatorValues`'s shape). `MarketContext` gained an optional `IndicatorSeries` positional
+parameter (default `null`, so every existing call site stays source-compatible) plus a
+`MarketContextExtensions.GetSeries(key)` null-safe accessor. `BarEvaluator.EvaluateAsync` builds and passes
+the series alongside the existing values dict.
+
+Ported all 4 strategies PLAN.md flagged as having cadence-fragile private state, deleting the fields entirely:
+- `MacdMomentumStrategy._lastHist` → reads `context.GetSeries("MACD_12_26_9_Histogram")[^2]`/`[^1]`.
+- `SuperTrendStrategy._prevDirection` → reads the direction series, but scans BACKWARD from `[^2]` for the
+  last VALID (±1) reading rather than blindly indexing `[^2]` — Skender emits an invalid/0 direction during
+  its own internal warmup, and the old field only ever cached valid readings, so a naive index would have
+  been a subtly different (looser) semantic than the field it replaced. Caught and fixed before landing, not
+  after — see `SuperTrend_SkipsInvalidWarmupReadings_WhenScanningForPreviousDirection` in
+  `SeriesBasedCrossDetectionTests.cs`.
+- `MtfTrendStrategy._prevRsi` → reads `context.GetSeries("RSI_{period}")[^2]`/`[^1]` (RSI has no invalid
+  sentinel, so a direct index is safe here).
+- `BollingerSqueezeStrategy._bbWidthQueue` → derives the prior-width window from the BB Upper/Lower/Middle
+  series (all three already tracked automatically by the ring buffer) instead of maintaining its own queue.
+  `_cooldownRemaining`/`_squeezeActive` are legitimate trade-state (not fragility) and were left untouched.
+
+**Test-infrastructure fallout (expected, fixed same session):** two existing test helpers construct
+`MarketContext` without ever supplying `IndicatorSeries` (`StrategyTestHelper.MakeContext`'s callers), so
+after the port they'd silently get an empty series forever and the 4 strategies would never fire — caught by
+running the FULL gate, not assumed:
+- `StrategySignalContractTests.cs`'s `CountSignals` — the strong ("must fire", not just "doesn't throw")
+  regression lock for these strategies — went from 5/5 passing to 3 real failures (`MacdMomentum_emits_on_
+  reversal`, `SuperTrend_emits_on_reversal`, `BollingerSqueeze_emits_on_squeeze_then_breakout`, all "found 0"
+  signals). Fixed by accumulating a real growing per-key history alongside its existing per-bar indicator
+  recompute and threading it through as the series.
+- `StrategyScenarioTests.cs`'s 4 "DoesNotThrow" tests didn't fail (weak assertions) but would have silently
+  stopped exercising real logic. Added `StrategyTestHelper.BuildFullSeries` (recomputes indicators at every
+  bar count, building a genuine incremental series — the same shape production's ring buffer produces, just
+  recomputed from scratch each step) and wired it through all 4 tests.
+- Also fixed, while touching this file: `StrategyTestHelper.MakeContext` hardcoded the bars dictionary key to
+  `Timeframe.H1` regardless of the bar's actual timeframe (the same test-helper gap P1.5.1 flagged but left
+  alone at the time) — now uses `bar.Timeframe`. Harmless generalization; every existing caller only ever
+  passes H1 bars.
+
+New tests: `IndicatorSnapshotServiceSeriesTests` (4 — accumulation/latest-last ordering, 64-cap, unknown-key
+empty, `BuildStrategyIndicatorSeries` shape) and `SeriesBasedCrossDetectionTests` (6 — one hand-worked
+fixture per strategy proving the port preserves the exact same fire/no-fire semantics as the field it
+replaced, including the SuperTrend invalid-warmup-reading edge case above).
+
+**Gate:** `dotnet build` 0 errors; Unit 362/0/6 (+6 new); Integration 94/0; fast Simulation
+(`RequiresCTrader!=true`) 128/0 (reran twice — first run hit an isolated 300s timeout in an unrelated cTrader-cli
+E2E test under load, `GbpUsd_H1_30Days_ProducesTrades`, which passed in 41s standalone and in the full suite
+on rerun (4m41s) — confirmed pre-existing environmental flake, not a P2.1 regression); Architecture 6/8 (2
+pre-existing, unrelated files, undisturbed).
