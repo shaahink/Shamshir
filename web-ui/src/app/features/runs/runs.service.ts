@@ -15,6 +15,7 @@ import type {
   StrategyPerformance,
   BarNarrative,
   NarrativeResponse,
+  PassProbabilityEstimate,
 } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
@@ -106,6 +107,10 @@ export class RunsApiService {
 
   getRunAnalytics(runId: string): Promise<RunAnalytics> {
     return firstValueFrom(this.http.get<RunAnalytics>(`/api/runs/${runId}/analytics`));
+  }
+
+  getPassProbability(runId: string, daysRemaining = 30): Promise<PassProbabilityEstimate> {
+    return firstValueFrom(this.http.get<PassProbabilityEstimate>(`/api/runs/${runId}/pass-probability?daysRemaining=${daysRemaining}`));
   }
 
   // iter-37 F2 — per-strategy decision funnel (signals fired / top no-signal reasons), off the journal.

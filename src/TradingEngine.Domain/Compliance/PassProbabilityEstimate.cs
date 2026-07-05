@@ -20,4 +20,5 @@ public record PassProbabilityInput
     public int DaysRemaining { get; init; }
     public IReadOnlyList<decimal> HistoricalDailyPnL { get; init; } = [];
     public int MonteCarloRuns { get; init; } = 10_000;
+    public DailyDdBase DailyDdBase { get; init; } = DailyDdBase.InitialBalance;
 }

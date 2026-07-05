@@ -151,6 +151,9 @@ public static class ServiceRegistration
         services.AddSingleton<SweepRunnerService>();
         services.AddScoped<Services.LedgerReconcileService>();
         services.AddScoped<Services.RunNarrativeService>();
+        services.AddScoped<Services.PassProbabilityService>();
+        services.AddSingleton<WalkForwardBackgroundService>();
+        services.AddHostedService(sp => sp.GetRequiredService<WalkForwardBackgroundService>());
         services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
         services.AddSingleton<CTraderListenService>();
         services.AddSingleton<IRunDataCache, TradingEngine.Infrastructure.Caching.RunDataCache>();

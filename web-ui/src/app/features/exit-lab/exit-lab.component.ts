@@ -64,6 +64,7 @@ import type { ExitLabEvaluateRequest, ExitLabEvaluateResponse, ExitLabCellRespon
                 <th class="px-2 py-1 text-right">MedR</th>
                 <th class="px-2 py-1 text-right">Hold</th>
                 <th class="px-2 py-1 text-right">MaxDD</th>
+                <th class="px-2 py-1 text-right">P(pass)</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-800">
@@ -78,6 +79,7 @@ import type { ExitLabEvaluateRequest, ExitLabEvaluateResponse, ExitLabCellRespon
                   <td class="px-2 py-1 text-right text-gray-500">{{ cell.medianR.toFixed(3) }}</td>
                   <td class="px-2 py-1 text-right text-gray-500">{{ cell.avgHoldBars.toFixed(0) }}</td>
                   <td class="px-2 py-1 text-right text-gray-500">{{ cell.maxDdContributionR.toFixed(2) }}</td>
+                  <td class="px-2 py-1 text-right" [style.color]="cell.passProbability >= 0.7 ? '#4ade80' : cell.passProbability >= 0.4 ? '#eab308' : '#f87171'">{{ (cell.passProbability * 100).toFixed(1) }}%</td>
                 </tr>
               }
             </tbody>

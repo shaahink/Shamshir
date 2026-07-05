@@ -22,6 +22,7 @@ public sealed record ExitLabCellResponse
     public double AvgHoldBars { get; init; }
     public double MaxDdContributionR { get; init; }
     public System.Collections.Generic.IReadOnlyList<double> TradeRValues { get; init; } = [];
+    public double PassProbability { get; init; }
 }
 
 public sealed record ExitLabEvaluateResponse

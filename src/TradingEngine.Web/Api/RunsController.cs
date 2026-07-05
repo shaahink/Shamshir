@@ -59,6 +59,21 @@ public sealed class RunsController : ControllerBase
         return Ok(run);
     }
 
+    [HttpGet("{runId}/pass-probability")]
+    public async Task<IActionResult> GetPassProbability(string runId, [FromQuery] int daysRemaining = 30, CancellationToken ct = default)
+    {
+        try
+        {
+            var svc = HttpContext.RequestServices.GetRequiredService<PassProbabilityService>();
+            var result = await svc.ComputeAsync(runId, daysRemaining, ct);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost]
     public async Task<IActionResult> Start([FromBody] StartRunRequest req, CancellationToken ct)
     {

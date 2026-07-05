@@ -25,6 +25,9 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<TradeExcursionEntity> TradeExcursions => Set<TradeExcursionEntity>();
     public DbSet<ExitCalibrationEntity> ExitCalibrations => Set<ExitCalibrationEntity>();
     public DbSet<ReferenceScaleEntity> ReferenceScales => Set<ReferenceScaleEntity>();
+    public DbSet<WalkForwardJobEntity> WalkForwardJobs => Set<WalkForwardJobEntity>();
+    public DbSet<WalkForwardWindowResultEntity> WalkForwardWindowResults => Set<WalkForwardWindowResultEntity>();
+    public DbSet<StrategyCellParkEntity> StrategyCellParks => Set<StrategyCellParkEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -37,6 +40,15 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
         modelBuilder.ApplyConfiguration(new TradeExcursionMapping());
         modelBuilder.ApplyConfiguration(new ExitCalibrationMapping());
         modelBuilder.ApplyConfiguration(new ReferenceScaleMapping());
+        modelBuilder.ApplyConfiguration(new WalkForwardJobMapping());
+        modelBuilder.ApplyConfiguration(new WalkForwardWindowResultMapping());
+
+        modelBuilder.Entity<StrategyCellParkEntity>(e =>
+        {
+            e.ToTable("StrategyCellParks");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.StrategyId, x.Symbol, x.Timeframe }).IsUnique();
+        });
 
         modelBuilder.Entity<BacktestRunEntity>(e =>
         {

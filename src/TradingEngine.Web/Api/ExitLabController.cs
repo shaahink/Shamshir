@@ -1,6 +1,7 @@
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
+using TradingEngine.Risk.Compliance;
 using TradingEngine.Services.ExitLab;
 using TradingEngine.Web.Dtos.ExitLab;
 
@@ -13,11 +14,15 @@ public sealed class ExitLabController : ControllerBase
 {
     private readonly TradingDbContext _db;
     private readonly IExcursionRepository _excursions;
+    private readonly ISymbolInfoRegistry _symbols;
+    private readonly IPassProbabilityEstimator _passEstimator;
 
-    public ExitLabController(TradingDbContext db, IExcursionRepository excursions)
+    public ExitLabController(TradingDbContext db, IExcursionRepository excursions, ISymbolInfoRegistry symbols, IPassProbabilityEstimator passEstimator)
     {
         _db = db;
         _excursions = excursions;
+        _symbols = symbols;
+        _passEstimator = passEstimator;
     }
 
     /// <summary>Evaluate a grid of exit rules against excursion paths of selected trades.</summary>
@@ -43,6 +48,10 @@ public sealed class ExitLabController : ControllerBase
                 .FirstOrDefaultAsync(t => t.PositionId == req.PositionIds[i] && t.RunId == req.RunIds[i], ct);
             if (trade is null) continue;
 
+            if (trade.InitialStopLoss is not > 0) continue;
+            var sym = trade.Symbol;
+            if (!_symbols.TryGet(new Symbol(sym), out var si)) continue;
+
             var points = ParsePoints(pathJson);
             if (points.Count == 0) continue;
 
@@ -50,9 +59,9 @@ public sealed class ExitLabController : ControllerBase
             {
                 Direction = trade.Direction == "Short" ? TradeDirection.Short : TradeDirection.Long,
                 EntryPrice = trade.EntryPrice,
-                InitialStopLoss = trade.StopLoss > 0 ? new Price(trade.StopLoss) : new Price(trade.EntryPrice),
-                PipSize = 0.0001m, // EURUSD default — derived from symbol registry in production
-                SpreadPips = 2.0,
+                InitialStopLoss = new Price(trade.InitialStopLoss!.Value),
+                PipSize = si.PipSize,
+                SpreadPips = (double)si.TypicalSpread / (double)si.PipSize,
                 Path = points,
             });
         }
@@ -73,16 +82,21 @@ public sealed class ExitLabController : ControllerBase
         {
             TotalTrades = inputs.Count,
             TotalCells = cells.Count,
-            Cells = cells.Select(c => new ExitLabCellResponse
+            Cells = cells.Select(c =>
             {
-                Rule = c.Rule,
-                TradeCount = c.Result.TradeCount,
-                WinRate = c.Result.WinRate,
-                AvgR = c.Result.AvgR,
-                MedianR = c.Result.MedianR,
-                AvgHoldBars = c.Result.AvgHoldBars,
-                MaxDdContributionR = c.Result.MaxDrawdownContributionR,
-                TradeRValues = c.Result.TradeRValues,
+                var passProb = ComputeExitLabPassProbability(c.Result.TradeRValues);
+                return new ExitLabCellResponse
+                {
+                    Rule = c.Rule,
+                    TradeCount = c.Result.TradeCount,
+                    WinRate = c.Result.WinRate,
+                    AvgR = c.Result.AvgR,
+                    MedianR = c.Result.MedianR,
+                    AvgHoldBars = c.Result.AvgHoldBars,
+                    MaxDdContributionR = c.Result.MaxDrawdownContributionR,
+                    TradeRValues = c.Result.TradeRValues,
+                    PassProbability = passProb,
+                };
             }).ToList(),
             DefaultSlMultiples = slMultiples,
             DefaultTpMultiples = tpMultiples,
@@ -93,15 +107,29 @@ public sealed class ExitLabController : ControllerBase
     [HttpPost("calibrations")]
     public async Task<IActionResult> SaveCalibration(SaveCalibrationRequest req, CancellationToken ct)
     {
-        // Upsert: remove any existing row with the same key, then insert.
-        var existing = await _db.ExitCalibrations
-            .Where(e => e.StrategyId == req.StrategyId
-                && e.Symbol == req.Symbol
-                && e.EntryTimeframe == req.EntryTimeframe
-                && e.Regime == req.Regime)
-            .ToListAsync(ct);
+        var regime = string.IsNullOrEmpty(req.Regime) ? null : req.Regime;
 
-        _db.ExitCalibrations.RemoveRange(existing);
+        // Upsert: remove any existing row with the same key, then insert.
+        if (regime is null)
+        {
+            var existingNull = await _db.ExitCalibrations
+                .Where(e => e.StrategyId == req.StrategyId
+                    && e.Symbol == req.Symbol
+                    && e.EntryTimeframe == req.EntryTimeframe
+                    && e.Regime == null)
+                .ToListAsync(ct);
+            _db.ExitCalibrations.RemoveRange(existingNull);
+        }
+        else
+        {
+            var existing = await _db.ExitCalibrations
+                .Where(e => e.StrategyId == req.StrategyId
+                    && e.Symbol == req.Symbol
+                    && e.EntryTimeframe == req.EntryTimeframe
+                    && e.Regime == regime)
+                .ToListAsync(ct);
+            _db.ExitCalibrations.RemoveRange(existing);
+        }
 
         _db.ExitCalibrations.Add(new ExitCalibrationEntity
         {
@@ -109,7 +137,7 @@ public sealed class ExitLabController : ControllerBase
             StrategyId = req.StrategyId,
             Symbol = req.Symbol,
             EntryTimeframe = req.EntryTimeframe,
-            Regime = req.Regime,
+            Regime = regime,
             SlAtrMultiple = req.Rule.SlAtrMultiple,
             TpRrMultiple = req.Rule.TpRrMultiple,
             BeTriggerR = req.Rule.BeTriggerR,
@@ -144,6 +172,31 @@ public sealed class ExitLabController : ControllerBase
 
         var rows = await q.OrderBy(e => e.StrategyId).ThenBy(e => e.Symbol).ToListAsync(ct);
         return Ok(rows);
+    }
+
+    private double ComputeExitLabPassProbability(IReadOnlyList<double> rValues)
+    {
+        if (rValues.Count == 0) return 0.0;
+
+        var riskPct = 0.005; // 0.5% risk per trade — standard calibration assumption
+        var dailyPnL = rValues.Select(r => (decimal)(r * riskPct * 100_000)).ToList();
+        var initialBalance = 100_000m;
+        var currentEquity = initialBalance + dailyPnL.Sum();
+
+        var input = new PassProbabilityInput
+        {
+            CurrentEquity = currentEquity,
+            InitialBalance = initialBalance,
+            ProfitTargetPercent = 0.10,
+            MaxDailyLossPercent = 0.05,
+            MaxTotalLossPercent = 0.10,
+            DaysRemaining = Math.Max(1, 30 - dailyPnL.Count),
+            HistoricalDailyPnL = dailyPnL,
+            MonteCarloRuns = 2_000,
+            DailyDdBase = DailyDdBase.InitialBalance,
+        };
+
+        return _passEstimator.Estimate(input).ProbabilityOfPass;
     }
 
     private static List<ExcursionPoint> ParsePoints(string pathJson)

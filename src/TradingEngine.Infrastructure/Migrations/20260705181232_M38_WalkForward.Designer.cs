@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TradingEngine.Infrastructure.Persistence;
 
@@ -10,9 +11,11 @@ using TradingEngine.Infrastructure.Persistence;
 namespace TradingEngine.Infrastructure.Migrations
 {
     [DbContext(typeof(TradingDbContext))]
-    partial class TradingDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260705181232_M38_WalkForward")]
+    partial class M38_WalkForward
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.9");
@@ -827,39 +830,6 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("RiskProfiles", (string)null);
-                });
-
-            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.StrategyCellParkEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("ParkedAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("StrategyId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Symbol")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Timeframe")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StrategyId", "Symbol", "Timeframe")
-                        .IsUnique();
-
-                    b.ToTable("StrategyCellParks", (string)null);
                 });
 
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.StrategyConfigEntity", b =>

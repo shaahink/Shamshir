@@ -16,7 +16,7 @@ import { formatSymbols } from '../../../shared/symbols.helper';
 import { TRADE_COLUMNS } from '../../../shared/trade-columns';
 import { DdBarChartComponent } from '../../../shared/dd-bar-chart.component';
 import { exportReport as doExportReport, type ExportStats } from '../report-export.helper';
-import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance, AddOnPack, BarNarrative } from '../../../models/api.types';
+import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance, AddOnPack, BarNarrative, PassProbabilityEstimate } from '../../../models/api.types';
 
 type JournalRow = JournalEntry & { outcome?: string | null };
 
@@ -115,6 +115,24 @@ type JournalRow = JournalEntry & { outcome?: string | null };
               <app-stat-tile label="Swap" [value]="swapDisplay()" [negative]="d.swapTotal !== 0" />
               <app-stat-tile label="Avg R" [value]="avgR().toFixed(2)" [positive]="avgR() > 0" />
             </div>
+
+            @if (passProb(); as pp) {
+              <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+                <h2 class="mb-3 text-sm font-medium text-gray-400">P(pass) Monte Carlo</h2>
+                <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <app-stat-tile label="P(pass)" [value]="(pp.probabilityOfPass * 100).toFixed(1) + '%'" [positive]="pp.probabilityOfPass >= 0.7" [negative]="pp.probabilityOfPass < 0.4" />
+                  <app-stat-tile label="Daily Breach" [value]="(pp.probabilityOfDailyBreach * 100).toFixed(1) + '%'" [negative]="pp.probabilityOfDailyBreach > 0.1" />
+                  <app-stat-tile label="Max Breach" [value]="(pp.probabilityOfMaxBreach * 100).toFixed(1) + '%'" [negative]="pp.probabilityOfMaxBreach > 0.05" />
+                  <app-stat-tile label="Projected" [value]="'$' + pp.projectedFinalEquity.toFixed(0)" />
+                </div>
+                <div class="mt-2 text-xs"
+                  [class.text-emerald-400]="pp.probabilityOfPass >= 0.7"
+                  [class.text-yellow-400]="pp.probabilityOfPass >= 0.4 && pp.probabilityOfPass < 0.7"
+                  [class.text-red-400]="pp.probabilityOfPass < 0.4">
+                  {{ pp.recommendation }}
+                </div>
+              </div>
+            }
 
             <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
               <h2 class="mb-3 text-sm font-medium text-gray-400">Profiling</h2>
@@ -376,6 +394,7 @@ export class RunReportComponent implements OnInit {
   breakdown = signal<StrategyPerformance[]>([]);
   equityPoints = signal<ChartPoint[]>([]);
   dailyPnl = signal<DailyPnl[]>([]);
+  passProb = signal<PassProbabilityEstimate | null>(null);
   journalKind = signal<string | null>(null);
   duplicating = signal(false);
   activeTab = signal('overview');
@@ -882,6 +901,11 @@ export class RunReportComponent implements OnInit {
       this.dailyPnl.set(await this.api.getRunDailyPnl(runId));
     } catch {
       /* no daily PnL */
+    }
+    try {
+      this.passProb.set(await this.api.getPassProbability(runId));
+    } catch {
+      /* can't compute P(pass) */
     }
   }
 }

@@ -553,6 +553,7 @@ export interface ExitLabCellResponse {
   avgHoldBars: number;
   maxDdContributionR: number;
   tradeRValues: number[];
+  passProbability: number;
 }
 
 export interface ExitLabEvaluateResponse {
@@ -584,4 +585,13 @@ export interface SaveCalibrationRequest {
   isEndUtc: string;
   oosStartUtc?: string | null;
   oosEndUtc?: string | null;
+}
+
+export interface PassProbabilityEstimate {
+  probabilityOfPass: number;
+  probabilityOfDailyBreach: number;
+  probabilityOfMaxBreach: number;
+  expectedDaysToTarget: number;
+  projectedFinalEquity: number;
+  recommendation: string;
 }

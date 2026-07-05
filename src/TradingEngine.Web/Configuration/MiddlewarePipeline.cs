@@ -77,6 +77,7 @@ public static class MiddlewarePipeline
         app.UseRouting();
         app.MapControllers();
         app.MapHub<RunHub>("/hubs/run");
+        app.MapHub<WalkForwardHub>("/hubs/walk-forward");
 
         app.MapOpenApi();
         app.MapScalarApiReference();
