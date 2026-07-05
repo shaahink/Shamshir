@@ -34,6 +34,7 @@ public sealed class KernelBacktestLoop
     private readonly Action<Bar, EngineState>? _onBarProcessed;
     private readonly Action<EngineEvent>? _onEvent;
     private readonly Func<Bar, EngineState, TrailingDecisions>? _evaluateTrailing;
+    private readonly Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, string Reason)>>? _evaluateTimeFlatten;
     private readonly ResetConfig? _resetConfig;
     private readonly decimal _initialBalance;
     private readonly string _runId;
@@ -65,6 +66,7 @@ public sealed class KernelBacktestLoop
         Action<Bar, EngineState>? onBarProcessed = null,
         Action<EngineEvent>? onEvent = null,
         Func<Bar, EngineState, TrailingDecisions>? evaluateTrailing = null,
+        Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, string Reason)>>? evaluateTimeFlatten = null,
         ResetConfig? resetConfig = null,
         bool diagnosticsEnabled = false)
     {
@@ -83,6 +85,7 @@ public sealed class KernelBacktestLoop
         _onBarProcessed = onBarProcessed;
         _onEvent = onEvent;
         _evaluateTrailing = evaluateTrailing;
+        _evaluateTimeFlatten = evaluateTimeFlatten;
         _resetConfig = resetConfig;
         _diagnostics = diagnosticsEnabled || System.Environment.GetEnvironmentVariable("SHAMSHIR_DIAGNOSTICS") == "1";
     }
@@ -271,6 +274,22 @@ public sealed class KernelBacktestLoop
                 // iter-38 A4b: PartialTp partial-close requests run after the stop moves (deterministic order).
                 for (var i = 0; i < decisions.Partials.Count; i++)
                     _queue.Enqueue(new PartialCloseRequested(decisions.Partials[i].PositionId, decisions.Partials[i].CloseLots, decisions.Partials[i].Reason, bar.BarOpenTimeUtc));
+                pumpSw = _diagnostics ? Stopwatch.StartNew() : null;
+                state = await PumpAsync(state, ct);
+                if (pumpSw is not null) { _timingPumpMs += pumpSw.ElapsedMilliseconds; pumpSw.Stop(); }
+            }
+        }
+
+        // P2.4/D6: time-flatten. Runs after trailing/breakeven so this bar's other position management has
+        // already applied; force-closes any position whose strategy's daily flatten time has been reached,
+        // via the existing (previously-unwired) CloseRequested → HandleCloseRequested reducer path.
+        if (_evaluateTimeFlatten is not null)
+        {
+            var flattens = _evaluateTimeFlatten(barModel, state);
+            if (flattens.Count > 0)
+            {
+                for (var i = 0; i < flattens.Count; i++)
+                    _queue.Enqueue(new CloseRequested(flattens[i].PositionId, flattens[i].Reason, bar.BarOpenTimeUtc));
                 pumpSw = _diagnostics ? Stopwatch.StartNew() : null;
                 state = await PumpAsync(state, ct);
                 if (pumpSw is not null) { _timingPumpMs += pumpSw.ElapsedMilliseconds; pumpSw.Stop(); }

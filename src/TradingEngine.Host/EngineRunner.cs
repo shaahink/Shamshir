@@ -45,6 +45,7 @@ public sealed class EngineRunner
     private readonly IndicatorSnapshotService _indicatorSnapshot;
     private readonly BarEvaluator _evaluator;
     private readonly KernelTrailingEvaluator _trailing;
+    private readonly KernelTimeFlattenEvaluator _timeFlatten;
     private readonly IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? _preloadedAuxBars;
 
     private long _barCount;
@@ -85,6 +86,7 @@ public sealed class EngineRunner
         _trailing = new KernelTrailingEvaluator(
             deps.Strategies.PositionManager, _symbolRegistry, _indicatorSnapshot, _strategies,
             new TradingEngine.Services.AddOns.AddOnResolver(), deps.Market.Indicators);
+        _timeFlatten = new KernelTimeFlattenEvaluator(_strategies);
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -245,6 +247,7 @@ public sealed class EngineRunner
             onBarProcessed: ReportBar,
             onEvent: ReportEvent,              // iter-38 B1: feed live-monitor counters
             evaluateTrailing: _trailing.Evaluate,
+            evaluateTimeFlatten: _timeFlatten.Evaluate,
             // iter-36 K-GAP-1: drive the prop-firm day/week/month resets off the active ruleset's reset clock
             // so multi-day runs re-base drawdown + reset the governor (C4/H7). Single-day golden never crosses.
             resetConfig: ResetConfig.FromRuleSet(ruleSet.DailyResetTimeUtc, ruleSet.DailyResetTimezone),

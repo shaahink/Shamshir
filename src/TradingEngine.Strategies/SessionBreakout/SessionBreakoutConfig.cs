@@ -23,4 +23,7 @@ public sealed record SessionBreakoutConfig(
     public Timeframe EntryTimeframe { get; init; } = Timeframe.H1;
     public string? Symbol { get; init; }
     public IReadOnlyList<Timeframe> RequiredTimeframes { get; init; } = [];
+
+    // P2.4/D6: wires the previously-dead FlattenTimeUtc param into the loop-level time-flatten behavior.
+    public TimeOnly? FlattenAtUtc => Parameters.FlattenTimeUtc;
 }

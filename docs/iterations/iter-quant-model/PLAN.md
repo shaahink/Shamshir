@@ -273,7 +273,7 @@ under the existing P2/verdict-funnel work rather than a separate fix, but don't 
 - ema-alignment → crossover event within last K bars + first pullback touch of fast EMA (edge). trend-breakout → single-fire: signal only when the breakout bar's high crosses a level the PRIOR bar had not (plus per-level cooldown). bb-squeeze → latch expires after `BbPeriod` bars (D8).
 - Each change gets an A/B tape run in the PR description (same window, before/after: trades, win%, net, avg hold).
 
-**P2.4 Time-flatten behavior (D6).**
+**P2.4 Time-flatten behavior (D6) — Done (2026-07-05).** See PROGRESS.md §P2.4 — reused the existing (previously-unwired) `CloseRequested` event rather than adding a new one.
 - Loop-level: a per-strategy optional `FlattenAtUtc` (from config) closes that strategy's open positions at the first bar ≥ the time. Session-breakout config already carries `12:00` — wire it. (Also the building block for P7 news/weekend flattening.)
 
 **P2.5 Thesis metadata.**

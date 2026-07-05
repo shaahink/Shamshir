@@ -14,9 +14,9 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P1.5, P2.1 (indicator series API), P2.2 (rsi-divergence rewrite), and P2.3 (edge semantics) are
-committed and gated green.** Next up is P2.4 — time-flatten behavior. See PLAN.md §3 P2 for the phase spec.
-P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
+→ **P1.5, P2.1 (indicator series API), P2.2 (rsi-divergence rewrite), P2.3 (edge semantics), and P2.4
+(time-flatten) are committed and gated green.** Next up is P2.5 — thesis metadata. See PLAN.md §3 P2 for the
+phase spec. P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
 
 **Gate filter note (owner request, 2026-07-05):** cTrader-backed E2E tests (`Category=E2E`, `Category=Slow`,
 `Category=NetMQ`, `RequiresCTrader=true`) are slow/flaky in this sandbox even though credentials ARE present
@@ -108,7 +108,8 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P2.1 Indicator series API | **Done** | Ring buffer + 4 strategies ported off private fragile state. |
 | P2.2 rsi-divergence rewrite | **Done** | Real pivot-based divergence via PivotFinder + P2.1's series. |
 | P2.3 Edge semantics | **Done** | ema-alignment/trend-breakout/bb-squeeze real edges, not conditions. |
-| P2.4–P2.7 (time-flatten, thesis metadata, units doctrine, stop orders) | Not started | |
+| P2.4 Time-flatten behavior | **Done** | Loop-level, wired via the previously-dead CloseRequested event. |
+| P2.5–P2.7 (thesis metadata, units doctrine, stop orders) | Not started | |
 | P3 Excursion recorder + Exit Lab | Not started | |
 | P4 Research metrics | Not started | |
 | P5 Data + triage (owner-driven) | Not started | |
@@ -485,3 +486,43 @@ fire on a sustained condition with no crossover event, insufficient-bars gate.
 single-fire, 4 ema-alignment edge); Integration 94/0; Simulation
 `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 120/0 (~9s); Architecture 6/8 (2
 pre-existing, unrelated files, undisturbed).
+
+---
+
+## P2.4 — Time-flatten behavior (D6) — Done (2026-07-05, same session as P2.1–P2.3)
+
+**What shipped:** loop-level, per-strategy, daily time-flatten — closes every OPEN position a strategy
+holds once the bar's time-of-day reaches that strategy's configured flatten time.
+
+- `IStrategyConfig` gained an optional `TimeOnly? FlattenAtUtc => null` default interface member (touches
+  zero of the 9 concrete config classes except the one override below — C# default interface members avoid
+  a mechanical one-line edit across every strategy config).
+- `SessionBreakoutConfig.FlattenAtUtc => Parameters.FlattenTimeUtc` wires the previously-dead
+  `FlattenTimeUtc` (PLAN.md's own audit: zero readers repo-wide, confirmed again before writing this) into
+  the new mechanism.
+- New `KernelTimeFlattenEvaluator` (mirrors `KernelTrailingEvaluator`'s exact shape — the impure per-bar
+  adapter pattern): for each Open position on the current bar's symbol, looks up its owning strategy's
+  `Config.FlattenAtUtc`; if the bar's time-of-day has reached it, the position is due for flattening.
+- **No new kernel event needed.** Research before implementing found `CloseRequested(PositionId, Reason,
+  OccurredAtUtc)` already exists with a full, tested reducer handler
+  (`EngineReducer.HandleCloseRequested` → `PositionLifecycle`'s `(Open, CloseRequested)` transition →
+  emits `CloseOpenPosition`) — it just had zero callers anywhere in `src/`. This phase is its first real
+  caller, reusing well-tested kernel logic instead of inventing a parallel force-close path.
+- `KernelBacktestLoop` gained an `evaluateTimeFlatten` hook (same shape as `evaluateTrailing`: optional,
+  default null so every existing call site — and the golden byte-identical guarantee — is untouched),
+  invoked after trailing/breakeven each bar; each decision becomes a `CloseRequested` event, enqueued and
+  pumped through the real reducer. Wired in `EngineRunner.BuildKernelLoop` via a new `_timeFlatten` field
+  constructed alongside `_trailing`.
+
+New tests: `KernelTimeFlattenEvaluatorTests` (4 — flattens at/after the time, not before, ignores strategies
+with no `FlattenAtUtc`, ignores already-closed positions) and
+`KernelLoop_TimeFlattenHook_ForceClosesOpenPosition` (proves the full wiring end-to-end through the real
+`KernelBacktestLoop` — queue → pump → reducer → `CloseOpenPosition` effect — not just the evaluator in
+isolation; a hook that unconditionally flattens closes the golden fixture's position with
+`ExitReason == "TimeFlatten"`).
+
+**Gate:** `dotnet build` 0 errors; Unit 386/0/6 (unchanged — new tests landed in Simulation, not Unit, since
+they need `TradingEngine.Host`); Integration 94/0; Simulation
+`RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 125/0 (+5 new, ~9s); Architecture 6/8
+(2 pre-existing, unrelated files, undisturbed). Golden suite unaffected (`evaluateTimeFlatten` defaults
+null on every existing call site).
