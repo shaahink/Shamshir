@@ -56,6 +56,16 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     private readonly Dictionary<Guid, PendingStop> _pendingStops = new();
     private readonly Dictionary<Guid, PendingMarketOrder> _pendingMarketOrders = new();
     private readonly bool _honestFills;
+    // P3.1: opt-in per-trade excursion recorder (owner's "utilize MAE/MFE automatically" ask). Keyed by
+    // orderId, one growing path per OPEN trade; taken (serialized + removed) on that trade's full close.
+    private readonly bool _recordExcursions;
+    private readonly Dictionary<Guid, List<ExcursionPoint>> _excursionPaths = new();
+
+    // Compact: minutes-since-entry (fine bars are typically M1, so whole-minute resolution is exact, not
+    // approximate) + the bar's high/low vs entry in pips. Direction-agnostic storage — the sign tells you
+    // whether the bar's extreme was above/below entry; MAE/MFE interpretation (which side is favorable)
+    // is a downstream (P3.3 ExitReplayer) concern, not baked in here.
+    private readonly record struct ExcursionPoint(int MinutesSinceEntry, double HiPips, double LoPips);
     private decimal _balance;
     private decimal _lastClose;
     private Task _feedTask = Task.CompletedTask;
@@ -142,7 +152,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         ISymbolInfoRegistry symbolRegistry,
         Func<string, string, decimal> crossRateProvider,
         ILogger<TapeReplayAdapter> logger,
-        bool honestFills = true)
+        bool honestFills = true,
+        bool recordExcursions = false)
     {
         _store = store;
         _symbol = symbol;
@@ -156,6 +167,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         _crossRateProvider = crossRateProvider;
         _logger = logger;
         _honestFills = honestFills;
+        _recordExcursions = recordExcursions;
         _decisionInterval = decisionTf.ToTimeSpan();
         _exitInterval = exitTf.ToTimeSpan();
     }
@@ -241,6 +253,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             BrokerTimeUtc = decisionBar.OpenTimeUtc + _decisionInterval;
             ProcessPendingLimits(decisionBar, decrementExpiry: isNewDecisionBar);
             ProcessPendingStops(decisionBar, decrementExpiry: isNewDecisionBar);
+            RecordExcursionPoints(decisionBar);
             ProcessSlTpHits(decisionBar);
             EmitAccountUpdate(BrokerTimeUtc);
             return;
@@ -258,6 +271,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             ProcessPendingMarketOrders(fine);
             ProcessPendingLimits(fine, decrementExpiry: true);
             ProcessPendingStops(fine, decrementExpiry: true);
+            RecordExcursionPoints(fine);
             ProcessSlTpHits(fine);
             var floatingEquity = _balance + ComputeFloatingPnL(fine.Close);
             if (floatingEquity < minEquity) minEquity = floatingEquity;
@@ -484,6 +498,43 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         }
     }
 
+    // P3.1: append (minutesSinceEntry, hiPips, loPips) for every OPEN trade against this bar's OHLC —
+    // called once per fine bar (or once per decision bar in single-resolution mode) BEFORE ProcessSlTpHits,
+    // so the closing bar's own excursion is still captured. No-op unless RecordExcursions is on.
+    private void RecordExcursionPoints(Bar bar)
+    {
+        if (!_recordExcursions || _openTrades.Count == 0) return;
+
+        decimal pipSize;
+        try { pipSize = _symbolRegistry.Get(_symbol).PipSize; }
+        catch { return; }
+        if (pipSize <= 0) return;
+
+        foreach (var (orderId, trade) in _openTrades)
+        {
+            var point = new ExcursionPoint(
+                (int)(bar.OpenTimeUtc - trade.OpenedAtUtc).TotalMinutes,
+                (double)((bar.High - trade.EntryPrice) / pipSize),
+                (double)((bar.Low - trade.EntryPrice) / pipSize));
+
+            if (!_excursionPaths.TryGetValue(orderId, out var path))
+            {
+                path = [];
+                _excursionPaths[orderId] = path;
+            }
+            path.Add(point);
+        }
+    }
+
+    // Serializes + removes the accumulated path for a trade that just fully closed. Null if nothing was
+    // recorded (RecordExcursions off, or the trade never saw a fine bar before closing).
+    private string? TakeExcursionPathJson(Guid orderId)
+    {
+        if (!_excursionPaths.Remove(orderId, out var path) || path.Count == 0) return null;
+        return System.Text.Json.JsonSerializer.Serialize(
+            path.Select(p => new { t = p.MinutesSinceEntry, hi = Math.Round(p.HiPips, 1), lo = Math.Round(p.LoPips, 1) }));
+    }
+
     // Detect SL/TP hits against a bar's OHLC using the SAME stateless detection as the kernel/replay, so exit
     // behaviour is consistent across venues. In dual-resolution mode this runs per finer bar, so the FIRST
     // finer bar to touch a level wins — recovering intrabar SL-before-TP ordering and long-shadow fills.
@@ -528,6 +579,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 NetProfit = costs.NetProfit,
                 Symbol = _symbol,
                 CloseReason = reason,
+                ExcursionPathJson = TakeExcursionPathJson(orderId),
             });
             EmitAccountUpdate(BrokerTimeUtc);
         }
@@ -574,6 +626,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 Swap = costs.Swap,
                 NetProfit = costs.NetProfit,
                 Symbol = _symbol,
+                ExcursionPathJson = TakeExcursionPathJson(positionId),
             });
             EmitAccountUpdate(BrokerTimeUtc);
         }

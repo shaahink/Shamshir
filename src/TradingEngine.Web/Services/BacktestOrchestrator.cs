@@ -992,11 +992,15 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                         // P0.3 (D4): honest entry timing default ON; CustomParams["HonestFills"]="false"
                         // preserves the old optimistic (fill-at-signal-bar-close) behavior for A/B.
                         var honestFills = cfg.CustomParams.GetValueOrDefault("HonestFills") != "false";
+                        // P3.1: opt-in excursion recorder, default OFF (unlike HonestFills) -- this is
+                        // instrumentation for the exploration/exit-lab workflow (P3.2+), not a default-on
+                        // behavior change. CustomParams["RecordExcursions"]="true" turns it on.
+                        var recordExcursions = cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true";
                         var tapeAdapter = new TapeReplayAdapter(marketDataStore, sym, tf, exitTf, from, to,
                             cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
                             sp.GetRequiredService<Func<string, string, decimal>>(),
                             sp.GetRequiredService<ILogger<TapeReplayAdapter>>(),
-                            honestFills);
+                            honestFills, recordExcursions);
                         tapeAdapter.Speed = state.Speed;
                         state.TapeAdapter = tapeAdapter;
                         return tapeAdapter;

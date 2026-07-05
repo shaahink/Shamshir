@@ -60,6 +60,7 @@ public static class EngineServiceCollectionExtensions
         });
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+        services.AddScoped<IExcursionRepository, SqliteExcursionRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
         services.AddScoped<IDatasetRepository, SqliteDatasetRepository>();
         services.AddScoped<IConfigSetRepository, SqliteConfigSetRepository>();

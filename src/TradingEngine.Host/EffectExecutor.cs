@@ -191,7 +191,7 @@ public sealed class EffectExecutor : IEffectExecutor
             s.OnTradeResult(tradeResult);
         }
 
-        await _eventBus.PublishAsync(new TradeClosed(tradeResult, _runId, effect.ClosedAtUtc), ct);
+        await _eventBus.PublishAsync(new TradeClosed(tradeResult, _runId, effect.ClosedAtUtc, effect.ExcursionPathJson), ct);
 
         _governor?.OnTradeClosed(tradeResult);
         _signalGate?.OnPositionClosed(effect.StrategyId, effect.Symbol.Value, effect.Direction,

@@ -117,6 +117,12 @@ public record ExecutionEvent(
     /// for venue-initiated (server-side SL/TP) closes the engine didn't request. Null for fills,
     /// rejections, and engine-requested closes (the engine already knows those reasons).</summary>
     public string? CloseReason { get; init; }
+
+    /// <summary>P3.1: the accumulated MAE/MFE path for this trade, as a compact JSON array — populated by
+    /// a venue that recorded it (currently only <c>TapeReplayAdapter</c>, opt-in via RecordExcursions) on
+    /// a FULL close. Null for entry fills, partial fills, rejections, cancellations, and any venue/run that
+    /// didn't opt in.</summary>
+    public string? ExcursionPathJson { get; init; }
 }
 
 public record OrderRequest(

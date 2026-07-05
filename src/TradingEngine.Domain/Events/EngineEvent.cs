@@ -40,6 +40,11 @@ public record OrderFilled(Guid OrderId, Symbol Symbol, decimal FilledLots, Price
     /// position lifecycle records the real reason instead of defaulting to "FORCE". Null for entry fills.
     /// </summary>
     public string? CloseReason { get; init; }
+
+    /// <summary>P3.1: carried from <see cref="ExecutionEvent.ExcursionPathJson"/> so a full close threads
+    /// the recorded MAE/MFE path through to <see cref="PublishTradeClosed"/>. Null unless the venue
+    /// recorded one.</summary>
+    public string? ExcursionPathJson { get; init; }
 }
 
 public record OrderPartiallyFilled(Guid OrderId, Symbol Symbol, decimal FilledLots, Price FillPrice, DateTime OccurredAtUtc) : EngineEvent(OccurredAtUtc);

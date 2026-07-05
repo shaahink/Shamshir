@@ -134,7 +134,7 @@ public static class PositionLifecycle
                     GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
                     Commission: evt.Commission, Swap: evt.Swap,
                     EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
-                    InitialStopLoss: state.InitialStopLoss)
+                    InitialStopLoss: state.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
             };
             return (remaining, reducingEffects);
         }
@@ -153,7 +153,7 @@ public static class PositionLifecycle
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
                 Commission: evt.Commission, Swap: evt.Swap,
                 EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
-                InitialStopLoss: closed.InitialStopLoss)
+                InitialStopLoss: closed.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
         };
         return (closed, effects);
     }
@@ -223,7 +223,7 @@ public static class PositionLifecycle
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
                 Commission: evt.Commission, Swap: evt.Swap,
                 EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
-                InitialStopLoss: closed.InitialStopLoss)
+                InitialStopLoss: closed.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
         };
         return (closed, effects);
     }
@@ -259,7 +259,7 @@ public static class PositionLifecycle
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
                 Commission: evt.Commission, Swap: evt.Swap,
                 EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
-                InitialStopLoss: closed.InitialStopLoss)
+                InitialStopLoss: closed.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
         };
         return (closed, effects);
     }

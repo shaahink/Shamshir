@@ -22,6 +22,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<JournalEntryEntity> JournalEntries => Set<JournalEntryEntity>();
     public DbSet<AddOnPackEntity> AddOnPacks => Set<AddOnPackEntity>();   // iter-38 PK1
     public DbSet<VenueSessionEntity> VenueSessions => Set<VenueSessionEntity>();
+    public DbSet<TradeExcursionEntity> TradeExcursions => Set<TradeExcursionEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,6 +32,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
         modelBuilder.ApplyConfiguration(new EngineEventMapping());
         modelBuilder.ApplyConfiguration(new EquitySnapshotMapping());
         modelBuilder.ApplyConfiguration(new BarMapping());
+        modelBuilder.ApplyConfiguration(new TradeExcursionMapping());
 
         modelBuilder.Entity<BacktestRunEntity>(e =>
         {

@@ -15,7 +15,10 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 ## Resume here
 
 → **P2 is fully done** (P1.5, P2.1–P2.7 all committed and gated green with the per-phase filter below).
-**Next: P3.1 — the excursion recorder.** See PLAN.md §3 P3 for the phase spec. P1.5.4 (MISSING_DATA verdict)
+**P3.1 (excursion recorder) is also done.** Next up is **P3.2 — Exploration mode**: a named one-click run
+preset (SL=ATR×4, TP=none, BE/trail/partials OFF, governor OFF, `RecordExcursions=true`) — all the
+underlying toggles already exist (including `RecordExcursions` as of P3.1), this phase is just wiring a
+preset in the UI + orchestrator. See PLAN.md §3 P3 for the full phase spec. P1.5.4 (MISSING_DATA verdict)
 stays folded into P2's verdict-funnel work per the original triage (still not done — P4/scoreboard-adjacent,
 not blocking anything so far).
 
@@ -23,14 +26,17 @@ not blocking anything so far).
 (`Category=E2E`, `Category=Slow`, `Category=NetMQ`, `RequiresCTrader=true`) are slow/flaky in this sandbox
 even though credentials ARE present (confirmed — they actually run for real, not skip) and cost 10-25+
 minutes per run under contention — and have been a recurring blocker/flake source across sessions. Gate
-every phase (P2's remaining phases AND all of P3) with:
+every phase with:
 `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ"`
 instead of the full Simulation suite. **The full cTrader-inclusive suite is deferred to the END OF P3 (not
-P2)** — the owner overrode the original "once at the end of P2" plan mid-session after a real regression
-turned up while that gate was running once (see P2.7's write-up below — caught and fixed, but confirms
-these tests DO catch real bugs the fast filter can't reach, which is exactly why the full run still matters
-eventually, just not on every phase boundary). Do not attempt the full/cTrader-inclusive run again until
-P3 is complete, and even then only if explicitly asked.
+P2)** — the owner overrode the original "once at the end of P2" plan mid-session. Note that P2's own
+full-suite box is EFFECTIVELY ALREADY CHECKED: that run (started once, mid-session, per the original plan)
+caught a real regression before the owner's override landed — the `CTraderBrokerAdapter` `isLimit`
+derivation bug, root-caused and fixed in P2.7's second commit (see P2.7's write-up below) — so P2's
+cTrader-inclusive gate did its job once, just not to full completion. The deferred full run at the end of
+P3 should cover P3's OWN changes (the excursion recorder, and whatever P3.2+ adds), not re-litigate P2.
+Do not attempt the full/cTrader-inclusive run again until P3 is complete, and even then only if explicitly
+asked.
 
 This branch: 5 commits on top of `iter/quant-model` (9b9dbfc):
 - `edeb3a6` P1.1 — instance-per-row, de-hardcoded H1 in all 14 strategies
@@ -117,8 +123,8 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P2.5 Thesis metadata | **Done** | thesis/expectedTradesPerWeek/expectedHoldBars, all 9 strategies. |
 | P2.6 Units doctrine | **Done** | Normalized pip fields + config linter (D9). |
 | P2.7 Stop orders | **Done** | `OrderType.Stop` end-to-end: kernel plumbing bug fix + both replay venues + cTrader adapter/cBot + EntryPlanner.StopConfirm. |
-| P3 Excursion recorder + Exit Lab | Not started | |
-| P4 Research metrics | Not started | |
+| P3.1 Excursion recorder | **Done** | Tape-only per-trade MAE/MFE path capture, opt-in via `RecordExcursions` (default off). |
+| P3.2+ Exit Lab (rest of P3) | Not started | |
 | P4 Research metrics | Not started | |
 | P5 Data + triage (owner-driven) | Not started | |
 | P6 Oracle backstop | Not started | |
@@ -756,3 +762,81 @@ no new integration tests this phase); Simulation
 fixtures — `Plan`'s new `bar` parameter defaults null and every existing call site passes the bar, but no
 existing config uses `StopConfirm` so no existing fixture's behavior changes); Architecture 6/8 (same 2
 pre-existing failures — `EngineReducer.cs:436`, `VenueSessionEntity` — neither file touched this phase).
+
+---
+
+## P3.1 — Excursion recorder — Done (2026-07-05, same session as P2.1–P2.7)
+
+Per PLAN.md §P3.1 (the owner's "utilize MAE/MFE automatically" ask): tape-only, opt-in per-trade excursion
+path capture, feeding P3.3's eventual ExitReplayer without any engine re-runs.
+
+**What shipped — the full write-through chain, threaded the same way P0.1's `InitialStopLoss` and the
+existing `CloseReason` already travel from venue to persisted trade (same precedent, same shape, not
+invented fresh):**
+- `ExecutionEvent.ExcursionPathJson` (new optional `init` property) — set by a venue that recorded a path,
+  on a FULL close only (never on entry fills, partial fills, rejections, or cancellations).
+- `OrderFilled.ExcursionPathJson` — carried from `ExecutionEvent` by `KernelFeedback.FromExecution`'s
+  `OrderState.Filled` branch (mirrors how `CloseReason`/`GrossProfit` already travel there).
+- `PublishTradeClosed.ExcursionPathJson` (new, nullable, default null) — threaded through at all 4
+  `PublishTradeClosed` construction sites in `PositionLifecycle.cs` (the same 4 sites P0.1 found and
+  touched for `InitialStopLoss` — partial-close, open→closed, reducing→closed, closing→closed).
+- `EffectExecutor.HandlePublishTradeClosed` reads `effect.ExcursionPathJson` and threads it into a new
+  `TradeClosed.ExcursionPathJson` parameter — kept OFF `TradeResult`/`TradeResultEntity` by design (a
+  separate `TradeExcursions` table, not a new trade column, per the plan's own "a few hundred bytes/trade"
+  framing — the path isn't a queryable trade field).
+- `TradePersistenceHandler`'s existing trade-persistence channel (the literal "write-through the existing
+  trade persistence channel" the plan asked for) had its tuple widened to
+  `(TradeResult, RunId, ExcursionPathJson)`; `DrainAsync` calls a new
+  `PersistenceService.SaveExcursionAsync` alongside the existing `SaveTradeAsync`, only when the path is
+  non-null.
+- New `IExcursionRepository`/`SqliteExcursionRepository`/`TradeExcursionEntity` (implements
+  `IAuditableEntity`, confirmed via the Architecture gate — no new pre-existing-style gap introduced) +
+  `TradeExcursionMapping` + `TradeExcursions(Id, RunId, PositionId, PathJson, CreatedAtUtc, UpdatedAtUtc)`
+  table, unique-indexed on `(RunId, PositionId)`. EF migration `M36_TradeExcursions` (generated against the
+  `TradingDbContext` context specifically — this solution has 3 DbContexts, `dotnet ef migrations add`
+  needs `--context TradingDbContext` or it refuses to pick one).
+
+**`TapeReplayAdapter` — the actual recorder, tape-only per the plan (mirrors P0.3's tape-only precedent;
+`BacktestReplayAdapter` untouched):**
+- New `recordExcursions` constructor parameter (default `false` — unlike `HonestFills`, which defaults ON,
+  this is opt-in instrumentation for the exploration/exit-lab workflow, not a default behavior change).
+- `RecordExcursionPoints(Bar bar)`: for every OPEN trade, appends `(minutesSinceEntry, hiPips, loPips)` —
+  raw bar-high/low-vs-entry pip distances, direction-agnostic (the sign says which side of entry the bar's
+  extreme reached; MAE/MFE interpretation — which side is favorable — is deliberately left to the
+  downstream P3.3 ExitReplayer, not baked in here). `minutesSinceEntry` is whole minutes (fine bars are
+  M1, so this is exact, not approximate) — far more compact than a repeated ISO timestamp per point, and
+  the plan's own "a few hundred bytes/trade" framing rules out anything heavier.
+- Wired into BOTH of `OnBarObserved`'s branches: the single-resolution short-circuit (using the decision
+  bar itself, same graceful-fallback pattern the class already uses for exits when no finer data exists)
+  and the dual-resolution fine-bar loop (per M1 bar, alongside `ProcessPendingStops`/`ProcessSlTpHits`) —
+  called BEFORE `ProcessSlTpHits` each time, so the bar that actually triggers the close still gets its own
+  excursion point recorded (a bar can spike favorably right before hitting a stop; that spike still matters
+  for MAE/MFE).
+- `TakeExcursionPathJson(orderId)` serializes + removes the accumulated path (compact `{t,hi,lo}` JSON
+  array), wired into the CLOSE `ExecutionEvent` in both `ProcessSlTpHits`'s close branch AND `CloseAtAsync`
+  (the engine-requested force-close path) — the two places a FULL close actually happens in this adapter.
+  Partial closes (`ClosePartialPositionAsync`) are untouched: they route to `OrderPartiallyFilled`, which
+  never reaches `PublishTradeClosed`, so there's nothing to attach there — the position stays open and its
+  path keeps accumulating.
+- `RecordExcursions` wired end-to-end: `BacktestOrchestrator.cs`'s `CustomParams["RecordExcursions"]`
+  (same pattern as `HonestFills`/`GovernorEnabled`), default OFF, reaching the `TapeReplayAdapter`
+  constructor — so it's actually reachable from a real run, not just a dead constructor parameter.
+
+**Test-infrastructure note:** the new `TradeExcursionEntity`/DbSet had no migration for one build — caught
+by running the Integration gate (37 failures, `PendingModelChangesWarning`, the exact WebSmokeTests trap
+P0.1's own notes already flagged) before this phase's commit, not after. Fixed by generating
+`M36_TradeExcursions` against the correct (`TradingDbContext`) context.
+
+New tests: `TapeReplayExcursionRecorderTests` (3 — long position accumulates across 2 fine bars and
+attaches on an SL-hit close with hand-computed pip values; short position accumulates across 1 fine bar and
+attaches on a force-close via `ClosePositionAsync`, exercising the OTHER wiring point; `RecordExcursions=false`
+— the default — produces a `null` path on the identical SL-hit scenario the long test uses, proving zero
+behavior change when the flag is off), `Excursion_SaveAndRetrieve_RoundTrips`
+(`TradeRepositoryTests.cs`, Integration — round-trips a path through real SQLite, and confirms two different
+`(RunId, PositionId)` keys don't collide). All hand-computed pip/minute values passed on the first run.
+
+**Gate:** `dotnet build` 0 errors; Unit 419/0/6 (+3); Integration 100/0 (+1, after the migration fix above);
+Simulation `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 127/0 (unchanged — byte-
+identical, since `RecordExcursions` defaults off and no existing fixture turns it on); Architecture 6/8
+(same 2 pre-existing failures, `TradeExcursionEntity` itself correctly implements `IAuditableEntity` so it
+is NOT a new item in that failure's list).
