@@ -14,10 +14,43 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P4 is DONE as of 2026-07-05.** P4.1 (P(pass) everywhere), P4.2 (walk-forward harness),
-P4.3 (scoreboard page), and P4.4 (frequency reality check) are all shipped — see §P4 below for the
-full write-up. **Next up is P5 — Data + triage** (owner-driven program): download 7 symbols ×
-{М1,М15,Н1,Н4}, non-FX correctness tests, exploration triage, portfolio assembly. See PLAN.md §3 P5.
+→ **P4.5 (static-review fixes) is next — it is a HARD prerequisite for P5.** A second full static review
+(2026-07-05, same reviewer/method as the P1.5 review) of the P2–P4 delivery found that the three surfaces
+P5's triage decisions depend on — walk-forward, exit lab, scoreboard — all produce untrustworthy numbers:
+
+1. **[CRITICAL] Walk-forward never runs the test window** — `WalkForwardBackgroundService` sweeps TRAIN,
+   then records the best train cell's numbers AS the `Test*` results; `testFrom/testTo` are stored and never
+   executed. The "stitched OOS equity curve" is stitched in-sample maxima. `PickPlateauCell` is
+   `MaxBy(NetProfit + WinRate×1000)` — not a plateau pick, no tiebreak (both banned by PLAN §6 P4.2).
+2. **[CRITICAL] Exit Lab dead end-to-end** — recorder serializes `[{"t","hi","lo"},...]` (objects);
+   `ExitLabController.ParsePoints` parses `List<List<double>>` (arrays) → exception swallowed → every trade
+   silently skipped → `/api/exit-lab/evaluate` can only return 0 trades/0 cells. (Trade-detail UI parses the
+   object shape fine — the controller is the odd one out.)
+3. **[CRITICAL] ExitReplayer diverges from the venue** — short-side spread ignored (`SpreadPips` dead),
+   BE/trail updated per M1 point vs venue's per-DECISION-bar cadence, MAE comparison inverted (MAE output
+   garbage, zero tests assert it), partial-TP params accepted but never enter the R math. Root cause: the
+   P3.3 validation gate ("replayer reproduces a real run's exits") was deferred — land it first.
+4. **[HIGH] Saved calibrations cannot affect any run** — `SlAtrMultiple`/`TpRrMultiple` consumed by nothing,
+   no path sets `Mode=Calibrated`, and the UI's free-text TF ("h1") never matches the lookup's
+   `Timeframe.ToString()` ("H1").
+5. **[HIGH] P(pass) surfaces answer wrong questions** — exit-lab feeds sorted per-trade Rs as DAILY PnL with
+   `DaysRemaining = 30 − tradeCount`; run-detail clamps to 1 day remaining for any long completed run.
+6. **[HIGH] Scoreboard is in-sample vibes** — latest-run avgR (exploration/sweep-train runs included), cell
+   trades not filtered by symbol/TF, and the P4.4 traffic-light formula is off ~30× vs QUANT-ROADMAP §3.3
+   (`ln(0.05)/ln(1−r·avgR)` ≈ 1,996 trades where `target%/(risk%×avgR)` ≈ 67), with NaN defaulting to GREEN.
+
+Full traces, fixes, failing-test-first specs, and execution order: **PLAN.md §3 P4.5** (+ §9 addendum:
+evidence workflow, per-phase direction for P5–P7). Pattern for the record: every phase that shipped with a
+deferred validation gate produced a critical bug (P1→P1.5.1, P3.3→items 2-3, P4→item 1). A deferred gate
+now means the phase is NOT done.
+
+**After P4.5:** P5 — Data + triage (owner-driven): download 7 symbols × {M1,M15,H1,H4}, non-FX correctness
+tests, exploration triage, portfolio assembly. See PLAN.md §3 P5 + §9.3 direction.
+
+**cTrader test triage (owner request, 2026-07-05):** policy written at `docs/CTRADER-TEST-POLICY.md` —
+keep-set (connection/round-trip/ledger-reconcile/data-acquisition) gets `Category=CtraderContract`; the
+"produces trades over N days" behavior tests retire to tape equivalents. Implementing that triage is a
+one-commit task; do it alongside or right after P4.5.
 
 P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage (still
 not done — P4/scoreboard-adjacent, not blocking anything so far).
@@ -125,12 +158,13 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P2.7 Stop orders | **Done** | `OrderType.Stop` end-to-end: kernel plumbing bug fix + both replay venues + cTrader adapter/cBot + EntryPlanner.StopConfirm. |
 | P3.1 Excursion recorder | **Done** | Tape-only per-trade MAE/MFE path capture, opt-in via `RecordExcursions` (default off). |
 | P3.2 Exploration mode | **Done** | One-click preset (SL=ATR×4, TP=none, governor off, RecordExcursions=true). |
-| P3.3 ExitReplayer service | **Done** | Pure static replayer + grid evaluator in `TradingEngine.Services/ExitLab/`. |
-| P3.4 Calibration tables | **Done** | Entity + mapping + M37 migration + `AddOnMode.Calibrated` + `AddOnResolver` branch + `IExitCalibrationLookup` + `SqliteExitCalibrationLookup` + save/list API. |
-| P3.4b Reference scales | **Done** | `ReferenceScaleEntity` + mapping included in M37. Compute logic deferred to P4 (needs download history). |
-| P3.5 Exit Lab UI | **Done** | `ExitLabController` (evaluate grid + save/list calibrations), Angular `/exit-lab` page with picker + results table + save-to-calibration button, MAE/MFE path chart on trade-detail, excursions REST endpoint. |
-| P4 Research metrics | **Done** | P4.1 P(pass) everywhere + P4.2 Walk-forward harness + P4.3 Scoreboard + P4.4 Frequency reality check. See §P4 below. |
-| P5 Data + triage (owner-driven) | Not started | |
+| P3.3 ExitReplayer service | **Done*** | *Validation gate was deferred and the review confirmed the fidelity bugs it would have caught (P4.5.3). Replayer output not decision-grade until P4.5.3. |
+| P3.4 Calibration tables | **Done*** | *Write path only — saved calibrations reach no run (SL/TP consumed by nothing, no Mode=Calibrated path, TF case mismatch). See P4.5.4. |
+| P3.4b Reference scales | **Done** (schema only) | Compute logic now explicitly assigned to P5.1 ingest (PLAN §9.3), not "P4". |
+| P3.5 Exit Lab UI | **Done*** | *Evaluate endpoint returns 0 cells for every real path (JSON format mismatch, P4.5.2); plateau highlighting — the anti-overfit core — absent (P4.5.7). |
+| P4 Research metrics | **Done*** | *Shipped, but the 2026-07-05 static review found the walk-forward test leg missing, scoreboard in-sample, P(pass) inputs category-errored — see P4.5. Do not use P4 outputs for decisions until P4.5 lands. |
+| P4.5 Close P3/P4 review gaps | **Not started — NEXT** | Hard prerequisite for P5. Findings + fix specs in PLAN.md §3 P4.5; order P4.5.2→.3→.1→.4→.5/.6→.7. |
+| P5 Data + triage (owner-driven) | Not started | Blocked on P4.5. |
 | P6 Oracle backstop | Not started | |
 | P7 FTMO ops | Not started | |
 

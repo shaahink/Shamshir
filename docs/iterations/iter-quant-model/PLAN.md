@@ -316,6 +316,157 @@ This is the owner's "utilize MAE/MFE automatically" ask, done per QUANT-ROADMAP 
 
 **P4.4 Frequency reality check.** On the scoreboard: `needed trades ≈ target% / (risk% × OOS avgR)` vs actual OOS trades per 30 days (per QUANT-ROADMAP §3.3 arithmetic); red-flag cells that cannot plausibly pass a phase alone.
 
+### P4.5 — Close the P3/P4 static-review gaps — **hard prerequisite for ANY P5 research run**
+
+**Added 2026-07-05** after a full static review of the P2–P4 delivery (commits `f7693e2`, `38e2fa8`). Every
+finding below is CONFIRMED by direct code trace (file:line quoted), not guessed. Context for the reader:
+the P0–P2 work held up well under this review (evidence-first write-ups, failing-test-first, deviations
+disclosed). The rot starts at P3.3→P4, which shipped **without their validation gates** — the identical
+failure shape as P1's skipped M15 test (which produced P1.5.1), at larger scale. Net effect: **the three
+surfaces the owner would use to make P5 kill/keep decisions — walk-forward, exit lab, scoreboard — all
+produce numbers that must not be trusted yet.** P5's triage ranks strategies with exactly these tools, so
+P4.5 lands first or every P5 decision inherits these defects.
+
+**P4.5.1 — Walk-forward harness never runs the test window (CRITICAL — all "OOS" numbers are in-sample).**
+`WalkForwardBackgroundService.ExecuteJobAsync` (`src/TradingEngine.Web/Services/WalkForwardBackgroundService.cs:59-113`):
+per window it sweeps the TRAIN range (`BuildSweepRequest(spec, trainFrom, trainTo)` — the only run trigger
+in the file), picks a "best" cell from that train sweep, then writes that cell's TRAIN results into
+`TestNetProfit`/`TestTotalTrades`/`TestWinRatePct` (lines 94-96). `testFrom`/`testTo` are stored on the
+entity and never drive any execution. The Angular "stitched OOS equity curve" therefore plots stitched
+**in-sample maxima** — the most overfit statistic possible, labeled OOS. Compounding it, `PickPlateauCell`
+(line 119-122) is `MaxBy(NetProfit + WinRatePct*1000)` — an arbitrary mixed-unit scalar, no neighborhood
+logic, no deterministic tiebreak — precisely what §6's P4.2 guidance banned ("no `MaxBy` on unstable float
+ties"; "highest median of the 3×3 neighborhood, ties → smaller SL").
+- **Fix:** implement the missing test leg: freeze the chosen cell's params, run ONE backtest over
+  `[testFrom, testTo]` with them (reuse the orchestrator; pre-load indicator warmup bars from BEFORE
+  `testFrom` so warmup neither eats test data nor forces the window to shrink), store THOSE results as
+  `Test*`, stitch those. Extract a pure `PlateauPicker` (TradingEngine.Services) implementing the
+  3×3-neighborhood-median rule with the smaller-SL tiebreak.
+- **Failing tests first:** (a) harness-level test with a stubbed sweep runner asserting a test-window run is
+  executed with the frozen params and `TestNetProfit` comes from it, not from train; (b) `PlateauPicker`
+  unit test on a hand-built grid containing a tall isolated peak next to a broad lower plateau — assert the
+  plateau center wins, and that ties break deterministically.
+- Fold in (same file, low severity): `Enqueue`'s `TryWrite` failure leaves the job "pending" forever (mark
+  it failed); window results attribute `spec.Strategies.FirstOrDefault()` even when the sweep covers a
+  matrix; `PlateauValue` mixes money and percent units.
+
+**P4.5.2 — Exit Lab is dead end-to-end: excursion JSON format mismatch (CRITICAL).**
+`TapeReplayAdapter.TakeExcursionPathJson` (line ~534) serializes `[{"t":..,"hi":..,"lo":..},...]` (array of
+objects). `ExitLabController.ParsePoints` (line ~206) deserializes `List<List<double>>` (array of arrays) →
+`JsonException` → swallowed by `catch { return []; }` → every trade silently skipped → `/api/exit-lab/evaluate`
+can only ever return `TotalTrades: 0, Cells: []`. The Angular trade-detail chart parses the object shape
+correctly — the controller is the odd one out. This survived because the P3.3 validation gate was deferred
+and no test ever fed a REAL recorded path through the controller.
+- **Fix:** one shared codec (`ExcursionPathCodec` beside `ExitModels`: `Serialize(IReadOnlyList<ExcursionPoint>)`
+  / `Parse(string)`) used by the recorder, the controller, and every future consumer (P5.3 triage tooling).
+  Keep the object format — the UI already speaks it. Delete the silent catch: malformed paths must surface
+  as an error/skip count in the response, never vanish.
+- **Failing test first:** integration round-trip — record a path via the existing `TapeReplayExcursionRecorderTests`
+  fixture → persist → call `Evaluate` → assert `TotalTrades == 1`. Fails against current code.
+
+**P4.5.3 — ExitReplayer diverges from the venue it claims to replay (CRITICAL for calibration).**
+Four confirmed divergences in `ExitReplayer.Replay` (`src/TradingEngine.Services/ExitLab/ExitReplayer.cs`):
+- (a) **Short-side spread ignored.** `TradeExcursionInput.SpreadPips` is populated by the controller and read
+  by NOTHING. Paths are bid-relative (recorder uses raw bar High/Low vs entry). The venue detects short
+  SL/TP on the ASK (bar shifted by FULL spread, `ProcessSlTpHits` / P0.2 convention) and fills short exits
+  at ask; the replayer tests raw bid for both directions → **short cells are optimistic ~one full spread per
+  exit, on both detection and fill**. §6's P3.3 guidance ("document whether paths are bid or mid ONCE and
+  adjust per side") was simply not implemented.
+- (b) **Trail/BE cadence mismatch.** The replayer updates BE/trailing per PATH POINT (= per M1 fine bar); the
+  real venue evaluates trailing/BE once per DECISION bar (`KernelTrailingEvaluator`, known F3). M1-cadence
+  trailing is far tighter than H1-cadence trailing — trailing/BE cells chosen in the lab will NOT reproduce
+  in a real run. Fix: bucket path points into decision-bar groups for the BE/trail update step (exit
+  detection stays per point), or make cadence an explicit parameter defaulted to the decision TF. Document it.
+- (c) **MAE output is garbage (inverted comparison).** `adverseExtreme` is computed positive-when-adverse
+  (line 54) but recorded via `if (adverseExtreme < maePips)` from a 0 start (line 56) — a genuine adverse
+  move (+10) is never `< 0`, so real MAE never records, while favorable-side bars record as negative noise.
+  MFE is correct. No test in the whole tree asserts `MaePips`/`MfePips` (grep: zero hits). Flip the
+  comparison, pin the sign convention in a doc-comment, and add MAE/MFE asserts to every existing replayer test.
+- (d) **Partial-TP accepted but unmodeled.** `tradeSize` is decremented and never enters the R math;
+  `ExitRule` accepts partial params, the calibration table stores them, and `AddOnResolver` Calibrated mode
+  would drive REAL positions from them. Until split-R accounting exists
+  (`R = fraction×partialExitR + (1−fraction)×remainderR`), `Replay` must throw (or `Evaluate` reject) on
+  rules with partial dimensions — silently-wrong is not acceptable on the honesty tool.
+- **The root fix is the deferred P3.3 validation gate — land it FIRST; it forces (a)–(d):** drive one real
+  tape run with `RecordExcursions=true` on existing EURUSD data (tape only — no cTrader), then replay that
+  run's OWN exit rule over its recorded paths and assert the replayed exits match the run's actual exits
+  within one fine bar / one tick. Fix divergences until green. That test then stands as the permanent
+  replayer-fidelity contract, exactly as the plan originally specified.
+
+**P4.5.4 — Saved calibrations cannot affect any run (HIGH — the P3.4 loop is open at three points).**
+(1) `ExitCalibrationRecord.SlAtrMultiple`/`TpRrMultiple` — the grid's two dominant dimensions — are hydrated
+by `SqliteExitCalibrationLookup` and consumed by NOTHING (`AddOnResolver` reads only trailing/BE/partial;
+`SlTpResolver` doesn't know calibrations exist). (2) Nothing ever sets an add-on's `Mode=Calibrated` — no UI
+control, no shipped JSON — so even the trailing/BE/partial branches are unreachable in practice; "Save
+Calibration" is currently a write-only table. (3) The Exit-Lab UI's calibration timeframe is a FREE-TEXT
+input stored raw, and the lookup matches `e.EntryTimeframe == timeframe.ToString()` case-sensitively —
+typing "h1" saves a row that never matches anything, silently.
+- **Fix:** decide the consumption story explicitly. Recommended: strategy-instance bind time — when
+  `StrategyRegistry` binds (symbol, TF) per run-plan row, if a calibration row exists AND the strategy opts
+  in, override SL/TP options the same way P2.6's `UnitConversion` already rewires them there; add the opt-in
+  to strategy config + UI. Make the TF field a dropdown of `Timeframe` enum names and normalize server-side
+  with `Enum.TryParse` fail-loud (the P1.5.3 pattern). Surface "cell has calibration / calibration ACTIVE"
+  on the scoreboard so an open loop is visible instead of silent.
+
+**P4.5.5 — P(pass) surfaces answer the wrong question (HIGH).**
+(a) Exit-lab per-cell P(pass) (`ExitLabController.ComputeExitLabPassProbability`): feeds SORTED per-trade R
+values as `HistoricalDailyPnL` (trades ≠ days), sets `DaysRemaining = max(1, 30 − tradeCount)` (unit
+nonsense), and starts from equity that already includes every trade — category-errored three ways.
+(b) Run-detail P(pass) (`PassProbabilityService.ComputeAsync`): for a completed run longer than
+`daysRemaining`, `DaysRemaining` clamps to 1 and `CurrentEquity` is final equity — the tile answers "given
+the run already happened, can it pass in one more day" (≈0 for nearly every run), not the research question.
+- **Fix:** define ONE framing per surface. Research surfaces (exit lab, scoreboard, completed-run detail) =
+  **fresh challenge**: start at initial balance, full 30 days, daily PnL resampled from the run's ACTUAL
+  per-day PnL (group trades by close date; for exit-lab cells convert Rs to per-day PnL using the source
+  runs' observed trades/day). The mid-challenge framing stays for P7.3's live phase tracker only. Unit-test
+  both framings with hand-built histories. Perf: 3,240 cells × 2,000 MC runs per evaluate call was never
+  noticed because the endpoint returns 0 cells (P4.5.2) — compute P(pass) lazily (top-N cells or on row select).
+- Also: `PassProbabilityEstimator.ExpectedDaysToTarget = DaysRemaining/2` is a hardcoded fake — compute it
+  from the passing MC runs' actual day counts, or drop the field from the UI.
+
+**P4.5.6 — Scoreboard ranks by in-sample vibes; frequency math wrong ~30× (HIGH).**
+(a) `latestAvgR` comes from whatever run for that cell completed most recently — including EXPLORATION runs
+(deliberately absurd SL=4×ATR/no-TP exits) and sweep-train runs; no OOS notion anywhere. (b) `cellTrades`
+filters by `RunId + StrategyId` only (`ScoreboardController.cs:41`) — in a multi-symbol/TF run every cell of
+a strategy is credited ALL that strategy's trades (wrong counts and avgR; latent today, guaranteed wrong the
+moment P5 makes multi-symbol runs routine). (c) The plan's columns — P(pass), data-coverage badge,
+calibration freshness, correlation group — are absent. (d) The P4.4 traffic light
+(`scoreboard.component.ts:151`) implements `ln(0.05)/ln(1 − risk·avgR)` → ~1,996 needed trades where
+QUANT-ROADMAP §3.3's `target% / (risk% × avgR)` gives ~67 (avgR 0.3, risk 0.5%): off ~30×, so nearly every
+cell reads red — and `NaN/∞ → 'green'` defaults FAILURE to the good state.
+- **Fix:** tag runs with a `Purpose` (exploration / sweep-train / oos-test / standard — CustomParams already
+  distinguish most); scoreboard reads OOS-test runs once P4.5.1 produces them (fallback: standard runs;
+  NEVER exploration/train). Filter cell trades by symbol AND timeframe. Move the frequency formula
+  server-side, implement the roadmap arithmetic, unit-test it; unknown/NaN → grey, never green.
+
+**P4.5.7 — Smaller confirmed items (one cleanup commit, or fold into the nearest fix above).**
+- Excursion path cap missing (P3.1's spec: ~10k points → downsample 2×): a months-open exploration trade on
+  M1 grows unbounded in venue memory and DB row size. Cap inside `RecordExcursionPoints`.
+- `IExcursionRepository` has no fetch-by-run; the Exit-Lab UI demands hand-typed (runId, positionId) GUID
+  pair lists — unusable at 500 trades. Add `GetByRunAsync(runId)` + a "load run X's excursion trades" flow
+  (join TradeResults for strategy/symbol/direction filters).
+- Grid-vs-truncated-paths censoring: recorded paths END at the source run's actual exit; replaying a WIDER
+  SL than the source run used (default grid goes to 7× vs exploration's 4×) silently understates SL hits.
+  Clamp grid SL dims to the source run's SL multiple, or store the source SL on the excursion row and warn.
+- Plateau highlighting absent from the exit-lab results table (P3.5's core anti-overfit feature). Reuse
+  `PlateauPicker` (P4.5.1) to badge plateau-center rows; default sort must not be raw AvgR alone.
+- Exit-lab `ReferenceAtrPips` is a hand-typed number (folklore by another name) — default it from
+  `ReferenceScales` once P5.1 populates the table.
+
+**Execution order:** P4.5.2 → P4.5.3 (validation gate first) → P4.5.1 → P4.5.4 → P4.5.5/P4.5.6 → P4.5.7.
+Standing gates apply. None of these fixes touch kernel/venue fill paths (ExitReplayer has no golden
+coverage), so golden must stay byte-identical — if it moves, stop and report.
+
+**Carried-forward debts to keep visible (not P4.5 scope, but do not lose):**
+- `MISSING_DATA` verdict (P1.5.4) — still zero hits repo-wide; three phases deferred now. Land it with the
+  verdict-funnel UI or explicitly kill it with an owner decision.
+- `ReferenceScales` population (P3.4b compute) — schema exists, table empty; MUST land inside P5.1 ingest
+  (rolling-median ATR(14), median bar range per symbol×TF) because P2.6 conversions and the exit lab both
+  lean on the spread-guess fallback until it does.
+- Kernel-path limit orders reach cTrader as Market (`isLimit` derives from `entryOpts` that the kernel path
+  never populates — discovered and deliberately deferred in P2.7). This is P6 reconcile agenda item #1 and
+  matches TEST-INVENTORY gap G2.
+
 ### P5 — Data + triage program (owner-driven; agent supports)
 
 **P5.1 Download (D7).** Majors 6 + XAUUSD; TFs {M1, M15, H1, H4}; max available history. Prereq: the download port allocator (known gap D85) OR run downloads sequentially. Verify ingest dedupe on re-runs (B7 landed).
@@ -349,6 +500,7 @@ This is the owner's "utilize MAE/MFE automatically" ask, done per QUANT-ROADMAP 
 | P2 | divergence fixtures (pos+neg); per-change A/B tape runs; config linter fails on a raw-pip fixture | A/B tables in PRs |
 | P3 | replayer-reproduces-actual-run test; proposal ledger records unfilled-limit counterfactuals | one exit-lab heatmap screenshot |
 | P4 | stitched OOS curve renders; trials counter shown | scoreboard screenshot |
+| P4.5 | exit-lab round-trip integration test green; replayer-reproduces-actual-run gate green; walk-forward test-leg test green; PlateauPicker peak-vs-plateau test green; frequency-formula unit test green | before/after: `/api/exit-lab/evaluate` returns >0 cells on a real run; one walk-forward window's train-vs-test numbers quoted in PR body |
 | P5 | non-FX cost tests green; coverage view shows downloads | triage kill/keep list doc |
 | P6 | reconcile endpoint output committed | RECONCILE-FINDINGS update |
 
@@ -408,5 +560,82 @@ Each idea: what + why + rough method. None are commitments; the scoreboard decid
 
 ## 8. Suggested execution order & sizing
 
-`P0.1 → P0.2 → P1.1–P1.2 → P1.3–P1.4 → P1.5 → P2.2 → P2.1 → P2.3–P2.5 → P3 → P4 → (owner: P5, P6 in parallel) → P7`.
+`P0.1 → P0.2 → P1.1–P1.2 → P1.3–P1.4 → P1.5 → P2.2 → P2.1 → P2.3–P2.5 → P3 → P4 → **P4.5** → (owner: P5, P6 in parallel) → P7`.
 Each arrow is a separately landable commit/PR with its gate. P0+P1 together are roughly one focused agent session; P1.5 is small (half a session — two targeted bug fixes plus their failing tests) but **non-optional**: P2.1 (indicator series API) extends the exact pipeline P1.5.1 patches, and would silently inherit the H1-pinning bug into the new ring-buffer series if built on top of it unfixed. P2 one session; P3 one-to-two; P4 one-to-two. If forced to cut: **P0, P1, P1.5, P3 are the spine** — truth, reach (actually verified, not just claimed), and the exit lab; P2 fixes ride along where cheap, and P2.2 (rsi-divergence) can simply stay disabled until rewritten.
+
+---
+
+## 9. Addendum (2026-07-05) — evidence workflow, test policy, and direction for P4.5–P7
+
+Added by the second static review. The plan's phases stand unchanged; this section standardizes HOW the
+remaining phases deliver so the owner decides from evidence instead of trusting write-ups.
+
+### 9.1 Evidence workflow (research → artifact → owner decision)
+
+Every remaining phase (P4.5 onward) ends in exactly ONE decision artifact, and PROGRESS.md links it:
+
+- **Either** a report at `docs/iterations/iter-quant-model/reports/NN-<topic>.md` with this fixed shape:
+  **Question** (one sentence) → **Method** (what ran, config ids, date windows) → **Evidence** (tables with
+  the RunIds and the literal SQL/API queries used, so any number is re-derivable) → **Recommendation**
+  (one, not a menu) → **Owner decision** (an empty box the owner fills; once filled, the decision gets a
+  D-number in §2 of this plan).
+- **Or** a UI surface this plan already names (scoreboard, exit lab, walk-forward report) — in which case
+  the phase's PR body says exactly which page/route to open and what to look at.
+
+Rules: numbers in reports come from queries run against the DB, pasted verbatim — never hand-typed. A
+report with no runnable query per table is not evidence. Agents never make kill/keep/calibration decisions
+themselves — they produce the ranked artifact; the owner parks/keeps/applies in the UI (park + save
+buttons already write reasons — that IS the decision log).
+
+### 9.2 cTrader test policy
+
+Full triage in `docs/CTRADER-TEST-POLICY.md` (written 2026-07-05). One-line version: cTrader-backed tests
+exist ONLY to prove transport/connection, one order round-trip through the real cBot, venue-ledger
+reconciliation, and data acquisition. Strategy behavior / trade production / window-length regression is
+TAPE's job now. Tag the keep-set `Category=CtraderContract`; retire the rest to tape equivalents. **No
+phase gate for research/engine code ever includes cTrader tests** — they run only when transport/cBot/
+adapter/wire code changes, before merging an iteration branch, or in a P6 reconcile session, and only when
+the owner asks.
+
+### 9.3 Direction per remaining phase (agent guidance, same authority as §6)
+
+**Meta-lesson the numbers prove:** every phase that shipped with its validation gate "deferred" produced a
+CRITICAL bug (P1's skipped M15 test → P1.5.1; P3.3's deferred replayer gate → P4.5.2/P4.5.3; P4's absent
+harness test → P4.5.1). New standing rule, non-negotiable: **a deferred gate means the phase is NOT done.**
+PROGRESS.md may not mark "Done" while a gate is outstanding — write "Done except gate X" and leave the
+status cell open. Second standing rule: any `catch`-and-return-empty around parsing/lookup in research
+surfaces is banned — fail loud or surface a skip-count; silent-empty is this codebase's most expensive bug
+class four times running.
+
+**P4.5:** execution order and failing-test-first specs are in the phase section. Do NOT start P2.1-style
+refactors while in there — fix, test, land. The exit-lab validation gate needs one real exploration run on
+existing EURUSD data: drive it through the API against the dev DB (run-shamshir skill), tape venue only.
+
+**P5.1 (downloads):** run downloads SEQUENTIALLY (port-allocator gap D85 is unfixed). After EACH symbol×TF
+ingest: (a) dedupe re-run check (B7), (b) the data-quality sentinel from §7 idea #10 — bar-count continuity
+vs session calendar, OHLC sanity, M1-aggregates≈H1 cross-check — as a REQUIRED gate, not an idea; holey
+data manufactures phantom edges and P5.3 will rank them. (c) Populate `ReferenceScales` (rolling-median
+ATR(14), median bar range) — the P3.4b compute lands here, and P2.6/exit-lab stop leaning on the
+spread-guess. Artifact: coverage report (per symbol×TF: bar counts, gap list, ReferenceScales row).
+
+**P5.2 (non-FX correctness):** exactly as §6 already specifies (hand-computed expectations in comments,
+code is wrong if they disagree). Add zero-swap crypto and zero-commission index cases. Gate before ANY
+XAU/BTC run — no exceptions.
+
+**P5.3 (exploration triage):** hard prerequisite P4.5 complete — triage on today's numbers is triage on
+noise. Automate the matrix (strategies × symbols × {M15,H1,H4}) through the sweep runner + exploration
+preset; every run tagged `Purpose=exploration`. Rank by fixed-R exit over excursion paths POST-COST via the
+(now-validated) replayer. Artifact: `reports/NN-triage.md` kill/park/keep with per-cell RunIds; owner parks
+in the scoreboard UI. Expect deaths — that is success.
+
+**P5.4 (portfolio):** correlation groups as config + per-group open-risk cap in `PreTradeGate` (pure,
+opt-in, golden-safe). Pairwise correlation on OOS daily PnL of surviving cells only. Artifact: portfolio
+report with Monte Carlo P(pass) at 2–4 cell combinations.
+
+**P6 (oracle):** owner-run; agent prepares pinned configs (byte-identical but venue) + the reconcile
+checklist beforehand. Agenda item #1: the kernel-path `isLimit` gap from P2.7 (limit orders likely reach
+cTrader as Market on the kernel path) — reconcile will surface it as entry-price deltas; investigate it
+deliberately, with its own F-id. P6.2 (recorded per-bar spread) before trusting any M5/M15 research.
+
+**P7:** only after P6 evidence exists. P7.3 (phase tracker) is where the mid-challenge P(pass) framing
+(P4.5.5) legitimately lives — don't re-blend it into research surfaces.
