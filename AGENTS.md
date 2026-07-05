@@ -79,7 +79,7 @@ tests/
 - Tape venue: correct full-spread convention via shared `SpreadConvention` helper, both adapters unified
 - Honest entry fills: tape market entries queue at signal bar, fill at next M1 bar open (toggleable)
 - Non-H1 strategy runs are now actually verified end-to-end (M15 tape run produces proposals) — this is the claim P1 made but hadn't tested
-- All gates green: Unit 416/0/6, Integration 99/0, fast Simulation 127/0 (~10s, cTrader-touching categories excluded — see below), Architecture 6/8 (2 pre-existing, undisturbed). Full cTrader-inclusive suite run once at the end of P2 — see PROGRESS.md's "P2 close-out" section for the outcome.
+- All gates green: Unit 416/0/6, Integration 99/0, fast Simulation 127/0 (~10s, cTrader-touching categories excluded — see below), Architecture 6/8 (2 pre-existing, undisturbed). The full cTrader-inclusive suite is deferred to end-of-P3 (owner override, mid-session — see PROGRESS.md's gate filter note); a partial run while that decision was still pending DID catch one real regression, since fixed (see PROGRESS.md's P2.7 write-up).
 - Parent branch `iter/quant-model` has P0 (3 gated commits pushed to origin)
 - **Gate filter note (owner request, 2026-07-05):** cTrader E2E tests are slow/flaky here even with real credentials present (confirmed — they run for real, not skip, and cost 10-25+ min under contention). Gate each phase with `--filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ"` (NOT `RequiresCTrader!=true` alone — `PipelineE2ETests` has no `RequiresCTrader` trait, only `Category=E2E/Slow`). Run the full suite once at the end of each major phase (P2 done; next such run is end-of-P3), not per-phase.
 

@@ -15,18 +15,22 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 ## Resume here
 
 → **P2 is fully done** (P1.5, P2.1–P2.7 all committed and gated green with the per-phase filter below).
-**Next: run the FULL suite once (including cTrader E2E) as the end-of-P2 gate the owner asked for, then
-start P3.1 — the excursion recorder.** See PLAN.md §3 P3 for the phase spec. P1.5.4 (MISSING_DATA verdict)
+**Next: P3.1 — the excursion recorder.** See PLAN.md §3 P3 for the phase spec. P1.5.4 (MISSING_DATA verdict)
 stays folded into P2's verdict-funnel work per the original triage (still not done — P4/scoreboard-adjacent,
 not blocking anything so far).
 
-**Gate filter note (owner request, 2026-07-05):** cTrader-backed E2E tests (`Category=E2E`, `Category=Slow`,
-`Category=NetMQ`, `RequiresCTrader=true`) are slow/flaky in this sandbox even though credentials ARE present
-(confirmed — they actually run for real, not skip) and cost 10-25+ minutes per run under contention. Gate
-each phase with:
+**Gate filter note (owner request, 2026-07-05, UPDATED same day):** cTrader-backed E2E tests
+(`Category=E2E`, `Category=Slow`, `Category=NetMQ`, `RequiresCTrader=true`) are slow/flaky in this sandbox
+even though credentials ARE present (confirmed — they actually run for real, not skip) and cost 10-25+
+minutes per run under contention — and have been a recurring blocker/flake source across sessions. Gate
+every phase (P2's remaining phases AND all of P3) with:
 `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ"`
-instead of the full Simulation suite. Run the FULL suite (including cTrader E2E) once at the end of P2 (next
-step), not per-phase.
+instead of the full Simulation suite. **The full cTrader-inclusive suite is deferred to the END OF P3 (not
+P2)** — the owner overrode the original "once at the end of P2" plan mid-session after a real regression
+turned up while that gate was running once (see P2.7's write-up below — caught and fixed, but confirms
+these tests DO catch real bugs the fast filter can't reach, which is exactly why the full run still matters
+eventually, just not on every phase boundary). Do not attempt the full/cTrader-inclusive run again until
+P3 is complete, and even then only if explicitly asked.
 
 This branch: 5 commits on top of `iter/quant-model` (9b9dbfc):
 - `edeb3a6` P1.1 — instance-per-row, de-hardcoded H1 in all 14 strategies
@@ -680,13 +684,31 @@ the trigger, fill at the (worse) open instead of the trigger price. Same expiry 
 `OnBarObserved` alongside every existing `ProcessPendingLimits` call site, including TapeReplayAdapter's
 dual-resolution fine-bar loop. `_pendingStops` cleared in both adapters' dispose paths.
 
-**cTrader adapter — drive-by correctness fix.** `CTraderBrokerAdapter.SubmitOrderAsync` used to derive
-`isLimit` from `entryOpts?.Method == OrderEntryMethod.LimitOffset` — NOT from `request.Type`, unlike both
-replay adapters. A `Stop`-typed request would have silently gone out as `orderType: "Market"` with its
-trigger price discarded. Generalized to switch on `request.Type` directly (`Market`/`Limit`/`Stop`),
-reusing the existing `limitPrice`/`expiryBars` wire fields as the generic trigger/expiry for either resting
-type. New test `StopIntent_ProducesStopOrderFrame` (`FakeTransportTests.cs`) proves the wire frame carries
-`orderType: "Stop"` with the trigger price populated.
+**cTrader adapter.** `CTraderBrokerAdapter.SubmitOrderAsync` derives `isLimit` from
+`entryOpts?.Method == OrderEntryMethod.LimitOffset` (unchanged) and now ALSO derives `isStop` from
+`request.Type == OrderType.Stop` (new, additive — `request.Type` is the only reliable signal for a brand
+new order type with no existing callers). Reuses the existing `limitPrice`/`expiryBars` wire fields as the
+generic trigger/expiry for either resting type. New test `StopIntent_ProducesStopOrderFrame`
+(`FakeTransportTests.cs`) proves the wire frame carries `orderType: "Stop"` with the trigger price
+populated; the pre-existing `LimitOffsetIntent_ProducesLimitOrderFrame` proves `isLimit` is untouched.
+
+**Caught mid-phase and deliberately NOT fixed here:** first attempt derived `orderTypeStr` from
+`request.Type` directly for BOTH Limit and Stop (matching both replay venues, and looking like a clean
+generalization). Running the full cTrader-inclusive gate turned up a real regression:
+`PipelineE2ETests.EurUsd_H1_3Days_ProducesTrades` and `EurUsd_H1_ThreeMonth_GeneratesAtLeastOneTrade`
+(a real cTrader-CLI backtest) both dropped from producing trades to **zero**. Root cause: on the KERNEL
+path, `EffectExecutor`'s `SubmitOrder` handler rebuilds a bare `TradeIntent` with no `Entry` attached, so
+`entryOpts` has ALWAYS been null there — meaning `isLimit` has ALWAYS evaluated false regardless of
+`request.Type`, and every kernel-path order (even a genuine domain `Limit` order from a LimitOffset-
+configured strategy — the default `OrderEntry.Method` for all 9 shipped strategies) has always gone out to
+cTrader as `"Market"`. That's a real, previously-undiscovered gap in the cTrader integration (a Limit order
+placed via the kernel path has apparently never actually rested at cTrader — `PlaceLimitOrder` may be
+effectively dead code on that path), but fixing it is out of scope for "add Stop orders" and risks silently
+changing trade counts on runs the owner already relies on. Reverted `isLimit`'s derivation to the original
+`entryOpts.Method` check (zero behavior change for any strategy shipped today) and added `isStop` as a
+narrow, independent addition keyed on `request.Type` (safe — no strategy produces a Stop order yet, so
+there is nothing to regress). Flagging the underlying gap here for a future phase to investigate
+deliberately, with the owner's sign-off, rather than fixing it as a side effect.
 
 **cBot.** `ExecuteSubmitOrder` gained an `orderType == "Stop" && limitPrice > 0` branch calling the cAlgo
 Robot API's `PlaceStopOrder` (same obsolete-overload pattern already used for `PlaceLimitOrder`, confirmed
