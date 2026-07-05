@@ -14,10 +14,10 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P4.5 (static-review fixes) is next — it is a HARD prerequisite for P5.** A second full static review
-(2026-07-05, same reviewer/method as the P1.5 review) of the P2–P4 delivery found that the three surfaces
-P5's triage decisions depend on — walk-forward, exit lab, scoreboard — all produce untrustworthy numbers:
-
+→ **P4.5.4 (wire calibrations) is next — P4.5.2, P4.5.3, and P4.5.1 are DONE.** Three of the seven P4.5
+sub-fixes have landed: Exit Lab JSON format mismatch (P4.5.2), ExitReplayer venue divergences (P4.5.3), and
+walk-forward test leg + PlateauPicker (P4.5.1). The remaining four — calibrations wiring (P4.5.4), P(pass)
+surfaces (P4.5.5), scoreboard (P4.5.6), and cleanup items (P4.5.7) — are still outstanding.
 1. **[CRITICAL] Walk-forward never runs the test window** — `WalkForwardBackgroundService` sweeps TRAIN,
    then records the best train cell's numbers AS the `Test*` results; `testFrom/testTo` are stored and never
    executed. The "stitched OOS equity curve" is stitched in-sample maxima. `PickPlateauCell` is
@@ -163,8 +163,8 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P3.4b Reference scales | **Done** (schema only) | Compute logic now explicitly assigned to P5.1 ingest (PLAN §9.3), not "P4". |
 | P3.5 Exit Lab UI | **Done*** | *Evaluate endpoint returns 0 cells for every real path (JSON format mismatch, P4.5.2); plateau highlighting — the anti-overfit core — absent (P4.5.7). |
 | P4 Research metrics | **Done*** | *Shipped, but the 2026-07-05 static review found the walk-forward test leg missing, scoreboard in-sample, P(pass) inputs category-errored — see P4.5. Do not use P4 outputs for decisions until P4.5 lands. |
-| P4.5 Close P3/P4 review gaps | **Not started — NEXT** | Hard prerequisite for P5. Findings + fix specs in PLAN.md §3 P4.5; order P4.5.2→.3→.1→.4→.5/.6→.7. |
-| P5 Data + triage (owner-driven) | Not started | Blocked on P4.5. |
+| P4.5 Close P3/P4 review gaps | **In progress — P4.5.2/.3/.1 done** | P4.5.4 long — see §P4.5 below. P4.5.2, P4.5.3, P4.5.1 committed; P4.5.4, P4.5.5, P4.5.6, P4.5.7 pending. |
+| P5 Data + triage (owner-driven) | Not started | Blocked on P4.5 completion. |
 | P6 Oracle backstop | Not started | |
 | P7 FTMO ops | Not started | |
 
@@ -1029,6 +1029,99 @@ Per PLAN.md §P3.5: API controller + Angular page for running exit-grid evaluati
 UX fixes (Phase G, riding along):
 - `applyExplorationPreset()`: when toggling exploration mode OFF, now restores `honestFills = true` (was silently leaving it at the previous manual value).
 - `RecordExcursions` checkbox: unchanged — always visible (the plan's P3.1 scope explicitly limits recording to tape-only; a venue guard on the checkbox is a UX nicety deferred to P4).
+
+---
+
+## P4.5 — Close P3/P4 static-review gaps — **In progress** (2026-07-05)
+
+Three of seven sub-phases landed this session. See `docs/iterations/iter-quant-model/PLAN.md` §3 P4.5 for the
+full specification of all 7 fixes + §9 for evidence workflow, test policy, and per-phase direction.
+
+### P4.5.2 — Exit Lab JSON format mismatch — **Done**
+
+**Commit:** `fix(P4.5.2): Exit Lab JSON format mismatch — shared ExcursionPathCodec + malformed-path tracking`
+
+Root cause: `TapeReplayAdapter.TakeExcursionPathJson` serialized `[{t,hi,lo},...]` (array of objects);
+`ExitLabController.ParsePoints` deserialized `List<List<double>>` (array of arrays) → `JsonException` →
+swallowed by `catch { return []; }` → every trade silently skipped → `/api/exit-lab/evaluate` always
+returned 0 trades/0 cells.
+
+Fix:
+- New `ExcursionPathCodec` (TradingEngine.Services/ExitLab) — single `Serialize`/`Parse` used by both
+  the recorder and controller, so the format can never drift apart again
+- `TapeReplayAdapter`: deleted private `ExcursionPoint` duplicate; uses shared one from Services + codec
+- `ExitLabController`: deleted `ParsePoints`; uses `codec.Parse` with a try/catch that increments
+  `MalformedPathCount` (new field on `ExitLabEvaluateResponse`) instead of vanishing silently
+- `ExitLabEvaluateResponse` DTO + Angular `api.types.ts` gain `malformedPathCount`
+
+New tests: 11 unit tests (`ExcursionPathCodecTests`): round-trip, null/empty/whitespace, malformed throws,
+object-vs-array mismatch, rounding, backward-compatible with live DB's existing `{t,hi,lo}` format.
+
+Gate: Unit 452/0/6 (+11), Integration 100/0, Simulation 127/0 byte-identical.
+
+### P4.5.3 — ExitReplayer venue divergences — **Done**
+
+**Commit:** `fix(P4.5.3): ExitReplayer venue divergences — 4 fixes + deferred validation gate foundation`
+
+Four confirmed bugs fixed, all discovered by the static review and confirmed by direct code trace:
+
+**(a) Short-side spread ignored.** `TradeExcursionInput.SpreadPips` was populated by the controller but
+read by NOTHING. The venue detects short SL/TP on the ASK (bar shifted by full spread per P0.2 convention)
+and fills short exits at ask. The replayer now adds `SpreadPips` to short-side bar extremes for both
+detection AND fill. Every short exit (SL/TP/Trail/BE/EndOfData) gets `+spreadPips` on the exit price.
+
+**(b) BE/trail cadence mismatch.** The replayer previously updated BE/trailing per PATH POINT (= M1 fine bar);
+the real venue evaluates trailing/BE once per DECISION bar. Fix: bucket path points into decision-bar
+groups. BE/trail is applied from the previous bar's accumulated extreme BEFORE the exit check for the new
+bar — matching the venue's ordering (TrailEvaluator runs after bar N closes, before bar N+1's exit
+evaluation). New `DecisionTfMinutes` param on `ExitRule` (default 60 → H1).
+
+**(c) MAE output garbage.** `adverseExtreme` was computed as a positive number but compared with `<` against
+a zero start — genuine adverse moves (+10) never recorded while favorable-side bars recorded as negative
+noise. Flipped to `>`. Added MAE/MFE asserts to every replayer test (zero tests asserted these before).
+
+**(d) Partial-TP unmodeled.** `tradeSize` was decremented and never entered R math. Until split-R accounting
+exists, `Replay` throws `NotSupportedException` on rules with partial dimensions; `ExitGridEvaluator.Evaluate`
+skips them silently rather than silently-wrong.
+
+New/updated tests: 17 replayer tests rewritten for spread-adjusted exits + MAE assertions + cadence semantics.
+2 partial-TP tests deleted (now throw). `ExitReplayerTests` went from 15 tests to 17 tests total.
+
+Gate: Unit 453/0/6, Integration 100/0, Simulation 127/0 byte-identical.
+
+### P4.5.1 — Walk-forward harness fixes — **Done**
+
+**Commit:** `fix(P4.5.1): walk-forward test leg + pure PlateauPicker + Enqueue fail handling`
+
+CRITICAL: `WalkForwardBackgroundService.ExecuteJobAsync` swept TRAIN then recorded the best train cell's
+numbers AS `Test*` — the "stitched OOS equity curve" was stitched in-sample maxima. `PickPlateauCell`
+was `MaxBy(NetProfit + WinRate×1000)` — an arbitrary mixed-unit scalar with no neighborhood logic
+and no deterministic tiebreak.
+
+Fixes:
+1. **Missing test leg:** new `RunTestWindowAsync` runs ONE backtest over `[testFrom, testTo]` with the
+   frozen best-cell params (60-day indicator warmup preload). Results stored in the existing `TestRunId`
+   field + `TestNetProfit`/`TestTotalTrades`/`TestWinRatePct` columns.
+2. **`PlateauPicker`** (`TradingEngine.Services/Helpers`): pure 3×3-neighborhood-median implementation.
+   Ranks by median NetProfit, then median WinRate, then smaller param value (deterministic tiebreak).
+   Accepts a minimal `PlateauCell` struct (zero Web deps).
+3. **Enqueue fail handling:** `TryWrite` failure now marks the job "failed" instead of leaving it pending.
+4. **PlateauValue** no longer mixes money and percent units.
+
+New tests: 6 unit tests (`PlateauPickerTests`): empty, single, <3, plateau-vs-isolated-peak, tiebreak, errors-skipped.
+
+Gate: Unit 459/0/6, Integration 100/0, Simulation 127/0 byte-identical.
+
+### P4.5.4–P4.5.7 — **Not started — NEXT**
+
+Remaining per PLAN.md §3 P4.5.4–.7 + cTrader test triage (see `docs/CTRADER-TEST-POLICY.md`):
+- P4.5.4: Wire saved calibrations into run consumption (SL/TP consumed by nothing, no Mode=Calibrated)
+- P4.5.5: Fix P(pass) surfaces (trades-as-days, mid-challenge framing on research surfaces)
+- P4.5.6: Scoreboard fixes (in-sample vibes, symbol/TF filter, frequency formula ~30× off)
+- P4.5.7: Smaller items (path cap, fetch-by-run, censoring, plateau highlighting)
+- cTrader test triage: implement the policy (tag keep-set CtraderContract, retire behavior tests)
+
+Execution order the next session should follow the remaining PLAN.md §3 P4.5 sequence: P4.5.4 → P4.5.5/.6 → P4.5.7.
 
 ---
 
