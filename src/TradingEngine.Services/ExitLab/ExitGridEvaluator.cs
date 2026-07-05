@@ -50,6 +50,10 @@ public static class ExitGridEvaluator
             MaxDegreeOfParallelism = Environment.ProcessorCount,
         }, rule =>
         {
+            // P4.5.3d: partial-TP is not yet modelled — skip rules that try to use it.
+            if (rule.PartialTriggerR is not null || rule.PartialCloseFraction is not null)
+                return;
+
             var rValues = new List<double>(trades.Count);
             var totalBars = 0;
             var winCount = 0;

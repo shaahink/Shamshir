@@ -31,6 +31,11 @@ public sealed record ExitRule
     // The ATR reference (pips) for converting multiples to distance. The caller provides this
     // per-symbol×TF so the replayer stays pure — it doesn't look up the symbol table.
     public double ReferenceAtrPips { get; init; }
+
+    // P4.5.3b: decision-bar cadence for BE/trail updates (minutes). The real venue evaluates
+    // BE/trailing once per DECISION bar; the replayer must bucket fine-bar path points into
+    // decision-bar groups and apply BE/trail only once per group. Default H1 (60 min).
+    public int DecisionTfMinutes { get; init; } = 60;
 }
 
 public enum ExitKind
