@@ -12,6 +12,7 @@ public sealed class BollingerSqueezeStrategy : IStrategy
     private readonly ISymbolInfoRegistry _symbolRegistry;
     private int _cooldownRemaining;
     private bool _squeezeActive;
+    private int _barsSinceLatched;
     private int _winStreak;
     private int _lossStreak;
 
@@ -101,7 +102,21 @@ public sealed class BollingerSqueezeStrategy : IStrategy
             // LATER bar. Requiring squeeze AND breakout on the same bar (as before) is self-contradictory —
             // the breakout bar is the one expanding the bands.
             if (bbWidth <= p.SqueezeThreshold * avgPriorWidth)
+            {
                 _squeezeActive = true;
+                _barsSinceLatched = 0;
+            }
+            else if (_squeezeActive)
+            {
+                // P2.3/D8: an armed latch expires after BbPeriod bars without a breakout — an old,
+                // stale contraction must not arm a breakout that shows up weeks later.
+                _barsSinceLatched++;
+                if (_barsSinceLatched > p.BbPeriod)
+                {
+                    _logger.LogTrace("SKIP|{Id}|SqueezeLatchExpired|barsSinceLatched={Bars}", Id, _barsSinceLatched);
+                    _squeezeActive = false;
+                }
+            }
 
             if (_cooldownRemaining > 0)
             {
@@ -137,6 +152,7 @@ public sealed class BollingerSqueezeStrategy : IStrategy
 
             _cooldownRemaining = p.CooldownBars;
             _squeezeActive = false;
+            _barsSinceLatched = 0;
 
             var entryPrice = new Price(context.LatestTick.Mid);
             var symbolInfo = _symbolRegistry.Get(context.Symbol);
@@ -177,6 +193,7 @@ public sealed class BollingerSqueezeStrategy : IStrategy
     {
         _cooldownRemaining = 0;
         _squeezeActive = false;
+        _barsSinceLatched = 0;
         _winStreak = 0;
         _lossStreak = 0;
     }

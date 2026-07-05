@@ -14,9 +14,9 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P1.5, P2.1 (indicator series API), and P2.2 (rsi-divergence rewrite) are committed and gated green.**
-Next up is P2.3 — edge semantics (ema-alignment/trend-breakout/bb-squeeze). See PLAN.md §3 P2 for the phase
-spec. P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
+→ **P1.5, P2.1 (indicator series API), P2.2 (rsi-divergence rewrite), and P2.3 (edge semantics) are
+committed and gated green.** Next up is P2.4 — time-flatten behavior. See PLAN.md §3 P2 for the phase spec.
+P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
 
 **Gate filter note (owner request, 2026-07-05):** cTrader-backed E2E tests (`Category=E2E`, `Category=Slow`,
 `Category=NetMQ`, `RequiresCTrader=true`) are slow/flaky in this sandbox even though credentials ARE present
@@ -107,7 +107,8 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P1.5 Close review gaps | **Done** | P1.5.1–P1.5.3 fixed+tested; P1.5.4 (MISSING_DATA) deferred to P2. |
 | P2.1 Indicator series API | **Done** | Ring buffer + 4 strategies ported off private fragile state. |
 | P2.2 rsi-divergence rewrite | **Done** | Real pivot-based divergence via PivotFinder + P2.1's series. |
-| P2.3–P2.7 (edge semantics, time-flatten, thesis metadata, units doctrine, stop orders) | Not started | |
+| P2.3 Edge semantics | **Done** | ema-alignment/trend-breakout/bb-squeeze real edges, not conditions. |
+| P2.4–P2.7 (time-flatten, thesis metadata, units doctrine, stop orders) | Not started | |
 | P3 Excursion recorder + Exit Lab | Not started | |
 | P4 Research metrics | Not started | |
 | P5 Data + triage (owner-driven) | Not started | |
@@ -433,3 +434,54 @@ P2.1's SeriesBasedCrossDetectionTests already counted); Integration 94/0; Simula
 gate-filter note above, cTrader-touching categories excluded for the rest of P2)
 `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 120/0 (~9s); Architecture 6/8 (2
 pre-existing, unrelated files, undisturbed). Full cTrader-inclusive suite deferred to end-of-P2 per owner.
+
+---
+
+## P2.3 — Edge semantics (D5, D8) — Done (2026-07-05, same session as P2.1/P2.2)
+
+**bb-squeeze latch expiry (D8).** New `_barsSinceLatched` counter: increments each bar the latch stays
+armed without a new contraction re-arming it; once it exceeds `BbPeriod`, the latch clears
+(`_squeezeActive = false`) so a stale contraction from weeks ago can no longer arm a breakout. Reset on
+fire and in `Reset()`. New test `BollingerSqueeze_LatchExpires_AfterBbPeriodBarsWithoutBreakout` — confirmed
+failing against the pre-fix code (a breakout ~21 bars after an old, expired latch incorrectly fired).
+
+**trend-breakout single-fire (D5).** The old check re-fired on EVERY bar of a continuing trend (a monotonic
+rise makes every bar a "fresh" N-bar high under a naive rolling-window comparison). Now only fires on a
+false→true STATE TRANSITION: the current bar breaks its rolling window AND the prior bar did NOT break
+ITS OWN (one-bar-earlier) rolling window — i.e. genuinely the first breakout bar of the run, not a
+continuation. New `CooldownBars` param (default 5) additionally suppresses re-entry for a few bars after
+any fire. New test `Evaluate_ContinuingMonotonicBreakout_FiresOnlyOnce_NotEveryBar` — confirmed 35 signals
+(one per bar) pre-fix, 1 signal post-fix, on the same 35-bar monotonic run.
+
+**ema-alignment edge conversion (D5).** Deleted the state CONDITION (`fast>slow AND price>fast` — true
+every bar of any trend, despite the code comment claiming "crossover"). New edge, fully derived from bars +
+the P2.1 EMA series (no private state at all — a stateless recomputation from history each call, so replay
+of the same tape always gives the same answer regardless of call cadence): (1) a fast/slow crossover within
+`CrossoverLookback` bars (new param, default 20), (2) no earlier bar since that crossover touched the fast
+EMA, (3) THIS bar touches the fast EMA (the pullback) and closes back on the trend side (confirmation).
+`RequiredBarCount` grew by `+CrossoverLookback` to give the window room. New tests (4, hand-injected series):
+fires on a genuine crossover+first-touch, does NOT fire on a second touch after the same crossover, does NOT
+fire on a sustained condition with no crossover event, insufficient-bars gate.
+
+**Test-infrastructure fallout (caught by running the real gate, not assumed):**
+- `StrategyCharacterizationTests.Signals()` had the same bar-0-vs-RequiredBarCount series-accumulation gap
+  already fixed once in `StrategySignalContractTests.CountSignals` (P2.2) — fixed identically here.
+- `EmaAlignment_FiresLong_OnCleanUptrend`'s `StrongTrend` fixture (a perfectly smooth trend from bar 0) can
+  legitimately produce ZERO signals under the new pullback-entry semantics — a clean trend has no pullback
+  to trade. Renamed to `EmaAlignment_FiresLong_OnUptrendWithPullback` with a new `TrendWithPullback` fixture:
+  flat/ranging warmup (so the fast/slow EMA start converged — a trend running since bar 0 never shows a
+  discrete crossover under the recompute-from-scratch test methodology, since Skender's EMA seed already has
+  fast>slow by the time both are first computable) followed by a clean uptrend, then a pin-bar pullback
+  (a deep lower wick, but the close stays on the trend side, confirming continuation) that genuinely touches
+  the fast EMA. Took several iterations with scratch diagnostics to get the wick depth right (a shallow dip
+  doesn't reach the EMA; too deep and the close itself falls below it, failing confirmation).
+- `NonH1AcceptanceTests.M15Run_TrendBreakout_ProducesAtLeastOneProposal` (P1.5.1's M15 gate test) used a
+  monotonic uptrend from bar 0 — the exact shape P2.3's single-fire logic no longer signals on once
+  `RequiredBarCount` bars have passed (the trend is already mid-continuation by then). Fixed the fixture to a
+  flat warmup for exactly `RequiredBarCount` bars, then the trend — same root cause and fix shape as the new
+  `TrendBreakoutStrategyTests` single-fire test.
+
+**Gate:** `dotnet build` 0 errors; Unit 386/0/6 (+6 new: 1 bb-squeeze latch-expiry, 1 trend-breakout
+single-fire, 4 ema-alignment edge); Integration 94/0; Simulation
+`RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 120/0 (~9s); Architecture 6/8 (2
+pre-existing, unrelated files, undisturbed).

@@ -5,6 +5,11 @@ public sealed record EmaAlignmentParameters
     public int FastPeriod { get; init; } = 20;
     public int SlowPeriod { get; init; } = 50;
     public int AtrPeriod { get; init; } = 14;
+
+    /// <summary>P2.3/D5: how many bars back to search for the EMA crossover that defines the current
+    /// trend leg — the edge is "crossover, then first pullback touch of the fast EMA", not the raw
+    /// fast&gt;slow CONDITION (which fires every bar of any trend).</summary>
+    public int CrossoverLookback { get; init; } = 20;
 }
 
 public sealed record EmaAlignmentConfig(

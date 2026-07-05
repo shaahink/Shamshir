@@ -12,6 +12,7 @@ public sealed class TrendBreakoutStrategy : IStrategy
     private readonly ILogger<TrendBreakoutStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
     private int? _lastSignalDirection;
+    private int _cooldownRemaining;
     private int _winStreak;
     private int _lossStreak;
 
@@ -76,11 +77,26 @@ public sealed class TrendBreakoutStrategy : IStrategy
             var entryPrice = new Price(currentPrice);
             var entryDirection = (TradeDirection?)null;
 
-            if (latestBar.High > highestHigh && currentPrice > (decimal)ema)
+            if (_cooldownRemaining > 0) _cooldownRemaining--;
+
+            // P2.3/D5: single-fire — a monotonic trend makes EVERY bar a "fresh" N-bar high/low under the
+            // naive check above, re-firing every bar. Only fire when the PRIOR bar was NOT itself already
+            // breaking ITS OWN rolling window (a false→true transition), i.e. this is genuinely the FIRST
+            // breakout bar of the run, not a continuation. Also gated by a cooldown after any fire.
+            var priorBar = bars[^2];
+            var priorWindowBars = bars.Count >= p.LookbackBars + 2
+                ? bars.Skip(bars.Count - p.LookbackBars - 2).Take(p.LookbackBars).ToList()
+                : [];
+            var priorHighestHigh = priorWindowBars.Count > 0 ? priorWindowBars.Max(b => b.High) : priorBar.High;
+            var priorLowestLow = priorWindowBars.Count > 0 ? priorWindowBars.Min(b => b.Low) : priorBar.Low;
+            var wasPriorBarBreakoutUp = priorBar.High > priorHighestHigh;
+            var wasPriorBarBreakoutDown = priorBar.Low < priorLowestLow;
+
+            if (_cooldownRemaining <= 0 && latestBar.High > highestHigh && currentPrice > (decimal)ema && !wasPriorBarBreakoutUp)
             {
                 entryDirection = TradeDirection.Long;
             }
-            else if (latestBar.Low < lowestLow && currentPrice < (decimal)ema)
+            else if (_cooldownRemaining <= 0 && latestBar.Low < lowestLow && currentPrice < (decimal)ema && !wasPriorBarBreakoutDown)
             {
                 entryDirection = TradeDirection.Short;
             }
@@ -89,6 +105,7 @@ public sealed class TrendBreakoutStrategy : IStrategy
                 return null;
 
             _lastSignalDirection = entryDirection == TradeDirection.Long ? 1 : -1;
+            _cooldownRemaining = p.CooldownBars;
 
             var symbolInfo = _symbolRegistry.Get(context.Symbol);
             var pm = _config.PositionManagement;
@@ -135,6 +152,7 @@ public sealed class TrendBreakoutStrategy : IStrategy
     public void Reset()
     {
         _lastSignalDirection = null;
+        _cooldownRemaining = 0;
         _winStreak = 0;
         _lossStreak = 0;
     }

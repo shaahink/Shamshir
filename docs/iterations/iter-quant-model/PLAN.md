@@ -269,7 +269,7 @@ under the existing P2/verdict-funnel work rather than a separate fix, but don't 
 - **Failing test first** with a constructed fixture (synthetic bars producing a known divergence) + a negative fixture (no divergence → no signal).
 - Delete the tautology lines with prejudice.
 
-**P2.3 Edge semantics (D5, D8).**
+**P2.3 Edge semantics (D5, D8) — Done (2026-07-05).** See PROGRESS.md §P2.3 for the full write-up.
 - ema-alignment → crossover event within last K bars + first pullback touch of fast EMA (edge). trend-breakout → single-fire: signal only when the breakout bar's high crosses a level the PRIOR bar had not (plus per-level cooldown). bb-squeeze → latch expires after `BbPeriod` bars (D8).
 - Each change gets an A/B tape run in the PR description (same window, before/after: trades, win%, net, avg hold).
 

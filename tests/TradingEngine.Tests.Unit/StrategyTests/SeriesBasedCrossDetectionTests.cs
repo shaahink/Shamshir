@@ -196,4 +196,50 @@ public sealed class SeriesBasedCrossDetectionTests
         intent.Should().NotBeNull("bandwidth contracted well below 0.8x its prior average and price broke above the upper band");
         intent!.Direction.Should().Be(TradeDirection.Long);
     }
+
+    [Fact]
+    public void BollingerSqueeze_LatchExpires_AfterBbPeriodBarsWithoutBreakout()
+    {
+        // P2.3/D8: a squeeze latch must expire after BbPeriod bars without a breakout, rather than staying
+        // armed forever — otherwise an old, stale contraction can arm a breakout weeks later.
+        var strategy = new BollingerSqueezeStrategy(new BollingerSqueezeConfig(), Registry, NullLogger<BollingerSqueezeStrategy>.Instance);
+        var eur = Symbol.Parse("EURUSD");
+
+        static IReadOnlyDictionary<string, IReadOnlyList<double>> WideSeries() => new Dictionary<string, IReadOnlyList<double>>
+        {
+            ["BB_20_2_Upper"] = Enumerable.Repeat(1.0500, 11).ToList(),
+            ["BB_20_2_Lower"] = Enumerable.Repeat(0.9500, 11).ToList(),
+            ["BB_20_2"] = Enumerable.Repeat(1.0000, 11).ToList(),
+        };
+
+        // Arm the latch: contracted width (well below 0.8x the wide prior average), price still inside the
+        // (already-narrow) bands — no breakout on the arming bar itself.
+        var armBars = FlatBars(strategy.RequiredBarCount, 1.0000m);
+        var armValues = new Dictionary<string, double> { ["BB_20_2"] = 1.0000, ["BB_20_2_Upper"] = 1.0050, ["BB_20_2_Lower"] = 0.9950, ["ATR_14"] = 0.0010 };
+        var armSeries = new Dictionary<string, IReadOnlyList<double>>
+        {
+            ["BB_20_2_Upper"] = Enumerable.Repeat(1.0500, 10).Append(1.0050).ToList(),
+            ["BB_20_2_Lower"] = Enumerable.Repeat(0.9500, 10).Append(0.9950).ToList(),
+            ["BB_20_2"] = Enumerable.Repeat(1.0000, 11).ToList(),
+        };
+        var armContext = new MarketContext(eur, new Tick(eur, 1.0000m, 1.0002m, DateTime.UtcNow),
+            new Dictionary<Timeframe, IReadOnlyList<Bar>> { [Timeframe.H1] = armBars }, armValues, DateTime.UtcNow, armSeries);
+        strategy.Evaluate(armContext).Should().BeNull("the squeeze bar itself only latches; price is still inside the bands");
+
+        // Advance BbPeriod(20)+1 bars with NORMAL (non-contracted) width and price inside the bands — must
+        // not fire, and must not keep re-arming (avgPriorWidth ≈ current width, so no new squeeze triggers).
+        var normalBars = FlatBars(strategy.RequiredBarCount, 1.0000m);
+        var normalValues = new Dictionary<string, double> { ["BB_20_2"] = 1.0000, ["BB_20_2_Upper"] = 1.0500, ["BB_20_2_Lower"] = 0.9500, ["ATR_14"] = 0.0010 };
+        var normalContext = new MarketContext(eur, new Tick(eur, 1.0000m, 1.0002m, DateTime.UtcNow),
+            new Dictionary<Timeframe, IReadOnlyList<Bar>> { [Timeframe.H1] = normalBars }, normalValues, DateTime.UtcNow, WideSeries());
+        for (var i = 0; i < 21; i++)
+            strategy.Evaluate(normalContext).Should().BeNull("price stays inside the bands — no breakout yet");
+
+        // A genuine breakout now — but the latch expired ~20 bars ago, so this must NOT fire.
+        var breakoutBars = FlatBars(strategy.RequiredBarCount, 1.0600m);
+        var breakoutContext = new MarketContext(eur, new Tick(eur, 1.0600m, 1.0602m, DateTime.UtcNow),
+            new Dictionary<Timeframe, IReadOnlyList<Bar>> { [Timeframe.H1] = breakoutBars }, normalValues, DateTime.UtcNow, WideSeries());
+
+        strategy.Evaluate(breakoutContext).Should().BeNull("the squeeze latch expired after BbPeriod bars without a breakout — this is a stale, unrelated breakout");
+    }
 }

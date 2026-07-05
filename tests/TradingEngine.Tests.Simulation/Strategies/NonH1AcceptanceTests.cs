@@ -74,11 +74,15 @@ public sealed class NonH1AcceptanceTests
     [Fact]
     public async Task M15Run_TrendBreakout_ProducesAtLeastOneProposal()
     {
-        // 80 M15 bars trending up, well past RequiredBarCount (max(20,50,14)+5=55) — a monotonic uptrend
-        // where every bar's high exceeds the prior 20-bar lookback high, so trend-breakout should fire on
-        // the first eligible bar once indicators are actually being computed on the M15 timeframe.
+        // Flat warmup for RequiredBarCount (max(20,50,14)+5=55) bars, THEN a monotonic uptrend — P2.3's
+        // single-fire semantics mean a trend running since bar 0 would already be "mid-continuation" (its
+        // prior bar already breaking out) by the time RequiredBarCount is satisfied, so the warmup must
+        // precede the trend rather than the trend starting from bar 0.
         var start = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var bars = Bars.Trend(Eurusd, Timeframe.M15, start, 1.1000m, pips: 200, barCount: 80).Build();
+        var bars = new BarBuilder(Eurusd, Timeframe.M15, start, 1.1000m)
+            .Range(1.1000m, 2, 55)
+            .Trend("up", 200, 25)
+            .Build();
 
         var symbolRegistry = Substitute.For<ISymbolInfoRegistry>();
         symbolRegistry.Get(Eurusd).Returns(EurusdInfo);
