@@ -11,13 +11,15 @@
                      },
     "orderEntry":  {
                        "method":  "Market",
-                       "maxSlippagePips":  2.0
+                       "maxSlippagePips":  2.0,
+                       "maxSlippageSpreadMultiple":  2.0
                    },
     "positionManagement":  {
                                "stopLoss":  {
                                                 "method":  "SwingPoint",
                                                 "atrMultiple":  2.0,
-                                                "maxPips":  300
+                                                "maxPips":  300,
+                                                "maxSlAtrMultiple":  15.0
                                             },
                                "takeProfit":  {
                                                   "method":  "RrMultiple",
@@ -26,7 +28,8 @@
                                "breakeven":  {
                                                  "enabled":  true,
                                                  "triggerRMultiple":  1.0,
-                                                 "offsetPips":  1.0
+                                                 "offsetPips":  1.0,
+                                                 "offsetSpreadMultiple":  1.0
                                              },
                                "trailing":  {
                                                 "enabled":  true,

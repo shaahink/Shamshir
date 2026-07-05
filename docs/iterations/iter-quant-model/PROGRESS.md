@@ -15,9 +15,9 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 ## Resume here
 
 → **P1.5, P2.1 (indicator series API), P2.2 (rsi-divergence rewrite), P2.3 (edge semantics), P2.4
-(time-flatten), and P2.5 (thesis metadata) are committed and gated green.** Next up is P2.6 — units doctrine
-+ config linter. See PLAN.md §3 P2 for the phase spec. P1.5.4 (MISSING_DATA verdict) stays folded into P2's
-verdict-funnel work per the original triage.
+(time-flatten), P2.5 (thesis metadata), and P2.6 (units doctrine + config linter) are committed and gated
+green.** Next up is P2.7 — stop orders (`OrderType.Stop` end-to-end). See PLAN.md §3 P2 for the phase spec.
+P1.5.4 (MISSING_DATA verdict) stays folded into P2's verdict-funnel work per the original triage.
 
 **Gate filter note (owner request, 2026-07-05):** cTrader-backed E2E tests (`Category=E2E`, `Category=Slow`,
 `Category=NetMQ`, `RequiresCTrader=true`) are slow/flaky in this sandbox even though credentials ARE present
@@ -572,3 +572,65 @@ were ever made explicit in a JSON file too (checked: none were).
 Integration 98/0 (+4 new); Simulation
 `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 125/0 (~9s); Architecture 6/8 (2
 pre-existing, unrelated files, undisturbed). Angular `tsc --noEmit` clean.
+
+## P2.6 — Units doctrine (D9) — Done (2026-07-05, same session as P2.1–P2.5)
+
+**What shipped:** the 5 raw-pip config fields the audit flagged (`breakeven.offsetPips`, `limitOffsetPips`,
+`stopLoss.maxPips`, `RiskProfile.MaxSlPips`, `maxSlippagePips`; `trailing.stepPips` too, though no shipped
+config used it) each gain a nullable normalized companion — an ATR-multiple, ATR-fraction, or
+spread-multiple. `UnitConversion` (new, `TradingEngine.Services`) is the one pure place a companion field
+resolves into the SAME existing raw-pip field the rest of the codebase already reads — SlTpResolver,
+PreTradeGate, EntryPlanner, PositionManager needed **zero** changes.
+
+- **New fields (additive, all nullable, default null = "still on raw pips"):** `SlOptions.MaxSlAtrMultiple`,
+  `BreakevenOptions.OffsetSpreadMultiple`, `TrailingOptions.StepAtrFraction`,
+  `OrderEntryOptions.LimitOffsetAtrFraction`/`MaxSlippageSpreadMultiple`, `RiskProfile.MaxSlAtrMultiple`.
+- **`UnitConversion`** (pure, `src/TradingEngine.Services/UnitConversion.cs`): `ReferenceAtrPips(tf, symbol)`
+  wraps the existing `AddOnAutoTuner.ReferenceAtrPips` heuristic (spread × per-TF factor) — the SAME
+  reference used in both directions (this session's JSON migration and every future resolution), so P3.4b's
+  eventual measured-`ReferenceScales` upgrade is a drop-in swap for one function, not a rethink.
+  `ResolvePips(this PositionManagementOptions, tf, symbol)` / `ResolvePips(this OrderEntryOptions, tf,
+  symbol)` / `ResolveMaxSlPips(this RiskProfile, tf, symbol)` each override the raw-pip field ONLY when its
+  companion multiple is set AND the reference scale is non-zero (a symbol with no configured spread never
+  silently zeroes out a real limit — falls back to the raw pips instead).
+- **Wiring — exactly 2 injection points, no strategy code touched:**
+  1. `StrategyRegistry.CreateStrategies` (Host): in the run-plan branch, right after `boundEntry` binds the
+     row's `Symbol`/`EntryTimeframe` (the existing D1 instance-per-row seam), resolve `SymbolInfo` via
+     `ISymbolInfoRegistry.TryGet` and — if found — run `PositionManagement`/`OrderEntry` through
+     `ResolvePips`. One-time (per strategy instance), not per-bar: symbol+TF are fixed for the instance's
+     lifetime.
+  2. `BarEvaluator.cs` (right after `riskProfileResolver.Resolve(intent.RiskProfileId)`, the existing K4
+     gap-1 per-proposal profile resolution): chain `.ResolveMaxSlPips(tf, symbolInfo)` — the only point
+     where the resolved profile, the firing strategy's symbol, AND its timeframe are all in scope together.
+- **Config linter** (`TradingEngine.Infrastructure.Configuration.ConfigLinter`, pure over `JsonElement`):
+  fails when a strategy/profile JSON has a raw-pip KEY explicitly present without its normalized companion
+  key. Wired into `StrategyConfigSeeder.SeedAsync` UNCONDITIONALLY at the top (before the "already seeded,
+  skip" early-return — a hand-edit must fail startup every time, not just on the very first seed) and into a
+  new `lint-config` CLI verb on `TradingEngine.Host` (`dotnet run --project src/TradingEngine.Host --
+  lint-config`), following the existing `experiment` sub-command dispatch pattern in `Program.cs`.
+- **Backward compat (one-iteration deprecation window, per plan):** old raw-pip fields are NOT deleted from
+  JSON this iteration; the resolver prefers the new companion when present, otherwise reads the raw field
+  unchanged — zero behavior change for any config that doesn't set a companion.
+- **JSON migration — all 13 files** (`config/strategies/*.json` ×9, `config/risk-profiles/*.json` ×4) gained
+  their normalized companion, computed from each field's CURRENT value against the EURUSD-H1 reference scale
+  (the implicit assumption baked into every number before P1 de-hardcoded H1) — e.g. `maxSlPips: 100.0` →
+  `maxSlAtrMultiple: 5.0` (`100 / ReferenceAtrPips(H1, EURUSD) = 100/20`). This is numerically a no-op for
+  EURUSD H1 (today's only real data) but now scales correctly for any other symbol/TF a run-plan row picks —
+  e.g. the SAME `standard` profile's `maxSlAtrMultiple: 5.0` resolves to 3000 pips on XAUUSD-H1 instead of
+  silently reusing the flat 100-pip forex cap that would reject or crush every gold stop. Added
+  `maxSlAtrMultiple` to ALL 9 strategies' `stopLoss` (not just bb-squeeze/mtf-trend, the only 2 that
+  explicitly overrode `maxPips`) so the gold/crypto fix isn't partial. Left `trailing.stepAtrFraction`
+  unadded anywhere — no shipped config sets `trailing.stepPips` (all use `Method: AtrMultiple`/`Structure`,
+  where `StepPips` is dead), so there was no raw-pip key for the linter to flag.
+
+New tests: `UnitConversionTests` (11 — EURUSD-vs-XAUUSD scaling proof for all 5 fields, multiple-absent
+no-op, zero-reference-scale doesn't zero out a real limit), `ConfigLinterTests` (6 — pure `JsonElement`
+rule checks), `ConfigLinterRealFilesTests` (1, Integration — the REAL shipped configs lint clean; the
+regression net for a future hand-edit), `StrategyRegistryTests` (+1 — binding the SAME `trend-breakout`
+config to EURUSD vs XAUUSD via `ISymbolInfoRegistry.TryGet` produces `MaxPips` 100 vs 3000, proving the
+`StrategyRegistry` wiring is genuinely symbol-aware end-to-end, not just at the pure-function level).
+
+**Gate:** `dotnet build` 0 errors; Unit 397/0/6 (+11); Integration 99/0 (+1); Simulation
+`RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ` 126/0 (+1, ~10s); Architecture 6/8 (2
+pre-existing, unrelated files, undisturbed); `dotnet run --project src/TradingEngine.Host -- lint-config`
+against the real repo → "Config lint: OK".

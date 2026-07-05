@@ -120,6 +120,21 @@ public sealed class StrategyRegistry
                     EntryTimeframe = tf,
                 };
 
+                // P2.6 (D9, units doctrine): normalized-unit fields (ATR-multiple/spread-multiple/ATR-fraction)
+                // resolve into the existing raw-pip fields HERE, once, with the row's real symbol+TF — the
+                // only point besides the per-proposal RiskProfile resolve (BarEvaluator) where both are known
+                // together. Symbol/TF are fixed for the lifetime of this instance (D1 instance-per-row), so a
+                // one-time resolution is correct — no per-bar re-resolution needed.
+                var symbolRegistry = services.GetRequiredService<ISymbolInfoRegistry>();
+                if (symbolRegistry.TryGet(new Symbol(entry.Symbol), out var symbolInfo))
+                {
+                    boundEntry = boundEntry with
+                    {
+                        PositionManagement = (boundEntry.PositionManagement ?? new()).ResolvePips(tf, symbolInfo),
+                        OrderEntry = (boundEntry.OrderEntry ?? new()).ResolvePips(tf, symbolInfo),
+                    };
+                }
+
                 if (_factories.TryGetValue(id, out var factory))
                 {
                     var strategy = factory(boundEntry, services);

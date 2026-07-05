@@ -38,6 +38,12 @@ public record SlOptions
     public double AtrMultiple { get; init; } = 1.5;
     public double FixedPips { get; init; }
     public double MaxPips { get; init; } = 100;
+
+    /// <summary>iter-quant-model P2.6 (D9, units doctrine): normalized replacement for <see cref="MaxPips"/>
+    /// — a flat pip cap is wrong-by-construction for gold/crypto (their natural ATR dwarfs a forex pip cap).
+    /// When set, <c>UnitConversion.ResolvePips</c> overrides <see cref="MaxPips"/> with
+    /// <c>MaxSlAtrMultiple × referenceAtrPips(symbol, timeframe)</c> at strategy-instance bind time.</summary>
+    public double? MaxSlAtrMultiple { get; init; }
 }
 
 public record TpOptions
@@ -54,6 +60,10 @@ public record BreakevenOptions
     public AddOnMode Mode { get; init; } = AddOnMode.Auto;   // iter-38 Stream A
     public double TriggerRMultiple { get; init; } = 1.0;
     public double OffsetPips { get; init; } = 1.0;
+
+    /// <summary>iter-quant-model P2.6 (D9): normalized replacement for <see cref="OffsetPips"/> — a
+    /// spread-relative buffer (e.g. 1.0 = one typical spread) scales correctly across symbols.</summary>
+    public double? OffsetSpreadMultiple { get; init; }
 }
 
 public record TrailingOptions
@@ -70,4 +80,8 @@ public record TrailingOptions
     public bool ActivateAfterBreakeven { get; init; }
     public int StructureLookbackBars { get; init; } = 10;
     public double[] SteppedRLevels { get; init; } = [1.0, 2.0, 3.0];
+
+    /// <summary>iter-quant-model P2.6 (D9): normalized replacement for <see cref="StepPips"/> (only
+    /// consumed by <c>TrailingMethod.StepPips</c>) — an ATR fraction instead of a flat pip step.</summary>
+    public double? StepAtrFraction { get; init; }
 }

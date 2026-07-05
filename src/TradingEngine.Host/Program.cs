@@ -12,6 +12,22 @@ public static class Program
                 services.AddSingleton<IExperimentHostFactory, ExperimentHostFactoryAdapter>());
             return;
         }
+        if (args.Length >= 1 && args[0] == "lint-config")
+        {
+            var lintRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+            var violations = ConfigLinter.LintDirectories(
+                Path.Combine(lintRoot, "config", "strategies"),
+                Path.Combine(lintRoot, "config", "risk-profiles"));
+            if (violations.Count == 0)
+            {
+                Console.WriteLine("Config lint: OK (no raw-pip fields without their normalized companion).");
+                Environment.Exit(0);
+            }
+            Console.WriteLine($"Config lint FAILED ({violations.Count} violation(s)):");
+            foreach (var v in violations) Console.WriteLine($"  - {v}");
+            Environment.Exit(1);
+            return;
+        }
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SERILOG_FILE_PATH")))
             Environment.SetEnvironmentVariable("SERILOG_FILE_PATH", "logs/engine-.log");
         Log.Logger = new LoggerConfiguration().ReadFrom.Configuration(

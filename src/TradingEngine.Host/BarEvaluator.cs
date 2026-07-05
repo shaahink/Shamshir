@@ -183,7 +183,10 @@ public sealed class BarEvaluator(
 
             // K4 gap-1: resolve the strategy's profile ONCE here and carry it on the proposal so the pure
             // kernel sizes with it (not the run-constant profile). Reused for the compliance verdict below.
-            var resolvedProfile = riskProfileResolver.Resolve(intent.RiskProfileId);
+            // P2.6 (D9, units doctrine): if the profile carries a normalized MaxSlAtrMultiple, override
+            // MaxSlPips with it here — the only point where the profile, this strategy's symbol, AND its
+            // timeframe are all in scope together, so a flat cap never silently crushes gold/crypto.
+            var resolvedProfile = riskProfileResolver.Resolve(intent.RiskProfileId).ResolveMaxSlPips(tf, symbolInfo);
 
             var external = ComputeVerdicts(intent, state, simTime, resolvedProfile);
 

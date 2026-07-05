@@ -5,6 +5,7 @@
   "maxDailyDrawdownPercent": 0.05,
   "maxTotalDrawdownPercent": 0.10,
   "maxSlPips": 150.0,
+  "maxSlAtrMultiple": 7.5,
   "maxExposurePercent": 0.10,
   "drawdownScaleThreshold": 0.75,
   "drawdownScaleFloor": 0.25,

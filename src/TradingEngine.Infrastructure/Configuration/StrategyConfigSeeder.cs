@@ -23,6 +23,18 @@ public sealed class StrategyConfigSeeder
 
     public async Task SeedAsync(CancellationToken ct = default)
     {
+        // P2.6 (D9, units doctrine): lint the FILES on disk unconditionally, even when the DB is already
+        // seeded and the rest of this method bails out below — a hand-edit to a raw-pip field without its
+        // normalized companion must fail startup every time, not just on the very first seed.
+        var violations = ConfigLinter.LintDirectories(
+            Path.Combine(_basePath, "config", "strategies"),
+            Path.Combine(_basePath, "config", "risk-profiles"));
+        if (violations.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "Config lint failed:\n" + string.Join('\n', violations));
+        }
+
         await using var scope = _scopeFactory.CreateAsyncScope();
         var store = scope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
