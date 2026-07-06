@@ -82,6 +82,10 @@ public sealed class NetMqMessageTransport : IMessageTransport, ITransportStatusS
         TransitionTo(TransportPhase.Disconnected);
         _disconnectedAtUtc = DateTime.UtcNow;
 
+        if (_sub != null) _sub.ReceiveReady -= OnSubReceive;
+        if (_router != null) _router.ReceiveReady -= OnRouterReceive;
+        if (_sendQueue != null) _sendQueue.ReceiveReady -= OnSendQueueReady;
+
         _poller?.Stop();
         _poller?.Dispose();
         _sendQueue?.Dispose();

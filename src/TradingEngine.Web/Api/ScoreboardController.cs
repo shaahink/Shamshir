@@ -9,8 +9,13 @@ namespace TradingEngine.Web.Api;
 public sealed class ScoreboardController : ControllerBase
 {
     private readonly TradingDbContext _db;
+    private readonly ILogger<ScoreboardController> _logger;
 
-    public ScoreboardController(TradingDbContext db) => _db = db;
+    public ScoreboardController(TradingDbContext db, ILogger<ScoreboardController> logger)
+    {
+        _db = db;
+        _logger = logger;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken ct)
@@ -40,7 +45,8 @@ public sealed class ScoreboardController : ControllerBase
 
                 var cellTrades = trades.Where(t => t.RunId == run.RunId
                     && t.StrategyId == row.StrategyId
-                    && t.Symbol == row.Symbol).ToList();   // P4.5.6: filter by symbol+TF (was RunId+StrategyId only)
+                    && t.Symbol == row.Symbol
+                    && t.EntryTimeframe == row.Timeframe).ToList();
                 var avgR = cellTrades.Count > 0 ? cellTrades.Average(t => t.RMultiple) : 0.0;
                 var tradesPerWeek = 0.0;
                 if (run.BacktestFrom != default && run.BacktestTo != default)
@@ -118,7 +124,7 @@ public sealed class ScoreboardController : ControllerBase
         return Ok(new { unparked = true });
     }
 
-    private static List<RunPlanRow> ParseRunPlan(string? json)
+    private List<RunPlanRow> ParseRunPlan(string? json)
     {
         if (string.IsNullOrEmpty(json)) return [];
         try
@@ -126,7 +132,11 @@ public sealed class ScoreboardController : ControllerBase
             var entries = System.Text.Json.JsonSerializer.Deserialize<List<RunPlanRow>>(json);
             return entries ?? [];
         }
-        catch { return []; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse RunPlanJson — skipping run from scoreboard");
+            return [];
+        }
     }
 
     private sealed record RunPlanRow(string StrategyId = "", string Symbol = "", string Timeframe = "");

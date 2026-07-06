@@ -333,6 +333,13 @@ public static class EngineHostWireExtensions
             var constraints = ConstraintSet.Resolve(resolvedProfile, ruleSet);
             var govOptions = app.Services.GetRequiredService<GovernorOptions>();
             constraints = constraints with { GovernorEnabled = constraints.GovernorEnabled && govOptions.Enabled };
+
+            // P5.4: wire per-group exposure caps from config/exposure-groups.json (opt-in, empty → no-op).
+            var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+            var groups = LoadExposureGroups(solutionRoot);
+            if (groups.Count > 0)
+                constraints = constraints.WithExposureGroups(groups);
+
             rm.SetConstraints(constraints);
             var passEstimator = app.Services.GetRequiredService<IPassProbabilityEstimator>();
             var complianceSvc = new PropFirmComplianceService(
@@ -342,5 +349,34 @@ public static class EngineHostWireExtensions
 
         var sizePipeline = app.Services.GetRequiredService<SizeModifierPipeline>();
         rm.SetSizePipeline(sizePipeline);
+    }
+
+    private static IReadOnlyList<ExposureGroup> LoadExposureGroups(string solutionRoot)
+    {
+        var path = Path.Combine(solutionRoot, "config", "exposure-groups.json");
+        if (!File.Exists(path)) return Array.Empty<ExposureGroup>();
+
+        try
+        {
+            var json = File.ReadAllText(path);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var groupsNode = doc.RootElement.GetProperty("groups");
+            var result = new List<ExposureGroup>();
+            foreach (var prop in groupsNode.EnumerateObject())
+            {
+                var id = prop.Name;
+                var label = prop.Value.GetProperty("label").GetString() ?? id;
+                var symbols = prop.Value.GetProperty("symbols").EnumerateArray()
+                    .Select(s => s.GetString()!.ToUpperInvariant())
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var maxExposure = (decimal)prop.Value.GetProperty("maxExposure").GetDouble();
+                result.Add(new ExposureGroup(id, label, symbols, maxExposure));
+            }
+            return result;
+        }
+        catch
+        {
+            return Array.Empty<ExposureGroup>();
+        }
     }
 }

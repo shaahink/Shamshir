@@ -46,7 +46,10 @@ public sealed record ConstraintSet(
     // ── Exposure / budget / position-count toggles (iter-redesign P2.2) ──
     bool ExposureEnabled = true,
     bool BudgetEnabled = true,
-    bool MaxPositionsEnabled = true)
+    bool MaxPositionsEnabled = true,
+
+    // ── P5.4: per-group exposure caps (opt-in, empty = no groups, zero behaviour change) ──
+    IReadOnlyList<ExposureGroup>? ExposureGroups = null)
 {
     /// <summary>
     /// Project from both config sources. PropFirmRuleSet limits take precedence over
@@ -92,4 +95,7 @@ public sealed record ConstraintSet(
             BudgetEnabled: ruleSet.Toggles.BudgetEnabled,
             MaxPositionsEnabled: ruleSet.Toggles.MaxPositionsEnabled);
     }
+
+    public ConstraintSet WithExposureGroups(IReadOnlyList<ExposureGroup> groups) =>
+        this with { ExposureGroups = groups };
 }

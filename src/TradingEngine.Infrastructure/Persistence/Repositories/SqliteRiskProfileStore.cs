@@ -1,11 +1,12 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence.Entities;
 
 namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
-public sealed class SqliteRiskProfileStore(TradingDbContext db) : IRiskProfileStore
+public sealed class SqliteRiskProfileStore(TradingDbContext db, ILogger<SqliteRiskProfileStore> logger) : IRiskProfileStore
 {
     private static readonly JsonSerializerOptions _jsonOpts = new()
     {
@@ -51,12 +52,16 @@ public sealed class SqliteRiskProfileStore(TradingDbContext db) : IRiskProfileSt
         }
     }
 
-    private static RiskProfile? Deserialize(RiskProfileEntity entity)
+    private RiskProfile? Deserialize(RiskProfileEntity entity)
     {
         try
         {
             return JsonSerializer.Deserialize<RiskProfile>(entity.Json, _jsonOpts);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to deserialize RiskProfile {Id} — JSON is corrupt", entity.Id);
+            return null;
+        }
     }
 }

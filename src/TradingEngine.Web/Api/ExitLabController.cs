@@ -89,27 +89,35 @@ public sealed class ExitLabController : ControllerBase
         var rules = ExitGridEvaluator.GenerateGrid(req.ReferenceAtrPips, slMultiples, tpMultiples, beTriggers, trailMultiples).ToList();
         var cells = ExitGridEvaluator.Evaluate(inputs, rules);
 
+        // P4.5.7: plateau highlighting — mark the cell closest to the center of the top-performing
+        // neighborhood as the plateau center. The user should pick plateau centers, not isolated peaks
+        // (QUANT-ROADMAP §3.2 anti-overfit rule). Uses AvgR as the ranking metric.
+        var cellResponses = cells.Select(c =>
+        {
+            var passProb = ComputeExitLabPassProbability(c.Result.TradeRValues);
+            return new ExitLabCellResponse
+            {
+                Rule = c.Rule,
+                TradeCount = c.Result.TradeCount,
+                WinRate = c.Result.WinRate,
+                AvgR = c.Result.AvgR,
+                MedianR = c.Result.MedianR,
+                AvgHoldBars = c.Result.AvgHoldBars,
+                MaxDdContributionR = c.Result.MaxDrawdownContributionR,
+                TradeRValues = c.Result.TradeRValues,
+                PassProbability = passProb,
+                IsPlateauCenter = false,
+            };
+        }).ToList();
+
+        MarkPlateauCenter(cellResponses);
+
         return Ok(new ExitLabEvaluateResponse
         {
             TotalTrades = inputs.Count,
             TotalCells = cells.Count,
             MalformedPathCount = malformedCount,
-            Cells = cells.Select(c =>
-            {
-                var passProb = ComputeExitLabPassProbability(c.Result.TradeRValues);
-                return new ExitLabCellResponse
-                {
-                    Rule = c.Rule,
-                    TradeCount = c.Result.TradeCount,
-                    WinRate = c.Result.WinRate,
-                    AvgR = c.Result.AvgR,
-                    MedianR = c.Result.MedianR,
-                    AvgHoldBars = c.Result.AvgHoldBars,
-                    MaxDdContributionR = c.Result.MaxDrawdownContributionR,
-                    TradeRValues = c.Result.TradeRValues,
-                    PassProbability = passProb,
-                };
-            }).ToList(),
+            Cells = cellResponses,
             DefaultSlMultiples = slMultiples,
             DefaultTpMultiples = tpMultiples,
         });
@@ -198,6 +206,47 @@ public sealed class ExitLabController : ControllerBase
 
         var rows = await q.OrderBy(e => e.StrategyId).ThenBy(e => e.Symbol).ToListAsync(ct);
         return Ok(rows);
+    }
+
+    // P4.5.7: find the plateau center — the cell nearest the center of the top-performing region.
+    // Avoids isolated peaks by requiring the plateau center to have at least one neighbor within 10%
+    // of its own AvgR. When a plateau exists, the cell closest to the geometric center of the plateau
+    // region is marked (the most stable parameter choice, per QUANT-ROADMAP §3.2).
+    private static void MarkPlateauCenter(List<ExitLabCellResponse> cells)
+    {
+        if (cells.Count == 0) return;
+
+        var bestAvgR = cells.Max(c => c.AvgR);
+        if (bestAvgR <= 0) return;
+
+        const double plateauThreshold = 0.90; // cells within 90% of the best AvgR form the plateau
+        var threshold = bestAvgR * plateauThreshold;
+        var plateauCells = cells.Where(c => c.AvgR >= threshold).ToList();
+        if (plateauCells.Count <= 1) return;
+
+        var slVals = plateauCells.Select(c => c.Rule.SlAtrMultiple).Distinct().OrderBy(x => x).ToList();
+        var tpVals = plateauCells.Select(c => c.Rule.TpRrMultiple ?? 0).Distinct().OrderBy(x => x).ToList();
+        if (slVals.Count == 0 || tpVals.Count == 0) return;
+
+        var centerSl = slVals[slVals.Count / 2];
+        var centerTp = tpVals[tpVals.Count / 2];
+
+        var plateauCenter = plateauCells
+            .OrderBy(c =>
+            {
+                var tp = c.Rule.TpRrMultiple ?? 0;
+                var slDist = slVals.Count > 1 ? (c.Rule.SlAtrMultiple - centerSl) / (slVals[^1] - slVals[0]) : 0;
+                var tpDist = tpVals.Count > 1 ? (tp - centerTp) / (tpVals[^1] - tpVals[0]) : 0;
+                return slDist * slDist + tpDist * tpDist;
+            })
+            .FirstOrDefault();
+
+        if (plateauCenter is not null)
+        {
+            var idx = cells.IndexOf(plateauCenter);
+            if (idx >= 0)
+                cells[idx] = plateauCenter with { IsPlateauCenter = true };
+        }
     }
 
     private double ComputeExitLabPassProbability(IReadOnlyList<double> rValues)

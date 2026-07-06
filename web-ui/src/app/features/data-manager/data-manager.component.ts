@@ -29,6 +29,10 @@ interface DownloadJobResponse {
   completedAtUtc?: string;
 }
 
+interface DownloadMultiResponse {
+  jobs: DownloadJobResponse[];
+}
+
 interface PendingShard {
   fileName: string;
   relativePath: string;
@@ -43,6 +47,8 @@ interface PendingShardsResponse {
   files: PendingShard[];
 }
 
+type DatePreset = '30d' | '90d' | '180d' | '1y' | '2y' | '5y' | '2020';
+
 @Component({
   selector: 'app-data-manager',
   standalone: true,
@@ -56,41 +62,54 @@ interface PendingShardsResponse {
 
       <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
         <h2 class="mb-3 text-sm font-medium text-gray-300">Download Market Data</h2>
-        <div class="flex flex-wrap items-end gap-3">
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Symbol</label>
-            <select [(ngModel)]="dlSymbol" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
-              @for (s of dlSymbols; track s) { <option [value]="s">{{ s }}</option> }
-            </select>
+
+        <div class="mb-3">
+          <label class="block text-xs font-medium text-gray-400 mb-1">Symbols</label>
+          <div class="flex flex-wrap gap-x-3 gap-y-1">
+            @for (s of dlSymbols; track s) {
+              <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer hover:text-gray-300">
+                <input type="checkbox" [checked]="dlSelectedSymbols().includes(s)"
+                  (change)="toggleSymbol(s)" class="rounded" />
+                {{ s }}
+              </label>
+            }
           </div>
+        </div>
+
+        <div class="flex flex-wrap items-end gap-3">
           <div>
             <label class="block text-xs font-medium text-gray-400 mb-1">Timeframes</label>
             <div class="flex gap-2">
               @for (tf of allTfs; track tf.value) {
                 <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
-                  <input type="checkbox" [checked]="dlTfs().includes(tf.value)" (change)="toggleTf(tf.value)" class="rounded" /> {{ tf.label }}
+                  <input type="checkbox" [checked]="dlTfs().includes(tf.value)"
+                    (change)="toggleTf(tf.value)" class="rounded" /> {{ tf.label }}
                 </label>
               }
             </div>
           </div>
           <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Days</label>
-            <select [(ngModel)]="dlDays" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
-              <option [value]="3">3</option>
-              <option [value]="7">7</option>
-              <option [value]="30">30</option>
-              <option [value]="90">90</option>
-              <option [value]="180">180</option>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Period</label>
+            <select [(ngModel)]="dlPreset" (ngModelChange)="onPresetChange($event)"
+              class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
+              <option value="30d">30 days</option>
+              <option value="90d">90 days</option>
+              <option value="180d">180 days</option>
+              <option value="1y">1 year</option>
+              <option value="2y">2 years</option>
+              <option value="5y">5 years</option>
+              <option value="2020">Since 2020</option>
             </select>
           </div>
           <div class="flex items-end gap-2">
             <div class="flex items-center gap-1.5 pb-1.5">
               <input type="checkbox" id="keepShards" [(ngModel)]="keepShards" class="rounded" />
-              <label for="keepShards" class="text-xs text-gray-500 cursor-pointer" title="Keep NDJSON files after ingest for inspection">Keep files</label>
+              <label for="keepShards" class="text-xs text-gray-500 cursor-pointer"
+                title="Keep NDJSON files in data/shards/archive/ for inspection">Keep files</label>
             </div>
-            <button (click)="startDownload()" [disabled]="dlLoading()"
+            <button (click)="startDownload()" [disabled]="dlLoading() || dlSelectedSymbols().length === 0"
               class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
-              {{ dlLoading() ? 'Starting...' : 'Download' }}
+              {{ dlLoading() ? 'Starting...' : 'Download ' + dlCountLabel() }}
             </button>
           </div>
         </div>
@@ -100,15 +119,19 @@ interface PendingShardsResponse {
 
         @if (activeJobs().length > 0) {
           <div class="mt-3 space-y-1">
-            <div class="text-xs text-gray-500 mb-1">Active Jobs</div>
+            <div class="text-xs text-gray-500 mb-1">
+              Active Jobs ({{ runningJobCount() }} running,
+              {{ activeJobs().length - runningJobCount() }} finished)
+            </div>
             @for (job of activeJobs(); track job.jobId) {
               <div class="flex items-center gap-2 rounded border border-gray-700 bg-gray-800/50 px-3 py-2 text-xs">
                 <span [class]="jobStatusColor(job.status)">{{ job.status }}</span>
-                <span class="text-gray-300">{{ job.symbol }} ({{ job.tfs.join(', ') }})</span>
+                <span class="text-gray-300 font-mono">{{ job.symbol }}</span>
+                <span class="text-gray-500">({{ job.tfs.join(', ') }})</span>
                 @if (job.barsRecorded) { <span class="text-gray-500">{{ job.barsRecorded }} bars</span> }
-                @if (job.error) { <span class="text-red-400 truncate">{{ job.error }}</span> }
+                @if (job.error) { <span class="text-red-400 truncate max-w-48">{{ job.error }}</span> }
                 @if (job.status === 'done' || job.status === 'failed') {
-                  <button (click)="dismissJob(job.jobId)" class="ml-auto text-gray-500 hover:text-gray-300">dismiss</button>
+                  <button (click)="dismissJob(job.jobId)" class="ml-auto text-gray-500 hover:text-gray-300">x</button>
                 }
               </div>
             }
@@ -140,26 +163,15 @@ interface PendingShardsResponse {
               </div>
               <div class="flex justify-between text-xs text-gray-500 mt-1">
                 <span>{{ job.filesProcessed ?? 0 }}/{{ job.filesTotal || '?' }} files</span>
-                <span>{{ (job.barsRecorded ?? 0).toLocaleString() }} bars &middot; {{ (job.linesProcessed ?? 0).toLocaleString() }} lines</span>
+                <span>{{ (job.barsRecorded ?? 0).toLocaleString() }} bars</span>
               </div>
             </div>
           }
           <p class="text-xs text-amber-500/70 mb-2">
-            NDJSON files in <code class="text-amber-400/80">{{ shardsRoot() || 'data/shards' }}</code> not yet imported.
-            Drop files there manually or keep files from downloads for later ingestion.
+            NDJSON files in <code class="text-amber-400/80">{{ shardsRoot() || 'data/shards' }}</code>.
+            Download data from cTrader then hit Ingest All to import into marketdata.db.
           </p>
-          @if (ingestResult()) {
-            @let errLen = ingestResult()?.errors?.length ?? 0;
-            <div class="mt-2 rounded p-2 text-xs" [class]="errLen === 0 ? 'bg-emerald-900/20' : 'bg-red-900/20'">
-              <span [class]="errLen === 0 ? 'text-emerald-400' : 'text-red-400'">
-                {{ ingestResult()?.barsIngested?.toLocaleString() ?? 0 }} bars ingested from {{ ingestResult()?.filesProcessed ?? 0 }} files.
-              </span>
-              @for (e of ingestResult()?.errors ?? []; track e) {
-                <div class="mt-1 text-red-400 font-mono">{{ e }}</div>
-              }
-            </div>
-          }
-          <div class="mt-2 max-h-40 overflow-y-auto space-y-0.5">
+          <div class="mt-2 max-h-48 overflow-y-auto space-y-0.5">
             @for (f of pendingFiles(); track f.relativePath) {
               <div class="flex items-center gap-2 rounded bg-gray-800/30 px-2 py-1 text-xs">
                 <span class="font-mono text-gray-300">{{ f.fileName }}</span>
@@ -262,8 +274,8 @@ export class DataManagerComponent implements OnInit {
 
   rowKey = (i: MarketDataItem) => `${i.symbol}|${i.timeframe}|${i.source}`;
 
-  dlSymbol = 'EURUSD';
-  dlSymbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'GBPJPY', 'XAUUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'XAGUSD'];
+  dlSymbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'GBPJPY', 'XAUUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'XAGUSD', 'BTCUSD', 'ETHUSD', 'US30', 'NAS100'];
+  dlSelectedSymbols = signal<string[]>(['EURUSD']);
   allTfs = [
     { value: 'm1', label: 'M1' },
     { value: 'm5', label: 'M5' },
@@ -273,12 +285,16 @@ export class DataManagerComponent implements OnInit {
     { value: 'd1', label: 'D1' },
   ];
   dlTfs = signal<string[]>(['h1', 'm1']);
-  dlDays = 7;
+  dlPreset: DatePreset = '1y';
   dlLoading = signal(false);
   dlError = signal<string | null>(null);
   keepShards = false;
   activeJobs = signal<DownloadJobResponse[]>([]);
-  private completedJobIds = new Set<string>();
+  runningJobCount = computed(() => this.activeJobs().filter(j => j.status !== 'done' && j.status !== 'failed').length);
+  dlCountLabel = computed(() => {
+    const n = this.dlSelectedSymbols().length;
+    return n === 0 ? '' : n === 1 ? this.dlSelectedSymbols()[0] : `${n} symbols`;
+  });
 
   pendingFiles = signal<PendingShard[]>([]);
   shardsRoot = signal<string>('');
@@ -297,23 +313,44 @@ export class DataManagerComponent implements OnInit {
       .subscribe(() => this.pollActiveJobs());
   }
 
+  toggleSymbol(s: string): void {
+    this.dlSelectedSymbols.update(
+      cur => cur.includes(s) ? cur.filter(x => x !== s) : [...cur, s]
+    );
+  }
+
   toggleTf(tf: string): void {
     this.dlTfs.update(tfs => tfs.includes(tf) ? tfs.filter(t => t !== tf) : [...tfs, tf]);
   }
 
+  onPresetChange(p: DatePreset): void {
+    // all date math done server-side based on the preset string
+  }
+
   startDownload(): void {
+    const syms = this.dlSelectedSymbols();
+    if (syms.length === 0) return;
     this.dlLoading.set(true);
     this.dlError.set(null);
-    this.http.post<DownloadJobResponse>('/api/data-manager/download', {
-      symbol: this.dlSymbol,
+
+    const body: any = {
+      symbols: syms,
       tfs: this.dlTfs(),
-      days: this.dlDays,
       keepShards: this.keepShards,
-    }).subscribe({
+    };
+
+    const days = this.presetToDays(this.dlPreset);
+    if (days !== null) {
+      body.days = days;
+    }
+
+    this.http.post<DownloadMultiResponse>('/api/data-manager/download', body).subscribe({
       next: (r) => {
         this.dlLoading.set(false);
-        this.activeJobs.update(jobs => [...jobs, r]);
-        this.pollJob(r.jobId);
+        if (r.jobs) {
+          this.activeJobs.update(jobs => [...jobs, ...r.jobs]);
+          for (const j of r.jobs) this.pollJob(j.jobId);
+        }
       },
       error: (err) => {
         this.dlError.set(err?.error?.error ?? err?.message ?? 'Download failed');
@@ -322,8 +359,20 @@ export class DataManagerComponent implements OnInit {
     });
   }
 
+  private presetToDays(p: DatePreset): number | null {
+    switch (p) {
+      case '30d': return 30;
+      case '90d': return 90;
+      case '180d': return 180;
+      case '1y': return 365;
+      case '2y': return 730;
+      case '5y': return 1825;
+      case '2020': return -1;
+      default: return 365;
+    }
+  }
+
   dismissJob(jobId: string): void {
-    this.completedJobIds.add(jobId);
     this.activeJobs.update(jobs => jobs.filter(j => j.jobId !== jobId));
   }
 
@@ -361,9 +410,7 @@ export class DataManagerComponent implements OnInit {
   }
 
   private pollActiveJobs(): void {
-    const jobs = this.activeJobs();
-    if (jobs.length === 0) return;
-    for (const job of jobs) {
+    for (const job of this.activeJobs()) {
       if (job.status === 'done' || job.status === 'failed') continue;
       this.pollJob(job.jobId);
     }
@@ -373,7 +420,7 @@ export class DataManagerComponent implements OnInit {
     this.http.get<DownloadJobResponse>(`/api/data-manager/jobs/${jobId}`).subscribe({
       next: (updated) => {
         this.activeJobs.update(jobs => jobs.map(j => j.jobId === jobId ? updated : j));
-        if (updated.status === 'done') {
+        if (updated.status === 'done' || updated.status === 'failed') {
           this.loadInventory();
           this.loadPendingShards();
         }

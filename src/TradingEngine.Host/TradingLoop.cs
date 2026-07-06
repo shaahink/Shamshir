@@ -250,7 +250,7 @@ public sealed class TradingLoop(
             // not the naive PipSize*ContractSize, so the portfolio worst-case is correct for
             // non-account-currency-quoted symbols (e.g. USDJPY, EURGBP).
             var pipValue = PipCalculator.PipValuePerLot(symbolInfo, pos.EntryPrice.Value, getCrossRate);
-            result.Add(new ProjectedPosition(slPips, pos.Lots, pipValue));
+            result.Add(new ProjectedPosition(pos.Symbol.Value, slPips, pos.Lots, pipValue));
         }
         return result;
     }

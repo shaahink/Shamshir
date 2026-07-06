@@ -1,3 +1,5 @@
+using TradingEngine.Domain.Interfaces;
+
 namespace TradingEngine.Host;
 
 /// <summary>
@@ -29,7 +31,9 @@ public sealed class BarEvaluator(
     IRiskProfileResolver riskProfileResolver,
     ITradingGovernor? governor,
     Microsoft.Extensions.Logging.ILogger logger,
-    IIndicatorService indicators)
+    IIndicatorService indicators,
+    IReferenceScaleLookup? referenceScales = null,
+    IExitCalibrationLookup? exitCalibrationLookup = null)
 {
     private long _orderSeq;
 
@@ -166,6 +170,24 @@ public sealed class BarEvaluator(
                         slMult = tuned.DynamicSlAtrMultiple;
                         tpRr = tuned.DynamicTpRrMultiple;
                     }
+                    else if (dyn.Mode == AddOnMode.Calibrated && exitCalibrationLookup is not null)
+                    {
+                        // P4.5.6: the DynamicSlTp Calibrated branch was missing — falls through to Custom
+                        // values (line 174), never reading the calibration table. Now reads SlAtrMultiple /
+                        // TpRrMultiple from ExitCalibrations at evaluation time, matching the bind-time
+                        // SL/TP override in StrategyRegistry (the other calibration consumption path).
+                        var cal = exitCalibrationLookup.Get(strategy.Id, symbol.Value, tf, regime.ToString());
+                        if (cal is not null)
+                        {
+                            slMult = cal.SlAtrMultiple;
+                            tpRr = cal.TpRrMultiple ?? dyn.RrMultipleTp;
+                        }
+                        else
+                        {
+                            slMult = dyn.AtrMultipleSl;
+                            tpRr = dyn.RrMultipleTp;
+                        }
+                    }
                     else
                     {
                         slMult = dyn.AtrMultipleSl;
@@ -186,7 +208,7 @@ public sealed class BarEvaluator(
             // P2.6 (D9, units doctrine): if the profile carries a normalized MaxSlAtrMultiple, override
             // MaxSlPips with it here — the only point where the profile, this strategy's symbol, AND its
             // timeframe are all in scope together, so a flat cap never silently crushes gold/crypto.
-            var resolvedProfile = riskProfileResolver.Resolve(intent.RiskProfileId).ResolveMaxSlPips(tf, symbolInfo);
+            var resolvedProfile = riskProfileResolver.Resolve(intent.RiskProfileId).ResolveMaxSlPips(tf, symbolInfo, referenceScales);
 
             var external = ComputeVerdicts(intent, state, simTime, resolvedProfile);
 

@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Domain.Interfaces;
 
 namespace TradingEngine.Host;
 
@@ -126,12 +127,13 @@ public sealed class StrategyRegistry
                 // together. Symbol/TF are fixed for the lifetime of this instance (D1 instance-per-row), so a
                 // one-time resolution is correct — no per-bar re-resolution needed.
                 var symbolRegistry = services.GetRequiredService<ISymbolInfoRegistry>();
+                var referenceScales = services.GetService<IReferenceScaleLookup>();
                 if (symbolRegistry.TryGet(new Symbol(entry.Symbol), out var symbolInfo))
                 {
                     boundEntry = boundEntry with
                     {
-                        PositionManagement = (boundEntry.PositionManagement ?? new()).ResolvePips(tf, symbolInfo),
-                        OrderEntry = (boundEntry.OrderEntry ?? new()).ResolvePips(tf, symbolInfo),
+                        PositionManagement = (boundEntry.PositionManagement ?? new()).ResolvePips(tf, symbolInfo, referenceScales),
+                        OrderEntry = (boundEntry.OrderEntry ?? new()).ResolvePips(tf, symbolInfo, referenceScales),
                     };
                 }
 

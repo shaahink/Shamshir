@@ -69,8 +69,10 @@ import type { ExitLabEvaluateRequest, ExitLabEvaluateResponse, ExitLabCellRespon
             </thead>
             <tbody class="divide-y divide-gray-800">
               @for (cell of result()!.cells; track cell) {
-                <tr (click)="selectCell(cell)" [style.background]="selectedCell() === cell ? 'rgba(22,163,74,0.15)' : ''" class="cursor-pointer hover:bg-gray-800/50">
-                  <td class="px-2 py-1 text-gray-300">{{ cell.rule.slAtrMultiple }}</td>
+                 <tr (click)="selectCell(cell)"
+                    [style.background]="selectedCell() === cell ? 'rgba(22,163,74,0.15)' : (cell.isPlateauCenter ? 'rgba(34,197,94,0.08)' : '')"
+                    class="cursor-pointer hover:bg-gray-800/50">
+                   <td class="px-2 py-1" [style.color]="cell.isPlateauCenter ? '#4ade80' : '#d1d5db'">{{ cell.rule.slAtrMultiple }}</td>
                   <td class="px-2 py-1 text-gray-300">{{ cell.rule.tpRrMultiple ?? '--' }}</td>
                   <td class="px-2 py-1 text-gray-300">{{ cell.rule.beTriggerR ?? '--' }}</td>
                   <td class="px-2 py-1 text-gray-300">{{ cell.rule.trailAtrMultiple ?? '--' }}</td>

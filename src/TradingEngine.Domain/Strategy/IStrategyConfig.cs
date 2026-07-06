@@ -18,5 +18,9 @@ public interface IStrategyConfig
     /// first bar whose time-of-day reaches this value (daily) — the building block for FTMO daily-DD
     /// hygiene and P7's news/weekend flattening. Null (default) ⇒ no time-flatten behavior.</summary>
     TimeOnly? FlattenAtUtc => null;
+
+    bool FlattenBeforeWeekend => false;
+
+    int? FlattenBeforeNewsMinutes => null;
 }
 

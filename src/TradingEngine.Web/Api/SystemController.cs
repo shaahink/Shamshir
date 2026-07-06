@@ -58,6 +58,47 @@ public sealed class SystemController : ControllerBase
         });
     }
 
+    // P6.3: reconcile health — days since last run, nudge to run compare-both weekly.
+    [HttpGet("reconcile-health")]
+    public async Task<IActionResult> GetReconcileHealth(CancellationToken ct)
+    {
+        var latestRun = await _db.BacktestRuns
+            .Where(r => r.CompletedAtUtc > DateTime.MinValue)
+            .OrderByDescending(r => r.CompletedAtUtc)
+            .Select(r => new { r.RunId, r.CompletedAtUtc, r.Venue })
+            .FirstOrDefaultAsync(ct);
+
+        var latestCompareTape = await _db.BacktestRuns
+            .Where(r => r.ParentRunId != null && r.ParentRunId != ""
+                && r.Venue == "tape"
+                && r.CompletedAtUtc > DateTime.MinValue)
+            .Where(r => _db.BacktestRuns.Any(s =>
+                s.ParentRunId == r.ParentRunId && s.Venue == "ctrader"))
+            .OrderByDescending(r => r.CompletedAtUtc)
+            .Select(r => new { r.RunId, r.CompletedAtUtc, r.ParentRunId })
+            .FirstOrDefaultAsync(ct);
+
+        var daysSinceLastRun = latestRun is not null
+            ? (int?)(DateTime.UtcNow - latestRun.CompletedAtUtc).TotalDays : (int?)null;
+
+        var daysSinceLastCompare = latestCompareTape is not null
+            ? (int?)(DateTime.UtcNow - latestCompareTape.CompletedAtUtc).TotalDays : (int?)null;
+
+        return Ok(new
+        {
+            daysSinceLastRun,
+            lastRunId = latestRun?.RunId,
+            lastRunVenue = latestRun?.Venue,
+            daysSinceLastCompare,
+            lastCompareTapeRunId = latestCompareTape?.RunId,
+            warning = daysSinceLastCompare is > 7
+                ? $"Last compare-both run was {daysSinceLastCompare} days ago. Run POST /api/runs/compare-both for a weekly health check."
+                : (daysSinceLastCompare is null
+                    ? "No compare-both runs found. Run POST /api/runs/compare-both to create the first reconcile baseline."
+                    : null),
+        });
+    }
+
     [HttpPost("reset")]
     public async Task<IActionResult> Reset([FromBody] ResetRequest req)
     {

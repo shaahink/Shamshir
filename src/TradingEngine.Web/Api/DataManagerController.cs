@@ -9,15 +9,21 @@ public sealed class DataManagerController : ControllerBase
 {
     private readonly IMarketDataStore? _marketDataStore;
     private readonly DownloadJobService? _downloadJobs;
+    private readonly ReferenceScalePopulator? _referenceScales;
+    private readonly DataQualityValidator? _qualityValidator;
     private readonly ILogger<DataManagerController> _logger;
 
     public DataManagerController(
         IMarketDataStore? marketDataStore = null,
         DownloadJobService? downloadJobs = null,
+        ReferenceScalePopulator? referenceScales = null,
+        DataQualityValidator? qualityValidator = null,
         ILogger<DataManagerController>? logger = null)
     {
         _marketDataStore = marketDataStore;
         _downloadJobs = downloadJobs;
+        _referenceScales = referenceScales;
+        _qualityValidator = qualityValidator;
         _logger = logger!;
     }
 
@@ -42,8 +48,13 @@ public sealed class DataManagerController : ControllerBase
     [HttpPost("download")]
     public IActionResult StartDownload([FromBody] DownloadRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.Symbol) || req.Tfs is null or { Length: 0 })
-            return BadRequest(new { error = "Symbol and at least one timeframe required." });
+        var symbols = (req.Symbols is { Length: > 0 } ? req.Symbols : [req.Symbol])
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (symbols.Length == 0 || req.Tfs is null or { Length: 0 })
+            return BadRequest(new { error = "At least one symbol and timeframe required." });
 
         if (_downloadJobs is null)
             return Problem("Download job service not registered.");
@@ -52,14 +63,17 @@ public sealed class DataManagerController : ControllerBase
         if (req.From is not null) from = DateTime.SpecifyKind(req.From.Value, DateTimeKind.Utc);
         if (req.To is not null) to = DateTime.SpecifyKind(req.To.Value, DateTimeKind.Utc);
 
-        var job = _downloadJobs.Start(req.Symbol, req.Tfs, req.Days, from, to, keepShards: req.KeepShards);
-        return Ok(new
+        if (req.Days < 0)
+            from = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var jobs = new List<object>();
+        foreach (var sym in symbols)
         {
-            jobId = job.Id,
-            symbol = job.Symbol,
-            tfs = job.Timeframes,
-            status = job.Status,
-        });
+            var job = _downloadJobs.Start(sym, req.Tfs, req.Days, from, to, keepShards: req.KeepShards, timeoutSeconds: 1800);
+            jobs.Add(new { jobId = job.Id, symbol = job.Symbol, tfs = job.Timeframes, status = job.Status });
+        }
+
+        return Ok(new { jobs });
     }
 
     [HttpGet("jobs")]
@@ -159,6 +173,30 @@ public sealed class DataManagerController : ControllerBase
         });
     }
 
+    [HttpPost("compute-reference-scales")]
+    public async Task<IActionResult> ComputeReferenceScales(CancellationToken ct)
+    {
+        if (_referenceScales is null)
+            return Problem("Reference scale populator not registered.");
+        if (_marketDataStore is null)
+            return Problem("Market data store not registered.");
+
+        var updated = await _referenceScales.PopulateAllAsync(ct);
+        return Ok(new { cellsUpdated = updated });
+    }
+
+    [HttpGet("quality-report")]
+    public async Task<IActionResult> GetQualityReport(CancellationToken ct)
+    {
+        if (_qualityValidator is null)
+            return Problem("Data quality validator not registered.");
+        if (_marketDataStore is null)
+            return Problem("Market data store not registered.");
+
+        var report = await _qualityValidator.GenerateReportAsync(ct);
+        return Ok(report);
+    }
+
     private static object MapJob(DownloadJob job) => new
     {
         jobId = job.Id,
@@ -182,11 +220,12 @@ public sealed class DataManagerController : ControllerBase
     public sealed record DownloadRequest
     {
         public string Symbol { get; init; } = "";
+        public string[]? Symbols { get; init; }
         public string[] Tfs { get; init; } = [];
         public int Days { get; init; } = 7;
         public DateTime? From { get; init; }
         public DateTime? To { get; init; }
-        public bool KeepShards { get; init; }
+        public bool KeepShards { get; set; }
     }
 
     public sealed record DeleteBarsRequest

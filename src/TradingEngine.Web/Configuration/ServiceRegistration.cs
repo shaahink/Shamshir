@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.Domain;
+using TradingEngine.Domain.Interfaces;
 using TradingEngine.Host;
 using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.MarketData;
@@ -107,6 +108,7 @@ public static class ServiceRegistration
             new DbContextOptionsBuilder<MarketDataDbContext>().UseSqlite(mdCs).Options))
         {
             mdInit.Database.EnsureCreated();
+            SqliteMarketDataStore.EnsureSpreadColumnAsync(mdInit).GetAwaiter().GetResult();
         }
         using (var mdWal = new SqliteConnection($"Data Source={mdPath};Mode=ReadWriteCreate"))
         {
@@ -148,6 +150,9 @@ public static class ServiceRegistration
         services.AddSingleton<BacktestOrchestrator>();
         services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
         services.AddSingleton<DownloadJobService>();
+        services.AddSingleton<ReferenceScalePopulator>();
+        services.AddSingleton<DataQualityValidator>();
+        services.AddScoped<IReferenceScaleLookup, SqliteReferenceScaleLookup>();
         services.AddSingleton<SweepRunnerService>();
         services.AddScoped<Services.LedgerReconcileService>();
         services.AddScoped<Services.RunNarrativeService>();

@@ -11,6 +11,20 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
 
     private static readonly string DateTimeFormat = "yyyy-MM-dd HH:mm:ss.FFFFFFF";
 
+    public static async Task EnsureSpreadColumnAsync(MarketDataDbContext db, CancellationToken ct = default)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE MarketDataBars ADD COLUMN Spread REAL", ct);
+        }
+        catch
+        {
+            // Column already exists — EnsureCreated on a fresh DB includes it, ALTER on an
+            // existing DB adds it once. Either way, ignore "duplicate column" errors.
+        }
+    }
+
     public async Task<int> WriteBarsAsync(string source, IReadOnlyList<Bar> bars, CancellationToken ct = default,
         IProgress<int>? progress = null)
     {
@@ -43,11 +57,12 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
                 if (!seen.Add(b.OpenTimeUtc)) continue;
 
                 if (batch == 0)
-                    sql.Append("INSERT OR IGNORE INTO MarketDataBars (Symbol, Timeframe, OpenTimeUtc, Open, High, Low, Close, Volume, Source, Quality, IngestedAtUtc) VALUES ");
+                    sql.Append("INSERT OR IGNORE INTO MarketDataBars (Symbol, Timeframe, OpenTimeUtc, Open, High, Low, Close, Volume, Spread, Source, Quality, IngestedAtUtc) VALUES ");
 
                 var timeStr = b.OpenTimeUtc.ToString(DateTimeFormat, CultureInfo.InvariantCulture);
+                var spreadVal = b.Spread is { } s ? s.ToString(CultureInfo.InvariantCulture) : "NULL";
                 sql.Append(CultureInfo.InvariantCulture,
-                    $"('{sym}','{tf}','{timeStr}',{b.Open},{b.High},{b.Low},{b.Close},{b.Volume},'{source}',0,'{nowStr}'),");
+                    $"('{sym}','{tf}','{timeStr}',{b.Open},{b.High},{b.Low},{b.Close},{b.Volume},{spreadVal},'{source}',0,'{nowStr}'),");
                 processed++;
                 batch++;
 
@@ -88,7 +103,8 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
 
         return rows.Select(r => new Bar(
             symbol, tf, r.OpenTimeUtc,
-            (decimal)r.Open, (decimal)r.High, (decimal)r.Low, (decimal)r.Close, r.Volume)).ToList();
+            (decimal)r.Open, (decimal)r.High, (decimal)r.Low, (decimal)r.Close, r.Volume,
+            r.Spread is { } s ? (decimal?)s : null)).ToList();
     }
 
     public async Task<IReadOnlyList<MarketDataInventoryEntry>> GetInventoryAsync(CancellationToken ct = default)

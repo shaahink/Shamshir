@@ -14,6 +14,7 @@ as bugs. `RawMoney` divergence from any of these is EXPECTED — the fix is in i
 | **F2** | **Intrabar floating equity not snapshotted.** `EmitAccountUpdate` fires per decision bar only, not per exit-TF bar. Intrabar equity troughs are invisible. | Tape MaxDD understates cTrader's floating DD — the "DB MaxDD=0 vs venue 4.6%" pain survives on the fast path. |
 | **F3** | **Trailing/breakeven cadence.** Trailing stops update once per decision bar; cTrader trails per-tick. | Trailing exits systematically later/looser than cTrader. Sizing unknown — measure first. |
 | **F4** | **Gap-through fills at exact stop price.** A bar opening beyond SL fills at the stop, not the (worse) open. | Optimistic on weekend/news gaps; FTMO daily DD punishes these tails. |
+| **F6** | **Trade count divergence.** Tape consistently produces 34-83% more trades than cTrader for identical configs (both Market entry, same window, same DatasetId). Exit R-multiples are near-identical between venues. | Cause unknown. Hypotheses: HonestFills (tape delays entries → different cooldown windows → more re-entry opportunities), subtle indicator/value differences. Needs clean compare-both run post-B4 fix.
 
 ## What the harness does
 `LedgerReconciler.Compare(engineLedger, venueLedger)` diffs two normalized `ReconcileLedger`s and classifies
@@ -48,6 +49,14 @@ each field difference:
 4. **RawMoney: expected ~0.** If it isn't, that's the first bug to chase — start there.
 
 ## How to run a real reconcile (owner)
+
+**P6.1 convenience (recommended):**
+1. `POST /api/runs/compare-both` with body `{"configName": "eurusd-h1-1d.json"}`
+2. After both runs complete, note the tape + cTrader run IDs from the log.
+3. `GET /api/backtest/analytics/reconcile?left={tapeRunId}&right={ctraderRunId}`
+4. Record findings in the V4 run table below. RawMoney divergence → bug hunt; Aggregation → P5 modelling.
+
+**Manual (legacy):**
 1. Run a short cTrader backtest (e.g. EURUSD H1, 1 day) with `--ReportPath` set so the cBot writes
    `shamshir-report.json` (already the default cTrader path).
 2. `var venue = ShamshirReportParser.Parse(File.ReadAllText(shamshirReportPath));`
@@ -55,5 +64,75 @@ each field difference:
 4. `var report = LedgerReconciler.Compare(engine, venue); Console.WriteLine(report.ToText());`
 5. Record which categories diverged in this file. RawMoney → bug hunt; Aggregation → P5 modelling.
 
-Do the SAME short config through the fast `Venue=tape` path and reconcile that against the oracle too — that is
-the acceptance test for the fake venue (P3/P5).
+## Weekly drift check (P6.3)
+
+**Rule:** Run one compare-both reconcile per week while iterating on strategy/exit changes. If RawMoney
+diverges from the prior week, STOP research and investigate the change. A growing divergence means the
+tape venue is drifting from the oracle — every calibration result built on top of it inherits the drift.
+
+**One-liner (API):**
+```
+POST /api/runs/compare-both  { "configName": "eurusd-h1-7d.json" }
+→ wait for completion (~2–5 min for 7-day window with cTrader)
+→ GET /api/backtest/analytics/reconcile?left={tapeRunId}&right={ctraderRunId}
+→ check: RawMoney divergences = 0? MaxDD delta stable vs prior week?
+→ if not → stop, create F-id, investigate before resuming research
+```
+
+**Health check endpoint:** `GET /api/system/reconcile-health` returns `daysSinceLastReconcile` and the
+latest compare-both run IDs. The backtest dashboard shows a gray info chip: "Last reconcile: N days ago"
+when N > 7.
+
+## Pre-registered gap: F5 — kernel-path limit orders reach cTrader as Market (P6.4)
+
+**Discovered:** P2.7 (stop orders) — the `CTraderBrokerAdapter.SubmitOrderAsync` derives `isLimit` from
+`entryOpts?.Method == OrderEntryMethod.LimitOffset`, but on the kernel production path
+(`Kernel.cs` → `EffectExecutor`), `entryOpts` is always null — meaning EVERY kernel-path order
+(including genuine domain `Limit` orders from `OrderEntryMethod.LimitOffset`-configured strategies)
+has always gone out to cTrader as `"Market"`. The default `OrderEntry.Method` for all 9 shipped
+strategies is `LimitOffset`, so **every historical cTrader run has been placing Market orders under
+the hood**.
+
+**Expected effect in V4 reconcile:**
+- Per-trade entry-price deltas: a Limit fill at the limit price vs a Market fill at the NEXT bar's open
+  (± spread). Deltas ≈ spread/2 per entry on average, systematic in the tape's favor.
+- Trade counts should be identical (same signals, just different fill mechanics).
+- RawMoney divergence from this gap is additive with F1 (spread cost) — they compound, not cancel.
+
+**Investigation methodology (P6.4):**
+1. Run compare-both with a config that uses a LimitOffset strategy (all shipped defaults do).
+2. In the reconcile output, inspect per-trade entry prices between tape and cTrader.
+3. Classify each trade: "Market fill" (entry price ≠ limit price ± spread tolerance) or "Likely Limit"
+   (entry price ≈ limit price).
+4. If ≥80% of cTrader entries are Market fills, F5 is confirmed — create a P6.4 fix commit.
+5. The fix: thread `request.Type` through the kernel path into `entryOpts` so the cTrader adapter can
+   derive `isLimit` correctly, matching what the replay venues already do (both replay adapters already
+   correctly handle `OrderType.Limit` from the engine).
+
+**Status:** Pre-registered, not yet confirmed. Awaiting owner's V4 compare-both run.
+
+## V4 run findings template (P6.5)
+
+After each compare-both reconcile session, fill in this table and record new F-ids below it:
+
+```
+### V4 run — {date}, {window}, EURUSD H1, trend-breakout
+| Check | Expected | Actual | Verdict |
+|---|---|---|---|
+| Trade count match | = | ? | ? |
+| Entries within 1 bar | yes | ? | ? |
+| RawMoney within tolerance | $0.00 | ? | ? |
+| Net delta explained by spread (F1) | yes | ? | ? |
+| MaxDD within F1-F4 range | yes | ? | ? |
+| F5: Limit→Market entry deltas | present | ? | ? |
+
+Tape RunId: ?
+cTrader RunId: ?
+Reconcile URL: GET /api/backtest/analytics/reconcile?left={tapeRunId}&right={ctraderRunId}
+
+New F-ids discovered:
+- F6: ...
+- F7: ...
+
+Unexplained divergences: ...
+```

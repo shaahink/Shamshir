@@ -46,6 +46,7 @@ public sealed class EngineRunner
     private readonly BarEvaluator _evaluator;
     private readonly KernelTrailingEvaluator _trailing;
     private readonly KernelTimeFlattenEvaluator _timeFlatten;
+    private readonly KernelWeekendFlattenEvaluator _weekendFlatten;
     private readonly IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? _preloadedAuxBars;
 
     private long _barCount;
@@ -82,11 +83,13 @@ public sealed class EngineRunner
             _indicatorSnapshot, deps.Strategies.StrategyBank, deps.Strategies.RegimeDetector, _signalGate,
             deps.Strategies.EntryPlanner, _symbolRegistry, _crossRate,
             deps.Risk.NewsFilter, deps.Risk.SessionFilter, _riskManager, _riskProfileResolver,
-            deps.Risk.Governor, logger, deps.Market.Indicators);
+            deps.Risk.Governor, logger, deps.Market.Indicators,
+            referenceScales: null, exitCalibrationLookup: deps.Strategies.ExitCalibrationLookup);
         _trailing = new KernelTrailingEvaluator(
             deps.Strategies.PositionManager, _symbolRegistry, _indicatorSnapshot, _strategies,
             new TradingEngine.Services.AddOns.AddOnResolver(deps.Strategies.ExitCalibrationLookup), deps.Market.Indicators);
         _timeFlatten = new KernelTimeFlattenEvaluator(_strategies);
+        _weekendFlatten = new KernelWeekendFlattenEvaluator(_strategies);
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -238,6 +241,10 @@ public sealed class EngineRunner
         var kernel = new Kernel(config);
         var queue = new InMemoryEngineEventQueue();
 
+        var dailyDdGuard = constraints.MaxDailyLoss > 0 && constraints.DailyDdEnabled
+            ? new KernelDailyDdGuardEvaluator(constraints.MaxDailyLoss, constraints.DailyDdBase)
+            : null;
+
         return new KernelBacktestLoop(
             kernel, _evaluator, _effects, _broker, queue, _journal,
             advanceVenue: bar => { UpdateCrossRates(bar); _broker.OnBarObserved(bar); },
@@ -248,6 +255,8 @@ public sealed class EngineRunner
             onEvent: ReportEvent,              // iter-38 B1: feed live-monitor counters
             evaluateTrailing: _trailing.Evaluate,
             evaluateTimeFlatten: _timeFlatten.Evaluate,
+            evaluateDailyDdGuard: dailyDdGuard is not null ? dailyDdGuard.Evaluate : null,
+            evaluateWeekendFlatten: _weekendFlatten.Evaluate,
             // iter-36 K-GAP-1: drive the prop-firm day/week/month resets off the active ruleset's reset clock
             // so multi-day runs re-base drawdown + reset the governor (C4/H7). Single-day golden never crosses.
             resetConfig: ResetConfig.FromRuleSet(ruleSet.DailyResetTimeUtc, ruleSet.DailyResetTimezone),
@@ -326,7 +335,7 @@ public sealed class EngineRunner
             var si = _symbolRegistry.Get(ps.Symbol);
             var slPips = Math.Abs(ps.EntryPrice.Value - ps.CurrentStopLoss.Value) / si.PipSize;
             var pipValue = PipCalculator.PipValuePerLot(si, ps.EntryPrice.Value, _crossRate);
-            result.Add(new ProjectedPosition(slPips, ps.Lots, pipValue));
+            result.Add(new ProjectedPosition(ps.Symbol.Value, slPips, ps.Lots, pipValue));
         }
         return result;
     }

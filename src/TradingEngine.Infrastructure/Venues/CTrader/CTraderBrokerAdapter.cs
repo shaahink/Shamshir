@@ -122,6 +122,11 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         {
             _logger.LogWarning(ex, "CTRADER|SUB_LOOP_ERR");
         }
+        finally
+        {
+            _tickChannel.Writer.TryComplete();
+            _accountChannel.Writer.TryComplete();
+        }
     }
 
     private async Task ReadRouterLoop(CancellationToken ct)
@@ -196,6 +201,8 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                         case "bar":
                             CurrentBarSeq = doc.RootElement.TryGetProperty("seq", out var s) ? s.GetInt64() : 0;
                             _barsReceived++;
+                            decimal? spread = doc.RootElement.TryGetProperty("spread", out var sp)
+                                ? sp.GetDecimal() : null;
                             var bar = new Bar(
                                 Symbol.Parse(doc.RootElement.GetProperty("symbol").GetString()!),
                                 Enum.Parse<Timeframe>(doc.RootElement.GetProperty("period").GetString()!, ignoreCase: true),
@@ -204,7 +211,8 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                                 doc.RootElement.GetProperty("high").GetDecimal(),
                                 doc.RootElement.GetProperty("low").GetDecimal(),
                                 doc.RootElement.GetProperty("close").GetDecimal(),
-                                doc.RootElement.GetProperty("volume").GetDouble());
+                                doc.RootElement.GetProperty("volume").GetDouble(),
+                                spread);
                             BrokerTimeUtc = bar.OpenTimeUtc;
                             _barChannel.Writer.TryWrite(bar);
                             _journal?.Write("BAR_RECV", null, bar.OpenTimeUtc,
@@ -245,6 +253,11 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "CTRADER|ROUTER_LOOP_ERR");
+        }
+        finally
+        {
+            _barChannel.Writer.TryComplete();
+            _execChannel.Writer.TryComplete();
         }
     }
 

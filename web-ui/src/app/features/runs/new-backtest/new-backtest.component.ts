@@ -14,6 +14,7 @@ import { RunsApiService } from '../runs.service';
 const ALL_SYMBOLS = [
   'EURUSD', 'GBPUSD', 'USDJPY', 'GBPJPY', 'XAUUSD', 'AUDUSD',
   'USDCHF', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'XAGUSD',
+  'BTCUSD', 'ETHUSD', 'US30', 'NAS100',
 ];
 const ALL_TIMEFRAMES = ['h1', 'h4', 'd1', 'm15', 'm5', 'm1'];
 

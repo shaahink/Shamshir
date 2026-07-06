@@ -34,6 +34,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     private readonly Dictionary<Guid, PendingStop> _pendingStops = new();
     private decimal _balance;
     private decimal _lastClose;
+    private decimal? _currentSpread;
     private Task _feedTask = Task.CompletedTask;
     private CancellationTokenSource? _feedCts;
 
@@ -237,8 +238,10 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     }
 
     // P0.2 (D3): FULL spread — bars are bid, ask = bid + spread. See SpreadConvention.
+    // P6.2: per-bar recorded spread takes precedence when available; falls back to TypicalSpread.
     private decimal GetSpread()
     {
+        if (_currentSpread is { } s) return s;
         try { return _symbolRegistry.Get(_symbol).TypicalSpread; }
         catch { return 0.0001m; }
     }
@@ -313,6 +316,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     public void OnBarObserved(Bar bar)
     {
         _lastClose = bar.Close;
+        _currentSpread = bar.Spread;
         BrokerTimeUtc = bar.OpenTimeUtc + BarDuration(bar.Timeframe);
         ProcessPendingLimits(bar);
         ProcessPendingStops(bar);

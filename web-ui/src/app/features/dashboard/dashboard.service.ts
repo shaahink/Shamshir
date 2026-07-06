@@ -8,6 +8,15 @@ export interface EquitySnapshot {
   equity: number;
 }
 
+export interface ReconcileHealth {
+  daysSinceLastRun: number | null;
+  lastRunId: string | null;
+  lastRunVenue: string | null;
+  daysSinceLastCompare: number | null;
+  lastCompareTapeRunId: string | null;
+  warning: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DashboardApiService {
   private http = inject(HttpClient);
@@ -18,5 +27,9 @@ export class DashboardApiService {
 
   getEquity(): Promise<EquitySnapshot[]> {
     return firstValueFrom(this.http.get<EquitySnapshot[]>('/api/equity'));
+  }
+
+  getReconcileHealth(): Promise<ReconcileHealth> {
+    return firstValueFrom(this.http.get<ReconcileHealth>('/api/system/reconcile-health'));
   }
 }

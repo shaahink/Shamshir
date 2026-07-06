@@ -171,6 +171,7 @@ public sealed class EffectExecutor : IEffectExecutor
             OrderId: effect.OrderId,
             EntryReason: effect.EntryReason,
             EntryRegime: effect.EntryRegime,
+            Timeframe: _strategies.FirstOrDefault(s => s.Id == effect.StrategyId)?.EntryTimeframe.ToString(),
             InitialStopLoss: effect.InitialStopLoss,
             EntrySnapshotJson: System.Text.Json.JsonSerializer.Serialize(new
             {

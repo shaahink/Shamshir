@@ -143,11 +143,14 @@ public sealed class SweepRunnerService
         var db = scope.ServiceProvider.GetRequiredService<TradingEngine.Infrastructure.Persistence.TradingDbContext>();
 
         // Content-address skip: if a completed run exists for this exact cell, reuse it.
+        // Must match on strategy too, otherwise all strategies for the same (symbol, tf, range)
+        // reuse the first match and return identical results.
         var existing = await db.BacktestRuns.AsNoTracking()
             .Where(r => r.Symbol == cell.Symbol && r.Period == cell.Timeframe
                 && r.BacktestFrom == req.From && r.BacktestTo == req.To
                 && r.Venue == "tape" && r.CompletedAtUtc != default
-                && r.TotalTrades > 0)
+                && r.TotalTrades > 0
+                && r.RunPlanJson.Contains(cell.StrategyId))
             .OrderByDescending(r => r.CompletedAtUtc)
             .FirstOrDefaultAsync(CancellationToken.None);
 

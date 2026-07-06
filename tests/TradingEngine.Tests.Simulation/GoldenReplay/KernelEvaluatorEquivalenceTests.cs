@@ -56,7 +56,7 @@ public sealed class KernelEvaluatorEquivalenceTests
                     var slPips = ps.Direction == TradeDirection.Long
                         ? (ps.EntryPrice.Value - ps.CurrentStopLoss.Value) / EurusdInfo.PipSize
                         : (ps.CurrentStopLoss.Value - ps.EntryPrice.Value) / EurusdInfo.PipSize;
-                    open.Add(new ProjectedPosition(slPips, ps.Lots, EurusdInfo.ContractSize * EurusdInfo.PipSize));
+                    open.Add(new ProjectedPosition(ps.Symbol.Value, slPips, ps.Lots, EurusdInfo.ContractSize * EurusdInfo.PipSize));
                 }
                 return open;
             },

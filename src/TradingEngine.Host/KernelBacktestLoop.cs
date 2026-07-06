@@ -35,6 +35,8 @@ public sealed class KernelBacktestLoop
     private readonly Action<EngineEvent>? _onEvent;
     private readonly Func<Bar, EngineState, TrailingDecisions>? _evaluateTrailing;
     private readonly Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, string Reason)>>? _evaluateTimeFlatten;
+    private readonly Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, string Reason)>>? _evaluateDailyDdGuard;
+    private readonly Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, string Reason)>>? _evaluateWeekendFlatten;
     private readonly ResetConfig? _resetConfig;
     private readonly decimal _initialBalance;
     private readonly string _runId;
@@ -67,6 +69,8 @@ public sealed class KernelBacktestLoop
         Action<EngineEvent>? onEvent = null,
         Func<Bar, EngineState, TrailingDecisions>? evaluateTrailing = null,
         Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, string Reason)>>? evaluateTimeFlatten = null,
+        Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, string Reason)>>? evaluateDailyDdGuard = null,
+        Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, string Reason)>>? evaluateWeekendFlatten = null,
         ResetConfig? resetConfig = null,
         bool diagnosticsEnabled = false)
     {
@@ -86,6 +90,8 @@ public sealed class KernelBacktestLoop
         _onEvent = onEvent;
         _evaluateTrailing = evaluateTrailing;
         _evaluateTimeFlatten = evaluateTimeFlatten;
+        _evaluateDailyDdGuard = evaluateDailyDdGuard;
+        _evaluateWeekendFlatten = evaluateWeekendFlatten;
         _resetConfig = resetConfig;
         _diagnostics = diagnosticsEnabled || System.Environment.GetEnvironmentVariable("SHAMSHIR_DIAGNOSTICS") == "1";
     }
@@ -182,7 +188,7 @@ public sealed class KernelBacktestLoop
         {
             var venueOpenIds = _venue.GetOpenPositionIds();
             var lastPrice = bar.Close > 0 ? new Price(bar.Close) : new Price(0m);
-            var rec = EngineReducer.ReconcileToVenue(state, venueOpenIds, lastPrice);
+            var rec = EngineReducer.ReconcileToVenue(state, venueOpenIds, lastPrice, bar.BarOpenTimeUtc);
             if (rec.Effects.Count > 0)
             {
                 state = rec.State;
@@ -290,6 +296,38 @@ public sealed class KernelBacktestLoop
             {
                 for (var i = 0; i < flattens.Count; i++)
                     _queue.Enqueue(new CloseRequested(flattens[i].PositionId, flattens[i].Reason, bar.BarOpenTimeUtc));
+                pumpSw = _diagnostics ? Stopwatch.StartNew() : null;
+                state = await PumpAsync(state, ct);
+                if (pumpSw is not null) { _timingPumpMs += pumpSw.ElapsedMilliseconds; pumpSw.Stop(); }
+            }
+        }
+
+        // P7.1: intraday daily-DD guard. Runs after time-flatten. If current equity breaches the
+        // daily DD floor (fraction of daily-start-equity), force-closes all open positions via
+        // the same CloseRequested reducer path. This is the intraday equivalent of the bar-close
+        // breach watchdog — it catches mid-bar equity troughs before the decision bar closes.
+        if (_evaluateDailyDdGuard is not null)
+        {
+            var ddFlattens = _evaluateDailyDdGuard(barModel, state);
+            if (ddFlattens.Count > 0)
+            {
+                for (var i = 0; i < ddFlattens.Count; i++)
+                    _queue.Enqueue(new CloseRequested(ddFlattens[i].PositionId, ddFlattens[i].Reason, bar.BarOpenTimeUtc));
+                pumpSw = _diagnostics ? Stopwatch.StartNew() : null;
+                state = await PumpAsync(state, ct);
+                if (pumpSw is not null) { _timingPumpMs += pumpSw.ElapsedMilliseconds; pumpSw.Stop(); }
+            }
+        }
+
+        // P7.2: weekend flatten. After DD guard. Checks if the next bar falls on Saturday/Sunday
+        // and force-closes positions for any strategy with FlattenBeforeWeekend enabled.
+        if (_evaluateWeekendFlatten is not null)
+        {
+            var weekendFlattens = _evaluateWeekendFlatten(barModel, state);
+            if (weekendFlattens.Count > 0)
+            {
+                for (var i = 0; i < weekendFlattens.Count; i++)
+                    _queue.Enqueue(new CloseRequested(weekendFlattens[i].PositionId, weekendFlattens[i].Reason, bar.BarOpenTimeUtc));
                 pumpSw = _diagnostics ? Stopwatch.StartNew() : null;
                 state = await PumpAsync(state, ct);
                 if (pumpSw is not null) { _timingPumpMs += pumpSw.ElapsedMilliseconds; pumpSw.Stop(); }

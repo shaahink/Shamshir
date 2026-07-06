@@ -90,9 +90,31 @@ public static class PreTradeGate
             return GateResult.Reject($"STRATEGY_MAX_POSITIONS:{p.StrategyId}:{openForStrategy}>={profile.MaxConcurrentPositions}");
         }
 
-        // 4. Exposure (notional new risk vs equity). iter-redesign P2.2: gated behind ExposureEnabled.
+        // 4. Compute new-position risk for exposure checks (P5.4 group caps + global cap).
         var totalOpenRisk = SumWorstCase(openPositions);
         var newPositionRiskNotional = equity * c.RiskPerTrade;
+
+        // 4a. Per-group exposure caps (P5.4). Opt-in: when ExposureGroups is null/empty, this is a no-op.
+        if (c.ExposureEnabled && c.ExposureGroups is { Count: > 0 } groups)
+        {
+            var newSymbol = p.Symbol.Value;
+            foreach (var group in groups)
+            {
+                if (!group.Contains(newSymbol))
+                    continue;
+                var groupRisk = openPositions
+                    .Where(op => group.Contains(op.Symbol))
+                    .Sum(op => op.SlPips * op.Lots * op.PipValuePerLot);
+                var groupTotal = groupRisk + newPositionRiskNotional;
+                if (groupTotal / equity > group.MaxExposure)
+                {
+                    return GateResult.Reject(
+                        $"GROUP_EXPOSURE:{group.Id}: groupRisk={groupRisk:F2} + new≈{newPositionRiskNotional:F2} = {groupTotal / equity:P2} > cap={group.MaxExposure:P2}");
+                }
+            }
+        }
+
+        // 5. Global exposure (notional new risk vs equity). iter-redesign P2.2: gated behind ExposureEnabled.
         if (c.ExposureEnabled && (totalOpenRisk + newPositionRiskNotional) / equity > c.MaxExposure)
         {
             return GateResult.Reject(

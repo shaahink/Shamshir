@@ -73,6 +73,8 @@ public sealed class RunQueryService : IRunQueryService
             })
             .ToListAsync(ct);
 
+        FixStuckRunStatuses(runs);
+
         _memoryCache?.Set(RunsListCacheKey, runs, RunsListCacheDuration);
         return runs;
     }
@@ -96,9 +98,7 @@ public sealed class RunQueryService : IRunQueryService
         return new RunDetailResponse
         {
             RunId = r.RunId,
-            Status = r.CompletedAtUtc == default ? "running"
-                : r.ErrorMessage != null ? "failed"
-                : "completed",
+            Status = ResolveStatus(r, _orchestrator),
             Symbol = r.Symbol,
             Period = r.Period,
             Symbols = r.Symbols,
@@ -474,4 +474,36 @@ public sealed class RunQueryService : IRunQueryService
         !reason.Equals("PartialClose", StringComparison.Ordinal) &&
         !reason.Equals("StillReducing", StringComparison.Ordinal) &&
         !reason.Equals("PartialCloseWhileClosing", StringComparison.Ordinal);
+
+    private static readonly TimeSpan StuckThreshold = TimeSpan.FromMinutes(30);
+
+    private void FixStuckRunStatuses(List<RunListResponse> runs)
+    {
+        for (var i = 0; i < runs.Count; i++)
+        {
+            var r = runs[i];
+            if (r.Status == "running" && r.CompletedAtUtc is null
+                && DateTime.UtcNow - r.StartedAtUtc > StuckThreshold
+                && (_orchestrator?.GetState(r.RunId) is null))
+            {
+                runs[i] = r with { Status = "failed", ErrorMessage = (r.ErrorMessage ?? "") + " Timed out (stuck)." };
+            }
+        }
+    }
+
+    private static string ResolveStatus(BacktestRunSummary r, BacktestOrchestrator? orchestrator)
+    {
+        if (r.CompletedAtUtc != default)
+        {
+            return r.ErrorMessage != null ? "failed" : "completed";
+        }
+
+        if (DateTime.UtcNow - r.StartedAtUtc > StuckThreshold
+            && (orchestrator?.GetState(r.RunId) is null))
+        {
+            return "failed";
+        }
+
+        return "running";
+    }
 }

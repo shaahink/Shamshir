@@ -1,4 +1,5 @@
 using TradingEngine.Services.AddOns;
+using TradingEngine.Domain.Interfaces;
 
 namespace TradingEngine.Services;
 
@@ -10,23 +11,28 @@ namespace TradingEngine.Services;
 /// fields (MaxPips, OffsetPips, StepPips, LimitOffsetPips, MaxSlippagePips, RiskProfile.MaxSlPips)
 /// unchanged; only the VALUE bound into those fields differs once a normalized companion is set.
 ///
-/// Reference scale is the existing <see cref="AddOnAutoTuner.ReferenceAtrPips"/> heuristic (spread × a
-/// per-TF factor) — the same "typical ATR" used elsewhere for auto-tuning. P3.4b upgrades this to a
-/// measured (rolling-median) reference table; P2.6 does not need that to fix the flat-pip-cap bug, because
-/// the SAME reference is used both when migrating an old value and when resolving a new one.
+/// Reference scale: prefers measured <see cref="ReferenceScales"/> via <see cref="IReferenceScaleLookup"/>
+/// when available; falls back to the <see cref="AddOnAutoTuner.ReferenceAtrPips"/> spread-guess heuristic.
 /// </summary>
 public static class UnitConversion
 {
-    public static double ReferenceAtrPips(Timeframe tf, SymbolInfo symbol) =>
-        AddOnAutoTuner.ReferenceAtrPips(tf, SpreadPips(symbol));
+    public static double ReferenceAtrPips(Timeframe tf, SymbolInfo symbol, IReferenceScaleLookup? lookup = null)
+    {
+        if (lookup is not null)
+        {
+            var measured = lookup.GetMedianAtrPips(symbol.Symbol, tf);
+            if (measured.HasValue && measured.Value > 0) return measured.Value;
+        }
+        return AddOnAutoTuner.ReferenceAtrPips(tf, SpreadPips(symbol));
+    }
 
     public static double SpreadPips(SymbolInfo symbol) =>
         symbol.PipSize > 0 ? (double)(symbol.TypicalSpread / symbol.PipSize) : 0;
 
     public static PositionManagementOptions ResolvePips(
-        this PositionManagementOptions pm, Timeframe tf, SymbolInfo symbol)
+        this PositionManagementOptions pm, Timeframe tf, SymbolInfo symbol, IReferenceScaleLookup? lookup = null)
     {
-        var refAtr = ReferenceAtrPips(tf, symbol);
+        var refAtr = ReferenceAtrPips(tf, symbol, lookup);
         var spreadPips = SpreadPips(symbol);
 
         return pm with
@@ -44,9 +50,9 @@ public static class UnitConversion
     }
 
     public static OrderEntryOptions ResolvePips(
-        this OrderEntryOptions oe, Timeframe tf, SymbolInfo symbol)
+        this OrderEntryOptions oe, Timeframe tf, SymbolInfo symbol, IReferenceScaleLookup? lookup = null)
     {
-        var refAtr = ReferenceAtrPips(tf, symbol);
+        var refAtr = ReferenceAtrPips(tf, symbol, lookup);
         var spreadPips = SpreadPips(symbol);
 
         return oe with
@@ -60,9 +66,10 @@ public static class UnitConversion
         };
     }
 
-    public static RiskProfile ResolveMaxSlPips(this RiskProfile profile, Timeframe tf, SymbolInfo symbol)
+    public static RiskProfile ResolveMaxSlPips(this RiskProfile profile, Timeframe tf, SymbolInfo symbol,
+        IReferenceScaleLookup? lookup = null)
     {
-        var refAtr = ReferenceAtrPips(tf, symbol);
+        var refAtr = ReferenceAtrPips(tf, symbol, lookup);
         return refAtr > 0 && profile.MaxSlAtrMultiple is { } mult
             ? profile with { MaxSlPips = mult * refAtr }
             : profile;

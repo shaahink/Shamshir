@@ -43,4 +43,7 @@ public sealed class TradeResultEntity : IAuditableEntity
     public string? EntrySnapshotJson { get; set; }
     public string? ExitDetailJson { get; set; }
     public decimal? InitialStopLoss { get; set; }
+    // P4.5.6: the decision bar's timeframe — enables scoreboard to filter trades by TF
+    // (previously impossible: TradeResultEntity had no TF column, so H1+M15 trades merged).
+    public string? EntryTimeframe { get; set; }
 }

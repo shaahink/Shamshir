@@ -26,7 +26,7 @@ public sealed class DownloadJobService
 
     public string ShardsRoot { get; }
 
-    public DownloadJob Start(string symbol, string[] tfs, int days, DateTime? from, DateTime? to, bool keepShards = false)
+    public DownloadJob Start(string symbol, string[] tfs, int days, DateTime? from, DateTime? to, bool keepShards = false, int timeoutSeconds = 0)
     {
         var jobId = Guid.NewGuid().ToString("N")[..8];
         var job = new DownloadJob
@@ -40,6 +40,7 @@ public sealed class DownloadJobService
             Status = "queued",
             CreatedAtUtc = DateTime.UtcNow,
             KeepShards = keepShards,
+            TimeoutSeconds = timeoutSeconds,
         };
         _jobs[jobId] = job;
 
@@ -119,9 +120,11 @@ public sealed class DownloadJobService
                 DataMode = "m1",
                 ReportDir = shardsDir,
                 Record = true,
+                Symbols = [job.Symbol],
                 Periods = [periodsStr],
                 DataPort = 15562,
                 CommandPort = 15563,
+                TimeoutSeconds = job.TimeoutSeconds,
             };
 
             _logger.LogInformation("Download job {JobId}: starting cTrader CLI for {Symbol} {Tfs}", job.Id, job.Symbol, periodsStr);
@@ -307,4 +310,5 @@ public sealed class DownloadJob
     public string? Error { get; set; }
     public string? StatusDetails { get; set; }
     public bool KeepShards { get; set; }
+    public int TimeoutSeconds { get; set; }
 }

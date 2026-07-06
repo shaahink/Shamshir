@@ -33,6 +33,12 @@ import { DashboardApiService } from './dashboard.service';
         />
       </div>
 
+      @if (reconcileWarning()) {
+        <div class="rounded-lg border border-gray-700 bg-gray-800/50 p-3 text-sm text-gray-400">
+          {{ reconcileWarning() }}
+        </div>
+      }
+
       @if (governor().reason) {
         <div class="rounded-lg border border-yellow-800 bg-yellow-900/10 p-3 text-sm text-yellow-400">
           {{ governor().reason }}
@@ -57,6 +63,7 @@ export class DashboardComponent implements OnInit {
   dailyDdPct = signal(0);
   equity = signal(0);
   distanceToLimit = signal(0);
+  reconcileWarning = signal<string | null>(null);
   governor = signal<GovernorState>({
     state: '--',
     sizeMultiplier: 1,
@@ -69,9 +76,10 @@ export class DashboardComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     try {
-      const [gov, equity] = await Promise.all([
+      const [gov, equity, health] = await Promise.all([
         this.api.getGovernorState(),
         this.api.getEquity(),
+        this.api.getReconcileHealth(),
       ]);
       this.governor.set(gov);
       this.dailyDdPct.set(gov.dayNetPnLFraction < 0 ? Math.abs(gov.dayNetPnLFraction) : 0);
@@ -79,6 +87,7 @@ export class DashboardComponent implements OnInit {
       this.status.set(gov.state === 'HardStop' ? 'Halted' : 'Active');
       this.equityPoints.set(equity.map((p) => ({ time: new Date(p.timestampUtc).getTime(), value: p.equity })));
       if (equity.length > 0) this.equity.set(equity[equity.length - 1].equity);
+      this.reconcileWarning.set(health.warning);
     } catch {
       this.status.set('Offline');
     }

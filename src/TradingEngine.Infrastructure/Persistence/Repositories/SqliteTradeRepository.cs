@@ -39,6 +39,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             RunId = string.IsNullOrEmpty(runId) ? null : runId,
             EntryReason = trade.EntryReason,
             EntryRegime = trade.EntryRegime,
+            EntryTimeframe = trade.Timeframe,
             EntrySnapshotJson = trade.EntrySnapshotJson,
             InitialStopLoss = trade.InitialStopLoss?.Value,
             // P0.1: finalStopLoss/initialStopLoss alongside the existing reason/exit/r so exit-lab /
@@ -93,6 +94,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             Enum.Parse<EngineMode>(e.Mode),
             OrderEntryMethod: e.OrderEntryMethod,
             OrderId: e.OrderId,
+            Timeframe: e.EntryTimeframe,
             InitialStopLoss: e.InitialStopLoss.HasValue ? new Price(e.InitialStopLoss.Value) : null);
     }
 }

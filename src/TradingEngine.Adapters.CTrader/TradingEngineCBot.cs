@@ -247,6 +247,7 @@ public partial class TradingEngineCBot : Robot
             finally { if (ckptSw is not null) _timingCheckpointTotalMs += ckptSw.ElapsedMilliseconds; }
         }
 
+        var symInfo = Symbols.GetSymbol(bars.SymbolName);
         var barJson = Serialize("bar", new
         {
             v = 1,
@@ -259,6 +260,7 @@ public partial class TradingEngineCBot : Robot
             low = bar.Low,
             close = bar.Close,
             volume = (long)bar.TickVolume,
+            spread = (double)(symInfo?.Spread ?? 0),
             simTime = Server.TimeInUtc.ToString("o"),
             account = new { balance = Account.Balance, equity = Account.Equity }
         });
@@ -853,6 +855,7 @@ public partial class TradingEngineCBot : Robot
 
         var openUtc = DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc);
         // camelCase keys match MarketDataShardIo exactly (symbol/timeframe/openTimeUtc/open/high/low/close/volume).
+        var symInfo = Symbols.GetSymbol(bars.SymbolName);
         var line = JsonSerializer.Serialize(new
         {
             symbol = bars.SymbolName,
@@ -863,6 +866,7 @@ public partial class TradingEngineCBot : Robot
             low = bar.Low,
             close = bar.Close,
             volume = bar.TickVolume,
+            spread = (double)(symInfo?.Spread ?? 0),
         }, JsonOpts);
 
         GetShardWriter(bars.SymbolName, bars.TimeFrame.ShortName).WriteLine(line);

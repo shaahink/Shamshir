@@ -52,6 +52,10 @@ public sealed record StartRunRequest
     // record excursions ON. When true, the orchestrator overrides every strategy's position
     // management to the exploration preset after stripping add-ons.
     public bool ExplorationMode { get; init; }
+
+    // P6.1: compare-both mode — runs the identical config through both tape and cTrader venues
+    // sequentially, tagging both with the same ComparePairId for reconciliation.
+    public bool CompareBoth { get; init; }
 }
 
 public sealed record RunRowRequest

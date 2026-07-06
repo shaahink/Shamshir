@@ -11,4 +11,5 @@ public interface IRunQueryService
     Task<IReadOnlyList<DailyPnlResponse>> GetRunDailyPnLAsync(string runId, CancellationToken ct);
     Task<RunAnalyticsResponse?> GetRunAnalyticsAsync(string runId, CancellationToken ct);
     Task<IReadOnlyList<BarNarrativeResponse>> GetRunBarsAsync(string runId, DateTime? from, DateTime? to, CancellationToken ct);
+    void InvalidateRunsCache();
 }

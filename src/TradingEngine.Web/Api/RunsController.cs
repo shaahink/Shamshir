@@ -179,6 +179,10 @@ public sealed class RunsController : ControllerBase
         if (req.StripAddOns)
             cfg.CustomParams["StripAddOns"] = "true";
 
+        // P6.1: compare-both mode — tape then cTrader, same ComparePairId.
+        if (req.CompareBoth)
+            cfg.CustomParams["Compare"] = "both";
+
         var runId = await _command.StartAsync(cfg, ct);
         var state = _orchestrator.GetState(runId);
         _logger.LogInformation("Run started. RunId={RunId}", runId);
@@ -186,11 +190,70 @@ public sealed class RunsController : ControllerBase
         return Ok(new StartRunResponse { RunId = runId, Status = state?.Status ?? "started" });
     }
 
+    [HttpPost("compare-both")]
+    public async Task<IActionResult> CompareBoth([FromBody] CompareBothRequest req, CancellationToken ct)
+    {
+        var configName = req.ConfigName?.Trim();
+        if (string.IsNullOrWhiteSpace(configName))
+            return BadRequest(new { error = "ConfigName is required." });
+
+        var configDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..", "config", "compare-both"));
+        var configPath = Path.Combine(configDir, configName);
+
+        if (!System.IO.File.Exists(configPath))
+            return NotFound(new { error = $"Config '{configName}' not found in config/compare-both/." });
+
+        StartRunRequest startReq;
+        try
+        {
+            var json = await System.IO.File.ReadAllTextAsync(configPath, ct);
+            startReq = System.Text.Json.JsonSerializer.Deserialize<StartRunRequest>(json, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                       ?? throw new InvalidOperationException("Config file is empty or invalid.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return BadRequest(new { error = $"Failed to parse config file: {ex.Message}" });
+        }
+
+        startReq = startReq with { CompareBoth = true };
+        return await Start(startReq, ct);
+    }
+
     [HttpDelete("{runId}")]
     public async Task<IActionResult> Cancel(string runId)
     {
         _orchestrator.Cancel(runId);
         return Ok(new { cancelled = true });
+    }
+
+    [HttpPost("{runId}/force-fail")]
+    public async Task<IActionResult> ForceFail(string runId, CancellationToken ct)
+    {
+        var run = await _runRepo.GetByIdAsync(runId, ct);
+        if (run is null)
+            return NotFound(new { error = $"Run '{runId}' not found." });
+
+        if (run.CompletedAtUtc != default)
+            return Conflict(new { error = $"Run '{runId}' already finished at {run.CompletedAtUtc:O}." });
+
+        var state = _orchestrator.GetState(runId);
+        if (state is not null)
+        {
+            _orchestrator.Cancel(runId);
+            return Ok(new { runId, action = "cancelled", note = "Run was still active in orchestrator — cancelled instead." });
+        }
+
+        await _runRepo.UpdateAsync(run with
+        {
+            CompletedAtUtc = DateTime.UtcNow,
+            ErrorMessage = (run.ErrorMessage ?? "") + " Manually forced to failed.",
+            ExitCode = -1,
+        }, ct);
+        _cache?.Evict(runId);
+        _query.InvalidateRunsCache();
+
+        return Ok(new { runId, action = "force-failed" });
     }
 
     [HttpPatch("{runId}")]
@@ -289,10 +352,14 @@ public sealed class RunsController : ControllerBase
         return Ok(new StartRunResponse { RunId = newRunId, Status = state?.Status ?? "started" });
     }
 
-    private static string[] ParseJsonArray(string json)
+    private string[] ParseJsonArray(string json)
     {
         try { return System.Text.Json.JsonSerializer.Deserialize<string[]>(json) ?? []; }
-        catch { return []; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse JSON array — returning empty");
+            return [];
+        }
     }
 
     [HttpGet("{runId}/trades")]

@@ -38,4 +38,7 @@ public sealed record BacktestCliRequest
     /// <summary>iter-marketdata-tape P2: pass --Record=true so the cBot runs in recorder mode
     /// (writes NDJSON shards to ReportDir instead of connecting to the engine).</summary>
     public bool Record { get; init; } = false;
+
+    /// <summary>Max wall-clock seconds before the CLI process is killed. 0 = no timeout (default).</summary>
+    public int TimeoutSeconds { get; init; } = 0;
 }

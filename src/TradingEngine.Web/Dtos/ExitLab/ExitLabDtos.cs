@@ -23,6 +23,9 @@ public sealed record ExitLabCellResponse
     public double MaxDdContributionR { get; init; }
     public System.Collections.Generic.IReadOnlyList<double> TradeRValues { get; init; } = [];
     public double PassProbability { get; init; }
+    // P4.5.7: plateau-center badge so the UI can highlight the cell you should actually pick
+    // (mid-plateau, not the isolated peak — anti-overfit per QUANT-ROADMAP §3.2).
+    public bool IsPlateauCenter { get; init; }
 }
 
 public sealed record ExitLabEvaluateResponse

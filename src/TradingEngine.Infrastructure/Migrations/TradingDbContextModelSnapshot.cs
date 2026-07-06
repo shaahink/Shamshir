@@ -988,6 +988,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<string>("EntrySnapshotJson")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("EntryTimeframe")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ExitDetailJson")
                         .HasColumnType("TEXT");
 

@@ -23,7 +23,7 @@ namespace TradingEngine.Infrastructure.Adapters;
 ///
 /// F7 (documented): Fine bars in decision-TF gaps — when the fine-bar data has gaps within a
 /// decision bar (e.g., weekends, missing candles), the per-bar high/low watermarks still provide a
-/// reasonable envelope. True tick-level gap-through fidelity requires per-bar recorded spread (A3).
+/// reasonable envelope.
 /// </summary>
 public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisposable
 {
@@ -67,6 +67,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     // one codec (ExcursionPathCodec.Serialize/Parse), no format mismatch between recorder and consumer.
     private decimal _balance;
     private decimal _lastClose;
+    private decimal? _currentSpread;
     private Task _feedTask = Task.CompletedTask;
     private CancellationTokenSource? _feedCts;
     private volatile float _speed = 10f;
@@ -246,6 +247,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         if (isNewDecisionBar)
             _lastDecisionBarTime = decisionBar.OpenTimeUtc;
 
+        _currentSpread = decisionBar.Spread;
+
         if (_exitBars.Count == 0)
         {
             _lastClose = decisionBar.Close;
@@ -266,6 +269,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             _exitIndex++;
             if (fine.OpenTimeUtc < decisionBar.OpenTimeUtc) continue;
             _lastClose = fine.Close;
+            _currentSpread = fine.Spread ?? _currentSpread;
             BrokerTimeUtc = fine.OpenTimeUtc + _exitInterval;
             ProcessPendingMarketOrders(fine);
             ProcessPendingLimits(fine, decrementExpiry: true);
@@ -398,8 +402,11 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     }
 
     // P0.2 (D3): FULL spread — bars are bid, ask = bid + spread. See SpreadConvention.
+    // P6.2: per-bar recorded spread takes precedence when available (e.g. from live-tick capture);
+    // falls back to the symbol's TypicalSpread for bars without per-bar data (all historical bars).
     private decimal GetSpread()
     {
+        if (_currentSpread is { } s) return s;
         try { return _symbolRegistry.Get(_symbol).TypicalSpread; }
         catch { return 0.0001m; }
     }

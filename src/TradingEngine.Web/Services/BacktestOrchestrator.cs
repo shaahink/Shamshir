@@ -797,9 +797,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         if (!cfg.CustomParams.ContainsKey("ComparePairId"))
             cfg.CustomParams["ComparePairId"] = comparePairId;
 
-        // Step 1: tape run
-        var tapeCfg = cfg;
-        tapeCfg.CustomParams["Venue"] = "tape";
+        // Step 1: tape run — use a dedicated copy to avoid mutating cfg
+        var tapeCfg = cfg with
+        {
+            CustomParams = new Dictionary<string, string>(cfg.CustomParams)
+            {
+                ["Venue"] = "tape",
+            },
+        };
         var tapeResult = await RunEngineReplayAsync(runId, tapeCfg, logLines, ct);
 
         if (!tapeResult.Success)
@@ -808,7 +813,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             return tapeResult;
         }
 
-        // Step 2: cTrader run — new runId, same config, tagged with the pair
+        // Step 2: cTrader run — new runId, same config, tagged with the pair.
+        // Must NOT inherit Compare="both" or RunAsync will recurse into RunCompareBothAsync.
         var ctraderRunId = Guid.NewGuid().ToString("N")[..8];
         var ctraderCfg = cfg with
         {
@@ -820,33 +826,58 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 ["ParentRunId"] = runId,
             },
         };
+        ctraderCfg.CustomParams.Remove("Compare");
 
-        var ctraderState = Start(ctraderCfg);
+        // Manually register state without spawning a duplicate RunAsync —
+        // Start() would fire RunAsync which would see Venue="ctrader" and run
+        // RunEngineNetMqAsync again, racing with our own call below.
+        var ctraderState = new BacktestRunState { RunId = ctraderRunId };
+        ctraderState.CancellationSource = new CancellationTokenSource();
+        _runs[ctraderRunId] = ctraderState;
         EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] Compare mode — running cTrader leg {ctraderRunId}...");
 
-        // Run cTrader path in-process (the RunAsync task will handle it)
-        ctraderState.Status = "running";
-        EnqueueLog(ctraderRunId, ctraderState.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
-        var ctraderResult = await RunEngineNetMqAsync(ctraderRunId, ctraderCfg, ctraderState.LogLines, ct);
-
-        var tradeStats = await GetTradeStatsAsync(ctraderRunId, cfg.Balance);
-        ctraderResult = ctraderResult with
+        try
         {
-            NetProfit = tradeStats.NetProfit,
-            MaxDrawdownPct = tradeStats.MaxDrawdownPct,
-            TotalTrades = tradeStats.TotalTrades,
-            WinningTrades = tradeStats.WinningTrades,
-            WinRatePct = tradeStats.WinRatePct,
-        };
+            ctraderState.Status = "running";
+            EnqueueLog(ctraderRunId, ctraderState.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
+            var ctraderResult = await RunEngineNetMqAsync(ctraderRunId, ctraderCfg, ctraderState.LogLines, ct);
 
-        ctraderState.Result = ctraderResult;
-        ctraderState.Error = ctraderResult.ErrorMessage;
-        ctraderState.Status = ctraderResult.Success ? "completed" : "failed";
+            var tradeStats = await GetTradeStatsAsync(ctraderRunId, cfg.Balance);
+            ctraderResult = ctraderResult with
+            {
+                NetProfit = tradeStats.NetProfit,
+                MaxDrawdownPct = tradeStats.MaxDrawdownPct,
+                TotalTrades = tradeStats.TotalTrades,
+                WinningTrades = tradeStats.WinningTrades,
+                WinRatePct = tradeStats.WinRatePct,
+            };
 
-        await WriteEndRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, ctraderResult, tradeStats, null);
+            ctraderState.Result = ctraderResult;
+            ctraderState.Error = ctraderResult.ErrorMessage;
+            ctraderState.Status = ctraderResult.Success ? "completed" : "failed";
 
-        EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] Compare complete. Tape={runId} ({tapeResult.TotalBars} bars) / cTrader={ctraderRunId} ({ctraderResult.TotalBars} bars / {ctraderResult.TotalTrades}t) — reconcile: GET /api/backtest/analytics/reconcile?left={runId}&right={ctraderRunId}");
+            await WriteEndRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, ctraderResult, tradeStats, null);
+
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] Compare complete. Tape={runId} ({tapeResult.TotalBars} bars) / cTrader={ctraderRunId} ({ctraderResult.TotalBars} bars / {ctraderResult.TotalTrades}t) — reconcile: GET /api/backtest/analytics/reconcile?left={runId}&right={ctraderRunId}");
+        }
+        catch (OperationCanceledException)
+        {
+            ctraderState.Status = "cancelled";
+            ctraderState.Error = "Cancelled";
+            EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader leg cancelled.");
+        }
+        catch (Exception ex)
+        {
+            ctraderState.Status = "failed";
+            ctraderState.Error = ex.Message;
+            EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader leg failed: {ex.Message}");
+        }
+        finally
+        {
+            ctraderState.CancellationSource?.Dispose();
+            _runs.TryRemove(ctraderRunId, out _);
+        }
 
         return tapeResult;
     }
@@ -1290,7 +1321,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         finally
         {
             var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
-            await adapter.BarStream.Completion;
+            var barDone = adapter.BarStream.Completion;
+            var safety = Task.Delay(TimeSpan.FromSeconds(30));
+            if (await Task.WhenAny(barDone, safety) == safety)
+            {
+                _logger.LogWarning("CTRADER|BAR_STREAM_TIMEOUT|run={RunId}|forcing disconnect", runId);
+                EnqueueLog(runId, logLines,
+                    $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: Bar stream did not complete — forcing disconnect");
+                try { await adapter.DisconnectAsync(CancellationToken.None); } catch { }
+                await barDone;
+            }
             ctraderBarCount = _runs[runId].BarCount;
             await FlushRunPersistenceAsync(innerHost);
             CaptureFinalEquity(_runs[runId], innerHost, runId);

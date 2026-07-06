@@ -554,6 +554,7 @@ export interface ExitLabCellResponse {
   maxDdContributionR: number;
   tradeRValues: number[];
   passProbability: number;
+  isPlateauCenter: boolean;
 }
 
 export interface ExitLabEvaluateResponse {
