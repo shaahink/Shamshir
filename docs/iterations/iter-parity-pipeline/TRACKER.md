@@ -5,7 +5,8 @@
 handoff that Conductor verifies against. Read `PLAN.md` first (it is the durable spec), then `AUDIT.md`
 (the F-findings each phase fixes), then this file for live state.
 
-**Read order for a fresh session:** this file → `PLAN.md` → `AUDIT.md` → `../../WORKFLOW.md` →
+**Read order for a fresh session:** this file → `../../../conductor-DEBT.md` (audit followups —
+unresolved bugs + deferred work from P0 audit) → `PLAN.md` → `AUDIT.md` → `../../WORKFLOW.md` →
 `../../reference/SYSTEM-REFERENCE.md` (+ CODE-MAP, BACKTEST-ARCHITECTURE, TEST-ARCHITECTURE) →
 `../../../DECISIONS.md`.
 Branch: `iter/parity-pipeline` off `iter/quant-model--p1-tf-agnostic`.
@@ -26,10 +27,9 @@ gate: GREEN — build 0 err/5 warn; Unit 528/0/6; Integration 110/0/0 (+2 F6-R);
       golden 61/61 byte-identical (git diff --stat *golden* = empty; NO rebaseline).
 next: **P1.1 (one DB, F10)** — single DB path shared by Web + Host CLI; startup fails loud on pending
       migrations; archive stale root data/trading.db; compute-reference-scales populates 84/84 cells.
-HUMAN: F6-R option (a) — RECONSTRUCT economics of unreconstructable venue closes (open+close-fill pairing)
-      is deferred; it touches the cTrader VenueManaged reconcile-close mapping (kernel/adapter STOP
-      condition). Detection (option b) now surfaces the loss honestly; recovery needs an owner call on
-      approach. Non-blocking for P1. See evidence/P0.3-…md §7.
+F6-R: option (b) detection-only ACCEPTED 2026-07-08 — owner defers economics recovery (option a).
+       Detection safety net is false-positive-free, surfaces TRADES_UNRECONSTRUCTABLE honestly.
+       Non-blocking for P1.
 trap: OWNER-PENDING real cTrader runs (P0.1–P0.4 all creds-gated; not run this audit — proven
       credential-free). One transient Integration failure seen once (not reproduced in 2 subsequent full
       110/0 runs; NOT the 2 new F6-R tests — those use isolated in-memory SQLite); suspected pre-existing
