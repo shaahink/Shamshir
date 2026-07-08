@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 20:59 UTC · branch `iter/parity-pipeline` · HEAD `587c3df`_
+_Updated 2026-07-08 21:14 UTC · branch `iter/parity-pipeline` · HEAD `1598970`_
 
 **Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P6 — Wild list (pipeline-gated) · attempts used 0 · working ▸ P6.1
@@ -9,24 +9,24 @@ _Updated 2026-07-08 20:59 UTC · branch `iter/parity-pipeline` · HEAD `587c3df`
 
 ## Latest activity (live)
 
-_Session #21 (Deliver) · running 15m · last output 0s ago · $0.0788_
+_Session #21 (Deliver) · running 30m · last output 19s ago · $0.1578_
 
 **Thinking:**
-> Now I need to update the run-monitor component to use the store's progress instead of managing its own subscriptions. Let me read the run-monitor component.
-> Let me read more of the monitor component to understand the SignalR subscription and progress handling.
-> The run-monitor component manages its own SignalR subscription and maintains local signals for progress data. To fully consolidate into the store, I would need to:  1. Move all the local signals into the store (status, barCount, percent, equity, equityData, etc.) 2. Have the monitor component read f…
+> Let me read Tick.cs to see the full constructor.
+> The Tick constructor needs `DateTime TimestampUtc` as the last parameter. Let me fix my test.
+> Now run the tests again:
 
 **Recent actions:**
-- `21:57:52` » read web-ui\src\app\core\http\error.interceptor.ts
-- `21:57:52` · Now wire the toast into the HTTP error interceptor:
-- `21:58:06` » edit web-ui\src\app\features\runs\runs.store.ts
-- `21:58:23` » bash npx tsc --noEmit 2>&1
-- `21:58:29` » read web-ui\src\app\features\runs\runs.store.ts
-- `21:58:29` · tsc clean. Now consolidating `RunProgressEnvelope` into runs.store:
-- `21:58:44` » write web-ui\src\app\features\runs\runs.store.ts
-- `21:58:49` » read web-ui\src\app\features\runs\run-monitor\run-monitor.component.ts
-- `21:58:54` » read web-ui\src\app\features\runs\run-monitor\run-monitor.component.ts
-- `21:59:22` » bash npx tsc --noEmit 2>&1
+- `22:12:23` · Let me fix the test — wrong using and NSubstitute:
+- `22:12:30` » read src\TradingEngine.Domain\SymbolInfo\SymbolInfo.cs
+- `22:12:40` » edit tests\TradingEngine.Tests.Unit\Services\SpreadVolNoTradeFilterTests.cs
+- `22:12:47` » grep enum SymbolCategory
+- `22:13:13` » bash dotnet test tests/TradingEngine.Tests.Unit --filter "FullyQualifiedName~SpreadVolNoTradeFilter" 2>&1
+- `22:13:20` » edit tests\TradingEngine.Tests.Unit\Services\SpreadVolNoTradeFilterTests.cs
+- `22:13:39` » bash dotnet test tests/TradingEngine.Tests.Unit --filter "FullyQualifiedName~SpreadVolNoTradeFilter" 2>&1
+- `22:13:45` » grep record Tick
+- `22:13:49` » read src\TradingEngine.Domain\MarketData\Tick.cs
+- `22:13:59` » edit tests\TradingEngine.Tests.Unit\Services\SpreadVolNoTradeFilterTests.cs
 
 ## Stage progress
 
