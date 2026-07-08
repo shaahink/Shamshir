@@ -1,37 +1,16 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 02:32 UTC · branch `iter/parity-pipeline` · HEAD `bf74d4b`_
+_Updated 2026-07-08 02:37 UTC · branch `iter/parity-pipeline` · HEAD `b5e06d4`_
 
-**Status:** Running
-**Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.0
-**Checkpoints:** 0/17 done · **Sessions run:** 1 · **Cost:** $0.0000
-
-## Latest activity (live)
-
-_Session #1 (Deliver) · running 15m · last output 32s ago · $0.0180_
-
-**Thinking:**
-> Commit (a) is done, now moving on to commit (b) which covers the test files—I'm adding new test classes for the kernel daily and weekend evaluators, along with updates to the unit tests directory.
-> Commit (b) is done, now moving to commit (c) which includes UI updates, JSON revert, and documentation. Before I proceed, I need to verify the R5 runtime by checking the database StrategyConfigs.OrderEntryJson to confirm all 8 strategies are set to Market—this ensures my JSON revert aligns with what…
-> I'm checking the runtime database to verify the order entry methods across all strategies—eight of them are configured for market orders while mean-reversion uses limit orders, which aligns with what was documented.  The companion values in the database differ from the JSON (LimitOffsetPips and Expi…
-
-**Recent actions:**
-- `03:30:49` » bash git add src/TradingEngine.Domain/Events/EngineEffects.cs src/TradingEngine.Domain/Events/EngineEvent.cs src/TradingEngine.Engine/Kernel/Kernel.cs src/Tradi…
-- `03:30:57` » bash git commit -F C:/Users/shahi/AppData/Local/Temp/opencode/msg-a.txt --no-verify 2>&1 | Select-Object -Last 5; echo "=== HEAD ==="; git log --oneline -1
-- `03:31:11` » todowrite 4 todos
-- `03:31:11` · Commit (a) landed: `9570ad6`. Now commit (b) — the evaluator/replayer tests.
-- `03:31:23` » write ..\..\Users\shahi\AppData\Local\Temp\opencode\msg-b.txt
-- `03:31:32` » bash git add tests/TradingEngine.Tests.Simulation/Host/KernelDailyDdGuardEvaluatorTests.cs tests/TradingEngine.Tests.Simulation/Host/KernelWeekendFlattenEvaluat…
-- `03:31:43` · Commit (b) landed: `bf74d4b`. Now the R5 runtime verification before commit (c): confirming the DB `StrategyConfigs` already holds Market (F9), so my JSON rever…
-- `03:31:43` » bash & "c:\adb\sqlite3.exe" "src/TradingEngine.Web/data/trading.db" ".mode list" "SELECT Id, OrderEntryJson FROM StrategyConfigs ORDER BY Id;" 2>&1
-- `03:32:12` » write docs\iterations\iter-parity-pipeline\evidence\P0.0-runtime-strategyconfigs.md
-- `03:32:12` · R5 confirmed: runtime DB `StrategyConfigs` has `Method:0` (Market) for all 8 strategies and `Method:1` (Limit) for mean-reversion — exactly matching my JSON rev…
+**Status:** Idle
+**Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.1
+**Checkpoints:** 1/17 done · **Sessions run:** 1 · **Cost:** $0.0273 · **Tokens:** 1,510 in / 12,485 out / 5,660 think
 
 ## Stage progress
 
 | Stage | Title | Done | State |
 |---|---|---|---|
-| P0 | Parity truth repair (the spine) | 0/6 | **← active** |
+| P0 | Parity truth repair (the spine) | 1/6 | **← active** |
 | P1 | Config & DB truth | 0/2 | todo |
 | P2 | Lifecycle robustness + headline gate | 0/2 | todo |
 | P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | todo |
@@ -43,18 +22,43 @@ _Session #1 (Deliver) · running 15m · last output 32s ago · $0.0180_
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | P0 | Deliver | 1 | 07-08 02:17 | … | running |  | 0 |  |  |  |
+| 1 | P0 | Deliver | 1 | 07-08 02:17 | 0:19 | Advanced | P0.0 | 5 | build:OK | $0.0273 | 1,510/12,485 |
+
+### Commits by session
+
+- **s1 (P0 Deliver)** — 5 commit(s):
+  - b5e06d4 docs(P0.0): tracker + AGENTS RESUME handoff — P0.0 done, next P0.1
+  - 9686242 feat(ui): compare-both toggle + signal migration; revert 8 JSONs to Market (Q1)
+  - b57d913 chore(conductor): s1 P0 working ▸P0.0 @ 03:32
+  - bf74d4b test(P7,P3.3): DD-guard/weekend-flatten/replayer validation tests
+  - 9570ad6 fix(F5): thread OrderEntryOptions through kernel; isLimit from request.Type
+
+## Last gate run
+
+build:OK
+
+## Last session result
+
+> I'll start the pre-session ritual. Let me read the required docs and check git state in parallel.
+> No previous session (P0.0 is first) — I'll skip the QA step. Now reading my stage plan, audit findings, and standards.
+> Now reading standards and inspecting the working tree diffs to understand exactly what I'm landing.
+> Let me examine the actual diffs to group them correctly into the 3 commits.
+> Build stamp isn't build-invoked (safe to commit as-is). `.conductor/` is orchestrator-managed (its own `.gitignore`). Now checking the UI diff and the two new test files.
+> I've completed the pre-session ritual. P0.0 is the first checkpoint, so per protocol I skip previous-session QA. I now understand t…
 
 ## Tracker handoff
 
 ```
-last: (none) — tracker created to drive iter-parity-pipeline via Conductor.
-stage: **P0 IN PROGRESS** (P0.0 land-the-tree not yet committed; ~24 modified / 3 new in tree).
-gate: not run. Per-phase gates are in PLAN §11 (verification matrix).
-next: **P0.0** — revert the 8 strategy JSONs' orderEntry.method to "Market" (Q1), then commit the
-      tree in 3 deliberate commits (F5 kernel fix+tests; P7/P3.3 tests; compare-both UI+docs), each
-      with pasted gate output. Do NOT batch-commit blind (R4).
-dirty: F5 kernel fix, P7/P3.3 tests, compare-both UI, 8 strategy JSONs, docs — see git status.
-trap: golden fixtures WILL move on P0.1 (DetailJson) — separate REBASELINE commit. cTrader E2E is
-      slow/flaky — gate with the fast Simulation filter (see Quick commands). P2.2 is an OWNER-GATE.
+last: **P0.0 DONE** — tree landed in 3 deliberate commits: (a) 9570ad6 fix(F5) kernel Entry thread +
+      isLimit-from-request.Type +2 tests; (b) bf74d4b test(P7,P3.3) 14 tests; (c) 9686242 feat(ui)
+      compare-both toggle + Q1 revert (8 JSONs→Market) + iteration docs. (conductor b57d913 interleaved.)
+stage: **P0 IN PROGRESS** — P0.0 complete; P0.1 (¼-sizing F1) is next and NOT started.
+gate: GREEN — build 0 err/5 warn (pre-existing net6.0 cBot); Unit 508/0/6; fast Sim 139/0/0;
+      golden 61/61 byte-identical; R5 DB verify Method=Market (evidence file, see P0.0 row).
+next: **P0.1** — instrument OrderSubmitted DetailJson with sizing inputs (Kernel.DecideProposed),
+      write VenueSizingParityTests (FakeTransport, NO creds), prove ×0.25 mechanism, fix, then a
+      SEPARATE golden REBASELINE commit (DetailJson WILL move — do not fold into the fix commit).
+trap: tsc has 2 PRE-EXISTING spec/e2e errors (runs.service.spec.ts, ui-smoke.spec.ts) — not P0.0,
+      flagged for P5. cTrader E2E slow/flaky → gate with fast Sim filter. P2.2 is an OWNER-GATE.
+      BuildInfo.g.cs (cBot) regenerates every build → will re-dirty; it is committed generated metadata.
 ```
