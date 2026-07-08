@@ -591,6 +591,39 @@ export interface SaveCalibrationRequest {
   oosEndUtc?: string | null;
 }
 
+export interface PipelineSummary {
+  id: string;
+  name: string;
+  status: string;
+  currentStepIndex: number;
+  startedAtUtc: string;
+  completedAtUtc: string | null;
+  stepCount: number;
+}
+
+export interface PipelineDetail {
+  id: string;
+  name: string;
+  status: string;
+  currentStepIndex: number;
+  playbookJson: string;
+  artifactDir: string | null;
+  startedAtUtc: string;
+  completedAtUtc: string | null;
+  steps: PipelineStep[];
+}
+
+export interface PipelineStep {
+  stepIndex: number;
+  kind: string;
+  status: string;
+  paramHash: string;
+  verdictJson: string | null;
+  artifactPath: string | null;
+  startedAtUtc: string | null;
+  completedAtUtc: string | null;
+}
+
 export interface PassProbabilityEstimate {
   probabilityOfPass: number;
   probabilityOfDailyBreach: number;
