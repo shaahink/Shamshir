@@ -1,0 +1,42 @@
+{
+  "name": "spread-vol-filter",
+  "description": "P6.3 canonical spread/vol no-trade filter: measures the A/B difference of running with the filter enabled vs disabled on a single strategy. The filter blocks trades when spread exceeds a threshold or ATR-based volatility exceeds a configurable max. Measured via two identical runs differing only in the filter flag.",
+  "steps": [
+    {
+      "kind": "ensure-data",
+      "symbols": "EURUSD",
+      "tfs": "H1",
+      "from": "2026-01-01",
+      "to": "2026-04-01"
+    },
+    {
+      "kind": "start-run",
+      "as": "baselineRun",
+      "venue": "tape",
+      "symbols": ["EURUSD"],
+      "periods": ["H1"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-04-01T00:00:00Z",
+      "balance": 100000,
+      "explore": false
+    },
+    {
+      "kind": "await-run",
+      "runId": "baselineRun",
+      "timeout": 3600
+    },
+    {
+      "kind": "await-run",
+      "runId": "filteredRun",
+      "timeout": 3600
+    },
+    {
+      "kind": "reconcile",
+      "left": "baselineRun",
+      "right": "filteredRun"
+    },
+    {
+      "kind": "report"
+    }
+  ]
+}
