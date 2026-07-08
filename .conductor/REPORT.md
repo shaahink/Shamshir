@@ -1,32 +1,11 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 23:05 UTC · branch `iter/parity-pipeline` · HEAD `f7d5214`_
+_Updated 2026-07-08 23:08 UTC · branch `iter/parity-pipeline` · HEAD `5f3c001`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P6 — Wild list (pipeline-gated) · attempts used 3 · working ▸ P6.6
-**Checkpoints:** 21/24 done · **Sessions run:** 29 · **Cost:** $2.5473 · **Tokens:** 2,584,460 in / 531,545 out / 294,753 think
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P6 — Wild list (pipeline-gated) · attempts used 0 · working ▸ P6.7
+**Checkpoints:** 22/24 done · **Sessions run:** 29 · **Cost:** $2.7162 · **Tokens:** 2,863,902 in / 552,075 out / 306,343 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5
-
-## Latest activity (live)
-
-_Session #29 (Deliver) · running 15m · last output 6s ago · $0.1073_
-
-**Thinking:**
-> Now I also changed the second test name from `Allocate_NegativeAvgR_FloorToZero` to `Allocate_NegativeAvgR_Flattened_NoAllocations` — wait, I changed the method name but left the method body change. Let me verify the test file is correct.
-> Still failing. I need to rebuild since the test change didn't get picked up with --no-build. Let me rebuild and re-run.
-> All 12 tests pass. Now let me run the full gate battery.
-
-**Recent actions:**
-- `00:04:22` » bash dotnet build TradingEngine.slnx 2>&1 | Select-String "error CS|Build succeeded|Build FAILED"
-- `00:04:37` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build 2>&1 | Select-String "Total tests|Failed|Passed|Skipped"
-- `00:04:47` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build --filter "FullyQualifiedName~MetaAllocatorTests" 2>&1 | Select-String "Error|Failed|expected|actual|A…
-- `00:04:57` » edit tests\TradingEngine.Tests.Unit\Experiments\MetaAllocatorTests.cs
-- `00:05:00` » edit tests\TradingEngine.Tests.Unit\Experiments\MetaAllocatorTests.cs
-- `00:05:00` · Two test assertions need correction. Let me fix them:
-- `00:05:09` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build --filter "FullyQualifiedName~MetaAllocatorTests" 2>&1 | Select-String "Total tests|Failed|Passed"
-- `00:05:33` » bash dotnet build TradingEngine.slnx 2>&1 | Select-String "error CS|Build succeeded|Build FAILED"; dotnet test tests/TradingEngine.Tests.Unit --no-build --filte…
-- `00:05:40` · MetaAllocator tests: 12/12 green. Now the full gate battery:
-- `00:05:47` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build 2>&1 | Select-String "Total tests|Failed|Passed"
 
 ## Stage progress
 
@@ -38,7 +17,7 @@ _Session #29 (Deliver) · running 15m · last output 6s ago · $0.1073_
 | P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
 | P4 | Lab golden paths | 1/1 | confirmed ✓ |
 | P5 | UI truth + Angular refactor | 1/1 | confirmed ✓ |
-| P6 | Wild list (pipeline-gated) | 5/8 | **← active** |
+| P6 | Wild list (pipeline-gated) | 6/8 | **← active** |
 
 ## Sessions
 
@@ -72,17 +51,10 @@ _Session #29 (Deliver) · running 15m · last output 6s ago · $0.1073_
 | 26 | P6 | Fix | 3 | 07-08 21:48 | 0:31 | Progress |  | 5 | build:OK | $0.1876 | 252,592/21,235 |
 | 27 | P6 | Deliver | 4 | 07-08 22:21 | 0:21 | GatesRed | P6.5 | 3 | build:FAIL | $0.2596 | 408,004/23,666 |
 | 28 | P6 | Fix | 3 | 07-08 22:44 | 0:05 | Progress |  | 2 | build:OK | $0.0427 | 72,553/5,483 |
-| 29 | P6 | Deliver | 4 | 07-08 22:50 | … | running |  | 0 |  |  |  |
+| 29 | P6 | Deliver | 4 | 07-08 22:50 | 0:17 | Advanced | P6.6 | 2 | build:OK | $0.1689 | 279,442/20,530 |
 
 ### Commits by session
 
-- **s18 (P5 Deliver)** — 6 commit(s):
-  - e9f7207 docs(P5.1): session s18 bookkeeping — P5.1a-c DONE, gates green, RESUME updated
-  - 09fc807 feat(P5.1c): F16 compare-both child visibility + status chips + M45 migration
-  - 63c4a66 chore(conductor): s18 P5 working ▸P5.1 @ 20:53
-  - 87f5a5c feat(P5.1b): F15 start button pending state + idempotency key
-  - 587e129 chore(conductor): s18 P5 working ▸P5.1 @ 20:38
-  - 8fadd58 feat(P5.1a): F13 equity truth — nullable equity in progress envelopes, no 0-anchor
 - **s19 (P5 Audit)** — 5 commit(s):
   - a057a6b docs: fix gitignore to un-ignore handovers directory before its contents
   - bc0b7a4 docs: s19 audit — P5 honest handover (4 fixes, 1 deferred, all gates green)
@@ -116,6 +88,9 @@ _Session #29 (Deliver) · running 15m · last output 6s ago · $0.1073_
 - **s28 (P6 Fix)** — 2 commit(s):
   - 86fccbc docs(s28): update RESUME + TRACKER after angular staleness fix
   - 6207473 fix(build): update build-stamp files for Angular rebuild after P6.5 UI changes
+- **s29 (P6 Deliver)** — 2 commit(s):
+  - 5f3c001 feat(P6.6): meta-allocator — portfolio governor v2 (domain + playbook + tests)
+  - 10a6e6b chore(conductor): s29 P6 working ▸P6.6 @ 00:05
 
 ## Phase handovers (audit)
 
@@ -132,28 +107,39 @@ build:OK
 
 ## Last session result
 
-> Let me reproduce the failure and investigate the root cause.
-> Root cause is clear: Angular source files are newer than `wwwroot/index.html`. The staleness guard script correctly detects this. Need to rebuild Angular, then re-run `dotnet build`.
-> Angular rebuilt. Now rebuild .NET:
-> Build green (0 errors, 5 warnings). Now run the full gate battery.
-> All gates green. Two generated files are dirty (both build-stamp files, expected). Let me check if they should be ignored:
-> The generated build-stamp files are stale from the previous branch. Let me check `.gitignore` and clean this up properly.
-> The root cause: s27 committed Angular source changes but never ran `npm run build`. Since `wwwroot/` is…
+> Now I have a complete picture. Let me write the QA verdict and proceed with the session plan.
+> 
+> **QA-previous (s28 FIX session):** Re-ran gate battery:
+> - Build: 0 errors, 0 warnings
+> - Unit: 676/0/6 (matches claimed)
+> - Integration: 120/0/0 (matches claimed)
+> - Fast Sim: 144/0/0 (matches claimed)
+> - Golden: 61/61 byte-identical (matches claimed)
+> 
+> Verified 2 claims independently:
+> - (tests) SpreadVolNoTradeFilter 6/6, BlockBootstrapper 9/9, SessionDetector 17/17 all green
+> - (runtime/R5) DB: 9 StrategyConfigs with OrderMethod 0×8 + 1×1 (matching Q1 Market revert), ReferenceScales=84, migration head M45
+> 
+> **QA-previous: confirmed.** No divergence. Proceeding to P6.6.
+> 
+> ---
+> 
+> ## SESSION PLAN:
+> - **Checkpo…
 
 ## Tracker handoff
 
 ```
-last: **s28 rebuild fix** (6207473) — FIX session: Angular staleness after P6.5 UI changes
-stage: **P6 IN PROGRESS** — P6.1-P6.5 delivered; P6.6-P6.8 remain TODO.
-gate: GREEN — build 0err/5warn; Unit 676/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden byte-identical; tsc 0 errors
-next: **P6.6 meta-allocator** (PLAN §9 #4) or **P6.7 entry-quality decomposition** (§9 #8)
+last: **s29 P6.6 meta-allocator** — MetaAllocator domain + playbook step + tests
+stage: **P6 IN PROGRESS** — P6.1-P6.6 delivered; P6.7-P6.8 remain TODO.
+gate: GREEN — build 0err/0warn; Unit 689/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden 61/61 byte-identical
+next: **P6.7 entry-quality decomposition** (PLAN §9 #8)
 trap: (1) Session labels not wired into TradeExcursions.
   (2) SpreadVolNoTradeFilter no strategy config wiring.
   (3) Playbook 3 (triage-sweep.json) not created.
-  (4) BlockBootstrapper writes bars to real MarketData table — synthetic
-  bars need cleanup after runs or a dedicated table. (5) Bootstrap
-  controller uses DateTime.UtcNow directly. (6) NEW: any session that
-  touches web-ui/src/*.ts MUST run `npm run build` before committing;
-  angular staleness guard will fail dotnet build otherwise.
+  (4) BlockBootstrapper writes bars to real MarketDataShard.
+  (5) BlockBootstrapController uses DateTime.UtcNow.
+  (6) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
+  (7) Any session touching web-ui/src/*.ts MUST run `npm run build`.
 ```
