@@ -1,37 +1,17 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 06:33 UTC · branch `iter/parity-pipeline` · HEAD `d245154`_
+_Updated 2026-07-08 06:47 UTC · branch `iter/parity-pipeline` · HEAD `0362f0c`_
 
-**Status:** Running
-**Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.4
-**Checkpoints:** 5/17 done · **Sessions run:** 5 · **Cost:** $0.3482 · **Tokens:** 133,450 in / 100,949 out / 57,216 think
-
-## Latest activity (live)
-
-_Session #5 (Deliver) · running 15m · last output 6s ago · $0.0179_
-
-**Thinking:**
-> I'm looking at the TimeframeExtensions and Timeframe enum to understand how to convert the trade's EntryTimeframe string into a TimeSpan, and checking how TradesController.ParseTimeframe handles that mapping. I also notice LedgerReconcileService is registered as AddScoped in the dependency injection…
-> I have what I need to implement this. I'll follow the existing integration test pattern with `SqliteInMemory` and seed `JournalEntryEntity` records with `OrderProposed` events, setting the `EventKind` and `EventJson` fields to contain the serialized order data with `OrderId` and `OccurredAtUt`.  For…
-> The Integration test project can reference Web, so I have the flexibility to test the Web `LedgerReconcileService` from there. I'm weighing whether to put the pure analyzer in Infrastructure and the I/O reconciler there too (matching the TradePersistenceBarrier pattern), or alternatively place Build…
-
-**Recent actions:**
-- `07:31:26` » read src\TradingEngine.Domain\MarketData\Timeframe.cs
-- `07:31:27` » read src\TradingEngine.Domain\MarketData\TimeframeExtensions.cs
-- `07:31:27` » read tests\TradingEngine.Tests.Integration\Runs\TradePersistenceBarrierTests.cs
-- `07:31:27` · `LedgerReconcileService` is scoped and `IJournalQueryRepository` is scoped — I can inject it. Let me read the Timeframe enum, its extensions, and the integratio…
-- `07:33:20` » read tests\TradingEngine.Tests.Integration\TradingEngine.Tests.Integration.csproj
-- `07:33:21` · I have the full picture. Let me confirm the Integration test project's references (so I place the I/O logic where it's testable) and check the `SqliteInMemory` …
-- `07:33:21` » glob
-- `07:33:34` · Integration references Web, so I can test the service directly. Let me find the `SqliteInMemory` helper location.
-- `07:33:34` » bash Get-ChildItem -Recurse -Path tests -Filter "SqliteInMemory.cs" | Select-Object FullName
-- `07:33:40` » read tests\TradingEngine.Tests.Integration\Support\SqliteInMemory.cs
+**Status:** Idle
+**Stage:** P0 — Parity truth repair (the spine) · attempts used 0
+**Checkpoints:** 6/17 done · **Sessions run:** 5 · **Cost:** $0.3977 · **Tokens:** 135,534 in / 125,734 out / 67,467 think
+**Pending:** auto-fix audit for P0
 
 ## Stage progress
 
 | Stage | Title | Done | State |
 |---|---|---|---|
-| P0 | Parity truth repair (the spine) | 5/6 | **← active** |
+| P0 | Parity truth repair (the spine) | 6/6 | gating… |
 | P1 | Config & DB truth | 0/2 | todo |
 | P2 | Lifecycle robustness + headline gate | 0/2 | todo |
 | P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | todo |
@@ -47,7 +27,7 @@ _Session #5 (Deliver) · running 15m · last output 6s ago · $0.0179_
 | 2 | P0 | Deliver | 1 | 07-08 02:37 | 1:30 | Advanced | P0.1 P0.5 | 8 | build:OK | $0.1384 | 124,506/30,176 |
 | 3 | P0 | Deliver | 1 | 07-08 04:09 | 1:25 | Advanced | P0.2 | 8 | build:OK | $0.1109 | 4,619/32,558 |
 | 4 | P0 | Deliver | 1 | 07-08 05:34 | 0:43 | Advanced | P0.3 | 4 | build:OK | $0.0716 | 2,815/25,730 |
-| 5 | P0 | Deliver | 1 | 07-08 06:18 | … | running |  | 0 |  |  |  |
+| 5 | P0 | Deliver | 1 | 07-08 06:18 | 0:28 | Advanced | P0.4 | 3 | build:OK | $0.0495 | 2,084/24,785 |
 
 ### Commits by session
 
@@ -80,6 +60,10 @@ _Session #5 (Deliver) · running 15m · last output 6s ago · $0.0179_
   - 3d0c7cc feat(P0.3,F6): trade-persistence integrity barrier — no more vanishing trades
   - ca49876 chore(conductor): s4 P0 working ▸P0.3 @ 07:04
   - 536f017 chore(conductor): s4 P0 working ▸P0.3 @ 06:49
+- **s5 (P0 Deliver)** — 3 commit(s):
+  - 0362f0c docs(P0.4): tracker + AGENTS RESUME — P0.4 done (8277df2), F6-R residual, next P1.1
+  - 8277df2 feat(P0.4,F2): entry-latency instrumentation in reconcile (measure-first, Q4)
+  - 7ac464a chore(conductor): s5 P0 working ▸P0.4 @ 07:33
 
 ## Last gate run
 
@@ -87,29 +71,33 @@ build:OK
 
 ## Last session result
 
-> I'll start the pre-session ritual. Reading the mandatory docs in order.
-> Now the AUDIT findings relevant to my stage (F1/F2/F5/F6), plus git status and log.
-> Working tree matches RESUME block (only BuildInfo.g.cs regenerated + untracked .conductor). Now reading WORKFLOW, relevant reference sections, and the P0.2 evidence + code I'll touch for P0.3.
-> QA of the previous session first. Let me re-run the P0.2 gate battery and locate the code I'll touch for P0.3.
-> Now let me run the QA gate battery (P0.2). Starting with the build.
-> Build: 0 err / 5 warn (matches). Now the test gates in parallel.
-> Unit 522/0/6 and Integration 104/0/0 — both match the claim. Now the fast Simulation filter and golde…
+> I'll begin the pre-session ritual by reading the mandatory documents in order. Let me start with the key files.
+> Both TRACKER and RESUME agree: P0.4 (entry-latency instrumentation, F2) is next. Let me read the PLAN and AUDIT sections plus reference docs.
+> Now let me read the AUDIT findings F1/F2/F5/F6 and the RECONCILE-FINDINGS doc where evidence goes.
+> Now let me check git state and start exploring the reconcile-related code. Since P0.4 touches infrastructure, let me also read the relevant reference docs.
+> HEAD matches the RESUME block (P0.3 commit + conductor bookkeeping; only `BuildInfo.g.cs` dirty as expected). Now let me QA P0.3. Let me read the evidence file and explore the reconcile c…
 
 ## Tracker handoff
 
 ```
-last: **P0.3 DONE** (1 commit) — TradePersistenceBarrier (F6): finalization reconciles journalled
-      PublishTradeClosed vs TradeResults rows and journal-backfills lost trades via TradeResultFactory
-      (extracted verbatim from EffectExecutor → golden byte-identical); shortfall → TRADES_LOST:{exp}:{persisted}
-      warning → completed-with-warnings (reuses P0.2 plumbing). QA-previous(P0.2): confirmed.
-stage: **P0 IN PROGRESS** — P0.0/P0.1/P0.2/P0.3/P0.5 done; **P0.4 (entry-latency instrumentation, F2) is next**.
-gate: GREEN — build 0 err/5 warn; Unit 522/0/6; fast Sim 144/0/0; golden 61/61 byte-identical
-      (NO rebaseline); Integration 107/0/0 (+3).
-next: **P0.4** — reconcile output gains per-trade entryDelayBars (+seconds) proposal→fill for both runs +
-      per-run distribution summary; NO cBot behavior change (Q4 measure-first). Gate: paired mini-run
-      reconcile shows tape delay ≈1 M1 bar + quantifies cTrader delay; number → docs/audit/RECONCILE-FINDINGS.md.
-      See PLAN §3 P0.4 + AUDIT F2. (Reconcile endpoint: GET /api/backtest/analytics/reconcile.)
-trap: P0.3 real cTrader BTC-scenario run is OWNER-PENDING (needs creds; mechanism proven credential-free).
-      P0.2 real 3× headless cTrader run also OWNER-PENDING. BuildInfo.g.cs re-dirties every build (leave it).
-      P2.2 OWNER-GATE. tsc 2 pre-existing (P5). P0.4 is measure-only — a number in RECONCILE-FINDINGS is the gate.
+last: **P0.4 DONE** (8277df2) — entry-latency instrumentation (F2, Q4 measure-first). Reconcile endpoint
+      gains per-run leftLatency/rightLatency (per-trade entryDelaySeconds+entryDelayBars, proposal→fill on
+      OrderId, + distribution). MEASURED credential-free from the kept audit DB: tape 3660s=1.017 H1 bars
+      (≈1 M1 past the bar close), cTrader 7200s=2.0 bars → venue gap 3540s ≈ 1 decision bar (AUDIT F2).
+      QA-previous(P0.3): **confirmed for delivered scope; diverged on F6 closure** → new residual **F6-R**.
+stage: **P0 spine COMPLETE** (P0.0–P0.5 all DONE; real paired/headless cTrader runs OWNER-PENDING). **Next
+      stage P1** — start P1.1 (one database, F10).
+gate: GREEN — build 0 err/5 warn; Unit 528/0/6; Integration 108/0/0; fast Sim 144/0/0; golden 61/61
+      byte-identical (NO rebaseline; git diff --stat *golden-snapshot.json = empty).
+next: **P1.1 (one DB, F10)** — single DB path shared by Web + Host CLI; startup fails loud on pending
+      migrations; archive stale root data/trading.db; compute-reference-scales populates 84/84 cells.
+      See PLAN §4 P1.1 + AUDIT F10. THEN P1.2 (config propagation/drift, F9/F7).
+trap: **F6-R (NEW, from P0.3 QA):** the audited F6 run f7b0538d has 0 journalled PublishTradeClosed effects
+      (its 7 closes came via Reconcile events, lost before journalling) → P0.3's barrier computes expected=0,
+      emits NO TRADES_LOST warning → still TotalTrades=0. P0.3 fixes the persistence-channel-loss F6 case
+      (successful cTrader runs DO journal PublishTradeClosed: 44175d3e=3,817af3f5=24,81729685=7) but NOT the
+      crashed-teardown case. Needs owner decision (see P0.3 residual row). Out of P0.4 stage + STOP condition
+      (kernel/adapter reconcile-close semantics) — deliberately NOT fixed this session.
+      Also: OWNER-PENDING real cTrader runs (P0.1/P0.2/P0.3/P0.4 all creds-gated); P2.2 OWNER-GATE; BuildInfo.g.cs
+      re-dirties every build (leave it); tsc 2 pre-existing (P5).
 ```
