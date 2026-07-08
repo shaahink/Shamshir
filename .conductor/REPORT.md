@@ -1,32 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 19:01 UTC · branch `iter/parity-pipeline` · HEAD `939def0`_
+_Updated 2026-07-08 19:14 UTC · branch `iter/parity-pipeline` · HEAD `a5bcce9`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P4 — Lab golden paths · attempts used 0 · working ▸ P4.1
-**Checkpoints:** 14/17 done · **Sessions run:** 16 · **Cost:** $1.0474 · **Tokens:** 563,696 in / 334,504 out / 147,250 think
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P4 — Lab golden paths · attempts used 0
+**Checkpoints:** 15/17 done · **Sessions run:** 16 · **Cost:** $1.2366 · **Tokens:** 792,811 in / 361,519 out / 164,103 think
 **Confirmed phases:** P0, P1, P2, P3
-
-## Latest activity (live)
-
-_Session #16 (Deliver) · running 15m · last output 25s ago · $0.0594_
-
-**Thinking:**
-> All gates green: - Unit: 624/0/6 - Integration: 120/0/0 - Fast Sim: 144/0/0  Golden byte-identical check doesn't need to be re-run since my changes are all DTO/UI additions (no kernel or fixture changes).  F11 is done. Now let me move to F12 (MAE/MFE units doctrine).  F12 requires: 1. Add R-normaliz…
-> Let me look at PipSize/SymbolInfo and how pip calculations are done. I also need to understand how MaxAdverseExcursion gets computed from the tape path.
-> Let me look at SymbolInfo and the registry.
-
-**Recent actions:**
-- `20:00:13` · Build: 0 errors, 5 warnings. Running gates for the F11 checkpoint:
-- `20:00:19` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build 2>&1 | Select-Object -Last 3
-- `20:00:28` » bash dotnet test tests/TradingEngine.Tests.Simulation --no-build --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ" 2>&1 | Select-Obj…
-- `20:00:32` » bash dotnet test tests/TradingEngine.Tests.Integration --no-build 2>&1 | Select-Object -Last 3
-- `20:01:01` » todowrite 2 todos
-- `20:01:01` · F11 gates green. Now implementing **F12 — MAE/MFE units doctrine**. Let me first understand the existing pip size infrastructure:
-- `20:01:06` » grep PipSize|pipSize|pip.size
-- `20:01:07` » grep class SymbolInfo
-- `20:01:11` » read src\TradingEngine.Domain\SymbolInfo\SymbolInfo.cs
-- `20:01:12` » read src\TradingEngine.Infrastructure\SymbolInfoRegistry.cs
+**Pending:** auto-fix audit for P4
 
 ## Stage progress
 
@@ -36,7 +16,7 @@ _Session #16 (Deliver) · running 15m · last output 25s ago · $0.0594_
 | P1 | Config & DB truth | 2/2 | confirmed ✓ |
 | P2 | Lifecycle robustness + headline gate | 2/2 | confirmed ✓ |
 | P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
-| P4 | Lab golden paths | 0/1 | **← active** |
+| P4 | Lab golden paths | 1/1 | gating… |
 | P5 | UI truth + Angular refactor | 0/1 | todo |
 | P6 | Wild list (pipeline-gated) | 0/1 | todo |
 
@@ -59,12 +39,10 @@ _Session #16 (Deliver) · running 15m · last output 25s ago · $0.0594_
 | 13 | P3 | Deliver | 1 | 07-08 18:04 | 0:07 | NoProgress |  | 0 | build:OK | $0.0374 | 63,378/4,917 |
 | 14 | P3 | Fix | 2 | 07-08 18:13 | 0:14 | Advanced | P3.3 | 2 | build:OK | $0.1204 | 203,515/13,269 |
 | 15 | P3 | Audit | 1 | 07-08 18:30 | 0:14 | Progress |  | 2 |  | $0.0740 | 79,867/15,468 |
-| 16 | P4 | Deliver | 1 | 07-08 18:46 | … | running |  | 0 |  |  |  |
+| 16 | P4 | Deliver | 1 | 07-08 18:46 | 0:27 | Advanced | P4.1 | 3 | build:OK | $0.1892 | 229,115/27,015 |
 
 ### Commits by session
 
-- **s7 (P1 Deliver)** — 1 commit(s):
-  - 245db11 chore(conductor): s7 P1 working ▸P1.1 @ 15:17
 - **s8 (P1 Deliver)** — 5 commit(s):
   - b4ca47c chore(conductor): s8 P1 working ▸P1.1 @ 16:48
   - 342810a docs(P1): tracker + AGENTS RESUME — P1 COMPLETE (P1.1 f364102, P1.2 d36f491); QA of s7 = no-op confirmed; next P2.1
@@ -100,6 +78,10 @@ _Session #16 (Deliver) · running 15m · last output 25s ago · $0.0594_
 - **s15 (P3 Audit)** — 2 commit(s):
   - bbe990a docs(P3): honest phase handover — audit findings, fixes, weaknesses, follow-ups
   - e554b72 fix(P3): audit — apply-calibration no longer stale-passes, report writes artifact, executor auto-creates artifact dir
+- **s16 (P4 Deliver)** — 3 commit(s):
+  - a5bcce9 docs(P4.1): session s16 bookkeeping — P4.1 DONE, gates green, RESUME updated
+  - 9aa9b87 feat(P4.1): exploration funnel (F11) + MAE/MFE units doctrine (F12)
+  - 8a98142 chore(conductor): s16 P4 working ▸P4.1 @ 20:01
 
 ## Phase handovers (audit)
 
@@ -110,26 +92,38 @@ _Session #16 (Deliver) · running 15m · last output 25s ago · $0.0594_
 
 ## Last gate run
 
-build:OK · unit:OK · sim-fast:OK
+build:OK
 
 ## Last session result
 
-> SESSION-RESULT:** Audit PASS — three shallow/stubbed implementations hardened (ApplyCalibrationAsync now checks server response instead of stale-passing, Report step writes markdown artifact to disk, executor auto-creates artifact dir when none supplied), 2 new tests added, gates stay green at build 0/5w, Unit 624/0/6 (+2), Integration 120/0/0, fast Sim 144/0/0, golden byte-identical — no regressions. Pushed commits `e554b72` (fixes + tests) and `bbe990a` (handover). The core playbook engine, persistence layer, CLI verbs, and UI review page are structurally correct. The one genuine gap — cTrader child run ID discovery for the venue-parity reconcile step — is deferred per tracker OWNER-PENDIN…
+> Now let me read the remaining required documents:
+> Now let me QA the previous session. Running gates and reading additional docs in parallel:
+> Gates confirmed. Let me now search for existing ExitLab, exploration, and MAE/MFE code to plan P4.1:
+> Now let me read key components for the exploration funnel:
+> Now I have a comprehensive understanding. Here is my **SESSION PLAN**:
+> 
+> ```
+> SESSION PLAN:
+> - Checkpoints to deliver:
+>   1. F11: Exploration funnel — banner on completed exploration run report + Exit Lab empty-state
+>   2. F12: MAE/MFE units doctrine — R-normalized columns, table-driven tests, backfill endpoint
+>   3. P3.6 Entry lab: DEFERRED (blocked on P2.2 owner-pending cTrader creds)
+> 
+> - Files to…
 
 ## Tracker handoff
 
 ```
-last: **P3.3 DONE** (8bca2cb): UI /research review page — pipeline list + detail + approve/reject,
-      thin read-only Angular component, signal-driven, lazy-loaded via app.routes. Driven smoke:
-      run-shamshir driver 11/11 passed.
-stage: **P3 IN PROGRESS** — P3.1/P3.2/P3.3/P3.4-files done. P3.4 LIVE gate owner-pending.
-gate: GREEN — build 0err/5warn; Unit 622/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical
-      (git diff --stat **/*golden*.json = empty; NO rebaseline). R5: M43 head live on Web DB, both tables
-      present. Driven smoke: run-shamshir driver 11/11 passed (app up, SPA served, API hits verified).
-next: **P3.4 LIVE end-to-end** (app up + data + creds) — run pipeline playbooks/venue-parity.json to
-      completion, visible in UI /research, artifacts committed → the P3 verification-matrix gate.
-QA-prev: s12 P3.1/P3.2/P3.4-files → **confirmed** (build 0/5w; Unit 622/0/6; Integration 120/0/0; fast
-      Sim 144/0/0; golden byte-identical; R5 M43 head present). No divergence, no fix.
+last: **P4.1 DONE** (9aa9b87): Exploration funnel (F11 — report banner + ExitLab empty-state) + MAE/MFE
+      units doctrine (F12 — MaeR/MfeR columns, M44 migration, 6 tests, backfill endpoint). P3.6 entry lab
+      DEFERRED (blocked on P2.2 owner-pending cTrader creds — D97).
+stage: **P4 IN PROGRESS** — P4.1 done. P4 remaining per PLAN §7: P3.6 entry lab (deferred to P2.2 gate).
+gate: GREEN — build 0err/5warn; Unit 630/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical.
+next: **P5.1 UI truth (F13-F16) + Angular refactor** OR continue research-labs (EntryLab when P2.2 clears).
+       P4.1 live verification (driven smoke F11 + backfill endpoint F12) owner-pending — see evidence column.
+QA-prev: s16 P4.1 — **confirmed** (build 0/5w; Unit 630/0/6; Integration 120/0/0; fast Sim 144/0/0; golden
+      byte-identical). Independently verified: R5 M44 migration present on Web DB; MaeMfeNormalizerTests 6/6.
+trap: F11 driven smoke NOT run (app not started); F12 backfill endpoint NOT run against live DB rows.
 trap: (1) Tests.Architecture EntityAuditableTests red on **ExitCalibrationEntity ONLY** — PRE-EXISTING,
       NOT in gate battery; my 2 new pipeline entities ARE compliant. (2) The playbook engine is HTTP-only
       (Q3) — executor persists via /api/research/pipelines, never the DB; keep it that way. (3) Live
