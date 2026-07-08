@@ -1,0 +1,48 @@
+{
+  "name": "venue-parity",
+  "description": "P2.2/P3.4 canonical check: run one config through tape AND cTrader, reconcile, and gate the tolerances. Run this after ANY engine/venue change. Encodes the inherited P6.1 gate as a repeatable playbook.",
+  "steps": [
+    {
+      "kind": "ensure-data",
+      "symbols": "EURUSD",
+      "tfs": "H1",
+      "from": "2026-01-01",
+      "to": "2026-02-01"
+    },
+    {
+      "kind": "start-run",
+      "as": "tapeRun",
+      "venue": "tape",
+      "symbols": ["EURUSD"],
+      "periods": ["H1"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-02-01T00:00:00Z",
+      "balance": 100000,
+      "compareBoth": true
+    },
+    {
+      "kind": "await-run",
+      "runId": "tapeRun",
+      "timeout": 3600
+    },
+    {
+      "kind": "assert-gates",
+      "runId": "tapeRun",
+      "requireStatus": "completed",
+      "minTrades": 1,
+      "forbidWarningCodes": ["TRADES_LOST", "TRADES_UNRECONSTRUCTABLE"]
+    },
+    {
+      "kind": "owner-gate",
+      "reason": "confirm the cTrader child run id for reconcile (compare-both pairs runs; supply the ctrader run id, then approve)"
+    },
+    {
+      "kind": "reconcile",
+      "left": "tapeRun",
+      "right": "ctraderRun"
+    },
+    {
+      "kind": "report"
+    }
+  ]
+}
