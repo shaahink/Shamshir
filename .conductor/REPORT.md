@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 03:37 UTC · branch `iter/parity-pipeline` · HEAD `601e625`_
+_Updated 2026-07-08 03:52 UTC · branch `iter/parity-pipeline` · HEAD `cc7070e`_
 
 **Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.1
@@ -8,7 +8,7 @@ _Updated 2026-07-08 03:37 UTC · branch `iter/parity-pipeline` · HEAD `601e625`
 
 ## Latest activity (live)
 
-_Session #2 (Deliver) · running 60m · last output 33s ago · $0.1072_
+_Session #2 (Deliver) · running 75m · last output 816s ago · $0.1085_
 
 **Thinking:**
 > I see the issue now—the balance configuration flows through the tape adapter's `GetAccountStateAsync` method rather than through RiskManager, which means the cTrader path receives the balance via the CLI argument but the cBot's initial report shows a different value, suggesting a mismatch in how the…
@@ -16,16 +16,16 @@ _Session #2 (Deliver) · running 60m · last output 33s ago · $0.1072_
 > I need to revert that change and just add the InitialBalance assignment instead of removing the diagnostics logging.
 
 **Recent actions:**
-- `04:36:14` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `04:36:27` » read src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `04:36:27` · Let me verify the cTrader block is intact now and check for other EngineHostOptions constructions (CTraderListenService, ExperimentRunner) that may also need th…
-- `04:36:38` · Both paths are correct. `InitialBalance` is optional (default 0) so other EngineHostOptions constructions still compile. Now let me build to catch errors before…
-- `04:36:57` » bash dotnet build TradingEngine.slnx -c Debug 2>&1 | Select-String -Pattern "error|Build succeeded|Warning\(s\)|Error\(s\)" | Select-Object -Last 25
 - `04:37:08` » grep record AccountState|class AccountState|struct AccountState
 - `04:37:09` » read src\TradingEngine.Infrastructure\Venues\CTrader\CTraderBrokerAdapter.cs
 - `04:37:09` · Build clean. Now let me write the `VenueSizingParityTests` in the Simulation project with `Category=VenueParity`. First, check the CTraderBrokerAdapter can be c…
 - `04:37:20` · Now let me look at the Simulation test project's global usings/imports and how it references Infrastructure, so my test compiles.
 - `04:37:20` » bash Get-ChildItem tests/TradingEngine.Tests.Simulation -Filter "*.csproj" | ForEach-Object { Write-Host "=== $($_.Name) ==="; Get-Content $_.FullName }; echo "…
+- `04:38:57` » read src\TradingEngine.Domain\Interfaces\IMessageTransport.cs
+- `04:38:58` » grep record RiskProfile|record SymbolInfo
+- `04:38:58` · The Simulation project references Infrastructure (CTraderBrokerAdapter, IMessageTransport) and Engine (via Host). Now I need `IMessageTransport`. Let me check w…
+- `04:39:09` » read src\TradingEngine.Domain\RiskAndEquity\RiskProfile.cs
+- `04:39:09` » read src\TradingEngine.Domain\SymbolInfo\SymbolInfo.cs
 
 ## Stage progress
 
