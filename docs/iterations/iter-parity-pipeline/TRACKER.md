@@ -17,20 +17,20 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P6.4 DONE** (611d26d) — regime-conditioned calibration
+last: **s26 build fix** (bee34c6, 90e484a) — Angular staleness guard + toast files
 stage: **P6 IN PROGRESS** — P6.1-P6.4 delivered; P6.5-P6.8 remain TODO.
-gate: GREEN — build 0err/5warn; Unit 666/0/6 (+2: RegimePlaybook test + 6th shipped parse);
-  Integration 120/0/0; fast Sim 144/0/0; golden byte-identical; tsc 0 errors;
-  6 shipped playbooks parse.
-next: **P6.5 block-bootstrap tapes** (PLAN §9 #5) — synthetic tape generation for robustness testing.
-trap: (1) Session labels not wired into TradeExcursions (SessionDetector consumed in ExitLabController
-  only). (2) SpreadVolNoTradeFilter has no strategy config wiring. (3) Playbook 3 (triage-sweep.json)
-  never created. (4) BuildInfo.g.cs + build-info.ts dirty each build (leave). (5) Toast files
-  (toast.component.ts, toast.service.ts) untracked — s21 commit 2e6fb66 never included them despite
-  claiming toast delivery; app.component.ts references them. (6) SaveCalibration uses DateTime.UtcNow
-  (pre-existing). (7) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-QA-prev: s25/P6.4 — confirmed (full gate battery + 2 independent claims verified: regime playbook
-  parses 6/6 + ExitLabController RegimeBreakdown computed from SessionDetector).
+gate: GREEN — build 0err/5warn; Unit 666/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden byte-identical; tsc 0 errors
+next: **P6.5 block-bootstrap tapes** (PLAN §9 #5)
+trap: (1) Session labels not wired into TradeExcursions. (2) SpreadVolNoTradeFilter
+  no strategy config wiring. (3) Playbook 3 (triage-sweep.json) not created.
+  (4) BuildInfo.g.cs + build-info.ts dirty each build (leave). (5) SaveCalibration
+  uses DateTime.UtcNow (pre-existing). (6) EntityAuditableTests red on
+  ExitCalibrationEntity (pre-existing).
+fix(s26): Removed Angular auto-rebuild from dotnet build — .NET 10 SDK evaluates
+  @(Content) before targets, making mid-build ng build impossible. Replaced with
+  staleness guard that fails fast with clear message. Toast files (s21 regression)
+  committed.
 
 ## Checkpoints
 

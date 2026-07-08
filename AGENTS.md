@@ -232,22 +232,23 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** 611d26d (s25, P6.4 regime-conditioned calibration)
-**Session (s25, P6.4):** Delivered regime-conditioned calibration — SessionDetector wired into
-  ExitLabController.Evaluate() for per-trade regime labeling + optional regime filter. New
-  ExitLabEvaluateRequest.Regime + ExitLabEvaluateResponse.RegimeBreakdown. Angular exit-lab: regime
-  filter input, breakdown chips, regime in save calibration form. New playbook
-  regime-calibration.json (explore → eval all+per-regime → owner-gate → apply → report).
-  RegimePlaybook_HasPerRegimeExitLabSteps 1/1. ShippedPlaybook_Parses 6/6.
-**Gates GREEN:** build 0err/5warn; Unit 666/0/6; Integration 120/0/0; fast Sim 144/0/0; golden
-  byte-identical; tsc 0 errors; 6 shipped playbooks parse.
-**Next step:** P6.5 block-bootstrap tapes (PLAN §9 #5) — synthetic tape generation for robustness
-  testing. Also: P6.6 meta-allocator, P6.7 entry-quality decomposition, P6.8 pyramiding policy.
-**Open traps:** (1) Session labels not wired into TradeExcursions schema — SessionDetector consumed
-  in ExitLabController only (via OpenedAtUtc at evaluation time). (2) SpreadVolNoTradeFilter has no
-  strategy config wiring. (3) Playbook 3 (triage-sweep.json) never created. (4) Toast files
-  (toast.component.ts + toast.service.ts) remain untracked — s21 commit 2e6fb66 never staged them
-  despite app.component.ts importing ToastComponent. (5) BuildInfo.g.cs + build-info.ts re-dirty
-  each build (leave). (6) SaveCalibration uses DateTime.UtcNow (pre-existing). (7) P2.2/P3.4
-  P6.1-gate remain OWNER-PENDING (cTrader creds).
+**Branch:** `iter/parity-pipeline` — **HEAD:** 90e484a (s26, build fix)
+**Session (s26, build fix):** Reproduced + fixed the Conductor's build failure.
+  Root cause: .NET 10 SDK evaluates @(Content) items at project evaluation time
+  (before any targets run). When ng build ran inside dotnet build, it changed
+  content-hash filenames in wwwroot, but MSBuild already collected the old
+  filenames. DefineStaticWebAssets then failed "No file exists for the asset."
+  Fix: Replaced auto-rebuild with staleness guard — if src > wwwroot, fail early
+  with clear message. User runs `npm run build` first. Also committed missing
+  toast files (toast.component.ts, toast.service.ts) omitted from s21 commit
+  2e6fb66 (app.component.ts already imported them).
+**Gates GREEN:** build 0err/5warn; Unit 666/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden byte-identical; tsc 0 errors.
+**Next step:** P6.5 block-bootstrap tapes (PLAN §9 #5).
+**Open traps:** (1) Session labels not wired into TradeExcursions.
+  (2) SpreadVolNoTradeFilter has no strategy config wiring.
+  (3) Playbook 3 (triage-sweep.json) never created.
+  (4) BuildInfo.g.cs + build-info.ts re-dirty each build (leave).
+  (5) SaveCalibration uses DateTime.UtcNow (pre-existing).
+  (6) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
 
