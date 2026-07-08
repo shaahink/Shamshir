@@ -133,6 +133,9 @@ public static class ServiceRegistration
         services.AddScoped<IPropFirmRuleSetStore, SqlitePropFirmRuleSetStore>();
         services.AddScoped<IGovernorOptionsStore, SqliteGovernorOptionsStore>();
         services.AddScoped<IAddOnPackStore, SqliteAddOnPackStore>();   // iter-38 PK1
+        // P0.3 (F6): the trade-persistence integrity barrier — reconciles journalled closes vs persisted
+        // TradeResults at finalization and backfills any lost trades from the journal.
+        services.AddScoped<TradingEngine.Infrastructure.Persistence.TradePersistenceBarrier>();
         return services;
     }
 
@@ -170,6 +173,13 @@ public static class ServiceRegistration
         services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
         services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
         services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
+        // P0.3 (F6): the root container needs a cross-rate provider for the TradePersistenceBarrier's
+        // journal backfill (TradeResultFactory recomputes PnL currency). The per-run engine host has its
+        // own live CrossRateStore; this root-level one uses the seeded defaults, sufficient for the
+        // currency-tagging the backfill needs (venue trades carry their own gross/net PnL).
+        services.AddSingleton<TradingEngine.Application.CrossRateStore>();
+        services.AddSingleton<Func<string, string, decimal>>(sp =>
+            sp.GetRequiredService<TradingEngine.Application.CrossRateStore>().Convert);
         services.AddSingleton<ISymbolInfoRegistry>(_ =>
         {
             var solRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));

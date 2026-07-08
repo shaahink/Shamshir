@@ -419,6 +419,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 result = await RunEngineReplayAsync(runId, cfg, state.LogLines, ct);
             }
 
+            // P0.3 (F6): trade-persistence integrity barrier. BEFORE computing stats, reconcile the run's
+            // journalled closes against persisted TradeResults and backfill any that were lost (the audited
+            // BTC scenario: fills journalled, venue killed before closes settled → 0 TradeResults, reported
+            // TotalTrades=0). A shortfall attaches a TRADES_LOST warning → completed-with-warnings; the
+            // backfill happens first so GetTradeStatsAsync counts the restored trades.
+            if (result.Success)
+                await RunTradePersistenceBarrierAsync(runId, state, ct);
+
             var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
 
             result = result with
@@ -429,7 +437,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 WinningTrades = tradeStats.WinningTrades,
                 WinRatePct = tradeStats.WinRatePct,
             };
-
             // P0.2 (F5, Q5): fold any teardown/persistence warnings collected during the run (e.g. the
             // in-process cTrader leg's transport teardown) into the result. A run that produced a
             // complete result but hit a teardown fault is `completed-with-warnings`, never `failed`.
@@ -1611,6 +1618,38 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         using var sha = SHA256.Create();
         using var fs = File.OpenRead(algoPath);
         return Convert.ToHexString(sha.ComputeHash(fs))[..16].ToLowerInvariant();
+    }
+
+    // P0.3 (F6): trade-persistence integrity barrier. Runs after the engine produced a complete result
+    // and the journal + TradeResults have drained. Reconciles journalled closes vs persisted TradeResults;
+    // backfills any lost trades from the journal and, on a shortfall, records a TRADES_LOST warning so the
+    // run finalizes `completed-with-warnings` (P0.2 plumbing) instead of silently reporting fewer trades.
+    private async Task RunTradePersistenceBarrierAsync(string runId, BacktestRunState state, CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var barrier = scope.ServiceProvider
+                .GetRequiredService<TradingEngine.Infrastructure.Persistence.TradePersistenceBarrier>();
+            var recon = await barrier.ReconcileAndBackfillAsync(runId, ct);
+
+            if (recon.Failed)
+            {
+                AddTeardownWarning(runId, "TRADE_BARRIER_FAILED", recon.FailureDetail ?? "reconciliation failed");
+                return;
+            }
+
+            if (recon.HasLoss)
+            {
+                var stillMissing = recon.Expected - recon.Persisted - recon.Backfilled;
+                AddTeardownWarning(runId, $"TRADES_LOST:{recon.Expected}:{recon.Persisted}",
+                    $"journal had {recon.Expected} closes, {recon.Persisted} persisted; backfilled {recon.Backfilled}, still-missing {stillMissing}");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddTeardownWarning(runId, "TRADE_BARRIER_FAILED", ex.Message);
+        }
     }
 
     private async Task<TradeStats> GetTradeStatsAsync(string runId, decimal initialBalance)
