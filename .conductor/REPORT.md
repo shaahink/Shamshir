@@ -1,32 +1,11 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 21:14 UTC · branch `iter/parity-pipeline` · HEAD `1598970`_
+_Updated 2026-07-08 21:20 UTC · branch `iter/parity-pipeline` · HEAD `36f5e0f`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P6 — Wild list (pipeline-gated) · attempts used 0 · working ▸ P6.1
-**Checkpoints:** 16/17 done · **Sessions run:** 21 · **Cost:** $1.6609 · **Tokens:** 1,329,908 in / 423,884 out / 211,910 think
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P6 — Wild list (pipeline-gated) · attempts used 0 · working ▸ P6.4
+**Checkpoints:** 19/24 done · **Sessions run:** 21 · **Cost:** $1.9101 · **Tokens:** 1,627,784 in / 462,272 out / 230,118 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5
-
-## Latest activity (live)
-
-_Session #21 (Deliver) · running 30m · last output 19s ago · $0.1578_
-
-**Thinking:**
-> Let me read Tick.cs to see the full constructor.
-> The Tick constructor needs `DateTime TimestampUtc` as the last parameter. Let me fix my test.
-> Now run the tests again:
-
-**Recent actions:**
-- `22:12:23` · Let me fix the test — wrong using and NSubstitute:
-- `22:12:30` » read src\TradingEngine.Domain\SymbolInfo\SymbolInfo.cs
-- `22:12:40` » edit tests\TradingEngine.Tests.Unit\Services\SpreadVolNoTradeFilterTests.cs
-- `22:12:47` » grep enum SymbolCategory
-- `22:13:13` » bash dotnet test tests/TradingEngine.Tests.Unit --filter "FullyQualifiedName~SpreadVolNoTradeFilter" 2>&1
-- `22:13:20` » edit tests\TradingEngine.Tests.Unit\Services\SpreadVolNoTradeFilterTests.cs
-- `22:13:39` » bash dotnet test tests/TradingEngine.Tests.Unit --filter "FullyQualifiedName~SpreadVolNoTradeFilter" 2>&1
-- `22:13:45` » grep record Tick
-- `22:13:49` » read src\TradingEngine.Domain\MarketData\Tick.cs
-- `22:13:59` » edit tests\TradingEngine.Tests.Unit\Services\SpreadVolNoTradeFilterTests.cs
 
 ## Stage progress
 
@@ -38,7 +17,7 @@ _Session #21 (Deliver) · running 30m · last output 19s ago · $0.1578_
 | P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
 | P4 | Lab golden paths | 1/1 | confirmed ✓ |
 | P5 | UI truth + Angular refactor | 1/1 | confirmed ✓ |
-| P6 | Wild list (pipeline-gated) | 0/1 | **← active** |
+| P6 | Wild list (pipeline-gated) | 3/8 | **← active** |
 
 ## Sessions
 
@@ -64,19 +43,10 @@ _Session #21 (Deliver) · running 30m · last output 19s ago · $0.1578_
 | 18 | P5 | Deliver | 1 | 07-08 19:23 | 0:32 | Advanced | P5.1 | 6 | build:OK | $0.2486 | 311,603/29,675 |
 | 19 | P5 | Audit | 1 | 07-08 19:56 | 0:32 | Progress |  | 5 |  | $0.0740 | 78,820/12,802 |
 | 20 | P5 | Fix | 2 | 07-08 20:31 | 0:09 | Progress |  | 1 | build:OK | $0.0560 | 96,666/7,540 |
-| 21 | P6 | Deliver | 1 | 07-08 20:44 | … | running |  | 0 |  |  |  |
+| 21 | P6 | Deliver | 1 | 07-08 20:44 | 0:35 | Advanced | P6.1 P6.2 P6.3 | 7 | build:OK | $0.2491 | 297,876/38,388 |
 
 ### Commits by session
 
-- **s12 (P3 Deliver)** — 8 commit(s):
-  - 86f7443 ﻿docs(P3): tracker + RESUME — P3.1/P3.2/P3.4-files DONE, P3.3 + live gate next
-  - 4464a09 feat(P3.2b): playbook engine — dumb sequential executor + pipeline verbs
-  - 7bf2edb ﻿feat(P3.4): canonical research playbooks + schema (venue-parity, explore-exit)
-  - 10e5f2e chore(conductor): s12 P3 working ▸P3.1 @ 18:57
-  - e5e9e86 feat(P3.2a): research-pipeline persistence + review API (Q6)
-  - 9e3df8d chore(conductor): s12 P3 working ▸P3.1 @ 18:42
-  - e3dcb9d feat(P3.1): finish ResearchCli verb surface — data ensure, run start, exitlab, walkforward
-  - 1a393e7 chore(conductor): s12 P3 working ▸P3.1 @ 18:27
 - **s14 (P3 Fix)** — 2 commit(s):
   - 085c06d docs(P3.3): session s14 bookkeeping — P3.3 DONE, gates green, RESUME updated
   - 8bca2cb feat(P3.3): UI /research review page — pipeline list + detail + approve/reject
@@ -105,6 +75,14 @@ _Session #21 (Deliver) · running 30m · last output 19s ago · $0.1578_
   - d29a177 chore(conductor): s19 P5 working ▸P5 @ 21:11
 - **s20 (P5 Fix)** — 1 commit(s):
   - 6c6893f P5.1c-tscfix: fix 2 tsc errors blocking web-tsc gate (s20)
+- **s21 (P6 Deliver)** — 7 commit(s):
+  - 36f5e0f docs(s21): update TRACKER + RESUME for P6.1-P6.3 delivery
+  - e6c45aa feat(P6.3): spread/vol no-trade filter — SpreadVolNoTradeFilter + playbook
+  - f59415d chore(conductor): s21 P6 working ▸P6.1 @ 22:14
+  - 1598970 feat(P6.2): session fingerprinting — SessionDetector + playbook
+  - 2bac5d3 feat(P6.1): data-quality sentinel — ResearchCli verb + playbook step
+  - 2e6fb66 feat(P5.1d): Angular refactor — signals migration, toast service, store progress consolidation
+  - ede782b chore(conductor): s21 P6 working ▸P6.1 @ 21:59
 
 ## Phase handovers (audit)
 
@@ -117,37 +95,32 @@ _Session #21 (Deliver) · running 30m · last output 19s ago · $0.1578_
 
 ## Last gate run
 
-build:OK · unit:OK · sim-fast:OK · web-tsc:OK
+build:OK
 
 ## Last session result
 
-> Now let me read the failing files and reproduce the failure.
-> Failures reproduced. Now let me examine the types.
-> **Fix 1:** `symbol` → `symbols` (array), `period` → `periods` (array), add required `strategyIds`.
-> **Fix 2:** Remove second argument from Playwright's `toBeGreaterThanOrEqual` (Playwright's `expect` doesn't accept a message param).
-> Now re-run tsc to verify both fixes:
-> tsc clean. Now run the full gate battery.
-> Build failed due to stale Angular asset references (previous build had `main-ALAP6DMD.js`, new build produced `main-Q34LO5GA.js`). Need to clean wwwroot first.
-> Build: **0 errors, 5 warnings**. Now run the test suites:
-> All green. Now check golden fixtures byte-identical…
+> Starting the pre-session ritual. Let me read all mandatory documents in order.
+> Good. The branch is `iter/parity-pipeline`, HEAD is s20 (P5.1c-tscfix). Tree is clean except for BuildInfo auto-generated files. Let me continue reading the rest of the AGENTS.md RESUME block, PLAN §9 (P6), and AUDIT.md for P6-related findings.
+> Now let me read the remaining mandatory docs — P6-specific, SYSTEM-REFERENCE, WORKFLOW, DECISIONS.
+> Now let me QA the previous session (s20/P5). Per §10.2, I need to re-run the gate commands and independently verify claims.
+> Running gate battery for previous session (s20/P5):
+> Build + Unit + Sim gates GREEN. Now Integration, golden, and tsc:
+> All gates GREEN. Now verifyin…
 
 ## Tracker handoff
 
 ```
-last: **P5.1c DONE** (09fc807) + **P5.1c-tsofix DONE** (s20): fixed 2 tsc errors from P5.1a-c —
-      runs.service.spec.ts used singular `symbol`/`period` instead of `symbols`/`periods` arrays matching
-      StartRunRequest; ui-smoke.spec.ts passed a 2nd arg to Playwright's toBeGreaterThanOrEqual which doesn't
-      accept a message param.
-stage: **P5 IN PROGRESS** — P5.1a-c + tsc fix done. P5 remaining per PLAN §8: Angular refactor (signals
-      migration for new-backtest class fields, runs.store consolidation, global error toast).
-gate: GREEN — build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical;
-      tsc clean (0 errors); driven smoke NOT RUN this session (web-ui tests didn't touch UI rendering paths).
-next: **P5.1d Angular refactor** (finish signals migration for 10+ new-backtest class fields → signals with
-       (ngModelChange), consolidate RunProgressEnvelope processing into runs.store, add global error toast).
-       Then P6 wild list per PLAN §9.
-QA-prev: s16 P4.1 — confirmed (build + tests green; M44 manually applied).
-trap: (1) New-backtest class fields still plain fields (not signals). (2) runs.store.ts still minimal.
-      (3) No global error toast. (4) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-      (5) BuildInfo.g.cs + build-info.ts re-dirty each build (leave). (6) P4.1 traps (F11 smoke, F12
-      backfill) owner-pending.
+last: **P5.1d DONE** (2e6fb66) + **P6.1 DONE** (2bac5d3) + **P6.2 DONE** (1598970) + **P6.3 DONE** (e6c45aa)
+stage: **P6 IN PROGRESS** — P6.1 data-quality, P6.2 session-fingerprint, P6.3 spread-vol-filter delivered.
+  P6.4-P6.8 (regime calibration, bootstrap tapes, meta-allocator, entry-quality, pyramiding) remain TODO.
+gate: GREEN — build 0err/5warn; Unit 664/0/6 (+26 from 638); Integration 120/0/0; fast Sim 144/0/0;
+  golden byte-identical; tsc 0 errors; 5 shipped playbooks parse (data-quality, session-fingerprint,
+  spread-vol-filter, venue-parity, explore-exit). No driven smoke run (UI changes were pure refactor).
+next: **P6.4 regime-conditioned calibration** (PLAN §9 #5) — add regime dimension to exit-lab grid,
+  calibrate per-regime exit rules, measure via playbook.
+trap: (1) Session labels not yet wired into TradeExcursions — SessionDetector is ready but not consumed
+  (needs schema migration or computed API field). (2) SpreadVolNoTradeFilter has no strategy config
+  integration — strategy JSONs don't expose it yet. (3) Playbook 3 (triage-sweep.json) never created.
+  (4) BuildInfo.g.cs + build-info.ts re-dirty each build (leave).
+QA-prev: s20/P5.1c-tscfix — confirmed (full gate battery + 2 independent claims verified).
 ```
