@@ -232,34 +232,34 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD after this session:** the P0.4 commit `8277df2` (+ the docs
-commit updating TRACKER/RESUME + conductor bookkeeping).
-**Session (s5, P0):** QA of P0.3 = **confirmed for delivered scope; diverged on F6 closure** (full gate
-battery re-run verbatim; TradePersistenceBarrier 3/3; runtime/R5 DB check found the divergence → new
-residual **F6-R**, see below). Then landed **P0.4 (F2, Q4 measure-first)** in 1 commit:
-- Reconcile endpoint gains per-run `leftLatency`/`rightLatency`: per-trade `entryDelaySeconds`+
-  `entryDelayBars` (proposal `OrderProposed.OccurredAtUtc` → fill `TradeResult.OpenedAtUtc`, joined on
-  `OrderId`) + median/mean/min/max distribution. Pure `EntryLatencyAnalyzer` (Infrastructure); I/O in
-  `LedgerReconcileService.BuildEntryLatencyAsync`. NO cBot/kernel change; golden untouched (no rebaseline).
-- **F2 measured credential-free** from the kept audit DB (`src/TradingEngine.Web/data/trading.db`): tape
-  3660s = 1.017 H1 bars (= 1 M1 past the decision-bar close), cTrader 7200s = 2.0 bars → **venue gap
-  3540s ≈ 1 decision bar**. Number in `docs/audit/RECONCILE-FINDINGS.md` §P0.4 + evidence file.
+**Branch:** `iter/parity-pipeline` — **HEAD after this session:** P1.2 commit `d36f491` (P1.1 = `f364102`),
+plus the docs commit updating TRACKER/RESUME (+ conductor bookkeeping interleaved — SHAs may shift again).
+**Session (s8, P1):** QA of s7 = **confirmed (s7 was a no-op)** — s7 left P1.1/P1.2 TODO; re-ran full P0
+gates + F9 runtime DB check, all green, no fix needed. Then delivered **P1 COMPLETE** in 2 commits:
+- **P1.1 (F10, f364102):** `DbPathResolver` (repo-root anchored, cwd-independent single source) unifies the
+  Web + Host CLI + orchestrator DB path; `MigrationGuard` fails loud (exit≠0, exact path) on pending
+  migrations; new `compute-reference-scales` Host verb → **84/84 ReferenceScales** on the unified Web DB.
+- **P1.2 (F9/F7, d36f491):** M42 adds `SeededHash`+`SeededAtUtc`; `ConfigSyncService` (Web startup, after
+  seeders) propagates JSON edits to the DB unless hand-edited (drift-safe); `GET /api/system/config-drift`;
+  F7 fills `StrategyParamsJson`. **R5 proven LIVE:** edit trend-breakout Market→LimitOffset + restart → DB
+  `OrderEntryJson` `Method:1`, Version 1→2; revert+restart → back to `Method:0` (self-heal).
 
 **Gates GREEN (commands):** `dotnet build TradingEngine.slnx -c Debug` → 0 err/5 warn; Unit `--no-build`
-→ 528/0/6; fast Sim `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ&Category!=CtraderContract`
-→ 144/0/0; golden `FullyQualifiedName~Golden` → 61/61 byte-identical (diff-stat empty); Integration → 108/0/0.
+534/0/6; Integration `--no-build` 115/0/0 (+6 P1 tests); golden `FullyQualifiedName~Golden` 61/61
+byte-identical (git diff --stat *golden* empty; NO rebaseline); fast Sim filter 144/0/0.
 
-**Next step:** **P0 spine is complete → start P1.1 (one database, F10)** — single DB path shared by Web +
-Host CLI; startup fails loud on pending migrations with the exact path; archive stale root
-`data/trading.db` (check BacktestRuns count first); `compute-reference-scales` populates 84/84 cells.
-See PLAN §4 P1.1 + AUDIT F10. Then P1.2 (config propagation/drift, F9/F7).
+**Next step:** **Start P2.1 (run state machine + tests, F8)** — enumerate `queued→starting→running→
+finalizing→completed|completed-with-warnings|cancelled|failed`, forbid illegal jumps in ONE place
+(orchestrator state is stringly + multi-writer today); cancel kills the ctrader-cli tree (no orphans);
+watchdog finalizes within 30s on CLI-exit-without-completion. Then P2.2 (OWNER-GATE: one real compare-both
+run + committed reconcile verdict — the inherited P6.1 headline gate).
 
-**Open traps:** (1) **F6-R (NEW):** the audited F6 run `f7b0538d` has 0 journalled PublishTradeClosed
-(closes came via 7 Reconcile events, lost before journalling) → P0.3's barrier finds expected=0, emits no
-warning → still TotalTrades=0. P0.3 fixes the persistence-channel-loss F6 case (successful cTrader runs DO
-journal PublishTradeClosed) but NOT the crashed-teardown case. Owner decision needed (options a/b/c in
-TRACKER P0.3 residual row). Do NOT fix blind — STOP condition (kernel/adapter reconcile-close semantics).
-(2) All P0 real cTrader runs (P0.1/P0.2/P0.3/P0.4) are OWNER-PENDING (creds) — do NOT attempt live runs to
-"verify"; all are proven credential-free. (3) Golden has NOT moved through P0.4 — no phantom rebaseline.
-(4) `BuildInfo.g.cs` (cBot) re-dirties every build; leave it uncommitted. (5) `.conductor/` untracked,
-orchestrator-managed. (6) `npx tsc --noEmit` has 2 PRE-EXISTING errors (P5). (7) P2.2 OWNER-GATE.
+**Open traps:** (1) P1.2 journal-OrderProposed-in-a-run + StrategyParamsJson-in-a-persisted-run are
+bars/cTrader-gated (credential-free `replay` = "No bars found") → OWNER-PENDING, NOT a code gap. (2) The
+real DB now has M42 applied + SeededHash baselined; trend-breakout Version=3 from the live round-trip
+(cosmetic). (3) P0 real cTrader runs (P0.1–P0.4) still OWNER-PENDING; F6-R detection-only accepted. (4)
+`BuildInfo.g.cs` re-dirties every build (leave uncommitted); `.conductor/` + `conductor-CLEANUP.md`
+orchestrator-managed — do NOT stage them. (5) `WalkForwardBackgroundService` throws
+OperationCanceledException on `Stop-Process` shutdown (pre-existing). (6) `npx tsc --noEmit` 2 pre-existing
+errors (P5). (7) commit via `git commit -F <file>` — PowerShell mangles multi-line `-m`.
+

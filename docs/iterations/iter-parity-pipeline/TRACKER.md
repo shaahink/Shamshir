@@ -17,24 +17,25 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P0 STATIC AUDIT DONE** (s6, commit 305a853) — hardened the spine before P1. Reviewed the whole
-      P0 diff (c305a08..HEAD). Found + fixed the F6-R crashed-teardown honesty gap with the tracker's
-      recommended option-(b) detection safety net (TRADES_UNRECONSTRUCTABLE), evidence-backed vs all 6
-      audit-DB runs (false-positive-free); plus an EngineRunner F1 drift-log accuracy fix. No other
-      correctness bugs found — F1/F2/F5/F6 fixes are sound; tests are genuine (not happy-path stubs).
-stage: **P0 spine COMPLETE + AUDITED.** Next stage **P1** — start P1.1 (one database, F10).
-gate: GREEN — build 0 err/5 warn; Unit 528/0/6; Integration 110/0/0 (+2 F6-R); fast Sim 144/0/0;
+last: **P1 COMPLETE** (s8). P1.1 (f364102, F10): DbPathResolver (repo-root anchored, single source) unifies
+      Web+Host+orchestrator DB path; MigrationGuard fail-loud (exit≠0) on pending migrations; new
+      compute-reference-scales Host verb populated 84/84 ReferenceScales. P1.2 (d36f491, F9/F7):
+      M42 SeededHash/SeededAtUtc + ConfigSyncService (startup) propagate JSON edits to the DB, drift-safe;
+      GET /api/system/config-drift; StrategyParamsJson now = effective config. R5 proven LIVE.
+stage: **P1 spine COMPLETE.** Next stage **P2** — start P2.1 (run state machine + tests, F8).
+gate: GREEN — build 0 err/5 warn; Unit 534/0/6; Integration 115/0/0 (+6 P1 tests); fast Sim 144/0/0;
       golden 61/61 byte-identical (git diff --stat *golden* = empty; NO rebaseline).
-next: **P1.1 (one DB, F10)** — single DB path shared by Web + Host CLI; startup fails loud on pending
-      migrations; archive stale root data/trading.db; compute-reference-scales populates 84/84 cells.
-F6-R: option (b) detection-only ACCEPTED 2026-07-08 — owner defers economics recovery (option a).
-       Detection safety net is false-positive-free, surfaces TRADES_UNRECONSTRUCTABLE honestly.
-       Non-blocking for P1.
-trap: OWNER-PENDING real cTrader runs (P0.1–P0.4 all creds-gated; not run this audit — proven
-      credential-free). One transient Integration failure seen once (not reproduced in 2 subsequent full
-      110/0 runs; NOT the 2 new F6-R tests — those use isolated in-memory SQLite); suspected pre-existing
-      flakiness — next session watch for it. P2.2 OWNER-GATE; BuildInfo.g.cs re-dirties every build
-      (leave it); tsc 2 pre-existing (P5).
+next: **P2.1 (run state machine, F8)** — enumerate queued→starting→running→finalizing→terminal, forbid
+      illegal jumps in ONE place; cancel kills ctrader-cli tree (no orphans); watchdog finalizes on CLI
+      exit-without-completion. Then P2.2 (OWNER-GATE: real compare-both + reconcile verdict).
+QA-prev: s7 P1-attempt-1 was a no-op (P1.1/P1.2 stayed TODO; only a benign TRACKER reword). Re-ran full P0
+      gate battery + F9 runtime DB check → confirmed. No fix needed.
+trap: (1) journal-OrderProposed-in-a-run + StrategyParamsJson-in-a-persisted-run are bars/cTrader-gated
+      (replay=No bars found) → OWNER-PENDING, not a code gap. (2) Real DB now has M42 applied +
+      SeededHash baselined (trend-breakout Version=3 from the live round-trip — cosmetic). (3) P0 cTrader
+      runs still OWNER-PENDING; F6-R detection-only accepted. (4) BuildInfo.g.cs re-dirties every build
+      (leave it); .conductor/ + conductor-CLEANUP.md orchestrator-managed; tsc 2 pre-existing (P5).
+      (5) WalkForwardBackgroundService throws OperationCanceledException on Stop-Process (pre-existing).
 
 ## Checkpoints
 
@@ -69,6 +70,13 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 > TotalTrades=0. P0.3's synthetic test is correct + green, but the audited crashed-teardown case is neither
 > recovered nor flagged → new residual **F6-R** (below). NOT fixed this session (out of P0.4 stage + STOP:
 > touches cTrader reconcile-close/kernel semantics; needs owner decision on approach).
+>
+> QA-previous (s8 QA of s7/P1-attempt-1): **confirmed (s7 was a no-op).** s7 committed only conductor
+> bookkeeping + a benign TRACKER F6-R reword; P1.1/P1.2 stayed TODO, no P1 source landed. Re-ran the full P0
+> gate battery verbatim: build 0err/5warn, Unit 528/0/6, Integration 110/0/0, golden 61/61 byte-identical,
+> fast Sim 144/0/0. Verified 2 claims: (runtime/R5) `sqlite3 …Web/data/trading.db` StrategyConfigs = Method:0
+> ×8 + mean-reversion Method:1 (F9 no longer diverges), migration head M41, ReferenceScales=0; (tests) golden
+> + Integration + fast Sim re-run green. No divergence, no fix needed → proceeded to deliver P1.1 + P1.2.
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
@@ -79,8 +87,8 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 > residual (F6-R, found s5 QA; option-b SAFETY NET landed s6-audit 305a853): P0.3 backfills only from journalled PublishTradeClosed. The audited f7b0538d has 0 of those (7 closes came via OrderFilled close-fill events, no PublishTradeClosed effect) → PublishTradeClosed backfill computes expected=0. **NOW MITIGATED (option b, detection-only):** the barrier also counts close-fills (OrderFilled w/ non-null CloseReason) and flags `Unreconstructable` when persisted+backfilled==0 && closeFills>0 → orchestrator attaches `TRADES_UNRECONSTRUCTABLE:{n}` → completed-with-warnings (no more silent TotalTrades=0). Proven false-positive-free vs all 6 audit-DB runs. **STILL DEFERRED (option a, owner-decision):** RECONSTRUCTING the economics from open+close fill pairs touches VenueManaged reconcile-close mapping (kernel/adapter-adjacent STOP condition) — see HUMAN line below. Evidence: evidence/P0.3-trade-persistence-barrier.md §7.
 | P0.4 | Entry-latency instrumentation (F2): entryDelayBars in reconcile output | DONE (OWNER-PENDING: live paired-run confirmation needs creds) | 8277df2 | docs/iterations/iter-parity-pipeline/evidence/P0.4-entry-latency.md; docs/audit/RECONCILE-FINDINGS.md §P0.4 (real numbers: tape 3660s/1.017 bars, cTrader 7200s/2.0 bars, gap 3540s); EntryLatencyAnalyzerTests 6/6 (Unit) + EntryLatencyReconcileTests 1/1 (Integration) |
 | P0.5 | Venue-parity test tier (R8): Category=VenueParity wired into the standard gate filter | DONE | a6aa08c | fast-Sim filter 139→144 (5 VenueParity tests ride the standard gate); evidence P0.1 §6 |
-| P1.1 | One database (F10): Host CLI verbs run against the Web DB; 84/84 ReferenceScales rows | TODO | | |
-| P1.2 | Config propagation + drift (F9,F7): JSON edit reflected in journal; UI edit survives restart | TODO | | |
+| P1.1 | One database (F10): Host CLI verbs run against the Web DB; 84/84 ReferenceScales rows | DONE | f364102 | docs/iterations/iter-parity-pipeline/evidence/P1.1-one-database.md; DbPathResolverTests 6/6 (Unit) + MigrationTests 3/3 (Integration); R5: sqlite COUNT(ReferenceScales)=84 on the unified Web DB; fail-loud repro exit 2 |
+| P1.2 | Config propagation + drift (F9,F7): JSON edit reflected in journal; UI edit survives restart | DONE (OWNER-PENDING: journal-in-a-real-run + StrategyParamsJson-in-a-persisted-run are bars/cTrader-gated) | d36f491 | docs/iterations/iter-parity-pipeline/evidence/P1.2-config-propagation-drift.md; ConfigSyncServiceTests 3/3 (Integration); R5 LIVE: edit trend-breakout Market→LimitOffset + restart → DB OrderEntryJson Method:1 Version 1→2; GET /api/system/config-drift 200 |
 | P2.1 | Run state machine + tests (F8): cancel/watchdog/orphan-kill transitions green | TODO | | |
 | P2.2 | OWNER-GATE: one real compare-both run + committed reconcile verdict (inherited P6.1 gate) | TODO | | |
 | P3.1 | TradingEngine.ResearchCli console project (verbs, --json, VERDICT lines, diagnostics) | TODO | | |
