@@ -1,12 +1,11 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 20:29 UTC · branch `iter/parity-pipeline` · HEAD `a057a6b`_
+_Updated 2026-07-08 20:31 UTC · branch `iter/parity-pipeline` · HEAD `1ffe01c`_
 
 **Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P5 — UI truth + Angular refactor · attempts used 0
+**Stage:** P5 — UI truth + Angular refactor · attempts used 1
 **Checkpoints:** 16/17 done · **Sessions run:** 19 · **Cost:** $1.6049 · **Tokens:** 1,233,242 in / 416,344 out / 209,121 think
 **Confirmed phases:** P0, P1, P2, P3, P4
-**Pending:** full-battery phase gate for P5
 
 ## Stage progress
 
@@ -98,7 +97,15 @@ _Updated 2026-07-08 20:29 UTC · branch `iter/parity-pipeline` · HEAD `a057a6b`
 
 ## Last gate run
 
-build:OK
+build:OK · unit:OK · sim-fast:OK · web-tsc:FAIL
+
+<details><summary>web-tsc — exit 2</summary>
+
+```
+src/app/features/runs/runs.service.spec.ts(47,7): error TS2561: Object literal may only specify known properties, but 'symbol' does not exist in type 'StartRunRequest'. Did you mean to write 'symbols'?
+tests/e2e/ui-smoke.spec.ts(59,45): error TS2554: Expected 1 arguments, but got 2.
+```
+</details>
 
 ## Last session result
 
