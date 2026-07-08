@@ -172,6 +172,7 @@ public sealed class PlaybookEngineTests
     [Theory]
     [InlineData("venue-parity.json")]
     [InlineData("explore-exit.json")]
+    [InlineData("data-quality.json")]
     public void ShippedPlaybook_Parses_AndHasKnownStepKinds(string file)
     {
         var path = Path.Combine(RepoRoot(), "playbooks", file);

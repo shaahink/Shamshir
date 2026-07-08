@@ -17,6 +17,8 @@ try
     {
         case "data ensure":
             return await DataEnsureAsync(cli, baseUrl, timeout);
+        case "data quality":
+            return await DataQualityAsync(cli, baseUrl, timeout);
         case "run start":
             return await RunStartAsync(cli, baseUrl, timeout);
         case "run validate":
@@ -203,6 +205,37 @@ static async Task<int> DataEnsureAsync(CliArgs cli, string baseUrl, TimeSpan tim
         VerdictField.Of("missing", missing.Count),
         VerdictField.Of("downloadQueued", cli.Flag("download") ? "true" : "false"),
         VerdictField.Of("gaps", detail)).Render());
+    return 1;
+}
+
+static async Task<int> DataQualityAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.GetAsync("api/data-manager/quality-report", CancellationToken.None);
+
+    using var doc = System.Text.Json.JsonDocument.Parse(json);
+    var root = doc.RootElement;
+
+    var bars = root.TryGetProperty("totalBars", out var tb) ? tb.GetInt64() : 0;
+    var violations = root.TryGetProperty("totalViolations", out var tv) ? tv.GetInt32() : -1;
+    var ohlcCount = root.TryGetProperty("ohlcViolations", out var ov) ? ov.GetArrayLength() : 0;
+    var gapCount = root.TryGetProperty("gapEntries", out var ge) ? ge.GetArrayLength() : 0;
+
+    var fields = new List<VerdictField>
+    {
+        VerdictField.Of("totalBars", bars.ToString()),
+        VerdictField.Of("violations", violations.ToString()),
+        VerdictField.Of("ohlcViolations", ohlcCount.ToString()),
+        VerdictField.Of("gaps", gapCount.ToString()),
+    };
+
+    if (violations == 0)
+    {
+        Console.WriteLine(Verdict.Passing([.. fields]).Render());
+        return 0;
+    }
+
+    Console.WriteLine(Verdict.Failing([.. fields]).Render());
     return 1;
 }
 
@@ -397,10 +430,11 @@ static DateTime? ParseDate(string? value) =>
 
 static void PrintUsage()
 {
-    Console.Error.WriteLine("""
+        Console.Error.WriteLine("""
         TradingEngine.ResearchCli (research) — drives the running Shamshir Web app over HTTP.
         Usage:
           research data ensure  --symbols EURUSD,XAUUSD --tfs H1,M15 [--from 2026-01-01 --to 2026-07-01] [--download]
+          research data quality [--base-url https://localhost:7108]
           research run start    --plan plan.json [--venue tape] [--compare-both] [--explore]
           research run validate <runId> [--require-status completed] [--min-trades 1]
                                         [--forbid-warnings] [--forbid-warning-code TRADES_LOST] [--json]

@@ -32,6 +32,7 @@ public sealed class HttpStepRunner : IStepRunner
         return step.Kind switch
         {
             StepKinds.EnsureData => await EnsureDataAsync(step, ct),
+            StepKinds.DataQuality => await DataQualityAsync(step, ct),
             StepKinds.StartRun => await StartRunAsync(step, context, ct),
             StepKinds.AwaitRun => await AwaitRunAsync(step, context, ct),
             StepKinds.AssertGates => await AssertGatesAsync(step, context, ct),
@@ -61,6 +62,31 @@ public sealed class HttpStepRunner : IStepRunner
             : Verdict.Failing(VerdictField.Of("cells", cells.Count), VerdictField.Of("missing", missing.Count),
                 VerdictField.Of("gaps", string.Join(",", missing.Select(m => $"{m.Symbol}:{m.Timeframe}"))));
         return missing.Count == 0 ? StepOutcome.Pass(v.Render()) : StepOutcome.Fail(v.Render());
+    }
+
+    private async Task<StepOutcome> DataQualityAsync(PlaybookStep step, CancellationToken ct)
+    {
+        var json = await _client.GetAsync("api/data-manager/quality-report", ct);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        var bars = root.TryGetProperty("totalBars", out var tb) ? tb.GetInt64() : 0;
+        var violations = root.TryGetProperty("totalViolations", out var tv) ? tv.GetInt32() : -1;
+        var ohlcCount = root.TryGetProperty("ohlcViolations", out var ov) ? ov.GetArrayLength() : 0;
+        var gapCount = root.TryGetProperty("gapEntries", out var ge) ? ge.GetArrayLength() : 0;
+
+        var v = violations switch
+        {
+            0 => Verdict.Passing(
+                VerdictField.Of("totalBars", bars.ToString()),
+                VerdictField.Of("violations", "0")),
+            _ => Verdict.Failing(
+                VerdictField.Of("totalBars", bars.ToString()),
+                VerdictField.Of("violations", violations.ToString()),
+                VerdictField.Of("ohlcViolations", ohlcCount.ToString()),
+                VerdictField.Of("gaps", gapCount.ToString())),
+        };
+        return violations == 0 ? StepOutcome.Pass(v.Render()) : StepOutcome.Fail(v.Render());
     }
 
     private async Task<StepOutcome> StartRunAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)

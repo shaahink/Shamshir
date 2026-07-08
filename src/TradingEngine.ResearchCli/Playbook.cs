@@ -76,6 +76,7 @@ public sealed record PlaybookStep(int Index, string Kind, JsonObject Params, boo
 public static class StepKinds
 {
     public const string EnsureData = "ensure-data";
+    public const string DataQuality = "data-quality";
     public const string StartRun = "start-run";
     public const string AwaitRun = "await-run";
     public const string AssertGates = "assert-gates";
@@ -88,7 +89,7 @@ public static class StepKinds
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
     {
-        EnsureData, StartRun, AwaitRun, AssertGates, Reconcile, ExitLabEval,
+        EnsureData, DataQuality, StartRun, AwaitRun, AssertGates, Reconcile, ExitLabEval,
         WalkForward, ApplyCalibration, OwnerGate, Report,
     };
 
