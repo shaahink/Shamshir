@@ -1,36 +1,16 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 05:24 UTC · branch `iter/parity-pipeline` · HEAD `563b65b`_
+_Updated 2026-07-08 05:34 UTC · branch `iter/parity-pipeline` · HEAD `572b4ee`_
 
-**Status:** Running
-**Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.2
-**Checkpoints:** 3/17 done · **Sessions run:** 3 · **Cost:** $0.1656 · **Tokens:** 126,016 in / 42,661 out / 20,571 think
-
-## Latest activity (live)
-
-_Session #3 (Deliver) · running 75m · last output 7s ago · $0.0878_
-
-**Thinking:**
-> I'm splitting the testing strategy: a unit test for the pure RunStatusResolver logic, and an integration test that covers the full cycle of persisting warnings to the database and deriving status through the query service.
-> I'm realizing there's a mismatch in where I've placed the test — the integration test doesn't have the Category=VenueParity filter that runs on the Simulation project, but I put RunStatusTruthTests in Integration instead. The P0.5 VenueParity tier lives on Simulation, so I need to reconsider where t…
-
-**Recent actions:**
-- `06:23:08` » bash dotnet build tests/TradingEngine.Tests.Integration/TradingEngine.Tests.Integration.csproj -c Debug 2>&1 | Select-Object -Last 4
-- `06:23:20` · Both build. Now run the new tests specifically, then the full suites.  Running: new P0.2 tests (expect <1 min)...
-- `06:23:23` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build --filter "FullyQualifiedName~RunStatusResolverTests|FullyQualifiedName~NetMqTransportTeardownTests" 2…
-- `06:23:24` » bash dotnet test tests/TradingEngine.Tests.Integration --no-build --filter "FullyQualifiedName~RunStatusTruthTests" 2>&1 | Select-Object -Last 5
-- `06:23:38` » todowrite 2 todos
-- `06:23:38` · All new tests pass (14 Unit — includes 6 resolver + 2 teardown + 6 HasWarnings theory; 3 Integration). Now the runtime-propagation proof (R5): apply the migrati…
-- `06:23:51` · Now the R5 runtime proof. Let me check the Web DB schema before, apply the migration, and verify the column exists in the actual runtime store.
-- `06:23:51` » bash $db = "src/TradingEngine.Web/data/trading.db"; echo "=== BEFORE: WarningsJson present? ==="; sqlite3 $db "PRAGMA table_info(BacktestRuns);" | Select-String…
-- `06:24:02` · Column not present, M40 is latest. Now apply the migration via `dotnet ef database update` against the Web DB.  Running: `dotnet ef database update` (expect 30-…
-- `06:24:12` » bash dotnet ef database update --project src/TradingEngine.Infrastructure/TradingEngine.Infrastructure.csproj --startup-project src/TradingEngine.Web/TradingEng…
+**Status:** Idle
+**Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.3
+**Checkpoints:** 4/17 done · **Sessions run:** 3 · **Cost:** $0.2766 · **Tokens:** 130,635 in / 75,219 out / 38,673 think
 
 ## Stage progress
 
 | Stage | Title | Done | State |
 |---|---|---|---|
-| P0 | Parity truth repair (the spine) | 3/6 | **← active** |
+| P0 | Parity truth repair (the spine) | 4/6 | **← active** |
 | P1 | Config & DB truth | 0/2 | todo |
 | P2 | Lifecycle robustness + headline gate | 0/2 | todo |
 | P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | todo |
@@ -44,7 +24,7 @@ _Session #3 (Deliver) · running 75m · last output 7s ago · $0.0878_
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 1 | P0 | Deliver | 1 | 07-08 02:17 | 0:19 | Advanced | P0.0 | 5 | build:OK | $0.0273 | 1,510/12,485 |
 | 2 | P0 | Deliver | 1 | 07-08 02:37 | 1:30 | Advanced | P0.1 P0.5 | 8 | build:OK | $0.1384 | 124,506/30,176 |
-| 3 | P0 | Deliver | 1 | 07-08 04:09 | … | running |  | 0 |  |  |  |
+| 3 | P0 | Deliver | 1 | 07-08 04:09 | 1:25 | Advanced | P0.2 | 8 | build:OK | $0.1109 | 4,619/32,558 |
 
 ### Commits by session
 
@@ -63,6 +43,15 @@ _Session #3 (Deliver) · running 75m · last output 7s ago · $0.0878_
   - 601e625 chore(conductor): s2 P0 working ▸P0.1 @ 04:22
   - c8357f5 chore(conductor): s2 P0 working ▸P0.1 @ 04:07
   - b73d250 chore(conductor): s2 P0 working ▸P0.1 @ 03:52
+- **s3 (P0 Deliver)** — 8 commit(s):
+  - 572b4ee docs(P0.2): tracker + AGENTS RESUME — P0.2 done (F5), next P0.3 (F6)
+  - de4c8e7 feat(P0.2,F5,Q5): run-status truth — completed-with-warnings separates result from teardown
+  - 0a4d73f chore(conductor): s3 P0 working ▸P0.2 @ 06:24
+  - 563b65b chore(conductor): s3 P0 working ▸P0.2 @ 06:09
+  - cda0755 chore(conductor): s3 P0 working ▸P0.2 @ 05:54
+  - 6533c7e fix(P0.2,F5): idempotent NetMqMessageTransport.DisconnectAsync — kills the disposed-NetMQPoller crash
+  - cba8e92 chore(conductor): s3 P0 working ▸P0.2 @ 05:39
+  - 3a4e4b6 chore(conductor): s3 P0 working ▸P0.2 @ 05:24
 
 ## Last gate run
 
@@ -70,24 +59,30 @@ build:OK
 
 ## Last session result
 
-> I'll begin the pre-session ritual. Let me read the required docs in order, starting with the key handoff files.
-> The RESUME block reconciles: HEAD is at `9686242` + conductor commits (`b5e06d4`, `e42aac6`), working tree only has the expected `BuildInfo.g.cs` drift + `.conductor/.gitignore`. Now let me read the stage plan, audit findings, and standards docs.
-> Now let me read the standards docs and evidence file from P0.0, plus start locating the key code files.
-> Now I understand the context. Let me QA the previous session (P0.0). First, verify the runtime store claim (DB) and read the key P0.1 files, while kicking off the build gate.
-> R5 claim confirmed: DB shows Method:0 (Market) ×8 + Method…
+> I'll start with the pre-session ritual. Let me read the required docs and check git state in parallel.
+> Now let me read the PLAN.md (my stage section P0) and AUDIT.md (F1/F2/F5/F6).
+> Now let me read the AUDIT.md findings relevant to my stage (F1/F2/F5/F6) and the P0.1 evidence artifact.
+> Now let me QA the previous session. Let me read the P0.1 evidence and the key source files for P0.2.
+> Now let me start QA. First, kick off the build (heartbeat) and read relevant workflow docs in parallel.
+> 
+> Running: `dotnet build TradingEngine.slnx -c Debug` (expect 1-3 minutes)...
+> Build green (0 err / 5 warn). Now QA the previous session — running the gate battery. Let me run Unit and the fast Simulation f…
 
 ## Tracker handoff
 
 ```
-last: **P0.1 + P0.5 DONE** — a6aa08c fix(P0.1,F1): backtest sizes off CONFIG balance (not venue hello);
-      EngineRunner.ResolveInitialBalance (pure); sizing DetailJson (R7); VenueSizingParityTests
-      [Category=VenueParity] 5/5 incl. ×0.25 repro + equal-lots-after-fix. QA-previous(P0.0): confirmed.
-stage: **P0 IN PROGRESS** — P0.0/P0.1/P0.5 done; P0.2 (run-status truth F5) is next, NOT started.
-gate: GREEN — build 0 err/5 warn; Unit 508/0/6; fast Sim 144/0/0 (was 139; +5 VenueParity);
-      golden 61/61 byte-identical (NO rebaseline — see evidence §5); Integration 101/0/0.
-next: **P0.2** — separate engine-result from transport-teardown (Q5 `completed-with-warnings`); reproduce
-      the NetMQPoller disposal race (poller/queue Dispose ordering), one repro before + clean after (R3).
-      See PLAN §3 P0.2 + AUDIT F5. NOTE P0.1 golden did NOT move (forecast was wrong) — no rebaseline.
-trap: real paired cTrader mini-run for P0.1 is OWNER-PENDING (needs creds). tsc 2 PRE-EXISTING errors
-      (P5). BuildInfo.g.cs regenerates every build → re-dirties (committed generated metadata). P2.2 OWNER-GATE.
+last: **P0.2 DONE** (2 commits) — 6533c7e fix(F5): idempotent NetMqMessageTransport.DisconnectAsync
+      (kills disposed-NetMQPoller crash at source; R3 fail-before/pass-after); de4c8e7 feat(F5,Q5):
+      RunStatusResolver + WarningsJson (M41) → complete run + teardown fault = completed-with-warnings,
+      never failed. QA-previous(P0.1/P0.5): confirmed. R5: WarningsJson column live in Web DB.
+stage: **P0 IN PROGRESS** — P0.0/P0.1/P0.2/P0.5 done; **P0.3 (trade persistence barrier, F6) is next**.
+gate: GREEN — build 0 err/5 warn; Unit 522/0/6 (+14); fast Sim 144/0/0; golden 61/61 byte-identical
+      (NO rebaseline); Integration 104/0/0 (+3).
+next: **P0.3** — finalization reconciles closed-positions-in-journal vs TradeResults rows; flush
+      TradePersistenceHandler before end record; on mismatch attach warning TRADES_LOST:{exp}:{persisted}
+      (reuse P0.2 WarningsJson) + journal-backfill missing TradeResults from StepRecords. BTC-scenario
+      test: fills journaled + venue killed before closes settle ⇒ completed-with-warnings, not TotalTrades=0.
+      See PLAN §3 P0.3 + AUDIT F6.
+trap: P0.2 real 3× headless cTrader run is OWNER-PENDING (needs creds; mechanism proven credential-free).
+      BuildInfo.g.cs re-dirties every build (committed generated metadata). P2.2 OWNER-GATE. tsc 2 pre-existing (P5).
 ```
