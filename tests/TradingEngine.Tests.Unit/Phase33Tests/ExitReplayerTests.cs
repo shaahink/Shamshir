@@ -439,4 +439,81 @@ public sealed class ExitReplayerTests
 
         outcome.Kind.Should().Be(ExitKind.EndOfData);
     }
+
+    [Fact]
+    public void ValidationGate_FullTrailingAfterBE_RoundTrip()
+    {
+        var trade = MakeLong(1.1000m, new Price(1.0970m), 0.0001m,
+            (0, 10.0, -5.0),
+            (60, 35.0, -8.0),
+            (120, 28.0, 12.0));
+
+        var rule = new ExitRule
+        {
+            SlAtrMultiple = 1.5,
+            TpRrMultiple = null,
+            BeTriggerR = 1.0,
+            BeOffsetPips = 0,
+            TrailAtrMultiple = 1.0,
+            ReferenceAtrPips = 20.0,
+        };
+
+        var outcome = ExitReplayer.Replay(trade, rule);
+
+        outcome.Kind.Should().Be(ExitKind.Breakeven);
+        outcome.BarsHeld.Should().Be(3);
+        outcome.RPips.Should().BeApproximately(15.0, 0.01);
+        outcome.RMultiple.Should().BeApproximately(0.5, 0.01);
+        outcome.MaePips.Should().BeApproximately(8.0, 0.01);
+        outcome.MfePips.Should().BeApproximately(35.0, 0.01);
+    }
+
+    [Fact]
+    public void ValidationGate_ComplexPath_SLHitWithBEArmed()
+    {
+        var trade = MakeLong(1.1000m, new Price(1.0970m), 0.0001m,
+            (0, 15.0, -20.0),
+            (60, 40.0, 5.0),
+            (120, 38.0, 2.0),
+            (180, 30.0, -4.0));
+
+        var rule = new ExitRule
+        {
+            SlAtrMultiple = 1.5,
+            TpRrMultiple = null,
+            BeTriggerR = 1.0,
+            BeOffsetPips = 3.0,
+            ReferenceAtrPips = 20.0,
+        };
+
+        var outcome = ExitReplayer.Replay(trade, rule);
+
+        outcome.Kind.Should().Be(ExitKind.Breakeven);
+        outcome.RPips.Should().BeApproximately(3.0, 0.01);
+        outcome.RMultiple.Should().BeApproximately(0.1, 0.01);
+        outcome.MaePips.Should().BeApproximately(20.0, 0.01);
+        outcome.MfePips.Should().BeApproximately(40.0, 0.01);
+    }
+
+    [Fact]
+    public void ValidationGate_ShortWithSpread_TPHit()
+    {
+        var trade = MakeShort(1.1000m, new Price(1.1030m), 0.0001m,
+            (0, 5.0, -25.0),
+            (60, 15.0, -50.0),
+            (120, 20.0, -65.0));
+
+        var rule = new ExitRule
+        {
+            SlAtrMultiple = 1.5,
+            TpRrMultiple = 2.0,
+            ReferenceAtrPips = 20.0,
+        };
+
+        var outcome = ExitReplayer.Replay(trade, rule);
+
+        outcome.Kind.Should().Be(ExitKind.TP);
+        outcome.BarsHeld.Should().Be(3);
+        outcome.RMultiple.Should().BeApproximately(58.0 / 30.0, 0.01);
+    }
 }
