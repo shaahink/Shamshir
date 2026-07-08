@@ -232,34 +232,24 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** P3.2b playbook engine `4464a09` (P3.4 files `7bf2edb`,
-P3.2a persistence `e5e9e86`, P3.1 verbs `e3dcb9d`). Conductor bookkeeping SHAs interleave.
-**Session (s12, P3):** QA of s10/s11 P2.1+P3.1-foundation = **confirmed** (build 0/5; RunStateMachine
-52 cases/32 methods; ResearchCli 11/11; runtime head M42, ReferenceScales=84). Delivered P3.1/P3.2/P3.4-files:
-- **P3.1 (e3dcb9d):** finished ResearchCli verbs — `data ensure`, `run start [--compare-both][--explore]`,
-  `exitlab eval`, `walkforward`; pure helpers InventoryCoverage/StartRunPlan/ExitLabResult.
-- **P3.2a (e5e9e86, Q6):** M43 `ResearchPipelines`+`ResearchPipelineSteps` tables + mappings + migration;
-  `ResearchPipelinesController` (`/api/research/pipelines`: list/get/create/update/update-step/approve/reject).
-- **P3.2b (4464a09):** dumb sequential `PlaybookExecutor` (10 typed step kinds, resume-by-content-hash,
-  owner-gate parks) behind `IStepRunner`/`IPipelineStore` seams; `HttpStepRunner` reuses the verb helpers;
-  `ApiPipelineStore` persists via the API (Q3, never the DB). Verbs `pipeline run/status/approve/reject`.
-- **P3.4 files (7bf2edb):** `playbooks/venue-parity.json` + `explore-exit.json` + README (shapes unit-tested).
+**Branch:** `iter/parity-pipeline` — **HEAD:** P3.3 UI /research `8bca2cb`
+**Session (s14, P3):** QA of s12 P3.1/P3.2/P3.4-files = **confirmed** (build 0/5w; Unit 622/0/6; Integration
+120/0/0; fast Sim 144/0/0; golden byte-identical). Delivered **P3.3 UI /research**:
+- Lazy-loaded route `/research` + nav link "Research" in app.component.ts
+- Standalone `ResearchComponent` (signal-driven, inline template, OnPush): list view (pipeline table with
+  status badges, progress, step count) + detail view (step timeline, verdictJson, approve/reject buttons)
+- `PipelineSummary`, `PipelineDetail`, `PipelineStep` types added to api.types.ts
+- Driven smoke: run-shamshir driver 11/11 passed (app up, SPA served, API verified)
 
-**Gates GREEN:** `dotnet build TradingEngine.slnx -c Debug` 0err/5warn; Unit `--no-build` **622/0/6**
-(ResearchCli filter 36/0); Integration **120/0/0**; fast Sim `--filter "RequiresCTrader!=true&Category!=E2E&
-Category!=Slow&Category!=NetMQ"` **144/0/0**; `git diff --stat -- **/*golden*.json` empty (NO rebaseline).
-**R5:** applied M43 to the LIVE Web DB — `__EFMigrationsHistory` head `20260708173645_M43_ResearchPipelines`;
-`ResearchPipelines`+`ResearchPipelineSteps`+unique step index present.
+**Gates GREEN:** build 0err/5warn; Unit `--no-build` **622/0/6**; Integration **120/0/0**; fast Sim
+**144/0/0**; golden byte-identical; R5 M43 head on Web DB; run-shamshir driver 11/11 passed.
 
-**Next step:** **P3.3 UI `/research`** (thin read + approve owner-gates; reads `/api/research/pipelines`;
-one driven smoke via run-shamshir skill, R6). Then **P3.4 LIVE** end-to-end (app up + data + creds) →
-run `pipeline run playbooks/venue-parity.json` to completion + committed reconcile → the P3 gate.
+**Next step:** **P3.4 LIVE** end-to-end (app up + data) — run pipeline `playbooks/venue-parity.json` to
+completion via CLI, visible in UI /research, artifacts committed → the P3 verification-matrix gate.
+**OWNER-PENDING:** needs cTrader credentials for the full paired run + reconcile verdict.
 
-**Open traps:** (1) `Tests.Architecture` `EntityAuditableTests` red on **ExitCalibrationEntity ONLY**
-(pre-existing; EnginePurity also pre-exists) — NOT in the gate battery; the 2 new pipeline entities ARE
-compliant. (2) Playbook engine is HTTP-only (Q3) — executor persists via `/api/research/pipelines`, never
-the DB; keep it that way. (3) live pipeline run needs the app running — CLI is unit-proven, not run
-end-to-end this session. (4) `BuildInfo.g.cs` + `web-ui/.../build-info.ts` re-dirty each build (leave
-uncommitted); `.conductor/` orchestrator-managed. (5) commit via `git commit -F <file>` (PowerShell
-mangles multi-line `-m`). (6) `npx tsc --noEmit` 2 pre-existing errors (P5).
+**Open traps:** (1) EntityAuditableTests red on ExitCalibrationEntity ONLY (pre-existing, not in gate).
+(2) Playbook engine HTTP-only (Q3). (3) P3.4 live run needs app running + CLI (end-to-end not done this
+session). (4) BuildInfo.g.cs + build-info.ts dirty each build (leave). (5) tsc 2 pre-existing errors (P5).
+(6) Static web assets stale-clean needed (clean wwwroot/*.js + *.css before rebuild if MSBuild fails).
 

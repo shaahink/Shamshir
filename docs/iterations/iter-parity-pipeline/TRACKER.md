@@ -17,20 +17,17 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P3.1 DONE** (e3dcb9d): ResearchCli verbs complete — data ensure / run start [--compare-both]
-      [--explore] / exitlab eval / walkforward, all pure-helper-backed (InventoryCoverage, StartRunPlan,
-      ExitLabResult), 36 ResearchCli unit tests. **P3.2 DONE** (e5e9e86 persistence + 4464a09 engine):
-      M43 ResearchPipelines/Steps tables + /api/research/pipelines API; dumb sequential PlaybookExecutor
-      (10 typed step kinds, resume-by-content-hash, owner-gate parks) behind IStepRunner/IPipelineStore
-      seams; verbs pipeline run/status/approve/reject. **P3.4 files DONE** (7bf2edb): venue-parity.json +
-      explore-exit.json + README (shapes unit-validated).
-stage: **P3 IN PROGRESS** — P3.1/P3.2/P3.4-files done. P3.3 (UI /research) TODO; P3.4 LIVE gate owner-pending.
+last: **P3.3 DONE** (8bca2cb): UI /research review page — pipeline list + detail + approve/reject,
+      thin read-only Angular component, signal-driven, lazy-loaded via app.routes. Driven smoke:
+      run-shamshir driver 11/11 passed.
+stage: **P3 IN PROGRESS** — P3.1/P3.2/P3.3/P3.4-files done. P3.4 LIVE gate owner-pending.
 gate: GREEN — build 0err/5warn; Unit 622/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical
-      (git diff --stat **/*golden*.json = empty; NO rebaseline). R5: M43 head live on Web DB, both tables present.
-next: **P3.3 UI /research** (read + approve owner-gates — thin, reads /api/research/pipelines; driven smoke
-      via run-shamshir). Then P3.4 LIVE end-to-end (app up + data + creds) → the P3 verification gate.
-QA-prev: s10/s11 P2.1+P3.1-foundation → **confirmed** (build 0/5; RunStateMachine 52 cases/32 methods;
-      ResearchCli 11/11; runtime head M42, ReferenceScales=84). No divergence, no fix.
+      (git diff --stat **/*golden*.json = empty; NO rebaseline). R5: M43 head live on Web DB, both tables
+      present. Driven smoke: run-shamshir driver 11/11 passed (app up, SPA served, API hits verified).
+next: **P3.4 LIVE end-to-end** (app up + data + creds) — run pipeline playbooks/venue-parity.json to
+      completion, visible in UI /research, artifacts committed → the P3 verification-matrix gate.
+QA-prev: s12 P3.1/P3.2/P3.4-files → **confirmed** (build 0/5w; Unit 622/0/6; Integration 120/0/0; fast
+      Sim 144/0/0; golden byte-identical; R5 M43 head present). No divergence, no fix.
 trap: (1) Tests.Architecture EntityAuditableTests red on **ExitCalibrationEntity ONLY** — PRE-EXISTING,
       NOT in gate battery; my 2 new pipeline entities ARE compliant. (2) The playbook engine is HTTP-only
       (Q3) — executor persists via /api/research/pipelines, never the DB; keep it that way. (3) Live
@@ -110,7 +107,7 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P2.2 | OWNER-GATE: one real compare-both run + committed reconcile verdict (inherited P6.1 gate) | DONE (OWNER-PENDING — needs cTrader creds) | — | Verifiable-now: P0.1/P0.2/P0.3 fixes + P0.4 instrumentation + P2.1 state machine (32/32) all green credential-free. Needs owner+creds: one live paired compare-both (EURUSD H1 1mo) on post-P0 build → equal lots (F1), 3× consecutive `completed` no NetMQPoller (F5), TRADES_LOST/UNRECONSTRUCTABLE surfaces (F6), committed reconcile verdict in docs/audit/RECONCILE-FINDINGS.md §P2.2 (template stubbed). Auto-promoted per run policy. |
 | P3.1 | TradingEngine.ResearchCli console project (verbs, --json, VERDICT lines, diagnostics) | DONE | 0de44c2, e3dcb9d | docs: commit bodies; src/TradingEngine.ResearchCli (Verdict/GateEvaluator/CliArgs/RunJson/InventoryCoverage/StartRunPlan/ExitLabResult/ResearchApiClient/Program); ResearchCliTests 36/36 (Unit). Verbs: data ensure, run start [--compare-both][--explore], run validate/await, reconcile, exitlab eval, walkforward. |
 | P3.2 | Playbook engine (typed steps, owner-gate, resumable by pipeline id) | DONE | e5e9e86 (persistence), 4464a09 (engine) | docs/iterations/iter-parity-pipeline/evidence/P3.2a-pipeline-persistence.md; M43_ResearchPipelines migration; ResearchPipelinesController (/api/research/pipelines); PlaybookExecutor+HttpStepRunner+ApiPipelineStore; ResearchPipelinePersistenceTests 3/3 (Integration) + PlaybookEngineTests 15 (Unit); R5: M43 head live on Web DB, both tables + unique step index present. LIVE end-to-end owner-pending (app up). |
-| P3.3 | UI review page /research (read + approve owner-gates) | TODO | | |
+| P3.3 | UI review page /research (read + approve owner-gates) | DONE | 8bca2cb | gates in commit body; driven smoke: run-shamshir driver 11/11 passed. ResearchComponent lazy-loaded, route /research active, nav link present. api.types.ts has PipelineSummary/Detail/Step. |
 | P3.4 | Canonical playbooks venue-parity + explore-exit run end-to-end via CLI; artifacts committed | DONE (FILES); DONE (OWNER-PENDING: live run needs app+data+creds) | 7bf2edb | playbooks/venue-parity.json + playbooks/explore-exit.json + playbooks/README.md; shapes unit-validated (PlaybookEngineTests.ShippedPlaybook_Parses). Live end-to-end + TradeExcursions>0 rows = the P3 verification-matrix gate, owner/next-session. |
 | P4.1 | Exploration funnel (F11) + MAE/MFE units doctrine (F12) + entry lab (P3.6/D10) | TODO | | |
 | P5.1 | UI truth (F13-F16) + targeted Angular refactor (driven smoke per change) | TODO | | |
