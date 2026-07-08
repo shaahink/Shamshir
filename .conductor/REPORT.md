@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 03:22 UTC · branch `iter/parity-pipeline` · HEAD `c8357f5`_
+_Updated 2026-07-08 03:37 UTC · branch `iter/parity-pipeline` · HEAD `601e625`_
 
 **Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.1
@@ -8,24 +8,24 @@ _Updated 2026-07-08 03:22 UTC · branch `iter/parity-pipeline` · HEAD `c8357f5`
 
 ## Latest activity (live)
 
-_Session #2 (Deliver) · running 45m · last output 11s ago · $0.0883_
+_Session #2 (Deliver) · running 60m · last output 33s ago · $0.1072_
 
 **Thinking:**
-> I'm noticing something important about the reconciliation flow—when `RegisterReconcileHandler` updates equity levels, it's pulling from `_riskManager.InitialBalance`, but I need to trace back where the drawdown actually gets initialized with the config balance in the backtest setup.  The real issue …
-> I'm tracing how the RiskManager's drawdown gets initialized across different execution paths — the test path uses `InitializeDrawdownIfNeeded` on the AccountProcessor, but in the production cTrader backtest kernel, the initial balance comes from `Drawdown.InitialAccountBalance` at line 114, so I nee…
-> I'm trying to trace whether `_riskManager.InitialBalance` reflects the configured balance before RunAsync executes, particularly on the cTrader path where the initial balance might default to zero or an uninitialized state before GetAccountStateAsync updates it with the actual account balance. So th…
+> I see the issue now—the balance configuration flows through the tape adapter's `GetAccountStateAsync` method rather than through RiskManager, which means the cTrader path receives the balance via the CLI argument but the cBot's initial report shows a different value, suggesting a mismatch in how the…
+> I need to reconsider that last edit and make sure I'm handling it correctly.
+> I need to revert that change and just add the InitialBalance assignment instead of removing the diagnostics logging.
 
 **Recent actions:**
-- `04:19:23` · Let me find where the RiskManager drawdown/InitialBalance is set from config balance in the host wiring.
-- `04:19:23` » grep InitializeDrawdown|InitialBalance|new RiskManager|RegisterConnectedHandler|RegisterReconcileHandler
-- `04:20:59` · I need to find where the RiskManager drawdown gets initialized with the config balance in the backtest path, since my fix relies on `_riskManager.InitialBalance…
-- `04:20:59` » grep InitializeDrawdown|InitializeDrawdownIfNeeded
-- `04:21:30` » grep SetInitialBalance|InitialBalance =|InitializeDrawdown|SizingOptions|BacktestBalance|Engine:Balance|Simulation:Balance
-- `04:21:30` » read src\TradingEngine.Host\EngineServiceCollectionExtensions.cs
-- `04:21:31` · I need to verify where the config balance reaches the RiskManager/EngineRunner in the cTrader backtest path — my fix depends on `_riskManager.InitialBalance` ho…
-- `04:22:30` » read src\TradingEngine.Domain\EngineHostOptions.cs
-- `04:22:32` · My fix depends on `_riskManager.InitialBalance` holding the config balance at line 114, but the kernel path may not initialize it. Let me verify the actual sour…
-- `04:22:32` » grep _balance =|decimal _balance|balance,|Balance,
+- `04:36:14` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `04:36:27` » read src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `04:36:27` · Let me verify the cTrader block is intact now and check for other EngineHostOptions constructions (CTraderListenService, ExperimentRunner) that may also need th…
+- `04:36:38` · Both paths are correct. `InitialBalance` is optional (default 0) so other EngineHostOptions constructions still compile. Now let me build to catch errors before…
+- `04:36:57` » bash dotnet build TradingEngine.slnx -c Debug 2>&1 | Select-String -Pattern "error|Build succeeded|Warning\(s\)|Error\(s\)" | Select-Object -Last 25
+- `04:37:08` » grep record AccountState|class AccountState|struct AccountState
+- `04:37:09` » read src\TradingEngine.Infrastructure\Venues\CTrader\CTraderBrokerAdapter.cs
+- `04:37:09` · Build clean. Now let me write the `VenueSizingParityTests` in the Simulation project with `Category=VenueParity`. First, check the CTraderBrokerAdapter can be c…
+- `04:37:20` · Now let me look at the Simulation test project's global usings/imports and how it references Infrastructure, so my test compiles.
+- `04:37:20` » bash Get-ChildItem tests/TradingEngine.Tests.Simulation -Filter "*.csproj" | ForEach-Object { Write-Host "=== $($_.Name) ==="; Get-Content $_.FullName }; echo "…
 
 ## Stage progress
 
