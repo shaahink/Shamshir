@@ -1,11 +1,32 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 17:12 UTC · branch `iter/parity-pipeline` · HEAD `aad7aa5`_
+_Updated 2026-07-08 17:27 UTC · branch `iter/parity-pipeline` · HEAD `e7537c1`_
 
-**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P2 — Lifecycle robustness + headline gate · attempts used 0
-**Checkpoints:** 10/17 done · **Sessions run:** 11 · **Cost:** $0.7086 · **Tokens:** 212,698 in / 245,710 out / 117,063 think
+**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P3 — Research pipeline (ResearchCli + playbooks) · attempts used 0 · working ▸ P3.1
+**Checkpoints:** 10/17 done · **Sessions run:** 12 · **Cost:** $0.7086 · **Tokens:** 212,698 in / 245,710 out / 117,063 think
 **Confirmed phases:** P0, P1, P2
+
+## Latest activity (live)
+
+_Session #12 (Deliver) · running 15m · last output 16s ago · $0.0173_
+
+**Thinking:**
+> I've got the inventory structure down—each entry tracks the symbol, timeframe, source, and bar range. Now I'm building out the remaining CLI verbs, starting with a `data ensure` command that lets users specify symbols, timeframes, and a date range to fetch and store data.  For the `ensure` verb, I'm…
+> The `exitlab eval` verb needs to fetch excursions from a run first to get the position IDs, then pass those to the evaluate endpoint. For the CLI, I'll keep it straightforward — fetch the excursions via GET, then POST the evaluation with the grid configuration as specified in the plan.
+> The exit-lab eval verb needs run and position IDs, which means I need to handle per-trade identification. For the CLI, I'm thinking `exitlab eval --run <runId>` would fetch the excursions first, then POST the evaluation request. But the ExitLabEvaluateRequest expects arrays of both PositionIds and R…
+
+**Recent actions:**
+- `18:23:01` · I now have enough context. QA of the previous session is **confirmed** (build 0err/5warn; RunStateMachine 52 cases/32 methods green; ResearchCli 11/11 green; ru…
+- `18:23:57` · QA is complete. Let me record the QA verdict in the tracker (durable QA record), matching the existing pattern.
+- `18:23:57` » edit docs\iterations\iter-parity-pipeline\TRACKER.md
+- `18:25:29` » read src\TradingEngine.Web\Api\DataManagerController.cs
+- `18:25:29` · QA verdict recorded. Now the mandatory planning block.  ``` SESSION PLAN — Stage P3 (Research pipeline), session #12  QA of previous session (s10/s11): CONFIRME…
+- `18:26:08` · Let me read the ExitLab request/response shape to build the `exitlab eval` verb correctly.
+- `18:26:08` » read src\TradingEngine.Web\Api\ExitLabController.cs
+- `18:26:21` » read src\TradingEngine.Web\Api\ExitLabController.cs
+- `18:26:23` » bash cd C:\Code\Shamshir; echo "===ExitLabEvaluateRequest DTO==="; Select-String -Path "src\TradingEngine.Web\Dtos\ExitLab\*.cs" -Pattern 'record ExitLabEvaluat…
+- `18:26:39` » read src\TradingEngine.Web\Dtos\ExitLab\ExitLabDtos.cs
 
 ## Stage progress
 
@@ -14,7 +35,7 @@ _Updated 2026-07-08 17:12 UTC · branch `iter/parity-pipeline` · HEAD `aad7aa5`
 | P0 | Parity truth repair (the spine) | 6/6 | confirmed ✓ |
 | P1 | Config & DB truth | 2/2 | confirmed ✓ |
 | P2 | Lifecycle robustness + headline gate | 2/2 | confirmed ✓ |
-| P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | partial |
+| P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | **← active** |
 | P4 | Lab golden paths | 0/1 | todo |
 | P5 | UI truth + Angular refactor | 0/1 | todo |
 | P6 | Wild list (pipeline-gated) | 0/1 | todo |
@@ -34,6 +55,7 @@ _Updated 2026-07-08 17:12 UTC · branch `iter/parity-pipeline` · HEAD `aad7aa5`
 | 9 | P1 | Audit | 1 | 07-08 15:55 | 0:14 | Progress |  | 2 |  | $0.0205 | 1,153/9,010 |
 | 10 | P2 | Deliver | 1 | 07-08 16:12 | 0:36 | Advanced | P2.1 P2.2 | 5 | build:OK | $0.0666 | 2,844/33,456 |
 | 11 | P2 | Audit | 1 | 07-08 16:49 | 0:21 | Progress |  | 4 |  | $0.0565 | 65,636/13,849 |
+| 12 | P3 | Deliver | 1 | 07-08 17:12 | … | running |  | 0 |  |  |  |
 
 ### Commits by session
 
