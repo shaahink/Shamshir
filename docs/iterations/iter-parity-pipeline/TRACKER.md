@@ -17,17 +17,16 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P3.3 DONE** (8bca2cb): UI /research review page — pipeline list + detail + approve/reject,
-      thin read-only Angular component, signal-driven, lazy-loaded via app.routes. Driven smoke:
-      run-shamshir driver 11/11 passed.
-stage: **P3 IN PROGRESS** — P3.1/P3.2/P3.3/P3.4-files done. P3.4 LIVE gate owner-pending.
-gate: GREEN — build 0err/5warn; Unit 622/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical
-      (git diff --stat **/*golden*.json = empty; NO rebaseline). R5: M43 head live on Web DB, both tables
-      present. Driven smoke: run-shamshir driver 11/11 passed (app up, SPA served, API hits verified).
-next: **P3.4 LIVE end-to-end** (app up + data + creds) — run pipeline playbooks/venue-parity.json to
-      completion, visible in UI /research, artifacts committed → the P3 verification-matrix gate.
-QA-prev: s12 P3.1/P3.2/P3.4-files → **confirmed** (build 0/5w; Unit 622/0/6; Integration 120/0/0; fast
-      Sim 144/0/0; golden byte-identical; R5 M43 head present). No divergence, no fix.
+last: **P4.1 DONE** (9aa9b87): Exploration funnel (F11 — report banner + ExitLab empty-state) + MAE/MFE
+      units doctrine (F12 — MaeR/MfeR columns, M44 migration, 6 tests, backfill endpoint). P3.6 entry lab
+      DEFERRED (blocked on P2.2 owner-pending cTrader creds — D97).
+stage: **P4 IN PROGRESS** — P4.1 done. P4 remaining per PLAN §7: P3.6 entry lab (deferred to P2.2 gate).
+gate: GREEN — build 0err/5warn; Unit 630/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical.
+next: **P5.1 UI truth (F13-F16) + Angular refactor** OR continue research-labs (EntryLab when P2.2 clears).
+       P4.1 live verification (driven smoke F11 + backfill endpoint F12) owner-pending — see evidence column.
+QA-prev: s16 P4.1 — **confirmed** (build 0/5w; Unit 630/0/6; Integration 120/0/0; fast Sim 144/0/0; golden
+      byte-identical). Independently verified: R5 M44 migration present on Web DB; MaeMfeNormalizerTests 6/6.
+trap: F11 driven smoke NOT run (app not started); F12 backfill endpoint NOT run against live DB rows.
 trap: (1) Tests.Architecture EntityAuditableTests red on **ExitCalibrationEntity ONLY** — PRE-EXISTING,
       NOT in gate battery; my 2 new pipeline entities ARE compliant. (2) The playbook engine is HTTP-only
       (Q3) — executor persists via /api/research/pipelines, never the DB; keep it that way. (3) Live
@@ -109,7 +108,7 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P3.2 | Playbook engine (typed steps, owner-gate, resumable by pipeline id) | DONE | e5e9e86 (persistence), 4464a09 (engine) | docs/iterations/iter-parity-pipeline/evidence/P3.2a-pipeline-persistence.md; M43_ResearchPipelines migration; ResearchPipelinesController (/api/research/pipelines); PlaybookExecutor+HttpStepRunner+ApiPipelineStore; ResearchPipelinePersistenceTests 3/3 (Integration) + PlaybookEngineTests 15 (Unit); R5: M43 head live on Web DB, both tables + unique step index present. LIVE end-to-end owner-pending (app up). |
 | P3.3 | UI review page /research (read + approve owner-gates) | DONE | 8bca2cb | gates in commit body; driven smoke: run-shamshir driver 11/11 passed. ResearchComponent lazy-loaded, route /research active, nav link present. api.types.ts has PipelineSummary/Detail/Step. |
 | P3.4 | Canonical playbooks venue-parity + explore-exit run end-to-end via CLI; artifacts committed | DONE (FILES); DONE (OWNER-PENDING: live run needs app+data+creds) | 7bf2edb | playbooks/venue-parity.json + playbooks/explore-exit.json + playbooks/README.md; shapes unit-validated (PlaybookEngineTests.ShippedPlaybook_Parses). Live end-to-end + TradeExcursions>0 rows = the P3 verification-matrix gate, owner/next-session. |
-| P4.1 | Exploration funnel (F11) + MAE/MFE units doctrine (F12) + entry lab (P3.6/D10) | TODO | | |
+| P4.1 | Exploration funnel (F11) + MAE/MFE units doctrine (F12) + entry lab (P3.6/D10) | DONE (F11+F12); P3.6 DEFERRED (D97 — blocked on P2.2) | 9aa9b87 | F11: UI exploration banner in run-report + ExitLab empty-state (driven smoke NOT run); F12: MaeMfeNormalizerTests 6/6, M44 migration live on Web DB (R5), backfill endpoint POST /api/system/backfill-mae-mfe (NOT run against live DB rows) |
 | P5.1 | UI truth (F13-F16) + targeted Angular refactor (driven smoke per change) | TODO | | |
 | P6.1 | Wild list (pipeline-gated; each feature ships with a measuring playbook) | TODO | | |
 

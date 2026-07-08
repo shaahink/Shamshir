@@ -232,24 +232,21 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** P3.3 UI /research `8bca2cb`
-**Session (s14, P3):** QA of s12 P3.1/P3.2/P3.4-files = **confirmed** (build 0/5w; Unit 622/0/6; Integration
-120/0/0; fast Sim 144/0/0; golden byte-identical). Delivered **P3.3 UI /research**:
-- Lazy-loaded route `/research` + nav link "Research" in app.component.ts
-- Standalone `ResearchComponent` (signal-driven, inline template, OnPush): list view (pipeline table with
-  status badges, progress, step count) + detail view (step timeline, verdictJson, approve/reject buttons)
-- `PipelineSummary`, `PipelineDetail`, `PipelineStep` types added to api.types.ts
-- Driven smoke: run-shamshir driver 11/11 passed (app up, SPA served, API verified)
+**Branch:** `iter/parity-pipeline` — **HEAD:** P4.1 `9aa9b87`
+**Session (s16, P4):** Delivered **P4.1 — Lab golden paths** (F11 + F12):
+- F11: Exploration funnel — completed exploration run banner on run-report linking to Exit Lab pre-filtered;
+  ExitLab empty-state explains RecordExcursions knob; new-backtest supports ?preset=exploration query param.
+- F12: MAE/MFE units doctrine — MaeR/MfeR nullable columns on TradeResults (M44 migration), MaeMfeNormalizer
+  computed from entry/stop prices + symbol pip size (EURUSD/XAUUSD/BTC/USDJPY table-driven tests 6/6), 
+  write-through in SqliteTradeRepository, backfill endpoint POST /api/system/backfill-mae-mfe (idempotent).
+- P3.6 Entry lab: DEFERRED (blocked on P2.2 owner-pending cTrader creds — D97).
 
-**Gates GREEN:** build 0err/5warn; Unit `--no-build` **622/0/6**; Integration **120/0/0**; fast Sim
-**144/0/0**; golden byte-identical; R5 M43 head on Web DB; run-shamshir driver 11/11 passed.
+**Gates GREEN:** build 0err/5warn; Unit 630/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical.
 
-**Next step:** **P3.4 LIVE** end-to-end (app up + data) — run pipeline `playbooks/venue-parity.json` to
-completion via CLI, visible in UI /research, artifacts committed → the P3 verification-matrix gate.
-**OWNER-PENDING:** needs cTrader credentials for the full paired run + reconcile verdict.
+**Next step:** P5.1 UI truth (F13-F16) + Angular refactor (see PLAN §8).
 
-**Open traps:** (1) EntityAuditableTests red on ExitCalibrationEntity ONLY (pre-existing, not in gate).
-(2) Playbook engine HTTP-only (Q3). (3) P3.4 live run needs app running + CLI (end-to-end not done this
-session). (4) BuildInfo.g.cs + build-info.ts dirty each build (leave). (5) tsc 2 pre-existing errors (P5).
-(6) Static web assets stale-clean needed (clean wwwroot/*.js + *.css before rebuild if MSBuild fails).
+**Open traps:** (1) F11 driven smoke NOT run (run-shamshir driver not exercised this session — app not started
+per R6). (2) F12 backfill endpoint NOT run against live DB rows (no trade rows with MaeR=NULL to verify).
+(3) EntityAuditableTests still red on ExitCalibrationEntity (pre-existing). (4) BuildInfo.g.cs + build-info.ts
+dirty each build (leave). (5) tsc 2 pre-existing errors (P5).
 
