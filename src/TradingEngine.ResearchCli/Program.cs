@@ -80,7 +80,18 @@ static async Task<int> RunAwaitAsync(CliArgs cli, string baseUrl, TimeSpan timeo
 
     while (!cts.IsCancellationRequested)
     {
-        var json = await client.GetRunAsync(runId, cts.Token);
+        string json;
+        try
+        {
+            json = await client.GetRunAsync(runId, cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            // The overall await budget elapsed while a poll request was in flight — fall through to the
+            // deterministic `await-timeout` verdict below rather than leaking a generic exception verdict
+            // (an agent branches on VERDICT=FAIL error=await-timeout, not on error=TaskCanceledException).
+            break;
+        }
         var run = RunJson.ParseRun(json);
         if (RunStateMachine.IsTerminal(run.Status))
         {
