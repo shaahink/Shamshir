@@ -1,11 +1,32 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 20:44 UTC · branch `iter/parity-pipeline` · HEAD `dc60eae`_
+_Updated 2026-07-08 20:59 UTC · branch `iter/parity-pipeline` · HEAD `587c3df`_
 
-**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P5 — UI truth + Angular refactor · attempts used 0
-**Checkpoints:** 16/17 done · **Sessions run:** 20 · **Cost:** $1.6609 · **Tokens:** 1,329,908 in / 423,884 out / 211,910 think
+**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P6 — Wild list (pipeline-gated) · attempts used 0 · working ▸ P6.1
+**Checkpoints:** 16/17 done · **Sessions run:** 21 · **Cost:** $1.6609 · **Tokens:** 1,329,908 in / 423,884 out / 211,910 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5
+
+## Latest activity (live)
+
+_Session #21 (Deliver) · running 15m · last output 0s ago · $0.0788_
+
+**Thinking:**
+> Now I need to update the run-monitor component to use the store's progress instead of managing its own subscriptions. Let me read the run-monitor component.
+> Let me read more of the monitor component to understand the SignalR subscription and progress handling.
+> The run-monitor component manages its own SignalR subscription and maintains local signals for progress data. To fully consolidate into the store, I would need to:  1. Move all the local signals into the store (status, barCount, percent, equity, equityData, etc.) 2. Have the monitor component read f…
+
+**Recent actions:**
+- `21:57:52` » read web-ui\src\app\core\http\error.interceptor.ts
+- `21:57:52` · Now wire the toast into the HTTP error interceptor:
+- `21:58:06` » edit web-ui\src\app\features\runs\runs.store.ts
+- `21:58:23` » bash npx tsc --noEmit 2>&1
+- `21:58:29` » read web-ui\src\app\features\runs\runs.store.ts
+- `21:58:29` · tsc clean. Now consolidating `RunProgressEnvelope` into runs.store:
+- `21:58:44` » write web-ui\src\app\features\runs\runs.store.ts
+- `21:58:49` » read web-ui\src\app\features\runs\run-monitor\run-monitor.component.ts
+- `21:58:54` » read web-ui\src\app\features\runs\run-monitor\run-monitor.component.ts
+- `21:59:22` » bash npx tsc --noEmit 2>&1
 
 ## Stage progress
 
@@ -17,7 +38,7 @@ _Updated 2026-07-08 20:44 UTC · branch `iter/parity-pipeline` · HEAD `dc60eae`
 | P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
 | P4 | Lab golden paths | 1/1 | confirmed ✓ |
 | P5 | UI truth + Angular refactor | 1/1 | confirmed ✓ |
-| P6 | Wild list (pipeline-gated) | 0/1 | todo |
+| P6 | Wild list (pipeline-gated) | 0/1 | **← active** |
 
 ## Sessions
 
@@ -43,6 +64,7 @@ _Updated 2026-07-08 20:44 UTC · branch `iter/parity-pipeline` · HEAD `dc60eae`
 | 18 | P5 | Deliver | 1 | 07-08 19:23 | 0:32 | Advanced | P5.1 | 6 | build:OK | $0.2486 | 311,603/29,675 |
 | 19 | P5 | Audit | 1 | 07-08 19:56 | 0:32 | Progress |  | 5 |  | $0.0740 | 78,820/12,802 |
 | 20 | P5 | Fix | 2 | 07-08 20:31 | 0:09 | Progress |  | 1 | build:OK | $0.0560 | 96,666/7,540 |
+| 21 | P6 | Deliver | 1 | 07-08 20:44 | … | running |  | 0 |  |  |  |
 
 ### Commits by session
 
