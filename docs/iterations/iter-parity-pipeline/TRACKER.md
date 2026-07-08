@@ -17,22 +17,17 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P4.1 DONE** (9aa9b87): Exploration funnel (F11 — report banner + ExitLab empty-state) + MAE/MFE
-      units doctrine (F12 — MaeR/MfeR columns, M44 migration, 6 tests, backfill endpoint). P3.6 entry lab
-      DEFERRED (blocked on P2.2 owner-pending cTrader creds — D97).
-stage: **P4 IN PROGRESS** — P4.1 done. P4 remaining per PLAN §7: P3.6 entry lab (deferred to P2.2 gate).
-gate: GREEN — build 0err/5warn; Unit 630/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical.
-next: **P5.1 UI truth (F13-F16) + Angular refactor** OR continue research-labs (EntryLab when P2.2 clears).
-       P4.1 live verification (driven smoke F11 + backfill endpoint F12) owner-pending — see evidence column.
-QA-prev: s16 P4.1 — **confirmed** (build 0/5w; Unit 630/0/6; Integration 120/0/0; fast Sim 144/0/0; golden
-      byte-identical). Independently verified: R5 M44 migration present on Web DB; MaeMfeNormalizerTests 6/6.
-trap: F11 driven smoke NOT run (app not started); F12 backfill endpoint NOT run against live DB rows.
-trap: (1) Tests.Architecture EntityAuditableTests red on **ExitCalibrationEntity ONLY** — PRE-EXISTING,
-      NOT in gate battery; my 2 new pipeline entities ARE compliant. (2) The playbook engine is HTTP-only
-      (Q3) — executor persists via /api/research/pipelines, never the DB; keep it that way. (3) Live
-      pipeline run needs the app running — CLI is unit-proven but not run end-to-end this session.
-      (4) BuildInfo.g.cs + build-info.ts re-dirty each build (leave); .conductor/ orchestrator-managed.
-      (5) commit via `git commit -F <file>`.
+last: **M44 migration applied to live Web DB** (s18 QA fix). P4.1 code truthful; migration was on disk but
+      never applied to runtime DB (auto-migrate on startup had not run). Applied manually + verified columns.
+stage: **P5 IN PROGRESS** — starting P5.1 UI truth (F13-F16) + Angular refactor.
+gate: GREEN — build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical.
+next: **Deliver P5.1 checkpoints** (F13 → F14 → F15 → F16 → Angular refactor).
+QA-prev: s16 P4.1 — **confirmed, 1 divergence FIXED** (build 0/5w; Unit 638/0/6; Integration 120/0/0;
+      fast Sim 144/0/0; golden byte-identical). Independently verified: (tests) MaeMfeNormalizer 14/14;
+      (runtime) M44 ON DISK but NOT applied to live DB — DIVERGED. Manually applied ALTER TABLE + migration
+      row; MaeR/MfeR columns now present on TradeResults, M44 entry in __EFMigrationsHistory. Fixed.
+trap: (same as prior) F11 smoke not run; F12 backfill not run; EntityAuditableTests red on ExitCalibrationEntity
+      (pre-existing); tsc 2 pre-existing errors; BuildInfo.g.cs + build-info.ts re-dirty each build (leave).
 
 ## Checkpoints
 

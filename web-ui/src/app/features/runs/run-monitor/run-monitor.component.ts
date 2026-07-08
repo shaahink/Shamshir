@@ -56,7 +56,7 @@ const NARRATIVE_LIMIT = 100;
           <div>
             <div class="text-sm text-emerald-400">Run completed</div>
             <div class="text-xs text-gray-500 mt-1">
-              {{ equity().toFixed(0) }} equity &middot; {{ barCount() }} bars &middot; {{ elapsed() }}
+              {{ equity()?.toFixed(0) ?? '--' }} equity &middot; {{ barCount() }} bars &middot; {{ elapsed() }}
             </div>
           </div>
           <a [routerLink]="['/runs', runId()]"
@@ -105,14 +105,17 @@ const NARRATIVE_LIMIT = 100;
       </div>
 
       @if (backtestFrom() && backtestTo()) {
-        <app-backtest-timeline
-          [from]="backtestFrom()!"
-          [to]="backtestTo()!"
-          [simTime]="simTime() || null"
-          [events]="timelineEvents()"
-          [passCount]="passTotal() || 1"
-          [currentPass]="passIndex() || 1"
-        />
+        <div class="rounded-lg border border-gray-800 bg-gray-800/20 p-4">
+          <h3 class="mb-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Simulation Timeline</h3>
+          <app-backtest-timeline
+            [from]="backtestFrom()!"
+            [to]="backtestTo()!"
+            [simTime]="simTime() || null"
+            [events]="timelineEvents()"
+            [passCount]="passTotal() || 1"
+            [currentPass]="passIndex() || 1"
+          />
+        </div>
       }
 
       <!-- 2x2 grid -->
@@ -126,7 +129,7 @@ const NARRATIVE_LIMIT = 100;
         <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
           <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wider">Risk &amp; Account</h3>
           <div class="grid grid-cols-2 gap-2">
-            <app-stat-tile label="Equity" [value]="equity().toFixed(0)" />
+            <app-stat-tile label="Equity" [value]="equity()?.toFixed(0) ?? '--'" />
             <app-stat-tile label="Balance" [value]="balance().toFixed(0)" />
             <app-stat-tile
               label="Daily DD"
@@ -240,7 +243,7 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   eta = signal('--');
   elapsed = signal('--');
   simTime = signal('');
-  equity = signal(0);
+  equity = signal<number | null>(null);
   balance = signal(0);
   openPositions = signal(0);
   dailyDdPct = signal(0);
@@ -344,10 +347,11 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
         }
         if (e.simTimeUtc) this.simTime.set(e.simTimeUtc);
         if (e.equity != null) {
-          this.equity.set(e.equity);
+          const eq = e.equity;
+          this.equity.set(eq);
           const t = e.simTimeUtc ? new Date(e.simTimeUtc).getTime()
             : this.equityData().length > 0 ? this.equityData()[this.equityData().length - 1].time : Date.now();
-          this.equityData.update((d) => [...d.slice(-499), { time: t, value: e.equity, balance: e.balance ?? e.equity }]);
+          this.equityData.update((d) => [...d.slice(-499), { time: t, value: eq, balance: e.balance ?? eq }]);
         }
         if (e.balance != null) this.balance.set(e.balance);
         if (e.openPositions != null) this.openPositions.set(e.openPositions);

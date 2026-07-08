@@ -83,6 +83,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         // after the run completes for the final RunProgress envelope.
         public decimal Equity;
         public decimal Balance;
+        public bool HasEquityObservation;
         public decimal DailyDdPct;
         public decimal MaxDdPct;
         public decimal DistanceToDailyLimit;
@@ -180,7 +181,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             state.RunId, status, simTime,
             BarsProcessed: state.BarCount, BarsTotal: barsTotal, Percent: percent, EtaSeconds: etaSeconds,
             WallElapsedMs: elapsedMs, BarsPerSec: barsPerSec, Speed: state.Speed,
-            Equity: state.Equity, Balance: state.Balance, OpenPositions: state.OpenPositions,
+            Equity: state.HasEquityObservation ? state.Equity : null,
+            Balance: state.Balance, OpenPositions: state.OpenPositions,
             DailyDdPct: state.DailyDdPct, MaxDdPct: state.MaxDdPct,
             DistanceToDailyLimit: state.DistanceToDailyLimit,
             GovernorState: state.GovernorState, GovernorReason: state.GovernorReason,
@@ -1827,6 +1829,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var latest = snaps[^1];
         state.Equity = latest.Equity;
         state.Balance = latest.Balance;
+        state.HasEquityObservation = true;
         state.DailyDdPct = latest.DailyDrawdown;
         state.MaxDdPct = latest.MaxDrawdown;
         state.OpenPositions = latest.OpenPositions;

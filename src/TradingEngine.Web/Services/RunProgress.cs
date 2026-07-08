@@ -24,7 +24,7 @@ public sealed record RunProgress(
     double BarsPerSec,
     float Speed,
 
-    decimal Equity,
+    decimal? Equity,
     decimal Balance,
     int OpenPositions,
 
