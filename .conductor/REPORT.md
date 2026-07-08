@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 05:09 UTC · branch `iter/parity-pipeline` · HEAD `cda0755`_
+_Updated 2026-07-08 05:24 UTC · branch `iter/parity-pipeline` · HEAD `563b65b`_
 
 **Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.2
@@ -8,24 +8,23 @@ _Updated 2026-07-08 05:09 UTC · branch `iter/parity-pipeline` · HEAD `cda0755`
 
 ## Latest activity (live)
 
-_Session #3 (Deliver) · running 60m · last output 2s ago · $0.0628_
+_Session #3 (Deliver) · running 75m · last output 7s ago · $0.0878_
 
 **Thinking:**
-> I'm trying to figure out how to generate the migration by checking the previous M40 migration and how it was created—whether there's a design-time factory or if I need to use the Web project as the startup since that's where the DI is configured. Let me see if I can just run the migration generation…
-> I need to check the BacktestRunState structure to see if there's a Warnings field and understand how the Status is defined.
-> I need to restore the `BacktestRunState` record declaration that got accidentally removed.
+> I'm splitting the testing strategy: a unit test for the pure RunStatusResolver logic, and an integration test that covers the full cycle of persisting warnings to the database and deriving status through the query service.
+> I'm realizing there's a mismatch in where I've placed the test — the integration test doesn't have the Category=VenueParity filter that runs on the Simulation project, but I put RunStatusTruthTests in Integration instead. The P0.5 VenueParity tier lives on Simulation, so I need to reconsider where t…
 
 **Recent actions:**
-- `06:04:08` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `06:06:08` · Now the finalization logic. Let me update the main try-block finalization (lines ~414-432) to compute status with warnings and pass WarningsJson to the end reco…
-- `06:06:08` » read src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `06:06:32` · Now let me update the finalization. The key change: compute status using RunStatusResolver + warnings, and thread WarningsJson through. I'll add a helper `Build…
-- `06:06:32` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `06:06:46` · Now add the `MergeWarningsJson` helper. Let me add it near WriteEndRecordAsync and also thread WarningsJson into the end record. First, update WriteEndRecordAsy…
-- `06:06:46` » read src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `06:09:05` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `06:09:17` · Now update `RunEngineNetMqAsync`'s teardown `finally` block to capture teardown exceptions as warnings instead of letting them propagate. Let me re-read that fi…
-- `06:09:17` » read src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `06:23:08` » bash dotnet build tests/TradingEngine.Tests.Integration/TradingEngine.Tests.Integration.csproj -c Debug 2>&1 | Select-Object -Last 4
+- `06:23:20` · Both build. Now run the new tests specifically, then the full suites.  Running: new P0.2 tests (expect <1 min)...
+- `06:23:23` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build --filter "FullyQualifiedName~RunStatusResolverTests|FullyQualifiedName~NetMqTransportTeardownTests" 2…
+- `06:23:24` » bash dotnet test tests/TradingEngine.Tests.Integration --no-build --filter "FullyQualifiedName~RunStatusTruthTests" 2>&1 | Select-Object -Last 5
+- `06:23:38` » todowrite 2 todos
+- `06:23:38` · All new tests pass (14 Unit — includes 6 resolver + 2 teardown + 6 HasWarnings theory; 3 Integration). Now the runtime-propagation proof (R5): apply the migrati…
+- `06:23:51` · Now the R5 runtime proof. Let me check the Web DB schema before, apply the migration, and verify the column exists in the actual runtime store.
+- `06:23:51` » bash $db = "src/TradingEngine.Web/data/trading.db"; echo "=== BEFORE: WarningsJson present? ==="; sqlite3 $db "PRAGMA table_info(BacktestRuns);" | Select-String…
+- `06:24:02` · Column not present, M40 is latest. Now apply the migration via `dotnet ef database update` against the Web DB.  Running: `dotnet ef database update` (expect 30-…
+- `06:24:12` » bash dotnet ef database update --project src/TradingEngine.Infrastructure/TradingEngine.Infrastructure.csproj --startup-project src/TradingEngine.Web/TradingEng…
 
 ## Stage progress
 
