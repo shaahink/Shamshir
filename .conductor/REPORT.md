@@ -1,10 +1,31 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 04:09 UTC · branch `iter/parity-pipeline` · HEAD `c89f17a`_
+_Updated 2026-07-08 04:24 UTC · branch `iter/parity-pipeline` · HEAD `46f770a`_
 
-**Status:** Idle
+**Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.2
-**Checkpoints:** 3/17 done · **Sessions run:** 2 · **Cost:** $0.1656 · **Tokens:** 126,016 in / 42,661 out / 20,571 think
+**Checkpoints:** 3/17 done · **Sessions run:** 3 · **Cost:** $0.1656 · **Tokens:** 126,016 in / 42,661 out / 20,571 think
+
+## Latest activity (live)
+
+_Session #3 (Deliver) · running 15m · last output 17s ago · $0.0155_
+
+**Thinking:**
+> I'm zeroing in on why cTrader marks runs as failed — it looks like the transport teardown crash with the disposed NetMQPoller object is setting an ErrorMessage somewhere. Let me trace through the `RunEngineNetMqAsync` method to see exactly where that error gets captured, particularly in the finally …
+> I'm examining the NetMQBridgeTest to understand how it reproduces the disposal race condition using the actual transport layer without needing cTrader credentials.
+> I'm tracing through the F5 cTrader failure to understand why it's marked as failed despite having complete statistics. The error message about a disposed NetMQPoller object is coming from somewhere in the backtest execution flow, so I need to examine where that object gets disposed prematurely. The …
+
+**Recent actions:**
+- `05:21:22` » bash rg -l 'Trait\("Category", "(NetMQ|E2E|Slow|CtraderContract)"\)|RequiresCTrader' tests/ 2>&1 | Select-Object -First 40
+- `05:21:22` » bash rg -n 'completed-with-warnings|WarningsJson|"completed"|"failed"' src/ | rg -v Migrations | Select-Object -First 40
+- `05:22:34` » grep completed-with-warnings|WarningsJson
+- `05:22:34` · No `rg`. Let me use grep tool.
+- `05:22:34` » grep Trait\("Category", "(NetMQ|E2E|Slow)"\)
+- `05:22:46` · Let me read the NetMQBridgeTest — this is a real-transport test using FakeCBot (no cTrader creds), the ideal harness to reproduce the disposal race.
+- `05:22:46` » read tests\TradingEngine.Tests.Simulation\Pipeline\NetMQBridgeTest.cs
+- `05:23:50` · This is the F5 mechanism. Let me read the adapter's DisposeAsync, how the transport/adapter are registered (double-dispose candidate), FlushRunPersistenceAsync,…
+- `05:23:50` » read src\TradingEngine.Infrastructure\Venues\CTrader\CTraderBrokerAdapter.cs
+- `05:23:50` » grep FlushRunPersistenceAsync|AdapterFactory|AddSingleton<IBrokerAdapter>|IMessageTransport
 
 ## Stage progress
 
@@ -24,6 +45,7 @@ _Updated 2026-07-08 04:09 UTC · branch `iter/parity-pipeline` · HEAD `c89f17a`
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 1 | P0 | Deliver | 1 | 07-08 02:17 | 0:19 | Advanced | P0.0 | 5 | build:OK | $0.0273 | 1,510/12,485 |
 | 2 | P0 | Deliver | 1 | 07-08 02:37 | 1:30 | Advanced | P0.1 P0.5 | 8 | build:OK | $0.1384 | 124,506/30,176 |
+| 3 | P0 | Deliver | 1 | 07-08 04:09 | … | running |  | 0 |  |  |  |
 
 ### Commits by session
 
