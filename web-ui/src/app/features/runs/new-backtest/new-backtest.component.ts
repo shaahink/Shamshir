@@ -174,19 +174,19 @@ interface CoverageInfo {
                 </div>
                 <div>
                   <label class="block text-xs text-gray-500 mb-1">Venue</label>
-                  <select [(ngModel)]="venue" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none">
+                  <select [ngModel]="venue()" (ngModelChange)="venue.set($event)" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none">
                     <option value="replay">Stored-bar replay (deterministic)</option>
                     <option value="tape">Fast tape (in-process)</option>
                     <option value="ctrader">cTrader forward-test</option>
                   </select>
                 </div>
 
-                @if (venue === 'tape') {
+                @if (venue() === 'tape') {
                   <div>
                     <label class="block text-xs text-gray-500 mb-1">Playback Speed</label>
                     <div class="flex items-center gap-2">
-                      <input type="range" [(ngModel)]="speed" min="0" max="10" step="0.5" class="flex-1 accent-emerald-500" />
-                      <span class="text-xs font-mono text-gray-300 w-10 text-right">{{ speed === 0 ? 'Paused' : speed + '×' }}</span>
+                      <input type="range" [ngModel]="speed()" (ngModelChange)="speed.set($event)" min="0" max="10" step="0.5" class="flex-1 accent-emerald-500" />
+                      <span class="text-xs font-mono text-gray-300 w-10 text-right">{{ speed() === 0 ? 'Paused' : speed() + '×' }}</span>
                     </div>
                     <div class="flex justify-between text-xs text-gray-600 mt-0.5">
                       <span>Paused</span><span>1×</span><span>5×</span><span>Max</span>
@@ -195,7 +195,7 @@ interface CoverageInfo {
                 }
 
                 <!-- Coverage check -->
-                @if (venue === 'tape' && rows().length > 0) {
+                @if (venue() === 'tape' && rows().length > 0) {
                   <div class="rounded border border-gray-700 p-2 space-y-1">
                     <h4 class="text-xs font-medium text-gray-400">Data Coverage</h4>
                     @if (safeRange()) {
@@ -243,26 +243,26 @@ interface CoverageInfo {
                   <label class="block text-xs text-gray-500 mb-1">Initial Balance</label>
                   <div class="relative">
                     <span class="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">$</span>
-                    <input type="number" [(ngModel)]="balance" class="w-full rounded border border-gray-700 bg-gray-800 pl-4 pr-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                    <input type="number" [ngModel]="balance()" (ngModelChange)="balance.set($event)" class="w-full rounded border border-gray-700 bg-gray-800 pl-4 pr-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
                   </div>
                 </div>
                 <div>
                   <label class="block text-xs text-gray-500 mb-1">Commission</label>
                   <div class="relative">
-                    <input type="number" [(ngModel)]="commission" class="w-full rounded border border-gray-700 bg-gray-800 pr-10 pl-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                    <input type="number" [ngModel]="commission()" (ngModelChange)="commission.set($event)" class="w-full rounded border border-gray-700 bg-gray-800 pr-10 pl-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
                     <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">/M</span>
                   </div>
                 </div>
                 <div>
                   <label class="block text-xs text-gray-500 mb-1">Spread</label>
                   <div class="relative">
-                    <input type="number" [(ngModel)]="spread" step="0.1" class="w-full rounded border border-gray-700 bg-gray-800 pr-10 pl-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                    <input type="number" [ngModel]="spread()" (ngModelChange)="spread.set($event)" step="0.1" class="w-full rounded border border-gray-700 bg-gray-800 pr-10 pl-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
                     <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">pips</span>
                   </div>
                 </div>
                 <div>
                   <label class="block text-xs text-gray-500 mb-1">Risk Profile</label>
-                  <select [(ngModel)]="riskProfile" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none">
+                  <select [ngModel]="riskProfile()" (ngModelChange)="riskProfile.set($event)" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none">
                     @for (p of riskProfiles(); track p.id) {
                       <option [value]="p.id">{{ p.displayName }}</option>
                     }
@@ -275,60 +275,60 @@ interface CoverageInfo {
             <section>
               <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Protections</h3>
               <div class="flex flex-wrap gap-1.5">
-                <button (click)="governorEnabled = !governorEnabled"
-                  [attr.class]="chipClass(governorEnabled)"
+                <button (click)="governorEnabled.set(!governorEnabled())"
+                  [attr.class]="chipClass(governorEnabled())"
                   title="Governor: cooling-off, profit-lock, streak management">Governor</button>
-                <button (click)="dailyDdEnabled = !dailyDdEnabled"
-                  [attr.class]="chipClass(dailyDdEnabled)"
+                <button (click)="dailyDdEnabled.set(!dailyDdEnabled())"
+                  [attr.class]="chipClass(dailyDdEnabled())"
                   title="Daily drawdown protection">Daily DD</button>
-                <button (click)="maxDdEnabled = !maxDdEnabled"
-                  [attr.class]="chipClass(maxDdEnabled)"
+                <button (click)="maxDdEnabled.set(!maxDdEnabled())"
+                  [attr.class]="chipClass(maxDdEnabled())"
                   title="Max drawdown protection">Max DD</button>
-                <button (click)="forceCloseEnabled = !forceCloseEnabled"
-                  [attr.class]="chipClass(forceCloseEnabled)"
+                <button (click)="forceCloseEnabled.set(!forceCloseEnabled())"
+                  [attr.class]="chipClass(forceCloseEnabled())"
                   title="Force close all positions on breach">Force Close</button>
-                <button (click)="regimeEnabled = !regimeEnabled"
-                  [attr.class]="chipClass(regimeEnabled)"
+                <button (click)="regimeEnabled.set(!regimeEnabled())"
+                  [attr.class]="chipClass(regimeEnabled())"
                   title="Regime detection filter">Regime</button>
                 <button (click)="toggleAllRisk()"
                   [attr.class]="chipClass(allRiskEnabled()) + ' font-mono text-xs'"
                   title="Toggle all protections on/off">{{ allRiskEnabled() ? '\u2713 all on' : '\u2717 all off' }}</button>
               </div>
             <label class="mt-2 flex items-center gap-2 text-xs text-amber-400 cursor-pointer">
-              <input type="checkbox" [(ngModel)]="stripAddOns" class="h-3 w-3 rounded" />
+              <input type="checkbox" [ngModel]="stripAddOns()" (ngModelChange)="stripAddOns.set($event)" class="h-3 w-3 rounded" />
               No add-ons (raw baseline SL/TP)
             </label>
             <label class="mt-2 flex items-center gap-2 text-xs text-gray-300 cursor-pointer"
               title="Market entries fill at next bar's open (more realistic); off = fill at signal bar close (optimistic)">
-              <input type="checkbox" [(ngModel)]="honestFills" class="h-3 w-3 rounded" />
+              <input type="checkbox" [ngModel]="honestFills()" (ngModelChange)="honestFills.set($event)" class="h-3 w-3 rounded" />
               Honest fills (next-bar open)
             </label>
             <label class="mt-2 flex items-center gap-2 text-xs text-gray-300 cursor-pointer"
               title="Record per-trade MAE/MFE excursion paths for exit-lab analysis (tape-only)">
-              <input type="checkbox" [(ngModel)]="recordExcursions" class="h-3 w-3 rounded" />
+              <input type="checkbox" [ngModel]="recordExcursions()" (ngModelChange)="recordExcursions.set($event)" class="h-3 w-3 rounded" />
               Record excursions (MAE/MFE path)
             </label>
-            @if (venue === 'tape') {
+            @if (venue() === 'tape') {
               <label class="mt-2 flex items-center gap-2 text-xs text-amber-300 cursor-pointer"
                 title="Run the same config on both tape and cTrader venues side-by-side. Results include a reconciliation diff.">
-                <input type="checkbox" [(ngModel)]="compareBoth" class="h-3 w-3 rounded" />
+                <input type="checkbox" [ngModel]="compareBoth()" (ngModelChange)="compareBoth.set($event)" class="h-3 w-3 rounded" />
                 Compare vs cTrader (dual-venue)
               </label>
             }
             <button (click)="applyExplorationPreset()"
-              [class]="chipClass(explorationMode) + ' w-full mt-2'"
+              [class]="chipClass(explorationMode()) + ' w-full mt-2'"
               title="SL=ATR×4, TP=none, no add-ons, governor off, record excursions — the entry signal runs bare for exit-lab calibration">
-              {{ explorationMode ? '\u2713 Exploration Mode' : 'Exploration Mode (ATR×4 SL, no TP, no add-ons)' }}
+              {{ explorationMode() ? '\u2713 Exploration Mode' : 'Exploration Mode (ATR×4 SL, no TP, no add-ons)' }}
             </button>
             </section>
 
             <!-- Venue warnings -->
-            @if (venue === 'ctrader') {
+            @if (venue() === 'ctrader') {
               <div class="rounded bg-amber-900/20 px-3 py-2 text-xs text-amber-400">
                 cTrader runs the first row only. Use replay or tape for multi-row plans.
               </div>
             }
-            @if (venue === 'tape' && missingCoverage().length > 0) {
+            @if (venue() === 'tape' && missingCoverage().length > 0) {
               <div class="rounded bg-red-900/20 px-3 py-2 text-xs text-red-400">
                 Missing data for {{ missingCoverage().join(', ') }}. Download in Data Manager first.
               </div>
@@ -391,22 +391,22 @@ export class NewBacktestComponent implements OnInit {
 
   startDate = signal('');
   endDate = signal('');
-  balance = 100_000;
-  commission = 30;
-  spread = 1;
-  riskProfile = 'standard';
-  venue = 'replay';
-  speed = 10;
-  governorEnabled = true;
-  dailyDdEnabled = true;
-  maxDdEnabled = true;
-  forceCloseEnabled = true;
-  regimeEnabled = true;
-  stripAddOns = false;
-  honestFills = true;
-  recordExcursions = false;
-  explorationMode = false;
-  compareBoth = false;
+  balance = signal(100_000);
+  commission = signal(30);
+  spread = signal(1);
+  riskProfile = signal('standard');
+  venue = signal('replay');
+  speed = signal(10);
+  governorEnabled = signal(true);
+  dailyDdEnabled = signal(true);
+  maxDdEnabled = signal(true);
+  forceCloseEnabled = signal(true);
+  regimeEnabled = signal(true);
+  stripAddOns = signal(false);
+  honestFills = signal(true);
+  recordExcursions = signal(false);
+  explorationMode = signal(false);
+  compareBoth = signal(false);
 
   packs = signal<{ id: string; name: string }[]>([]);
   strategies = signal<StrategySummary[]>([]);
@@ -476,12 +476,12 @@ export class NewBacktestComponent implements OnInit {
   canStart = computed(() => {
     return this.enabledCount() > 0 && !!this.startDate() && !!this.endDate()
       && new Date(this.startDate()) < new Date(this.endDate())
-      && this.balance > 0
-      && (this.venue !== 'tape' || this.missingCoverage().length === 0);
+      && this.balance() > 0
+      && (this.venue() !== 'tape' || this.missingCoverage().length === 0);
   });
 
   safeRange = computed(() => {
-    if (this.venue !== 'tape') return null;
+    if (this.venue() !== 'tape') return null;
     const inv = this.inventory();
     if (!inv.length || !this.startDate() || !this.endDate()) return null;
     const from = new Date(this.startDate() + 'T00:00:00').getTime();
@@ -511,8 +511,8 @@ export class NewBacktestComponent implements OnInit {
     if (this.enabledCount() === 0) return 'No rows enabled';
     if (!this.startDate() || !this.endDate()) return 'Select start and end dates';
     if (new Date(this.startDate()) >= new Date(this.endDate())) return 'Start date must be before end date';
-    if (!this.balance || this.balance <= 0) return 'Balance must be greater than 0';
-    if (this.venue === 'tape' && this.missingCoverage().length > 0) return 'Data coverage missing';
+    if (!this.balance() || this.balance() <= 0) return 'Balance must be greater than 0';
+    if (this.venue() === 'tape' && this.missingCoverage().length > 0) return 'Data coverage missing';
     return null;
   });
 
@@ -532,7 +532,7 @@ export class NewBacktestComponent implements OnInit {
       const profiles = await this.profilesApi.getAll();
       if (profiles.length > 0) {
         this.riskProfiles.set(profiles);
-        if (!profiles.some((p) => p.id === this.riskProfile)) this.riskProfile = profiles[0].id;
+        if (!profiles.some((p) => p.id === this.riskProfile())) this.riskProfile.set(profiles[0].id);
       }
     } catch { /* */ }
     try {
@@ -550,7 +550,7 @@ export class NewBacktestComponent implements OnInit {
         if (src) {
           this.startDate.set((src.backtestFrom || '').slice(0, 10));
           this.endDate.set((src.backtestTo || '').slice(0, 10));
-          this.balance = src.initialBalance || 100000;
+          this.balance.set(src.initialBalance || 100000);
           const parse = (v: unknown): string[] => {
             try { const a = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(a) ? a : []; } catch { return []; }
           };
@@ -564,7 +564,7 @@ export class NewBacktestComponent implements OnInit {
     }
 
     const preset = this.route.snapshot.queryParamMap.get('preset');
-    if (preset === 'exploration' && !this.explorationMode) {
+    if (preset === 'exploration' && !this.explorationMode()) {
       this.applyExplorationPreset();
     }
   }
@@ -642,8 +642,8 @@ export class NewBacktestComponent implements OnInit {
     }
     if (!this.startDate() || !this.endDate()) { this.error.set('Select start and end dates.'); this.starting.set(false); return; }
     if (new Date(this.startDate()) >= new Date(this.endDate())) { this.error.set('Start date must be before end date.'); this.starting.set(false); return; }
-    if (!this.balance || this.balance <= 0) { this.error.set('Balance must be greater than 0.'); this.starting.set(false); return; }
-    if (this.venue === 'tape' && this.missingCoverage().length > 0) {
+    if (!this.balance() || this.balance() <= 0) { this.error.set('Balance must be greater than 0.'); this.starting.set(false); return; }
+    if (this.venue() === 'tape' && this.missingCoverage().length > 0) {
       this.error.set('Data coverage missing for: ' + this.missingCoverage().join(', '));
       this.starting.set(false); return;
     }
@@ -660,26 +660,26 @@ export class NewBacktestComponent implements OnInit {
     const req: StartRunRequest = {
       start: this.startDate(),
       end: this.endDate(),
-      balance: this.balance,
-      commissionPerMillion: this.commission,
-      spreadPips: this.spread,
+      balance: this.balance(),
+      commissionPerMillion: this.commission(),
+      spreadPips: this.spread(),
       symbols: [...new Set(enabled.map((r) => r.symbol))],
       periods: [...new Set(enabled.map((r) => r.timeframe.toLowerCase()))],
       strategyIds: [...new Set(enabled.map((r) => r.strategyId))],
-      riskProfileId: this.riskProfile,
-      venue: this.venue,
+      riskProfileId: this.riskProfile(),
+      venue: this.venue(),
       rows,
-      governorEnabled: this.governorEnabled,
-      dailyDdEnabled: this.dailyDdEnabled,
-      maxDdEnabled: this.maxDdEnabled,
-      forceCloseOnBreachEnabled: this.forceCloseEnabled,
-      disableRegime: this.regimeEnabled ? undefined : true,
-      stripAddOns: this.stripAddOns ? true : undefined,
-      speed: this.venue === 'tape' ? this.speed : undefined,
-      honestFills: this.honestFills ? undefined : false,
-      recordExcursions: this.recordExcursions ? true : undefined,
-      explorationMode: this.explorationMode ? true : undefined,
-      compareBoth: this.compareBoth ? true : undefined,
+      governorEnabled: this.governorEnabled(),
+      dailyDdEnabled: this.dailyDdEnabled(),
+      maxDdEnabled: this.maxDdEnabled(),
+      forceCloseOnBreachEnabled: this.forceCloseEnabled(),
+      disableRegime: this.regimeEnabled() ? undefined : true,
+      stripAddOns: this.stripAddOns() ? true : undefined,
+      speed: this.venue() === 'tape' ? this.speed() : undefined,
+      honestFills: this.honestFills() ? undefined : false,
+      recordExcursions: this.recordExcursions() ? true : undefined,
+      explorationMode: this.explorationMode() ? true : undefined,
+      compareBoth: this.compareBoth() ? true : undefined,
       idempotencyKey: crypto.randomUUID(),
     };
     this.saveSetup();
@@ -697,30 +697,30 @@ export class NewBacktestComponent implements OnInit {
   }
 
   allRiskEnabled = computed(() =>
-    this.governorEnabled && this.dailyDdEnabled && this.maxDdEnabled && this.forceCloseEnabled && this.regimeEnabled
+    this.governorEnabled() && this.dailyDdEnabled() && this.maxDdEnabled() && this.forceCloseEnabled() && this.regimeEnabled()
   );
 
   toggleAllRisk(): void {
     const all = this.allRiskEnabled();
-    this.governorEnabled = !all;
-    this.dailyDdEnabled = !all;
-    this.maxDdEnabled = !all;
-    this.forceCloseEnabled = !all;
-    this.regimeEnabled = !all;
+    this.governorEnabled.set(!all);
+    this.dailyDdEnabled.set(!all);
+    this.maxDdEnabled.set(!all);
+    this.forceCloseEnabled.set(!all);
+    this.regimeEnabled.set(!all);
   }
 
   applyExplorationPreset(): void {
-    this.explorationMode = !this.explorationMode;
-    if (this.explorationMode) {
-      this.stripAddOns = true;
-      this.governorEnabled = false;
-      this.recordExcursions = true;
-      this.honestFills = true;
+    this.explorationMode.set(!this.explorationMode());
+    if (this.explorationMode()) {
+      this.stripAddOns.set(true);
+      this.governorEnabled.set(false);
+      this.recordExcursions.set(true);
+      this.honestFills.set(true);
     } else {
-      this.stripAddOns = false;
-      this.governorEnabled = true;
-      this.recordExcursions = false;
-      this.honestFills = true;
+      this.stripAddOns.set(false);
+      this.governorEnabled.set(true);
+      this.recordExcursions.set(false);
+      this.honestFills.set(true);
     }
   }
 
@@ -732,21 +732,21 @@ export class NewBacktestComponent implements OnInit {
         name: this._pendingSetupName || undefined,
         startDate: this.startDate(),
         endDate: this.endDate(),
-        balance: this.balance,
-        commission: this.commission,
-        spread: this.spread,
-        riskProfile: this.riskProfile,
-        venue: this.venue,
-        governorEnabled: this.governorEnabled,
-        dailyDdEnabled: this.dailyDdEnabled,
-        maxDdEnabled: this.maxDdEnabled,
-        forceCloseEnabled: this.forceCloseEnabled,
-        regimeEnabled: this.regimeEnabled,
-        stripAddOns: this.stripAddOns,
-        honestFills: this.honestFills,
-        recordExcursions: this.recordExcursions,
-        explorationMode: this.explorationMode,
-        compareBoth: this.compareBoth,
+        balance: this.balance(),
+        commission: this.commission(),
+        spread: this.spread(),
+        riskProfile: this.riskProfile(),
+        venue: this.venue(),
+        governorEnabled: this.governorEnabled(),
+        dailyDdEnabled: this.dailyDdEnabled(),
+        maxDdEnabled: this.maxDdEnabled(),
+        forceCloseEnabled: this.forceCloseEnabled(),
+        regimeEnabled: this.regimeEnabled(),
+        stripAddOns: this.stripAddOns(),
+        honestFills: this.honestFills(),
+        recordExcursions: this.recordExcursions(),
+        explorationMode: this.explorationMode(),
+        compareBoth: this.compareBoth(),
         strategies: [...this.selectedStrategyIds()],
         symbols: [...this.selectedSymbols()],
         periods: [...this.selectedPeriods()],
@@ -772,21 +772,21 @@ export class NewBacktestComponent implements OnInit {
       if (!setup) return;
       this.startDate.set(setup.startDate || this.startDate());
       this.endDate.set(setup.endDate || this.endDate());
-      this.balance = setup.balance ?? this.balance;
-      this.commission = setup.commission ?? this.commission;
-      this.spread = setup.spread ?? this.spread;
-      this.riskProfile = setup.riskProfile || this.riskProfile;
-      this.venue = setup.venue || this.venue;
-      this.governorEnabled = setup.governorEnabled ?? this.governorEnabled;
-      this.dailyDdEnabled = setup.dailyDdEnabled ?? this.dailyDdEnabled;
-      this.maxDdEnabled = setup.maxDdEnabled ?? this.maxDdEnabled;
-      this.forceCloseEnabled = setup.forceCloseEnabled ?? this.forceCloseEnabled;
-      this.regimeEnabled = setup.regimeEnabled ?? this.regimeEnabled;
-      this.stripAddOns = setup.stripAddOns ?? this.stripAddOns;
-      this.honestFills = setup.honestFills ?? this.honestFills;
-      this.recordExcursions = setup.recordExcursions ?? this.recordExcursions;
-      this.explorationMode = setup.explorationMode ?? this.explorationMode;
-      this.compareBoth = setup.compareBoth ?? this.compareBoth;
+      this.balance.set(setup.balance ?? 100_000);
+      this.commission.set(setup.commission ?? 30);
+      this.spread.set(setup.spread ?? 1);
+      this.riskProfile.set(setup.riskProfile || 'standard');
+      this.venue.set(setup.venue || 'replay');
+      this.governorEnabled.set(setup.governorEnabled ?? true);
+      this.dailyDdEnabled.set(setup.dailyDdEnabled ?? true);
+      this.maxDdEnabled.set(setup.maxDdEnabled ?? true);
+      this.forceCloseEnabled.set(setup.forceCloseEnabled ?? true);
+      this.regimeEnabled.set(setup.regimeEnabled ?? true);
+      this.stripAddOns.set(setup.stripAddOns ?? false);
+      this.honestFills.set(setup.honestFills ?? true);
+      this.recordExcursions.set(setup.recordExcursions ?? false);
+      this.explorationMode.set(setup.explorationMode ?? false);
+      this.compareBoth.set(setup.compareBoth ?? false);
       if (setup.strategies?.length) this.selectedStrategyIds.set(new Set(setup.strategies));
       if (setup.symbols?.length) this.selectedSymbols.set(new Set(setup.symbols));
       if (setup.periods?.length) this.selectedPeriods.set(new Set(setup.periods));

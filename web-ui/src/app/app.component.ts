@@ -1,12 +1,14 @@
 import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AppStatusComponent } from './core/status/app-status.component';
+import { ToastComponent } from './core/toast/toast.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, AppStatusComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, AppStatusComponent, ToastComponent],
   template: `
+    <app-toast />
     <div class="min-h-screen bg-gray-950 text-gray-100">
       <nav class="border-b border-gray-800 bg-gray-900/50 backdrop-blur">
         <div class="mx-auto flex max-w-[1800px] items-center gap-6 px-6 py-3">
