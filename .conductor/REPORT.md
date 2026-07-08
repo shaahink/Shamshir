@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 03:52 UTC · branch `iter/parity-pipeline` · HEAD `cc7070e`_
+_Updated 2026-07-08 04:07 UTC · branch `iter/parity-pipeline` · HEAD `c55d4a2`_
 
 **Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.1
@@ -8,24 +8,24 @@ _Updated 2026-07-08 03:52 UTC · branch `iter/parity-pipeline` · HEAD `cc7070e`
 
 ## Latest activity (live)
 
-_Session #2 (Deliver) · running 75m · last output 816s ago · $0.1085_
+_Session #2 (Deliver) · running 90m · last output 2s ago · $0.1355_
 
 **Thinking:**
-> I see the issue now—the balance configuration flows through the tape adapter's `GetAccountStateAsync` method rather than through RiskManager, which means the cTrader path receives the balance via the CLI argument but the cBot's initial report shows a different value, suggesting a mismatch in how the…
-> I need to reconsider that last edit and make sure I'm handling it correctly.
-> I need to revert that change and just add the InitialBalance assignment instead of removing the diagnostics logging.
+> The golden snapshot stays unchanged because it was captured from the old oracle that only tracks phase, event, guard result, and reason—not the DetailJson field I'm adding. The determinism tests comparing consecutive runs also remain stable. I still need to execute the Determinism and Journal tests …
+> I'm seeing how `UpdateEquityLevels` initializes with the account's equity value (which is the configured balance for replay scenarios), but the drawdown tracker starts uninitialized at zero. This means applying the config equity to a fresh drawdown state, which is part of the legacy RiskManager trac…
+> I'm noticing a potential issue with the initialization order: `UpdateEquityLevels` wasn't being called when the balance dropped to zero or below, but `DrawdownReducer.Apply` needs the drawdown to be initialized. Since `_riskManager.Drawdown` starts as a default instance and `UpdateEquityLevels` is w…
 
 **Recent actions:**
-- `04:37:08` » grep record AccountState|class AccountState|struct AccountState
-- `04:37:09` » read src\TradingEngine.Infrastructure\Venues\CTrader\CTraderBrokerAdapter.cs
-- `04:37:09` · Build clean. Now let me write the `VenueSizingParityTests` in the Simulation project with `Category=VenueParity`. First, check the CTraderBrokerAdapter can be c…
-- `04:37:20` · Now let me look at the Simulation test project's global usings/imports and how it references Infrastructure, so my test compiles.
-- `04:37:20` » bash Get-ChildItem tests/TradingEngine.Tests.Simulation -Filter "*.csproj" | ForEach-Object { Write-Host "=== $($_.Name) ==="; Get-Content $_.FullName }; echo "…
-- `04:38:57` » read src\TradingEngine.Domain\Interfaces\IMessageTransport.cs
-- `04:38:58` » grep record RiskProfile|record SymbolInfo
-- `04:38:58` · The Simulation project references Infrastructure (CTraderBrokerAdapter, IMessageTransport) and Engine (via Host). Now I need `IMessageTransport`. Let me check w…
-- `04:39:09` » read src\TradingEngine.Domain\RiskAndEquity\RiskProfile.cs
-- `04:39:09` » read src\TradingEngine.Domain\SymbolInfo\SymbolInfo.cs
+- `05:05:59` » edit docs\iterations\iter-parity-pipeline\TRACKER.md
+- `05:06:18` » edit docs\iterations\iter-parity-pipeline\TRACKER.md
+- `05:06:32` · Now add a QA-of-previous-session note. Let me check if the tracker has a QA section, and add one right after the Handoff block.
+- `05:06:32` » edit {"filePath":"C:\\Code\\Shamshir\\docs\\iterations\\iter-parity-pipeline\\TRACKER.md","newString":"## Checkpoints\n\nStatus ∈ TODO · IN PROGRESS · DONE…
+- `05:06:53` » edit docs\iterations\iter-parity-pipeline\TRACKER.md
+- `05:06:53` · Let me add the QA note properly.
+- `05:07:27` · Now update the AGENTS.md RESUME block.
+- `05:07:27` » edit AGENTS.md
+- `05:07:43` · Now commit the docs updates (tracker + AGENTS RESUME) as a bookkeeping commit, then push.
+- `05:07:44` » bash git add docs/iterations/iter-parity-pipeline/TRACKER.md AGENTS.md; git commit -m "docs(P0.1): tracker + AGENTS RESUME handoff — P0.1/P0.5 done, next P0.2" …
 
 ## Stage progress
 
