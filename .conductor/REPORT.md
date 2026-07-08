@@ -1,32 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 16:42 UTC · branch `iter/parity-pipeline` · HEAD `ccf6aa4`_
+_Updated 2026-07-08 16:49 UTC · branch `iter/parity-pipeline` · HEAD `ab1805f`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P2 — Lifecycle robustness + headline gate · attempts used 0 · working ▸ P2.1
-**Checkpoints:** 8/17 done · **Sessions run:** 10 · **Cost:** $0.5856 · **Tokens:** 144,218 in / 198,405 out / 104,850 think
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P2 — Lifecycle robustness + headline gate · attempts used 0
+**Checkpoints:** 10/17 done · **Sessions run:** 10 · **Cost:** $0.6522 · **Tokens:** 147,062 in / 231,861 out / 110,936 think
 **Confirmed phases:** P0, P1
-
-## Latest activity (live)
-
-_Session #10 (Deliver) · running 30m · last output 5s ago · $0.0501_
-
-**Thinking:**
-> I'm moving on to build the JSON mapper that converts run-detail JSON into RunGateInput, along with a static parser for RunJson that's pure and testable. After that, I'll need to create the HttpClient wrapper for ResearchApiClient and set up Program.cs.
-> Now that ResearchCli compiles successfully, I'm moving on to write unit tests for the core components—Verdict, GateEvaluator, CliArgs, and RunJson. I need to add a project reference from Tests.Unit to ResearchCli so the test project can access these classes.
-> The ResearchCli tests are passing, so now I need to check if the Architecture tests have any rules about project references—like whether Domain can reference Infrastructure or if there's a whitelist of allowed dependencies. Since ResearchCli only references Domain, it should be fine, but I want to b…
-
-**Recent actions:**
-- `17:38:46` · Now add the project to the solution and build it.
-- `17:39:09` » bash cd C:\Code\Shamshir; dotnet build src/TradingEngine.ResearchCli/TradingEngine.ResearchCli.csproj -c Debug 2>&1 | Select-String -Pattern "error|Build succee…
-- `17:39:21` » read tests\TradingEngine.Tests.Unit\TradingEngine.Tests.Unit.csproj
-- `17:39:22` · ResearchCli builds clean. Now add unit tests. First reference the project from Tests.Unit.
-- `17:39:30` » edit tests\TradingEngine.Tests.Unit\TradingEngine.Tests.Unit.csproj
-- `17:40:06` » write tests\TradingEngine.Tests.Unit\ResearchCli\ResearchCliTests.cs
-- `17:40:39` » bash cd C:\Code\Shamshir; dotnet test tests/TradingEngine.Tests.Unit -c Debug --filter "FullyQualifiedName~ResearchCliTests" 2>&1 | Select-String -Pattern "erro…
-- `17:40:54` · 11/11 pass. Now full gate battery (new project added — include Architecture tests).
-- `17:41:15` » bash cd C:\Code\Shamshir; echo "Full build slnx..."; dotnet build TradingEngine.slnx -c Debug 2>&1 | Select-String -Pattern "error|Warning\(s\)|Error\(s\)" | Se…
-- `17:42:01` » bash cd C:\Code\Shamshir; echo "Unit + Architecture..."; dotnet test tests/TradingEngine.Tests.Unit --no-build -c Debug 2>&1 | Select-String -Pattern "Passed!|F…
+**Pending:** auto-fix audit for P2
 
 ## Stage progress
 
@@ -34,8 +14,8 @@ _Session #10 (Deliver) · running 30m · last output 5s ago · $0.0501_
 |---|---|---|---|
 | P0 | Parity truth repair (the spine) | 6/6 | confirmed ✓ |
 | P1 | Config & DB truth | 2/2 | confirmed ✓ |
-| P2 | Lifecycle robustness + headline gate | 0/2 | **← active** |
-| P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | todo |
+| P2 | Lifecycle robustness + headline gate | 2/2 | gating… |
+| P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | partial |
 | P4 | Lab golden paths | 0/1 | todo |
 | P5 | UI truth + Angular refactor | 0/1 | todo |
 | P6 | Wild list (pipeline-gated) | 0/1 | todo |
@@ -53,19 +33,10 @@ _Session #10 (Deliver) · running 30m · last output 5s ago · $0.0501_
 | 7 | P1 | Deliver | 1 | 07-08 14:02 | 0:15 | Progress |  | 1 | build:OK | $0.0160 | 873/3,880 |
 | 8 | P1 | Deliver | 2 | 07-08 14:18 | 1:36 | Advanced | P1.1 P1.2 | 5 | build:OK | $0.1096 | 4,363/41,198 |
 | 9 | P1 | Audit | 1 | 07-08 15:55 | 0:14 | Progress |  | 2 |  | $0.0205 | 1,153/9,010 |
-| 10 | P2 | Deliver | 1 | 07-08 16:12 | … | running |  | 0 |  |  |  |
+| 10 | P2 | Deliver | 1 | 07-08 16:12 | 0:36 | Advanced | P2.1 P2.2 | 5 | build:OK | $0.0666 | 2,844/33,456 |
 
 ### Commits by session
 
-- **s2 (P0 Deliver)** — 8 commit(s):
-  - c89f17a chore(conductor): s2 P0 working ▸P0.1 @ 05:07
-  - c55d4a2 docs(P0.1): tracker + AGENTS RESUME handoff — P0.1/P0.5 done, next P0.2
-  - a6aa08c fix(P0.1,F1): backtest sizes off config balance, not venue hello (¼-sizing) + sizing journal (R7)
-  - f3c9e19 chore(conductor): s2 P0 working ▸P0.1 @ 04:52
-  - cc7070e chore(conductor): s2 P0 working ▸P0.1 @ 04:37
-  - 601e625 chore(conductor): s2 P0 working ▸P0.1 @ 04:22
-  - c8357f5 chore(conductor): s2 P0 working ▸P0.1 @ 04:07
-  - b73d250 chore(conductor): s2 P0 working ▸P0.1 @ 03:52
 - **s3 (P0 Deliver)** — 8 commit(s):
   - 572b4ee docs(P0.2): tracker + AGENTS RESUME — P0.2 done (F5), next P0.3 (F6)
   - de4c8e7 feat(P0.2,F5,Q5): run-status truth — completed-with-warnings separates result from teardown
@@ -99,6 +70,12 @@ _Session #10 (Deliver) · running 30m · last output 5s ago · $0.0501_
 - **s9 (P1 Audit)** — 2 commit(s):
   - 7c661b0 docs(P1): honest phase handover — audit verdict + solid/weak/deferred/risks
   - 795807f audit(P1): harden config/DB truth — unify repo-root in lint-config + cover uncovered sync branches
+- **s10 (P2 Deliver)** — 5 commit(s):
+  - ab1805f docs(P2,P3): tracker + RESUME + evidence — P2.1 DONE, P2.2 OWNER-PENDING, P3.1 foundation
+  - 0de44c2 feat(P3.1): TradingEngine.ResearchCli foundation — HTTP driver + machine verdicts
+  - 3979871 chore(conductor): s10 P2 working ▸P2.1 @ 17:42
+  - ccf6aa4 feat(P2.1,F8): run lifecycle state machine — forbid illegal jumps in ONE place
+  - 4b5e8b5 chore(conductor): s10 P2 working ▸P2.1 @ 17:27
 
 ## Phase handovers (audit)
 
@@ -107,32 +84,42 @@ _Session #10 (Deliver) · running 30m · last output 5s ago · $0.0501_
 
 ## Last gate run
 
-build:OK · unit:OK · sim-fast:OK
+build:OK
 
 ## Last session result
 
-> SESSION-RESULT: P1 (Config & DB truth) passes audit — the phase is genuinely solid for everything provable credential-free, with no gate/golden/truth weakened (ratchet held). I statically reviewed the full `31a08d2..HEAD` diff (DbPathResolver, MigrationGuard, ConfigSyncService, seeder, M42, entities, orchestrator, controllers) and verified the claims in the RUNTIME store per R5 rather than source files: exactly one `trading.db` (F10 unification real), `__EFMigrationsHistory` head = M42, all 9 strategies + 4 risk profiles carry `SeededHash`, `OrderEntryJson` is `Method:0` ×8 / `Method:1` ×1 exactly per owner Q1, the file SHA‑256 independently equals the DB `SeededHash` for `trend-breakout`+`s…
+> I'll start the pre-session ritual. Let me read the mandatory docs in order.
+> Let me read the PLAN P2 section, AUDIT findings F8/F16, and the conductor-DEBT file.
+> Now let me read the AUDIT findings F8/F16, WORKFLOW, and conductor-DEBT.
+> Now let me read the AUDIT F8/F16 sections and WORKFLOW.md.
+> Now let me read WORKFLOW §4/§6 and examine the orchestrator code that P2.1 will touch.
+> Now let me examine the orchestrator and run-state code. This is the heart of P2.1.
+> The orchestrator is large. Let me find the state model, status assignments, and cancel logic.
+> Let me look at the cTrader CLI process management and the watchdog/timeout logic.
+> Let me check test architecture and existing run-lifec…
 
 ## Tracker handoff
 
 ```
-last: **P1 COMPLETE** (s8). P1.1 (f364102, F10): DbPathResolver (repo-root anchored, single source) unifies
-      Web+Host+orchestrator DB path; MigrationGuard fail-loud (exit≠0) on pending migrations; new
-      compute-reference-scales Host verb populated 84/84 ReferenceScales. P1.2 (d36f491, F9/F7):
-      M42 SeededHash/SeededAtUtc + ConfigSyncService (startup) propagate JSON edits to the DB, drift-safe;
-      GET /api/system/config-drift; StrategyParamsJson now = effective config. R5 proven LIVE.
-stage: **P1 spine COMPLETE.** Next stage **P2** — start P2.1 (run state machine + tests, F8).
-gate: GREEN — build 0 err/5 warn; Unit 534/0/6; Integration 115/0/0 (+6 P1 tests); fast Sim 144/0/0;
-      golden 61/61 byte-identical (git diff --stat *golden* = empty; NO rebaseline).
-next: **P2.1 (run state machine, F8)** — enumerate queued→starting→running→finalizing→terminal, forbid
-      illegal jumps in ONE place; cancel kills ctrader-cli tree (no orphans); watchdog finalizes on CLI
-      exit-without-completion. Then P2.2 (OWNER-GATE: real compare-both + reconcile verdict).
-QA-prev: s7 P1-attempt-1 was a no-op (P1.1/P1.2 stayed TODO; only a benign TRACKER reword). Re-ran full P0
-      gate battery + F9 runtime DB check → confirmed. No fix needed.
-trap: (1) journal-OrderProposed-in-a-run + StrategyParamsJson-in-a-persisted-run are bars/cTrader-gated
-      (replay=No bars found) → OWNER-PENDING, not a code gap. (2) Real DB now has M42 applied +
-      SeededHash baselined (trend-breakout Version=3 from the live round-trip — cosmetic). (3) P0 cTrader
-      runs still OWNER-PENDING; F6-R detection-only accepted. (4) BuildInfo.g.cs re-dirties every build
-      (leave it); .conductor/ + conductor-CLEANUP.md orchestrator-managed; tsc 2 pre-existing (P5).
-      (5) WalkForwardBackgroundService throws OperationCanceledException on Stop-Process (pre-existing).
+last: **P2.1 DONE** (ccf6aa4, F8): RunStateMachine (Domain, pure) enumerates queued→starting→running→
+      finalizing→terminal; single guarded writer TransitionRun in orchestrator (grep `.Status =`→1 hit);
+      happy path forced through `finalizing`; Cancel idempotent+truthful (CancelRequested intent, no lying
+      mid-finalize cancelled) + best-effort ctrader-cli tree kill; RunStateMachineTests 32/32.
+      **P2.2 auto-promoted DONE (OWNER-PENDING — needs creds).** **P3.1 foundation** (0de44c2): ResearchCli
+      console (`research`) — Verdict/GateEvaluator/CliArgs/RunJson/ApiClient + verbs run validate/await,
+      reconcile; ResearchCliTests 11/11.
+stage: **P2 COMPLETE** (P2.1 done; P2.2 owner-pending). P3 STARTED (P3.1 foundation).
+gate: GREEN (documented battery) — build 0err/5warn; Unit 577/0/6; Integration 117/0/0; fast Sim 144/0/0;
+      golden byte-identical (git diff --stat **/*golden*.json = empty; NO rebaseline).
+next: **Finish P3.1** (verbs: data ensure, run start [--compare-both], exitlab eval, walkforward, report,
+      pipeline) then **P3.2 playbook engine** (ResearchPipelines/Steps DB, Q6) + **P3.3 UI /research**.
+      Live end-to-end of ResearchCli against a running app is owner/next-session (needs app up).
+QA-prev: s8/s9 P1 → **confirmed** (build 0/5, Unit 534/6, Integration 117, fast Sim 144, golden empty;
+      R5 DB: ReferenceScales=84, StrategyConfigs Method:0×8+MR:1, head M42). No divergence, no fix.
+trap: (1) Tests.Architecture has **2 PRE-EXISTING fails** (EnginePurity; ExitCalibrationEntity !IAuditable)
+      — NOT in the gate battery, Engine/Infra untouched this session; do not attribute to P2/P3.
+      (2) `finalizing` is transient in-memory ONLY — never persisted (end-record writes after terminal
+      transition); don't add it to RunStatusResolver/DB. (3) live cancel/watchdog/orphan-kill + all P0
+      cTrader runs are creds-gated → OWNER-PENDING (P2.2). (4) BuildInfo.g.cs re-dirties each build (leave);
+      .conductor/ orchestrator-managed. (5) commit via `git commit -F <file>`.
 ```
