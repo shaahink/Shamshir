@@ -1,39 +1,19 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 15:48 UTC · branch `iter/parity-pipeline` · HEAD `342810a`_
+_Updated 2026-07-08 15:55 UTC · branch `iter/parity-pipeline` · HEAD `b4ca47c`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P1 — Config & DB truth · attempts used 1 · working ▸ P1.1
-**Checkpoints:** 6/17 done · **Sessions run:** 8 · **Cost:** $0.4554 · **Tokens:** 138,702 in / 148,197 out / 79,085 think
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P1 — Config & DB truth · attempts used 0
+**Checkpoints:** 8/17 done · **Sessions run:** 8 · **Cost:** $0.5651 · **Tokens:** 143,065 in / 189,395 out / 100,247 think
 **Confirmed phases:** P0
-
-## Latest activity (live)
-
-_Session #8 (Deliver) · running 90m · last output 9s ago · $0.1010_
-
-**Thinking:**
-> I'm looking at a divergent history situation where the remote branch has 34 commits my local doesn't have, while my local has 17 the remote doesn't. The incoming commits appear to be P0 commits that should already be in my history, which suggests the local branch history diverged significantly — pos…
-> I've created a safety backup of my P1 commits on `s8-p1-backup`. Looking at my local history, commit f364102 (P1.1) is built on top of rebased P0 audit commits, which means my local branch is essentially the remote's P0 line plus my P1 additions stacked on top.  I'm considering two approaches: eithe…
-> I've got an unstaged change in BuildInfo.g.cs that keeps getting regenerated on every build, so I need to clean it up. I'll stash just that tracked file rather than checking it out entirely, since it's a generated artifact that shouldn't be committed.
-
-**Recent actions:**
-- `16:46:04` » bash git add docs/iterations/iter-parity-pipeline/TRACKER.md AGENTS.md; git status --short | Select-String -Pattern "^[AM] "; echo "=== commit ==="; $m="docs(P1…
-- `16:46:14` · Docs committed (cd9f843). Now verify the tree and push the branch.
-- `16:46:15` » bash echo "=== working tree (expect only BuildInfo + conductor-managed) ==="; git status --short; echo "=== push ==="; git push 2>&1 | Select-Object -Last 5
-- `16:46:49` · Remote is ahead (conductor pushes bookkeeping). Let me rebase onto the remote then push.
-- `16:46:51` » bash git fetch origin 2>&1 | Select-Object -Last 3; echo "=== behind/ahead ==="; git rev-list --left-right --count origin/iter/parity-pipeline...HEAD; echo "===…
-- `16:47:30` · This is a conductor-managed history divergence (my P1 commits sit on a rebased base; remote has the original P0 line + bookkeeping). Let me create a safety bran…
-- `16:47:35` » bash git branch s8-p1-backup HEAD; echo "safety branch s8-p1-backup created at $(git rev-parse --short HEAD)"; echo "=== my local P1 commits (safe on backup) ==…
-- `16:48:18` · My P1 work is safe on `s8-p1-backup`. Let me attempt a rebase pull (patch-identical P0 commits should auto-drop).
-- `16:48:19` » bash git -c rerere.enabled=false pull --rebase origin iter/parity-pipeline 2>&1 | Select-Object -Last 20
-- `16:48:43` » bash git checkout -- src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs; echo "discarded BuildInfo change"; git pull --rebase origin iter/parity-pipeline 2>&1 | …
+**Pending:** auto-fix audit for P1
 
 ## Stage progress
 
 | Stage | Title | Done | State |
 |---|---|---|---|
 | P0 | Parity truth repair (the spine) | 6/6 | confirmed ✓ |
-| P1 | Config & DB truth | 0/2 | **← active** |
+| P1 | Config & DB truth | 2/2 | gating… |
 | P2 | Lifecycle robustness + headline gate | 0/2 | todo |
 | P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | todo |
 | P4 | Lab golden paths | 0/1 | todo |
@@ -51,7 +31,7 @@ _Session #8 (Deliver) · running 90m · last output 9s ago · $0.1010_
 | 5 | P0 | Deliver | 1 | 07-08 06:18 | 0:28 | Advanced | P0.4 | 3 | build:OK | $0.0495 | 2,084/24,785 |
 | 6 | P0 | Audit | 1 | 07-08 06:47 | 0:23 | Progress |  | 3 |  | $0.0417 | 2,295/18,583 |
 | 7 | P1 | Deliver | 1 | 07-08 14:02 | 0:15 | Progress |  | 1 | build:OK | $0.0160 | 873/3,880 |
-| 8 | P1 | Deliver | 2 | 07-08 14:18 | … | running |  | 0 |  |  |  |
+| 8 | P1 | Deliver | 2 | 07-08 14:18 | 1:36 | Advanced | P1.1 P1.2 | 5 | build:OK | $0.1096 | 4,363/41,198 |
 
 ### Commits by session
 
@@ -94,6 +74,12 @@ _Session #8 (Deliver) · running 90m · last output 9s ago · $0.1010_
   - 60c2003 chore(conductor): s6 P0 working ▸P0 @ 08:02
 - **s7 (P1 Deliver)** — 1 commit(s):
   - 245db11 chore(conductor): s7 P1 working ▸P1.1 @ 15:17
+- **s8 (P1 Deliver)** — 5 commit(s):
+  - b4ca47c chore(conductor): s8 P1 working ▸P1.1 @ 16:48
+  - 342810a docs(P1): tracker + AGENTS RESUME — P1 COMPLETE (P1.1 f364102, P1.2 d36f491); QA of s7 = no-op confirmed; next P2.1
+  - 679adcb feat(P1.2,F9,F7): config propagation + drift — JSON edits reach the runtime DB
+  - dfadcfc docs: add conductor-DEBT.md (P0 audit followups) + update read-order
+  - 9454878 feat(P1.1,F10): one database — repo-root DbPathResolver + Host fail-loud + compute-reference-scales
 
 ## Phase handovers (audit)
 
@@ -105,33 +91,33 @@ build:OK
 
 ## Last session result
 
-> I'll start the pre-session ritual. Let me read the required docs in order.
-> Now let me read the AUDIT findings relevant to my stage (F7, F9, F10) and key reference docs.
-> Now let me check git state and read the workflow/reference docs and DECISIONS.
-> Now let me search DECISIONS.md for relevant decisions and explore the codebase for the files I'll touch (Host CLI, DB path config, seeder, config drift).
-> Let me read the key files for P1.1 (DB path, Host CLI, migrations startup, reference scales) and P1.2 (seeder, config drift).
-> Let me look at how migrations get applied, the Host persistence extension, the seeder, and reference scales computation.
-> `rg` isn't available. Let me use the grep too…
+> I'll start with the pre-session ritual. Let me read the mandatory files in order.
+> The RESUME block is stale (references s5/P0.4, but git shows s6 P0 and s7 P1 already happened). Let me read the TRACKER for the real current state.
+> Let me check the uncommitted TRACKER.md diff (s7 may have left something) and read the PLAN P1 section + AUDIT findings.
+> s7 (P1 attempt 1) delivered no P1 source work — only a benign TRACKER doc reword + BuildInfo re-dirty. P1.1 is untouched. Let me read the PLAN P1 section and AUDIT findings.
+> Now let me read the verification matrix and AUDIT findings F7/F9/F10.
+> Now I understand the P1 scope. Let me establish the gate baseline (build) while exploring the P1-rel…
 
 ## Tracker handoff
 
 ```
-last: **P0 STATIC AUDIT DONE** (s6, commit 305a853) — hardened the spine before P1. Reviewed the whole
-      P0 diff (c305a08..HEAD). Found + fixed the F6-R crashed-teardown honesty gap with the tracker's
-      recommended option-(b) detection safety net (TRADES_UNRECONSTRUCTABLE), evidence-backed vs all 6
-      audit-DB runs (false-positive-free); plus an EngineRunner F1 drift-log accuracy fix. No other
-      correctness bugs found — F1/F2/F5/F6 fixes are sound; tests are genuine (not happy-path stubs).
-stage: **P0 spine COMPLETE + AUDITED.** Next stage **P1** — start P1.1 (one database, F10).
-gate: GREEN — build 0 err/5 warn; Unit 528/0/6; Integration 110/0/0 (+2 F6-R); fast Sim 144/0/0;
+last: **P1 COMPLETE** (s8). P1.1 (f364102, F10): DbPathResolver (repo-root anchored, single source) unifies
+      Web+Host+orchestrator DB path; MigrationGuard fail-loud (exit≠0) on pending migrations; new
+      compute-reference-scales Host verb populated 84/84 ReferenceScales. P1.2 (d36f491, F9/F7):
+      M42 SeededHash/SeededAtUtc + ConfigSyncService (startup) propagate JSON edits to the DB, drift-safe;
+      GET /api/system/config-drift; StrategyParamsJson now = effective config. R5 proven LIVE.
+stage: **P1 spine COMPLETE.** Next stage **P2** — start P2.1 (run state machine + tests, F8).
+gate: GREEN — build 0 err/5 warn; Unit 534/0/6; Integration 115/0/0 (+6 P1 tests); fast Sim 144/0/0;
       golden 61/61 byte-identical (git diff --stat *golden* = empty; NO rebaseline).
-next: **P1.1 (one DB, F10)** — single DB path shared by Web + Host CLI; startup fails loud on pending
-      migrations; archive stale root data/trading.db; compute-reference-scales populates 84/84 cells.
-F6-R: option (b) detection-only ACCEPTED 2026-07-08 — owner defers economics recovery (option a).
-       Detection safety net is false-positive-free, surfaces TRADES_UNRECONSTRUCTABLE honestly.
-       Non-blocking for P1.
-trap: OWNER-PENDING real cTrader runs (P0.1–P0.4 all creds-gated; not run this audit — proven
-      credential-free). One transient Integration failure seen once (not reproduced in 2 subsequent full
-      110/0 runs; NOT the 2 new F6-R tests — those use isolated in-memory SQLite); suspected pre-existing
-      flakiness — next session watch for it. P2.2 OWNER-GATE; BuildInfo.g.cs re-dirties every build
-      (leave it); tsc 2 pre-existing (P5).
+next: **P2.1 (run state machine, F8)** — enumerate queued→starting→running→finalizing→terminal, forbid
+      illegal jumps in ONE place; cancel kills ctrader-cli tree (no orphans); watchdog finalizes on CLI
+      exit-without-completion. Then P2.2 (OWNER-GATE: real compare-both + reconcile verdict).
+QA-prev: s7 P1-attempt-1 was a no-op (P1.1/P1.2 stayed TODO; only a benign TRACKER reword). Re-ran full P0
+      gate battery + F9 runtime DB check → confirmed. No fix needed.
+trap: (1) journal-OrderProposed-in-a-run + StrategyParamsJson-in-a-persisted-run are bars/cTrader-gated
+      (replay=No bars found) → OWNER-PENDING, not a code gap. (2) Real DB now has M42 applied +
+      SeededHash baselined (trend-breakout Version=3 from the live round-trip — cosmetic). (3) P0 cTrader
+      runs still OWNER-PENDING; F6-R detection-only accepted. (4) BuildInfo.g.cs re-dirties every build
+      (leave it); .conductor/ + conductor-CLEANUP.md orchestrator-managed; tsc 2 pre-existing (P5).
+      (5) WalkForwardBackgroundService throws OperationCanceledException on Stop-Process (pre-existing).
 ```
