@@ -232,7 +232,7 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** TBD (s27, P6.5 block-bootstrap)
+**Branch:** `iter/parity-pipeline` — **HEAD:** ea8d6b1 (s27, P6.5 block-bootstrap)
 **Session (s27, P6.5):** Delivered BlockBootstrapper + API endpoint + ResearchCli step
   + measuring playbook. BlockBootstrapper reads bars, partitions into weekly blocks,
   resamples with replacement to generate N synthetic tapes, and remaps timestamps.
