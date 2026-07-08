@@ -35,11 +35,12 @@
     <NgProjectDir>..\..\web-ui</NgProjectDir>
   </PropertyGroup>
 
-  <!-- Auto-rebuild Angular front-end when web-ui sources are newer than wwwroot.
-       Runs right before DefineStaticWebAssets so MSBuild always re-scans the latest files.
-       The PowerShell script handles staleness checking and ng build; on success it touches
-       the stamp. On failure (no sources, npm error) it exits non-zero and stops the build. -->
-  <Target Name="RebuildAngularIfStale" BeforeTargets="ResolveStaticWebAssetsConfiguration"
+  <!-- Pre-build check: ensure Angular front-end is up to date.
+       The Angular build cannot run inside dotnet build because .NET 10's static web assets
+       pipeline evaluates @(Content) items at project evaluation time (before any targets run).
+       If src is newer than wwwroot, fail with a clear message.
+       Run `npm run build` in web-ui/ first, then re-run dotnet build. -->
+  <Target Name="EnsureAngularCurrent" BeforeTargets="ResolveStaticWebAssetsConfiguration"
           Condition="Exists('$(NgProjectDir)\package.json')">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;..\..\scripts\rebuild-ng-if-stale.ps1&quot; -NgProjectDir &quot;$(NgProjectDir)&quot; -NgBuildStamp &quot;$(NgBuildStamp)&quot;"
           ContinueOnError="false" />

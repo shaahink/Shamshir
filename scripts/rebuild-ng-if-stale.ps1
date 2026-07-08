@@ -4,7 +4,7 @@ param(
 )
 
 if (-not $NgProjectDir) {
-    Write-Host "Angular: NgProjectDir not set, skipping auto-build"
+    Write-Host "Angular: NgProjectDir not set, skipping check"
     exit 0
 }
 
@@ -22,7 +22,7 @@ $configFiles = @(Get-Item $cfg, $pkg -ErrorAction SilentlyContinue)
 $all = $srcFiles + $configFiles
 
 if ($all.Count -eq 0) {
-    Write-Host "Angular: no source files found, skipping auto-build"
+    Write-Host "Angular: no source files found, skipping check"
     exit 0
 }
 
@@ -36,12 +36,12 @@ if (Test-Path $indexHtml) {
     }
 }
 
-Write-Host "Angular: src is newer than wwwroot (src $newestSrc > index.html), rebuilding..."
-npm --prefix $NgProjectDir run build
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "Angular build FAILED (exit code $LASTEXITCODE)"
-    exit $LASTEXITCODE
-}
-
-'' | Out-File -LiteralPath $NgBuildStamp -Encoding utf8
-Write-Host "Angular: build complete"
+Write-Host "Angular: STALE! src ($newestSrc) is newer than wwwroot index.html."
+Write-Host ""
+Write-Host "The Angular source has changed since the last build."
+Write-Host "Re-run with:  npm --prefix $NgProjectDir run build"
+Write-Host "Then re-run dotnet build."
+Write-Host ""
+Write-Host "The Angular output cannot be rebuilt inside dotnet build because"
+Write-Host ".NET 10's static web assets pipeline evaluates wwwroot before targets run."
+exit 1
