@@ -232,34 +232,33 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD after this session:** P1.2 commit `d36f491` (P1.1 = `f364102`),
-plus the docs commit updating TRACKER/RESUME (+ conductor bookkeeping interleaved — SHAs may shift again).
-**Session (s8, P1):** QA of s7 = **confirmed (s7 was a no-op)** — s7 left P1.1/P1.2 TODO; re-ran full P0
-gates + F9 runtime DB check, all green, no fix needed. Then delivered **P1 COMPLETE** in 2 commits:
-- **P1.1 (F10, f364102):** `DbPathResolver` (repo-root anchored, cwd-independent single source) unifies the
-  Web + Host CLI + orchestrator DB path; `MigrationGuard` fails loud (exit≠0, exact path) on pending
-  migrations; new `compute-reference-scales` Host verb → **84/84 ReferenceScales** on the unified Web DB.
-- **P1.2 (F9/F7, d36f491):** M42 adds `SeededHash`+`SeededAtUtc`; `ConfigSyncService` (Web startup, after
-  seeders) propagates JSON edits to the DB unless hand-edited (drift-safe); `GET /api/system/config-drift`;
-  F7 fills `StrategyParamsJson`. **R5 proven LIVE:** edit trend-breakout Market→LimitOffset + restart → DB
-  `OrderEntryJson` `Method:1`, Version 1→2; revert+restart → back to `Method:0` (self-heal).
+**Branch:** `iter/parity-pipeline` — **HEAD:** P3.1 foundation `0de44c2` (P2.1 = `ccf6aa4`), + a docs
+commit (TRACKER/RESUME/evidence/RECONCILE §P2.2). Conductor bookkeeping SHAs interleave.
+**Session (s10, P2):** QA of s8/s9 P1 = **confirmed** (build 0/5, Unit 534/6, Integration 117, fast Sim 144,
+golden empty; R5 DB: ReferenceScales=84, StrategyConfigs Method:0×8+MR:1, head M42). Delivered:
+- **P2.1 (ccf6aa4, F8):** `RunStateMachine` (Domain, pure) — queued→starting→running→finalizing→terminal
+  with an allowed-transition map; TryTransition never throws, terminal is a no-op (double-cancel). Single
+  guarded writer `TransitionRun` in the orchestrator (grep `.Status =`→1 hit); happy path forced through
+  `finalizing`; `Cancel` idempotent+truthful (CancelRequested intent, no lying mid-finalize cancelled) +
+  best-effort ctrader-cli tree kill; RunStateMachineTests **32/32**.
+- **P2.2:** auto-promoted **DONE (OWNER-PENDING — needs cTrader creds)**; gate template in
+  `docs/audit/RECONCILE-FINDINGS.md §P2.2`.
+- **P3.1 foundation (0de44c2):** new `TradingEngine.ResearchCli` (`research`) — Verdict/GateEvaluator/
+  CliArgs/RunJson/ApiClient + verbs `run validate`/`run await`/`reconcile`; ResearchCliTests **11/11**.
 
-**Gates GREEN (commands):** `dotnet build TradingEngine.slnx -c Debug` → 0 err/5 warn; Unit `--no-build`
-534/0/6; Integration `--no-build` 115/0/0 (+6 P1 tests); golden `FullyQualifiedName~Golden` 61/61
-byte-identical (git diff --stat *golden* empty; NO rebaseline); fast Sim filter 144/0/0.
+**Gates GREEN (documented battery):** `dotnet build TradingEngine.slnx -c Debug` 0err/5warn; Unit
+`--no-build` 577/0/6; Integration 117/0/0; fast Sim `--filter "RequiresCTrader!=true&Category!=E2E&
+Category!=Slow&Category!=NetMQ"` 144/0/0; `git diff --stat -- **/*golden*.json` empty (NO rebaseline).
 
-**Next step:** **Start P2.1 (run state machine + tests, F8)** — enumerate `queued→starting→running→
-finalizing→completed|completed-with-warnings|cancelled|failed`, forbid illegal jumps in ONE place
-(orchestrator state is stringly + multi-writer today); cancel kills the ctrader-cli tree (no orphans);
-watchdog finalizes within 30s on CLI-exit-without-completion. Then P2.2 (OWNER-GATE: one real compare-both
-run + committed reconcile verdict — the inherited P6.1 headline gate).
+**Next step:** finish **P3.1** verbs (`data ensure`, `run start [--compare-both]`, `exitlab eval`,
+`walkforward`, `report`, `pipeline`) → **P3.2** playbook engine (ResearchPipelines/Steps DB, Q6) → **P3.3**
+UI `/research`. ResearchCli live end-to-end needs the app running (owner/next-session).
 
-**Open traps:** (1) P1.2 journal-OrderProposed-in-a-run + StrategyParamsJson-in-a-persisted-run are
-bars/cTrader-gated (credential-free `replay` = "No bars found") → OWNER-PENDING, NOT a code gap. (2) The
-real DB now has M42 applied + SeededHash baselined; trend-breakout Version=3 from the live round-trip
-(cosmetic). (3) P0 real cTrader runs (P0.1–P0.4) still OWNER-PENDING; F6-R detection-only accepted. (4)
-`BuildInfo.g.cs` re-dirties every build (leave uncommitted); `.conductor/` + `conductor-CLEANUP.md`
-orchestrator-managed — do NOT stage them. (5) `WalkForwardBackgroundService` throws
-OperationCanceledException on `Stop-Process` shutdown (pre-existing). (6) `npx tsc --noEmit` 2 pre-existing
-errors (P5). (7) commit via `git commit -F <file>` — PowerShell mangles multi-line `-m`.
+**Open traps:** (1) `Tests.Architecture` has **2 PRE-EXISTING fails** (EnginePurity; ExitCalibrationEntity
+!IAuditable) — NOT in the gate battery, Engine/Infra untouched this session; don't attribute to P2/P3.
+(2) `finalizing` is transient in-memory ONLY — never persisted (end-record writes after the terminal
+transition); do not add it to RunStatusResolver/DB. (3) live cancel/watchdog/orphan-kill + every P0 cTrader
+run are creds-gated → OWNER-PENDING (P2.2). (4) `BuildInfo.g.cs` + `web-ui/.../build-info.ts` re-dirty each
+build (leave uncommitted); `.conductor/` orchestrator-managed. (5) commit via `git commit -F <file>`
+(PowerShell mangles multi-line `-m`). (6) `npx tsc --noEmit` 2 pre-existing errors (P5).
 

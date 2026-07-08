@@ -179,3 +179,45 @@ New F-ids discovered:
 
 Unexplained divergences: ...
 ```
+
+## §P2.2 — OWNER-GATE: post-P0/P1/P2 compare-both (the inherited P6.1 headline gate)
+
+**Status: OWNER-PENDING (needs cTrader credentials).** Auto-promoted per run policy — the pipeline is
+NOT blocked on this; the owner runs it and fills the table below. Everything it exercises is already
+proven credential-free (see the P0/P1/P2 evidence docs); this is the *integration* gate, not a
+correctness gate.
+
+**How to run (owner, with creds configured — `CTrader:CtId/PwdFile/Account` in appsettings):**
+1. `run-shamshir` skill → launch the Web app (cwd `src/TradingEngine.Web`).
+2. Start a compare-both run: POST `/api/runs/compare-both` (EURUSD, H1, 1 month, trend-breakout, Market).
+   Or drive it via the new ResearchCli once `run start --compare-both` lands (P3.1 remainder).
+3. Poll to terminal; then GET the reconcile URL and paste results below.
+
+**Assert (the gate):**
+- **F1 (sizing):** tape lots == cTrader lots (within rounding) per matched proposal — P0.1 fix live.
+- **F5 (status truth):** 3 consecutive headless cTrader runs end `completed` (or
+  `completed-with-warnings`), ZERO `NetMQPoller` strings in ErrorMessage — P0.2 fix + P2.1 state machine.
+- **F6:** if a crash/teardown loses closes, `TRADES_LOST` or `TRADES_UNRECONSTRUCTABLE` surfaces +
+  `completed-with-warnings` (never silent TotalTrades=0) — P0.3 barrier.
+- **F2:** reconcile output carries `entryDelayBars` — P0.4 instrumentation.
+- **Lifecycle:** the run reaches a terminal state via the state machine (no "stuck running"); cancel of a
+  live cTrader run kills the ctrader-cli tree (no orphans) and finalizes `cancelled` — P2.1.
+- **Golden:** `git diff --stat -- **/*golden*.json` empty (no rebaseline without investigation).
+
+```
+### P2.2 run — {date}, {window}, EURUSD H1, trend-breakout (Market)
+| Check | Expected | Actual | Verdict |
+|---|---|---|---|
+| F1 lots tape==cTrader | equal (±rounding) | ? | ? |
+| F5 status | completed / -with-warnings | ? | ? |
+| F5 NetMQPoller in ErrorMessage (×3 runs) | none | ? | ? |
+| F6 lost-trade warning if applicable | surfaced | ? | ? |
+| F2 entryDelayBars present | yes | ? | ? |
+| Lifecycle terminal (no stuck) | yes | ? | ? |
+| Golden byte-identical | yes | ? | ? |
+
+Tape RunId: ?
+cTrader RunId: ?
+Reconcile URL: GET /api/backtest/analytics/reconcile?left={tapeRunId}&right={ctraderRunId}
+Verdict: ?
+```

@@ -17,25 +17,27 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P1 COMPLETE** (s8). P1.1 (f364102, F10): DbPathResolver (repo-root anchored, single source) unifies
-      Web+Host+orchestrator DB path; MigrationGuard fail-loud (exit≠0) on pending migrations; new
-      compute-reference-scales Host verb populated 84/84 ReferenceScales. P1.2 (d36f491, F9/F7):
-      M42 SeededHash/SeededAtUtc + ConfigSyncService (startup) propagate JSON edits to the DB, drift-safe;
-      GET /api/system/config-drift; StrategyParamsJson now = effective config. R5 proven LIVE.
-stage: **P1 spine COMPLETE.** Next stage **P2** — start P2.1 (run state machine + tests, F8).
-gate: GREEN — build 0 err/5 warn; Unit 534/0/6; Integration 115/0/0 (+6 P1 tests); fast Sim 144/0/0;
-      golden 61/61 byte-identical (git diff --stat *golden* = empty; NO rebaseline).
-next: **P2.1 (run state machine, F8)** — enumerate queued→starting→running→finalizing→terminal, forbid
-      illegal jumps in ONE place; cancel kills ctrader-cli tree (no orphans); watchdog finalizes on CLI
-      exit-without-completion. Then P2.2 (OWNER-GATE: real compare-both + reconcile verdict).
-QA-prev: s7 P1-attempt-1 was a no-op (P1.1/P1.2 stayed TODO; only a benign TRACKER reword). Re-ran full P0
-      gate battery + F9 runtime DB check → confirmed. No fix needed.
-trap: (1) journal-OrderProposed-in-a-run + StrategyParamsJson-in-a-persisted-run are bars/cTrader-gated
-      (replay=No bars found) → OWNER-PENDING, not a code gap. (2) Real DB now has M42 applied +
-      SeededHash baselined (trend-breakout Version=3 from the live round-trip — cosmetic). (3) P0 cTrader
-      runs still OWNER-PENDING; F6-R detection-only accepted. (4) BuildInfo.g.cs re-dirties every build
-      (leave it); .conductor/ + conductor-CLEANUP.md orchestrator-managed; tsc 2 pre-existing (P5).
-      (5) WalkForwardBackgroundService throws OperationCanceledException on Stop-Process (pre-existing).
+last: **P2.1 DONE** (ccf6aa4, F8): RunStateMachine (Domain, pure) enumerates queued→starting→running→
+      finalizing→terminal; single guarded writer TransitionRun in orchestrator (grep `.Status =`→1 hit);
+      happy path forced through `finalizing`; Cancel idempotent+truthful (CancelRequested intent, no lying
+      mid-finalize cancelled) + best-effort ctrader-cli tree kill; RunStateMachineTests 32/32.
+      **P2.2 auto-promoted DONE (OWNER-PENDING — needs creds).** **P3.1 foundation** (0de44c2): ResearchCli
+      console (`research`) — Verdict/GateEvaluator/CliArgs/RunJson/ApiClient + verbs run validate/await,
+      reconcile; ResearchCliTests 11/11.
+stage: **P2 COMPLETE** (P2.1 done; P2.2 owner-pending). P3 STARTED (P3.1 foundation).
+gate: GREEN (documented battery) — build 0err/5warn; Unit 577/0/6; Integration 117/0/0; fast Sim 144/0/0;
+      golden byte-identical (git diff --stat **/*golden*.json = empty; NO rebaseline).
+next: **Finish P3.1** (verbs: data ensure, run start [--compare-both], exitlab eval, walkforward, report,
+      pipeline) then **P3.2 playbook engine** (ResearchPipelines/Steps DB, Q6) + **P3.3 UI /research**.
+      Live end-to-end of ResearchCli against a running app is owner/next-session (needs app up).
+QA-prev: s8/s9 P1 → **confirmed** (build 0/5, Unit 534/6, Integration 117, fast Sim 144, golden empty;
+      R5 DB: ReferenceScales=84, StrategyConfigs Method:0×8+MR:1, head M42). No divergence, no fix.
+trap: (1) Tests.Architecture has **2 PRE-EXISTING fails** (EnginePurity; ExitCalibrationEntity !IAuditable)
+      — NOT in the gate battery, Engine/Infra untouched this session; do not attribute to P2/P3.
+      (2) `finalizing` is transient in-memory ONLY — never persisted (end-record writes after terminal
+      transition); don't add it to RunStatusResolver/DB. (3) live cancel/watchdog/orphan-kill + all P0
+      cTrader runs are creds-gated → OWNER-PENDING (P2.2). (4) BuildInfo.g.cs re-dirties each build (leave);
+      .conductor/ orchestrator-managed. (5) commit via `git commit -F <file>`.
 
 ## Checkpoints
 
@@ -77,6 +79,13 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 > fast Sim 144/0/0. Verified 2 claims: (runtime/R5) `sqlite3 …Web/data/trading.db` StrategyConfigs = Method:0
 > ×8 + mean-reversion Method:1 (F9 no longer diverges), migration head M41, ReferenceScales=0; (tests) golden
 > + Integration + fast Sim re-run green. No divergence, no fix needed → proceeded to deliver P1.1 + P1.2.
+>
+> QA-previous (s10 QA of s8/s9 P1): **confirmed.** Full gate battery re-run verbatim: build 0err/5warn,
+> Unit 534/0/6, Integration 117/0/0, fast Sim 144/0/0, golden byte-identical (`git diff --stat **/*golden*.json`
+> = empty). Verified 2 claims: (runtime/R5) `c:\adb\sqlite3.exe …Web/data/trading.db` → ReferenceScales=84
+> [P1.1], StrategyConfigs Method:0 ×8 + mean-reversion Method:1 [P1.2/Q1], migration head M42_ConfigSeedHash;
+> (tests) full battery re-run green incl golden. s9 audit commit 795807f (lint-config repo-root unify + 2
+> ConfigSync tests) reviewed — ratchet-only, no regression. No divergence, no fix needed → proceed to P2.1.
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
@@ -89,9 +98,9 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P0.5 | Venue-parity test tier (R8): Category=VenueParity wired into the standard gate filter | DONE | a6aa08c | fast-Sim filter 139→144 (5 VenueParity tests ride the standard gate); evidence P0.1 §6 |
 | P1.1 | One database (F10): Host CLI verbs run against the Web DB; 84/84 ReferenceScales rows | DONE | f364102 | docs/iterations/iter-parity-pipeline/evidence/P1.1-one-database.md; DbPathResolverTests 6/6 (Unit) + MigrationTests 3/3 (Integration); R5: sqlite COUNT(ReferenceScales)=84 on the unified Web DB; fail-loud repro exit 2 |
 | P1.2 | Config propagation + drift (F9,F7): JSON edit reflected in journal; UI edit survives restart | DONE (OWNER-PENDING: journal-in-a-real-run + StrategyParamsJson-in-a-persisted-run are bars/cTrader-gated) | d36f491 | docs/iterations/iter-parity-pipeline/evidence/P1.2-config-propagation-drift.md; ConfigSyncServiceTests 3/3 (Integration); R5 LIVE: edit trend-breakout Market→LimitOffset + restart → DB OrderEntryJson Method:1 Version 1→2; GET /api/system/config-drift 200 |
-| P2.1 | Run state machine + tests (F8): cancel/watchdog/orphan-kill transitions green | TODO | | |
-| P2.2 | OWNER-GATE: one real compare-both run + committed reconcile verdict (inherited P6.1 gate) | TODO | | |
-| P3.1 | TradingEngine.ResearchCli console project (verbs, --json, VERDICT lines, diagnostics) | TODO | | |
+| P2.1 | Run state machine + tests (F8): cancel/watchdog/orphan-kill transitions green | DONE | ccf6aa4 | docs/iterations/iter-parity-pipeline/evidence/P2.1-run-state-machine.md; RunStateMachineTests 32/32 (Unit); single guarded writer TransitionRun (grep `.Status = ` → 1 hit) |
+| P2.2 | OWNER-GATE: one real compare-both run + committed reconcile verdict (inherited P6.1 gate) | DONE (OWNER-PENDING — needs cTrader creds) | — | Verifiable-now: P0.1/P0.2/P0.3 fixes + P0.4 instrumentation + P2.1 state machine (32/32) all green credential-free. Needs owner+creds: one live paired compare-both (EURUSD H1 1mo) on post-P0 build → equal lots (F1), 3× consecutive `completed` no NetMQPoller (F5), TRADES_LOST/UNRECONSTRUCTABLE surfaces (F6), committed reconcile verdict in docs/audit/RECONCILE-FINDINGS.md §P2.2 (template stubbed). Auto-promoted per run policy. |
+| P3.1 | TradingEngine.ResearchCli console project (verbs, --json, VERDICT lines, diagnostics) | IN PROGRESS (foundation landed) | 0de44c2 | docs: commit body; src/TradingEngine.ResearchCli (Verdict/GateEvaluator/CliArgs/RunJson/ResearchApiClient/Program); ResearchCliTests 11/11 (Unit). Verbs landed: run validate/await, reconcile. TODO: data ensure, run start, exitlab, walkforward, report, pipeline + live end-to-end. |
 | P3.2 | Playbook engine (typed steps, owner-gate, resumable by pipeline id) | TODO | | |
 | P3.3 | UI review page /research (read + approve owner-gates) | TODO | | |
 | P3.4 | Canonical playbooks venue-parity + explore-exit run end-to-end via CLI; artifacts committed | TODO | | |
