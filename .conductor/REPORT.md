@@ -1,10 +1,31 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 02:37 UTC · branch `iter/parity-pipeline` · HEAD `b5e06d4`_
+_Updated 2026-07-08 02:52 UTC · branch `iter/parity-pipeline` · HEAD `e42aac6`_
 
-**Status:** Idle
+**Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.1
-**Checkpoints:** 1/17 done · **Sessions run:** 1 · **Cost:** $0.0273 · **Tokens:** 1,510 in / 12,485 out / 5,660 think
+**Checkpoints:** 1/17 done · **Sessions run:** 2 · **Cost:** $0.0273 · **Tokens:** 1,510 in / 12,485 out / 5,660 think
+
+## Latest activity (live)
+
+_Session #2 (Deliver) · running 15m · last output 38s ago · $0.0090_
+
+**Thinking:**
+> The golden snapshot only captures the phase, event, guard result, and reason—not the DetailJson field. So I need to verify whether adding DetailJson to the accept-path DecisionRecords would actually change what gets stored in the golden fixtures.  Looking at the kernel's DecideProposed method, the a…
+> I'm seeing the distinction now—the golden snapshot captures the old engine's decision journal with phase transitions and guard results, but doesn't include the detailed JSON data. Meanwhile, the kernel-path tests serialize the full effects JSON, which is what drives the determinism checks.  The key …
+> I'm tracing through the accept path in `Kernel.DecideProposed` and noticing it emits effects from the posDecision reducer, SubmitOrder, and RegisterRisk, but there's no RecordDecisionEvent being triggered. The plan mentions extending the `OrderSubmitted` DecisionRecord's `DetailJson`, but I'm realiz…
+
+**Recent actions:**
+- `03:47:55` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\JournalLosslessTests.cs
+- `03:48:32` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\JournalSourceOfTruthTests.cs
+- `03:48:32` · The golden `GoldenReplayTests` captures only `(PhaseBefore, Event, GuardResult, Reason)` from the OLD engine oracle — not DetailJson. Let me check the kernel-pa…
+- `03:48:32` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\KernelBacktestLoopGoldenTests.cs
+- `03:49:26` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\KernelOrderGateEquivalenceTests.cs
+- `03:49:27` » grep RecordDecisionEvent|EffectKinds\.|SubmitOrder\)|Effects\[|Effects\.Count|Effects\.Should|effects\.Count
+- `03:49:27` · I now understand the golden mechanics. Critical insight: `golden-snapshot.json` is captured from the OLD oracle's `DecisionJournal` (only `PhaseBefore/Event/Gua…
+- `03:49:56` » read src\TradingEngine.Engine\PositionLifecycle.cs
+- `03:50:01` · The accept path is subtle. Let me examine what `EngineReducer.Apply(OrderSubmitted)` and `PositionLifecycle` emit, since that determines where DetailJson lands …
+- `03:50:01` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\KernelEvaluatorEquivalenceTests.cs
 
 ## Stage progress
 
@@ -23,6 +44,7 @@ _Updated 2026-07-08 02:37 UTC · branch `iter/parity-pipeline` · HEAD `b5e06d4`
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 1 | P0 | Deliver | 1 | 07-08 02:17 | 0:19 | Advanced | P0.0 | 5 | build:OK | $0.0273 | 1,510/12,485 |
+| 2 | P0 | Deliver | 1 | 07-08 02:37 | … | running |  | 0 |  |  |  |
 
 ### Commits by session
 
