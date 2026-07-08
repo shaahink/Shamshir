@@ -232,19 +232,15 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** P5.1c-tscfix (s20, pending commit)
-**Session (s20, P5):** Fixed 2 tsc errors that made the `web-tsc` gate RED after P5.1a-c:
-- **TS2561** (runs.service.spec.ts:47): test mock used `symbol`/`period` (singular) but StartRunRequest
-  requires `symbols`/`periods` (arrays). Root cause: the API types were updated (P5.1a-c introduced
-  multi-symbol support) but the test mock wasn't updated with the new field names.
-- **TS2554** (ui-smoke.spec.ts:59): `toBeGreaterThanOrEqual(5, 'message')` — Playwright's `expect` for
-  plain numbers doesn't accept a second message argument (unlike Jest). Removed the message string.
-**Gates GREEN:** build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden
-  byte-identical; tsc 0 errors.
-**Next step:** P5.1d Angular refactor remainder (signals migration for new-backtest class fields, run
-  state store consolidation, global error toast). Then P6 wild list per PLAN §9.
-**Open traps:** (1) New-backtest class fields still plain fields. (2) runs.store.ts still minimal.
-  (3) No global error toast. (4) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-  (5) BuildInfo.g.cs + build-info.ts dirty each build (leave). (6) P4.1 traps (F11 smoke, F12
-  backfill) owner-pending.
+**Branch:** `iter/parity-pipeline` — **HEAD:** e6c45aa (s21, P6.3 spread/vol no-trade filter)
+**Session (s21, P6):** Delivered P6.1 (data-quality ResearchCli verb + playbook), P6.2 (session fingerprinting — SessionDetector with 17 tests + playbook), P6.3 (spread/vol no-trade filter — SpreadVolNoTradeFilter with 6 tests + playbook). Also finished P5.1d Angular refactor: 16 new-backtest fields→signals, ToastService/ToastComponent, runs.store progress consolidation.
+**Gates GREEN:** build 0err/5warn; Unit 664/0/6; Integration 120/0/0; fast Sim 144/0/0; golden
+  byte-identical; tsc 0 errors; 5 shipped playbooks parse via ShippedPlaybook_Parses.
+**Next step:** P6.4 regime-conditioned calibration (PLAN §9 #5) — add regime as exit-lab grid dimension,
+  calibrate per-regime exit rules, create measuring playbook. Also: P6.5 bootstrap tapes.
+**Open traps:** (1) Session labels not yet wired into TradeExcursions — SessionDetector ready but
+  unconsumed (needs schema migration or computed API field). (2) SpreadVolNoTradeFilter has no strategy
+  config wiring — strategy JSONs don't expose it yet. (3) Playbook 3 (triage-sweep.json) never created.
+  (4) BuildInfo.g.cs + build-info.ts dirty each build (leave). (5) EntityAuditableTests red on
+  ExitCalibrationEntity (pre-existing). (6) P2.2/P3.4 P6.1-gate remain OWNER-PENDING (cTrader creds).
 

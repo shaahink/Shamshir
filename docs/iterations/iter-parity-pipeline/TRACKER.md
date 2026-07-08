@@ -17,22 +17,19 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P5.1c DONE** (09fc807) + **P5.1c-tsofix DONE** (s20): fixed 2 tsc errors from P5.1a-c —
-      runs.service.spec.ts used singular `symbol`/`period` instead of `symbols`/`periods` arrays matching
-      StartRunRequest; ui-smoke.spec.ts passed a 2nd arg to Playwright's toBeGreaterThanOrEqual which doesn't
-      accept a message param.
-stage: **P5 IN PROGRESS** — P5.1a-c + tsc fix done. P5 remaining per PLAN §8: Angular refactor (signals
-      migration for new-backtest class fields, runs.store consolidation, global error toast).
-gate: GREEN — build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical;
-      tsc clean (0 errors); driven smoke NOT RUN this session (web-ui tests didn't touch UI rendering paths).
-next: **P5.1d Angular refactor** (finish signals migration for 10+ new-backtest class fields → signals with
-       (ngModelChange), consolidate RunProgressEnvelope processing into runs.store, add global error toast).
-       Then P6 wild list per PLAN §9.
-QA-prev: s16 P4.1 — confirmed (build + tests green; M44 manually applied).
-trap: (1) New-backtest class fields still plain fields (not signals). (2) runs.store.ts still minimal.
-      (3) No global error toast. (4) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-      (5) BuildInfo.g.cs + build-info.ts re-dirty each build (leave). (6) P4.1 traps (F11 smoke, F12
-      backfill) owner-pending.
+last: **P5.1d DONE** (2e6fb66) + **P6.1 DONE** (2bac5d3) + **P6.2 DONE** (1598970) + **P6.3 DONE** (e6c45aa)
+stage: **P6 IN PROGRESS** — P6.1 data-quality, P6.2 session-fingerprint, P6.3 spread-vol-filter delivered.
+  P6.4-P6.8 (regime calibration, bootstrap tapes, meta-allocator, entry-quality, pyramiding) remain TODO.
+gate: GREEN — build 0err/5warn; Unit 664/0/6 (+26 from 638); Integration 120/0/0; fast Sim 144/0/0;
+  golden byte-identical; tsc 0 errors; 5 shipped playbooks parse (data-quality, session-fingerprint,
+  spread-vol-filter, venue-parity, explore-exit). No driven smoke run (UI changes were pure refactor).
+next: **P6.4 regime-conditioned calibration** (PLAN §9 #5) — add regime dimension to exit-lab grid,
+  calibrate per-regime exit rules, measure via playbook.
+trap: (1) Session labels not yet wired into TradeExcursions — SessionDetector is ready but not consumed
+  (needs schema migration or computed API field). (2) SpreadVolNoTradeFilter has no strategy config
+  integration — strategy JSONs don't expose it yet. (3) Playbook 3 (triage-sweep.json) never created.
+  (4) BuildInfo.g.cs + build-info.ts re-dirty each build (leave).
+QA-prev: s20/P5.1c-tscfix — confirmed (full gate battery + 2 independent claims verified).
 
 ## Checkpoints
 
@@ -110,7 +107,14 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P3.4 | Canonical playbooks venue-parity + explore-exit run end-to-end via CLI; artifacts committed | DONE (FILES); DONE (OWNER-PENDING: live run needs app+data+creds) | 7bf2edb | playbooks/venue-parity.json + playbooks/explore-exit.json + playbooks/README.md; shapes unit-validated (PlaybookEngineTests.ShippedPlaybook_Parses). Live end-to-end + TradeExcursions>0 rows = the P3 verification-matrix gate, owner/next-session. |
 | P4.1 | Exploration funnel (F11) + MAE/MFE units doctrine (F12) + entry lab (P3.6/D10) | DONE (F11+F12); P3.6 DEFERRED (D97 — blocked on P2.2) | 9aa9b87 | F11: UI exploration banner in run-report + ExitLab empty-state (driven smoke NOT run); F12: MaeMfeNormalizerTests 6/6, M44 migration live on Web DB (R5), backfill endpoint POST /api/system/backfill-mae-mfe (NOT run against live DB rows) |
 | P5.1 | UI truth (F13-F16) + targeted Angular refactor (driven smoke per change) | DONE (F13-F16 + status chips; refactor partially done — signals + store + toast remaining) | 8fadd58, 87f5a5c, 09fc807 | driven smoke 11/11 each commit; R5: M45 ComparePairId column live on Web DB |
-| P6.1 | Wild list (pipeline-gated; each feature ships with a measuring playbook) | TODO | | |
+| P6.1 | Wild list: data-quality sentinel (ResearchCli verb + playbook) | DONE | 2bac5d3 | ResearchCli `data quality` verb + data-quality step kind + playbooks/data-quality.json; ShippedPlaybook_Parses 5/5 |
+| P6.2 | Wild list: session fingerprinting (SessionDetector + playbook) | DONE | 1598970 | SessionDetector 17 tests; playbooks/session-fingerprint.json; exported constants for pipeline report dimension |
+| P6.3 | Wild list: spread/vol no-trade filter (SpreadVolNoTradeFilter + playbook) | DONE | e6c45aa | SpreadVolNoTradeFilter 6 tests; playbooks/spread-vol-filter.json; blocks trades on excess spread OR ATR |
+| P6.4 | Wild list: regime-conditioned calibration | TODO | | |
+| P6.5 | Wild list: block-bootstrap tapes | TODO | | |
+| P6.6 | Wild list: meta-allocator | TODO | | |
+| P6.7 | Wild list: entry-quality decomposition | TODO | | |
+| P6.8 | Wild list: pyramiding policy | TODO | | |
 
 ## Quick commands (gates — see PLAN §11 for per-phase specifics)
 
