@@ -58,6 +58,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public CancellationTokenSource? CancellationSource { get; set; }
         public Task? RunTask { get; set; }
         public IHost? EngineHost { get; set; }
+
+        // P2.1 (F8): user-cancel intent, separate from Status. Cancel() no longer writes a (lying)
+        // terminal `cancelled` while the run is still finalizing — it records intent here and lets the
+        // run's own finalize path make the truthful terminal transition through the state machine. Also
+        // lets the OperationCanceled path distinguish a user cancel from a near-completion timeout/teardown.
+        public volatile bool CancelRequested;
         public int BarCount;
         public int BarsTotal { get; set; }
         public string SimTime { get; set; } = "";
@@ -350,11 +356,53 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     public void Cancel(string runId)
     {
-        if (_runs.TryGetValue(runId, out var state))
+        if (!_runs.TryGetValue(runId, out var state))
+            return;
+
+        // P2.1 (F8): idempotent + truthful. A double-cancel or a cancel of an already-terminal run is a
+        // no-op (the state machine forbids leaving a terminal state). We do NOT stamp `cancelled` here —
+        // the run is still finalizing; its own finalize path makes the truthful terminal transition. We
+        // record intent + trip the token, then best-effort kill the ctrader-cli tree so a live cTrader run
+        // stops promptly instead of hanging until the 30-min linked timeout.
+        if (RunStateMachine.IsTerminal(state.Status))
         {
-            state.Status = "cancelled";
-            state.CancellationSource?.Cancel();
+            _logger.LogInformation("Cancel ignored for {RunId}: already terminal ({Status})", runId, state.Status);
+            return;
         }
+
+        state.CancelRequested = true;
+        _logger.LogInformation("Cancel requested for {RunId} (status={Status})", runId, state.Status);
+        state.CancellationSource?.Cancel();
+
+        if (string.Equals(state.Venue, "ctrader", StringComparison.OrdinalIgnoreCase))
+            _ = KillCtraderProcessTreeAsync(runId, "cancel");
+    }
+
+    /// <summary>
+    /// P2.1 (F8): the SINGLE guarded writer for a run's lifecycle status. Every status change in the
+    /// orchestrator routes through here so an illegal jump (or a stray assignment) can never bypass
+    /// <see cref="RunStateMachine"/>. Non-throwing: an illegal transition from a non-terminal state is
+    /// logged + journalled as a warning (a real ordering bug to fix), while any transition out of a
+    /// terminal state is a benign idempotent no-op (double-cancel, teardown after completion).
+    /// </summary>
+    private void TransitionRun(BacktestRunState state, string to)
+    {
+        var from = state.Status;
+        if (RunStateMachine.TryTransition(from, to, out _))
+        {
+            state.Status = to;
+            _logger.LogDebug("Run {RunId} {From}->{To}", state.RunId, from, to);
+            return;
+        }
+
+        if (RunStateMachine.IsTerminal(from))
+        {
+            _logger.LogDebug("Run {RunId} transition {From}->{To} ignored (terminal)", state.RunId, from, to);
+            return;
+        }
+
+        _logger.LogWarning("Run {RunId} ILLEGAL transition {From}->{To} rejected; status unchanged", state.RunId, from, to);
+        _journal.Write(state.RunId, "LIFECYCLE", $"illegal transition {from}->{to} rejected");
     }
 
     public void SetSpeed(string runId, float speed)
@@ -395,7 +443,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             state.EffectiveConfigJson = effectiveConfigJson;
             state.RunPlanJson = cfg.CustomParams.GetValueOrDefault("RunRows") ?? "[]";
 
-            state.Status = "running";
+            TransitionRun(state, RunStateMachine.Running);
             EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Starting backtest {runId}...");
 
             BacktestResult result;
@@ -418,6 +466,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running engine replay...");
                 result = await RunEngineReplayAsync(runId, cfg, state.LogLines, ct);
             }
+
+            // P2.1 (F8): the engine loop has returned a result; enter the transient `finalizing` state for
+            // the barrier + stats + end-record write. Every terminal transition below goes finalizing->terminal
+            // through the state machine (never running->completed directly), so the lifecycle is enforced.
+            TransitionRun(state, RunStateMachine.Finalizing);
 
             // P0.3 (F6): trade-persistence integrity barrier. BEFORE computing stats, reconcile the run's
             // journalled closes against persisted TradeResults and backfill any that were lost (the audited
@@ -444,11 +497,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             result = result with { WarningsJson = warningsJson };
 
             state.Result = result;
-            state.Status = result.Success
+            TransitionRun(state, result.Success
                 ? (RunStatusResolver.HasWarnings(warningsJson)
-                    ? RunStatusResolver.CompletedWithWarnings
-                    : RunStatusResolver.Completed)
-                : RunStatusResolver.Failed;
+                    ? RunStateMachine.CompletedWithWarnings
+                    : RunStateMachine.Completed)
+                : RunStateMachine.Failed);
             state.Error = result.ErrorMessage;
 
             EnqueueLog(runId, state.LogLines,
@@ -462,8 +515,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             // at/near completion). Trades were persisted during the run, so this is NOT a failure — finalize
             // with the trades-so-far and an info log instead of scaring the user with a "failed" + error.
             var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
-            var userCancelled = state.Status == "cancelled";
-            state.Status = userCancelled ? "cancelled" : "completed";
+            var userCancelled = state.CancelRequested;
+            TransitionRun(state, RunStateMachine.Finalizing);
+            TransitionRun(state, userCancelled ? RunStateMachine.Cancelled : RunStateMachine.Completed);
             state.Error = null;
             var cancelResult = new BacktestResult
             {
@@ -484,7 +538,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
         catch (Exception ex)
         {
-            state.Status = "failed";
+            TransitionRun(state, RunStateMachine.Failed);
             state.Error = ex.Message;
             EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Error: {ex.Message}");
             _logger.LogError(ex, "Backtest {RunId} failed", runId);
@@ -896,14 +950,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         // Manually register state without spawning a duplicate RunAsync —
         // Start() would fire RunAsync which would see Venue="ctrader" and run
         // RunEngineNetMqAsync again, racing with our own call below.
-        var ctraderState = new BacktestRunState { RunId = ctraderRunId };
+        var ctraderState = new BacktestRunState { RunId = ctraderRunId, Venue = "ctrader" };
         ctraderState.CancellationSource = new CancellationTokenSource();
         _runs[ctraderRunId] = ctraderState;
         EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] Compare mode — running cTrader leg {ctraderRunId}...");
 
         try
         {
-            ctraderState.Status = "running";
+            TransitionRun(ctraderState, RunStateMachine.Running);
             EnqueueLog(ctraderRunId, ctraderState.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
             var ctraderResult = await RunEngineNetMqAsync(ctraderRunId, ctraderCfg, ctraderState.LogLines, ct);
 
@@ -919,7 +973,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
             ctraderState.Result = ctraderResult;
             ctraderState.Error = ctraderResult.ErrorMessage;
-            ctraderState.Status = ctraderResult.Success ? "completed" : "failed";
+            TransitionRun(ctraderState, RunStateMachine.Finalizing);
+            TransitionRun(ctraderState, ctraderResult.Success ? RunStateMachine.Completed : RunStateMachine.Failed);
 
             await WriteEndRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, ctraderResult, tradeStats, null);
 
@@ -928,13 +983,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
         catch (OperationCanceledException)
         {
-            ctraderState.Status = "cancelled";
+            TransitionRun(ctraderState, RunStateMachine.Cancelled);
             ctraderState.Error = "Cancelled";
             EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader leg cancelled.");
         }
         catch (Exception ex)
         {
-            ctraderState.Status = "failed";
+            TransitionRun(ctraderState, RunStateMachine.Failed);
             ctraderState.Error = ex.Message;
             EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader leg failed: {ex.Message}");
         }
@@ -1410,70 +1465,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             await SafeTeardownStepAsync(runId, "HOST_DISPOSE", () => DisposeHostAsync(innerHost));
         }
 
-        // iter-redesign-ctrader P6.3: after the engine has disposed and the run is done, kill any
+        // iter-redesign-ctrader P6.3 / P2.1: after the engine has disposed and the run is done, kill any
         // remaining ctrader-cli child processes. The ChildProcessReaper arms a job object that kills
         // on parent-exit, but for a persistent web app the parent lives on — we need explicit cleanup.
-        // The cli.BacktestAsync may have returned but left grandchild processes alive.
-        try
-        {
-            // ctrader-cli.exe may spawn cTrader.Automate.exe or other children.
-            foreach (var proc in System.Diagnostics.Process.GetProcessesByName("ctrader-cli"))
-            {
-                try
-                {
-                    if (!proc.HasExited)
-                    {
-                        _logger.LogInformation("CTRADER|REAP|pid={Pid}|killing orphan ctrader-cli", proc.Id);
-                        proc.Kill(entireProcessTree: true);
-                        _ = Task.Run(async () =>
-                        {
-                            using var scope = _scopeFactory.CreateScope();
-                            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-                            db.VenueSessions.Add(new TradingEngine.Infrastructure.Persistence.Entities.VenueSessionEntity
-                            {
-                                RunId = runId, Event = "CTRADER|REAP", Detail = $"killed orphan ctrader-cli pid={proc.Id}", OccurredAtUtc = DateTime.UtcNow
-                            });
-                            await db.SaveChangesAsync();
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "CTRADER|REAP_FAIL|pid={Pid}", proc.Id);
-                }
-                finally { proc.Dispose(); }
-            }
-            foreach (var proc in System.Diagnostics.Process.GetProcessesByName("cTrader.Automate"))
-            {
-                try
-                {
-                    if (!proc.HasExited)
-                    {
-                        _logger.LogInformation("CTRADER|REAP|pid={Pid}|killing orphan cTrader.Automate", proc.Id);
-                        proc.Kill(entireProcessTree: true);
-                        _ = Task.Run(async () =>
-                        {
-                            using var scope = _scopeFactory.CreateScope();
-                            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-                            db.VenueSessions.Add(new TradingEngine.Infrastructure.Persistence.Entities.VenueSessionEntity
-                            {
-                                RunId = runId, Event = "CTRADER|REAP", Detail = $"killed orphan cTrader.Automate pid={proc.Id}", OccurredAtUtc = DateTime.UtcNow
-                            });
-                            await db.SaveChangesAsync();
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "CTRADER|REAP_FAIL|pid={Pid}", proc.Id);
-                }
-                finally { proc.Dispose(); }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "CTRADER|REAP_ERR|failed to reap orphan processes");
-        }
+        // The cli.BacktestAsync may have returned but left grandchild processes alive. P2.1 reuses the
+        // same routine on the cancel path so a cancelled cTrader run stops promptly (no orphan tree).
+        await KillCtraderProcessTreeAsync(runId, "reap");
 
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] CLI exit code: {cliResult.ExitCode}");
@@ -1588,6 +1585,61 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var p2 = ((IPEndPoint)b.LocalEndpoint!).Port;
         a.Stop(); b.Stop();
         return (p1, p2);
+    }
+
+    /// <summary>
+    /// P2.1 (F8) — kill any live ctrader-cli / cTrader.Automate process trees. Reused by the post-run
+    /// reaper AND the cancel path (Q2: at most one cTrader run at a time, so killing by image name is
+    /// safe under the serialized queue). Best-effort + fully isolated: a failure to reap must never
+    /// propagate (it would otherwise fault a cancel or a finalize). Each kill is journalled to
+    /// VenueSessions so an orphan-kill is auditable rather than silent.
+    /// </summary>
+    private async Task KillCtraderProcessTreeAsync(string runId, string reason)
+    {
+        foreach (var image in new[] { "ctrader-cli", "cTrader.Automate" })
+        {
+            System.Diagnostics.Process[] procs;
+            try { procs = System.Diagnostics.Process.GetProcessesByName(image); }
+            catch (Exception ex) { _logger.LogWarning(ex, "CTRADER|REAP_ERR|image={Image}", image); continue; }
+
+            foreach (var proc in procs)
+            {
+                try
+                {
+                    if (!proc.HasExited)
+                    {
+                        _logger.LogInformation("CTRADER|REAP|pid={Pid}|reason={Reason}|killing {Image}", proc.Id, reason, image);
+                        proc.Kill(entireProcessTree: true);
+                        RecordReap(runId, image, proc.Id, reason);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "CTRADER|REAP_FAIL|pid={Pid}", proc.Id);
+                }
+                finally { proc.Dispose(); }
+            }
+        }
+        await Task.CompletedTask;
+    }
+
+    private void RecordReap(string runId, string image, int pid, string reason)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+                db.VenueSessions.Add(new TradingEngine.Infrastructure.Persistence.Entities.VenueSessionEntity
+                {
+                    RunId = runId, Event = "CTRADER|REAP",
+                    Detail = $"killed {image} pid={pid} reason={reason}", OccurredAtUtc = DateTime.UtcNow
+                });
+                await db.SaveChangesAsync();
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "CTRADER|REAP_PERSIST_FAIL|pid={Pid}", pid); }
+        });
     }
 
     private string ResolveAlgoPath()
