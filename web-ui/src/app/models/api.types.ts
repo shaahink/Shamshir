@@ -93,6 +93,8 @@ export interface TradeSummary {
   rMultiple: number;
   maxAdverseExcursion: number;
   maxFavorableExcursion: number;
+  maeR?: number | null;
+  mfeR?: number | null;
   exitReason: string;
   strategyId: string;
   durationSeconds: number;
@@ -127,6 +129,8 @@ export interface TradeDetail {
   rMultiple: number;
   maxAdverseExcursion: number;
   maxFavorableExcursion: number;
+  maeR?: number | null;
+  mfeR?: number | null;
   exitReason: string;
   strategyId: string;
   durationSeconds: number;

@@ -11,13 +11,17 @@ public sealed class SqliteTradeRepository(TradingDbContext db, ISymbolInfoRegist
 
         if (symbolRegistry is not null && symbolRegistry.TryGet(trade.Symbol, out var symInfo))
         {
-            var stopPrice = (trade.InitialStopLoss ?? trade.StopLoss).Value;
-            (maeR, mfeR) = MaeMfeNormalizer.Normalize(
-                trade.MaxAdverseExcursion.Value,
-                trade.MaxFavorableExcursion.Value,
-                trade.EntryPrice.Value,
-                stopPrice,
-                symInfo);
+            var entry = trade.EntryPrice.Value;
+            var stop = (trade.InitialStopLoss ?? trade.StopLoss).Value;
+            if (entry > 0 && stop > 0)
+            {
+                (maeR, mfeR) = MaeMfeNormalizer.Normalize(
+                    trade.MaxAdverseExcursion.Value,
+                    trade.MaxFavorableExcursion.Value,
+                    entry,
+                    stop,
+                    symInfo);
+            }
         }
 
         var entity = new TradeResultEntity

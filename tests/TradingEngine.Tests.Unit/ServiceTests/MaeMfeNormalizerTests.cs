@@ -96,4 +96,90 @@ public sealed class MaeMfeNormalizerTests
         maeR.Should().Be(0.0);
         mfeR.Should().Be(0.0);
     }
+
+    // P4 audit: edge-case guards — NaN, Infinity, zero pip size, zero prices.
+
+    [Fact]
+    public void Normalize_NaNExcursions_ReturnsNull()
+    {
+        var (maeR, mfeR) = MaeMfeNormalizer.Normalize(
+            maePips: double.NaN, mfePips: 45.0,
+            entryPrice: 1.10000m, stopLoss: 1.09800m,
+            EurUsd);
+
+        maeR.Should().BeNull();
+        mfeR.Should().BeNull();
+    }
+
+    [Fact]
+    public void Normalize_InfinityExcursions_ReturnsNull()
+    {
+        var (maeR, mfeR) = MaeMfeNormalizer.Normalize(
+            maePips: 12.0, mfePips: double.PositiveInfinity,
+            entryPrice: 1.10000m, stopLoss: 1.09800m,
+            EurUsd);
+
+        maeR.Should().BeNull();
+        mfeR.Should().BeNull();
+    }
+
+    [Fact]
+    public void Normalize_ZeroPipSize_ReturnsNull()
+    {
+        var zeroPipSize = new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
+            0m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
+
+        var (maeR, mfeR) = MaeMfeNormalizer.Normalize(
+            maePips: 12.0, mfePips: 45.0,
+            entryPrice: 1.10000m, stopLoss: 1.09800m,
+            zeroPipSize);
+
+        maeR.Should().BeNull();
+        mfeR.Should().BeNull();
+    }
+
+    [Fact]
+    public void Normalize_ZeroEntryPrice_ReturnsNull()
+    {
+        var (maeR, mfeR) = MaeMfeNormalizer.Normalize(
+            maePips: 12.0, mfePips: 45.0,
+            entryPrice: 0m, stopLoss: 1.09800m,
+            EurUsd);
+
+        maeR.Should().BeNull();
+        mfeR.Should().BeNull();
+    }
+
+    [Fact]
+    public void Normalize_ZeroStopLoss_ReturnsNull()
+    {
+        var (maeR, mfeR) = MaeMfeNormalizer.Normalize(
+            maePips: 12.0, mfePips: 45.0,
+            entryPrice: 1.10000m, stopLoss: 0m,
+            EurUsd);
+
+        maeR.Should().BeNull();
+        mfeR.Should().BeNull();
+    }
+
+    [Fact]
+    public void ComputeMaeR_NegativeStopDistance_ReturnsNull()
+    {
+        var result = MaeMfeNormalizer.ComputeMaeR(12.0, -5.0);
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void ComputeMaeR_NaNInput_ReturnsNull()
+    {
+        var result = MaeMfeNormalizer.ComputeMaeR(double.NaN, 20.0);
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public void ComputeMfeR_InfinityInput_ReturnsNull()
+    {
+        var result = MaeMfeNormalizer.ComputeMfeR(double.NegativeInfinity, 20.0);
+        result.Should().BeNull();
+    }
 }
