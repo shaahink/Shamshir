@@ -1,32 +1,11 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 23:23 UTC · branch `iter/parity-pipeline` · HEAD `00495a6`_
+_Updated 2026-07-08 23:38 UTC · branch `iter/parity-pipeline` · HEAD `1a4e302`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P6 — Wild list (pipeline-gated) · attempts used 0 · working ▸ P6.7
-**Checkpoints:** 22/24 done · **Sessions run:** 30 · **Cost:** $2.7162 · **Tokens:** 2,863,902 in / 552,075 out / 306,343 think
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P6 — Wild list (pipeline-gated) · attempts used 0 · working ▸ P6.8
+**Checkpoints:** 23/24 done · **Sessions run:** 30 · **Cost:** $2.9888 · **Tokens:** 3,258,227 in / 597,150 out / 321,306 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5
-
-## Latest activity (live)
-
-_Session #30 (Deliver) · running 15m · last output 3s ago · $0.0796_
-
-**Thinking:**
-> Now fix the squeeze age tests and the constant input test. Let me also fix the squeeze age algorithm - the issue is likely that the width threshold check isn't working right for wide-range bars.
-> Looking at the squeeze age algorithm, the issue with the "quieting series" test (first half volatile, second half quiet):  - n = 40, bbPeriod = 14, lookback = 10 - Bar 1-20: range = 5 (volatile), Bar 21-40: range = 0.5 (quiet) - windows = Math.Min(10, 40-14) = 10 - i from 30 to 40 (11 values)  For b…
-> Now update the squeeze age tests. With the new formula, the quieting series test should work better.
-
-**Recent actions:**
-- `00:22:27` » bash dotnet test tests/TradingEngine.Tests.Unit --filter "FullyQualifiedName~EntryDiagnosis" -c Debug --no-restore 2>&1 | Select-Object -Last 20
-- `00:22:38` » read src\TradingEngine.Domain\Experiments\EntryDiagnosis.cs
-- `00:22:38` · Three failures: zero-variance features cause singularity, and squeeze age logic needs debugging. Fixing all.
-- `00:22:48` » edit tests\TradingEngine.Tests.Unit\Experiments\EntryDiagnosisTests.cs
-- `00:22:56` » edit {"filePath":"C:\\Code\\Shamshir\\tests\\TradingEngine.Tests.Unit\\Experiments\\EntryDiagnosisTests.cs","newString":"    // OLS with session dummies: c…
-- `00:23:03` » read tests\TradingEngine.Tests.Unit\Experiments\EntryDiagnosisTests.cs
-- `00:23:11` » edit tests\TradingEngine.Tests.Unit\Experiments\EntryDiagnosisTests.cs
-- `00:23:16` » read src\TradingEngine.Domain\Experiments\EntryDiagnosis.cs
-- `00:23:43` » edit src\TradingEngine.Domain\Experiments\EntryDiagnosis.cs
-- `00:23:43` · The squeeze age formula is wrong — using atrEst (range) instead of SMA for normalizing BB width. Fixing.
 
 ## Stage progress
 
@@ -38,7 +17,7 @@ _Session #30 (Deliver) · running 15m · last output 3s ago · $0.0796_
 | P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
 | P4 | Lab golden paths | 1/1 | confirmed ✓ |
 | P5 | UI truth + Angular refactor | 1/1 | confirmed ✓ |
-| P6 | Wild list (pipeline-gated) | 6/8 | **← active** |
+| P6 | Wild list (pipeline-gated) | 7/8 | **← active** |
 
 ## Sessions
 
@@ -73,16 +52,10 @@ _Session #30 (Deliver) · running 15m · last output 3s ago · $0.0796_
 | 27 | P6 | Deliver | 4 | 07-08 22:21 | 0:21 | GatesRed | P6.5 | 3 | build:FAIL | $0.2596 | 408,004/23,666 |
 | 28 | P6 | Fix | 3 | 07-08 22:44 | 0:05 | Progress |  | 2 | build:OK | $0.0427 | 72,553/5,483 |
 | 29 | P6 | Deliver | 4 | 07-08 22:50 | 0:17 | Advanced | P6.6 | 2 | build:OK | $0.1689 | 279,442/20,530 |
-| 30 | P6 | Deliver | 1 | 07-08 23:08 | … | running |  | 0 |  |  |  |
+| 30 | P6 | Deliver | 1 | 07-08 23:08 | 0:28 | Advanced | P6.7 | 3 | build:OK | $0.2726 | 394,325/45,075 |
 
 ### Commits by session
 
-- **s19 (P5 Audit)** — 5 commit(s):
-  - a057a6b docs: fix gitignore to un-ignore handovers directory before its contents
-  - bc0b7a4 docs: s19 audit — P5 honest handover (4 fixes, 1 deferred, all gates green)
-  - 3a13476 chore(conductor): s19 P5 working ▸P5 @ 21:26
-  - 46ba5ab audit(P5): fix idempotency race + completed-with-warnings progress
-  - d29a177 chore(conductor): s19 P5 working ▸P5 @ 21:11
 - **s20 (P5 Fix)** — 1 commit(s):
   - 6c6893f P5.1c-tscfix: fix 2 tsc errors blocking web-tsc gate (s20)
 - **s21 (P6 Deliver)** — 7 commit(s):
@@ -113,6 +86,10 @@ _Session #30 (Deliver) · running 15m · last output 3s ago · $0.0796_
 - **s29 (P6 Deliver)** — 2 commit(s):
   - 5f3c001 feat(P6.6): meta-allocator — portfolio governor v2 (domain + playbook + tests)
   - 10a6e6b chore(conductor): s29 P6 working ▸P6.6 @ 00:05
+- **s30 (P6 Deliver)** — 3 commit(s):
+  - 1a4e302 chore(s30): update RESUME + TRACKER for P6.7 delivery (061068c)
+  - 061068c feat(P6.7): entry-quality decomposition — OLS diagnosis of trade-entry drivers (domain + tests + API + CLI + playbook)
+  - 449ec79 chore(conductor): s30 P6 working ▸P6.7 @ 00:23
 
 ## Phase handovers (audit)
 
@@ -129,34 +106,20 @@ build:OK
 
 ## Last session result
 
-> Now I have a complete picture. Let me write the QA verdict and proceed with the session plan.
-> 
-> **QA-previous (s28 FIX session):** Re-ran gate battery:
-> - Build: 0 errors, 0 warnings
-> - Unit: 676/0/6 (matches claimed)
-> - Integration: 120/0/0 (matches claimed)
-> - Fast Sim: 144/0/0 (matches claimed)
-> - Golden: 61/61 byte-identical (matches claimed)
-> 
-> Verified 2 claims independently:
-> - (tests) SpreadVolNoTradeFilter 6/6, BlockBootstrapper 9/9, SessionDetector 17/17 all green
-> - (runtime/R5) DB: 9 StrategyConfigs with OrderMethod 0×8 + 1×1 (matching Q1 Market revert), ReferenceScales=84, migration head M45
-> 
-> **QA-previous: confirmed.** No divergence. Proceeding to P6.6.
-> 
-> ---
-> 
-> ## SESSION PLAN:
-> - **Checkpo…
+> Starting pre-session ritual. Reading mandatory docs in order.
+> Now I'll run the QA gates for session s29 (P6.6). Starting with build and the fast verification battery.
+> Build: 0 errors, 5 warnings (pre-existing net6.0 TFM). Now running unit tests and fast simulation in parallel.
+> All gates GREEN. Now I'll independently verify two tracker claims: one from the runtime store, one from tests.
+> **QA-previous (s29 P6.6): CONFIRMED.** All gates: build 0err/5warn, Unit 689/0/6, Integration 120/0/0, fast Sim 144/0/0, golden 48/48 byte-identical (no git diff). Independently verified: (tests) MetaAllocatorTests 12/12; (runtime) ShippedPlaybook_Parses 8/8, meta-allocator.json exists on disk. No divergen…
 
 ## Tracker handoff
 
 ```
-last: **s29 P6.6 meta-allocator** — MetaAllocator domain + playbook step + tests
-stage: **P6 IN PROGRESS** — P6.1-P6.6 delivered; P6.7-P6.8 remain TODO.
-gate: GREEN — build 0err/0warn; Unit 689/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden 61/61 byte-identical
-next: **P6.7 entry-quality decomposition** (PLAN §9 #8)
+last: **s30 P6.7 entry-quality decomposition** — EntryDiagnosis OLS domain + API + CLI verb + playbook
+stage: **P6 IN PROGRESS** — P6.1-P6.7 delivered; P6.8 pyramiding policy remains TODO.
+gate: GREEN — build 0err/5warn; Unit 701/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden 48/48 byte-identical
+next: **P6.8 pyramiding policy** (PLAN §9 #9)
 trap: (1) Session labels not wired into TradeExcursions.
   (2) SpreadVolNoTradeFilter no strategy config wiring.
   (3) Playbook 3 (triage-sweep.json) not created.
