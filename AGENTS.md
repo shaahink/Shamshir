@@ -232,22 +232,23 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** ea8d6b1 (s27, P6.5 block-bootstrap)
-**Session (s27, P6.5):** Delivered BlockBootstrapper + API endpoint + ResearchCli step
-  + measuring playbook. BlockBootstrapper reads bars, partitions into weekly blocks,
-  resamples with replacement to generate N synthetic tapes, and remaps timestamps.
-  API endpoint writes synthetic bars to MarketDataShard (source="bootstrap-{id}"),
-  starts tape backtests via IBacktestCommandService. ResearchCli step kind
-  "block-bootstrap" polls runs and reports DD distribution (min/median/max/mean).
+**Branch:** `iter/parity-pipeline` — **HEAD:** 6207473 (s28, FIX: ng staleness guard)
+**Session (s28, FIX):** Conductor observed build-red after s27 commits. Root cause:
+  s27 (P6.5) committed Angular source changes to web-ui/src/ but never ran
+  `npm run build`. wwwroot/ is gitignored, so the stale wwwroot/index.html from
+  a prior build was older than the new TypeScript source. The staleness guard
+  (bee34c6) correctly caught this. Fix: `npm run build` + commit updated
+  BuildInfo.g.cs / build-info.ts stamp files.
 **Gates GREEN:** build 0err/5warn; Unit 676/0/6; Integration 120/0/0;
   fast Sim 144/0/0; golden byte-identical; tsc 0 errors.
 **Next step:** P6.6 meta-allocator (PLAN §9 #4).
 **Open traps:** (1) Session labels not wired into TradeExcursions.
   (2) SpreadVolNoTradeFilter no strategy config wiring.
   (3) Playbook 3 (triage-sweep.json) not created.
-  (4) BlockBootstrapper writes synthetic bars to real MarketDataShard — needs
-  cleanup mechanism post-run or a dedicated BootstrapBar table.
-  (5) BlockBootstrapController uses DateTime.UtcNow (no IEngineClock in API path).
+  (4) BlockBootstrapper writes synthetic bars to real MarketDataShard.
+  (5) BlockBootstrapController uses DateTime.UtcNow.
   (6) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-  (7) QA-previous (s26): confirmed — full gate battery re-run verbatim.
+  (7) NEW TRAP: any session touching web-ui/src/*.ts MUST run `npm run build`
+  before committing — the staleness guard will fail dotnet build otherwise.
+  (8) QA-previous (s27): build-red (angular staleness).
 

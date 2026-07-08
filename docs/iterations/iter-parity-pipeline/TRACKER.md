@@ -17,7 +17,7 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s27 P6.5 block-bootstrap tapes** (23bed7c)
+last: **s28 rebuild fix** (6207473) — FIX session: Angular staleness after P6.5 UI changes
 stage: **P6 IN PROGRESS** — P6.1-P6.5 delivered; P6.6-P6.8 remain TODO.
 gate: GREEN — build 0err/5warn; Unit 676/0/6; Integration 120/0/0;
   fast Sim 144/0/0; golden byte-identical; tsc 0 errors
@@ -27,8 +27,9 @@ trap: (1) Session labels not wired into TradeExcursions.
   (3) Playbook 3 (triage-sweep.json) not created.
   (4) BlockBootstrapper writes bars to real MarketData table — synthetic
   bars need cleanup after runs or a dedicated table. (5) Bootstrap
-  controller uses DateTime.UtcNow directly (unavoidable — no IEngineClock
-  in Web API path).
+  controller uses DateTime.UtcNow directly. (6) NEW: any session that
+  touches web-ui/src/*.ts MUST run `npm run build` before committing;
+  angular staleness guard will fail dotnet build otherwise.
 
 ## Checkpoints
 
