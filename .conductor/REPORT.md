@@ -1,11 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 18:13 UTC · branch `iter/parity-pipeline` · HEAD `54504d4`_
+_Updated 2026-07-08 18:30 UTC · branch `iter/parity-pipeline` · HEAD `085c06d`_
 
 **Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P3 — Research pipeline (ResearchCli + playbooks) · attempts used 1 · working ▸ P3.3
-**Checkpoints:** 13/17 done · **Sessions run:** 13 · **Cost:** $0.8531 · **Tokens:** 280,314 in / 305,767 out / 129,777 think
+**Stage:** P3 — Research pipeline (ResearchCli + playbooks) · attempts used 0
+**Checkpoints:** 14/17 done · **Sessions run:** 14 · **Cost:** $0.9734 · **Tokens:** 483,829 in / 319,036 out / 136,230 think
 **Confirmed phases:** P0, P1, P2
+**Pending:** auto-fix audit for P3
 
 ## Stage progress
 
@@ -14,7 +15,7 @@ _Updated 2026-07-08 18:13 UTC · branch `iter/parity-pipeline` · HEAD `54504d4`
 | P0 | Parity truth repair (the spine) | 6/6 | confirmed ✓ |
 | P1 | Config & DB truth | 2/2 | confirmed ✓ |
 | P2 | Lifecycle robustness + headline gate | 2/2 | confirmed ✓ |
-| P3 | Research pipeline (ResearchCli + playbooks) | 3/4 | **← active** |
+| P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | gating… |
 | P4 | Lab golden paths | 0/1 | todo |
 | P5 | UI truth + Angular refactor | 0/1 | todo |
 | P6 | Wild list (pipeline-gated) | 0/1 | todo |
@@ -36,13 +37,10 @@ _Updated 2026-07-08 18:13 UTC · branch `iter/parity-pipeline` · HEAD `54504d4`
 | 11 | P2 | Audit | 1 | 07-08 16:49 | 0:21 | Progress |  | 4 |  | $0.0565 | 65,636/13,849 |
 | 12 | P3 | Deliver | 1 | 07-08 17:12 | 0:51 | Advanced | P3.1 P3.2 P3.4 | 8 | build:OK | $0.1071 | 4,238/55,140 |
 | 13 | P3 | Deliver | 1 | 07-08 18:04 | 0:07 | NoProgress |  | 0 | build:OK | $0.0374 | 63,378/4,917 |
+| 14 | P3 | Fix | 2 | 07-08 18:13 | 0:14 | Advanced | P3.3 | 2 | build:OK | $0.1204 | 203,515/13,269 |
 
 ### Commits by session
 
-- **s5 (P0 Deliver)** — 3 commit(s):
-  - 0362f0c docs(P0.4): tracker + AGENTS RESUME — P0.4 done (8277df2), F6-R residual, next P1.1
-  - 8277df2 feat(P0.4,F2): entry-latency instrumentation in reconcile (measure-first, Q4)
-  - 7ac464a chore(conductor): s5 P0 working ▸P0.4 @ 07:33
 - **s6 (P0 Audit)** — 3 commit(s):
   - fbb1b1e docs(P0-audit): P0 phase handover + tracker F6-R update
   - 305a853 fix(P0-audit,F6-R): detect unreconstructable venue closes; honest drift log
@@ -78,6 +76,9 @@ _Updated 2026-07-08 18:13 UTC · branch `iter/parity-pipeline` · HEAD `54504d4`
   - 9e3df8d chore(conductor): s12 P3 working ▸P3.1 @ 18:42
   - e3dcb9d feat(P3.1): finish ResearchCli verb surface — data ensure, run start, exitlab, walkforward
   - 1a393e7 chore(conductor): s12 P3 working ▸P3.1 @ 18:27
+- **s14 (P3 Fix)** — 2 commit(s):
+  - 085c06d docs(P3.3): session s14 bookkeeping — P3.3 DONE, gates green, RESUME updated
+  - 8bca2cb feat(P3.3): UI /research review page — pipeline list + detail + approve/reject
 
 ## Phase handovers (audit)
 
@@ -91,31 +92,29 @@ build:OK
 
 ## Last session result
 
-> I'll work through the pre-session ritual methodically. Let me start by reading the core documents in parallel.
-> Working tree is clean (only expected build re-dirtying). HEAD is `54504d4` (conductor bookkeeping after s12). Let me continue with remaining docs.
-> Now I'll QA the previous session. Running the gate battery:
-> Build 0err/5warn. ResearchCli 36/0 Golden clean. Now the remaining gates:
-> All gates match RESUME: Unit 622/0/6, Integration 120/0/0, fast Sim 144/0/0. Now independent claim verification — R5 (DB) and tests:
-> PlaybookEngine tests: 17/0. Let me fix the DB query:
-> R5 confirmed: M43 head `20260708173645_M43_ResearchPipelines`, both tables present (0 rows, expected), unique step i…
+> Now I understand the landscape. Let me follow the session protocol: QA the previous session's claims by running the gate battery, then proceed to P3.3.
+> Running the full gate battery in parallel:
+> Build 0err/5warn, golden byte-identical. Now running tests:
+> QA confirmed: all gates match s12 claims. Build 0/5w, Unit 622/0/6, Integration 120/0/0, Fast Sim 144/0/0, golden byte-identical. No divergence.
+> Now delivering P3.3 — the UI `/research` review page. Let me explore existing Angular patterns and the research API.
+> Now I have everything I need. Let me read the key files I'll be modifying and start building P3.3.
+> Let me look at a simpler feature page for pattern reference:
+> Now I have the f…
 
 ## Tracker handoff
 
 ```
-last: **P3.1 DONE** (e3dcb9d): ResearchCli verbs complete — data ensure / run start [--compare-both]
-      [--explore] / exitlab eval / walkforward, all pure-helper-backed (InventoryCoverage, StartRunPlan,
-      ExitLabResult), 36 ResearchCli unit tests. **P3.2 DONE** (e5e9e86 persistence + 4464a09 engine):
-      M43 ResearchPipelines/Steps tables + /api/research/pipelines API; dumb sequential PlaybookExecutor
-      (10 typed step kinds, resume-by-content-hash, owner-gate parks) behind IStepRunner/IPipelineStore
-      seams; verbs pipeline run/status/approve/reject. **P3.4 files DONE** (7bf2edb): venue-parity.json +
-      explore-exit.json + README (shapes unit-validated).
-stage: **P3 IN PROGRESS** — P3.1/P3.2/P3.4-files done. P3.3 (UI /research) TODO; P3.4 LIVE gate owner-pending.
+last: **P3.3 DONE** (8bca2cb): UI /research review page — pipeline list + detail + approve/reject,
+      thin read-only Angular component, signal-driven, lazy-loaded via app.routes. Driven smoke:
+      run-shamshir driver 11/11 passed.
+stage: **P3 IN PROGRESS** — P3.1/P3.2/P3.3/P3.4-files done. P3.4 LIVE gate owner-pending.
 gate: GREEN — build 0err/5warn; Unit 622/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical
-      (git diff --stat **/*golden*.json = empty; NO rebaseline). R5: M43 head live on Web DB, both tables present.
-next: **P3.3 UI /research** (read + approve owner-gates — thin, reads /api/research/pipelines; driven smoke
-      via run-shamshir). Then P3.4 LIVE end-to-end (app up + data + creds) → the P3 verification gate.
-QA-prev: s10/s11 P2.1+P3.1-foundation → **confirmed** (build 0/5; RunStateMachine 52 cases/32 methods;
-      ResearchCli 11/11; runtime head M42, ReferenceScales=84). No divergence, no fix.
+      (git diff --stat **/*golden*.json = empty; NO rebaseline). R5: M43 head live on Web DB, both tables
+      present. Driven smoke: run-shamshir driver 11/11 passed (app up, SPA served, API hits verified).
+next: **P3.4 LIVE end-to-end** (app up + data + creds) — run pipeline playbooks/venue-parity.json to
+      completion, visible in UI /research, artifacts committed → the P3 verification-matrix gate.
+QA-prev: s12 P3.1/P3.2/P3.4-files → **confirmed** (build 0/5w; Unit 622/0/6; Integration 120/0/0; fast
+      Sim 144/0/0; golden byte-identical; R5 M43 head present). No divergence, no fix.
 trap: (1) Tests.Architecture EntityAuditableTests red on **ExitCalibrationEntity ONLY** — PRE-EXISTING,
       NOT in gate battery; my 2 new pipeline entities ARE compliant. (2) The playbook engine is HTTP-only
       (Q3) — executor persists via /api/research/pipelines, never the DB; keep it that way. (3) Live
