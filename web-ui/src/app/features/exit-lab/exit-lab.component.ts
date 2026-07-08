@@ -31,7 +31,7 @@ import type { ExitLabEvaluateRequest, ExitLabEvaluateResponse, ExitLabCellRespon
       }
 
       <!-- Controls -->
-      <div class="grid grid-cols-2 gap-3 rounded-lg border border-gray-800 bg-gray-900/50 p-4 md:grid-cols-4">
+      <div class="grid grid-cols-2 gap-3 rounded-lg border border-gray-800 bg-gray-900/50 p-4 md:grid-cols-5">
         <label class="text-xs text-gray-400">
           Run IDs <span class="text-gray-600">(comma-separated)</span>
           <input [(ngModel)]="runIds" class="mt-1 w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white" placeholder="run-abc, run-def" />
@@ -44,6 +44,10 @@ import type { ExitLabEvaluateRequest, ExitLabEvaluateResponse, ExitLabCellRespon
           Reference ATR (pips)
           <input [(ngModel)]="refAtr" type="number" step="1" class="mt-1 w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white" />
         </label>
+        <label class="text-xs text-gray-400">
+          Regime <span class="text-gray-600">(optional)</span>
+          <input [(ngModel)]="regimeFilter" class="mt-1 w-full rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-white" placeholder="e.g. London-NY" />
+        </label>
         <div class="flex items-end">
           <button (click)="evaluate()" [disabled]="loading()"
             class="w-full rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-40">
@@ -54,10 +58,11 @@ import type { ExitLabEvaluateRequest, ExitLabEvaluateResponse, ExitLabCellRespon
 
       <!-- Calibration save -->
       @if (selectedCell()) {
-        <div class="grid grid-cols-3 gap-3 rounded-lg border border-green-800 bg-green-900/20 p-4 md:grid-cols-5">
+        <div class="grid grid-cols-3 gap-3 rounded-lg border border-green-800 bg-green-900/20 p-4 md:grid-cols-6">
           <input [(ngModel)]="calStrategyId" placeholder="Strategy ID" class="w-full rounded border border-green-700 bg-gray-800 px-2 py-1 text-xs text-white" />
           <input [(ngModel)]="calSymbol" placeholder="Symbol" class="w-full rounded border border-green-700 bg-gray-800 px-2 py-1 text-xs text-white" />
           <input [(ngModel)]="calTf" placeholder="Timeframe" class="w-full rounded border border-green-700 bg-gray-800 px-2 py-1 text-xs text-white" />
+          <input [(ngModel)]="calRegime" placeholder="Regime (opt)" class="w-full rounded border border-green-700 bg-gray-800 px-2 py-1 text-xs text-white" />
           <input [(ngModel)]="calDataset" placeholder="Dataset ID" class="w-full rounded border border-green-700 bg-gray-800 px-2 py-1 text-xs text-white" />
           <button (click)="saveCalibration()" class="w-full rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-500">
             Save Calibration
@@ -67,7 +72,17 @@ import type { ExitLabEvaluateRequest, ExitLabEvaluateResponse, ExitLabCellRespon
 
       <!-- Results -->
       @if (result()) {
-        <div class="text-xs text-gray-500">{{ result()!.totalTrades }} trades · {{ result()!.totalCells }} cells</div>
+        <div class="text-xs text-gray-500">
+          {{ result()!.totalTrades }} trades · {{ result()!.totalCells }} cells
+          @if (result()!.regime) { · regime={{ result()!.regime }} }
+        </div>
+        @if (result()!.regimeBreakdown) {
+          <div class="flex flex-wrap gap-2 text-xs text-gray-500">
+            @for (kv of regimeEntries(); track kv[0]) {
+              <span class="rounded bg-gray-800 px-1.5 py-0.5">{{ kv[0] }}: {{ kv[1] }}</span>
+            }
+          </div>
+        }
         <div class="overflow-x-auto rounded-lg border border-gray-800">
           <table class="w-full text-xs">
             <thead class="bg-gray-900 text-gray-400">
@@ -120,6 +135,7 @@ export class ExitLabComponent implements OnInit {
   runIds = '';
   positionIds = '';
   refAtr = 20;
+  regimeFilter = '';
   loading = signal(false);
   result = signal<ExitLabEvaluateResponse | null>(null);
   error = signal<string | null>(null);
@@ -129,6 +145,7 @@ export class ExitLabComponent implements OnInit {
   calStrategyId = '';
   calSymbol = 'EURUSD';
   calTf = 'H1';
+  calRegime = '';
   calDataset = 'default';
 
   ngOnInit(): void {
@@ -149,6 +166,7 @@ export class ExitLabComponent implements OnInit {
         runIds: this.runIds.split(',').map((s) => s.trim()).filter(Boolean),
         positionIds: this.positionIds.split(',').map((s) => s.trim()).filter(Boolean),
         referenceAtrPips: this.refAtr,
+        regime: this.regimeFilter.trim() || null,
       };
       const r = await firstValueFrom(this.http.post<ExitLabEvaluateResponse>('/api/exit-lab/evaluate', req));
       this.result.set(r);
@@ -166,6 +184,12 @@ export class ExitLabComponent implements OnInit {
     this.selectedCell.set(cell);
   }
 
+  regimeEntries(): [string, number][] {
+    const bd = this.result()?.regimeBreakdown;
+    if (!bd) return [];
+    return Object.entries(bd).sort((a, b) => a[0].localeCompare(b[0]));
+  }
+
   async saveCalibration(): Promise<void> {
     if (!this.selectedCell()) return;
     const c = this.selectedCell()!;
@@ -174,6 +198,7 @@ export class ExitLabComponent implements OnInit {
         strategyId: this.calStrategyId || 'unknown',
         symbol: this.calSymbol,
         entryTimeframe: this.calTf,
+        regime: this.calRegime.trim() || null,
         rule: c.rule,
         datasetId: this.calDataset,
         isStartUtc: new Date().toISOString(),

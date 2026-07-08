@@ -175,6 +175,7 @@ public sealed class PlaybookEngineTests
     [InlineData("data-quality.json")]
     [InlineData("session-fingerprint.json")]
     [InlineData("spread-vol-filter.json")]
+    [InlineData("regime-calibration.json")]
     public void ShippedPlaybook_Parses_AndHasKnownStepKinds(string file)
     {
         var path = Path.Combine(RepoRoot(), "playbooks", file);
@@ -182,6 +183,31 @@ public sealed class PlaybookEngineTests
         var pb = PlaybookParser.Parse(File.ReadAllText(path));
         pb.Steps.Should().NotBeEmpty();
         pb.Steps.Should().OnlyContain(s => StepKinds.IsKnown(s.Kind));
+    }
+
+    // P6.4: the regime-calibration playbook must ship with per-regime exitlab-eval steps
+    // that carry the optional "regime" parameter for session-based exit-rule calibration.
+    [Fact]
+    public void RegimePlaybook_HasPerRegimeExitLabSteps()
+    {
+        var path = Path.Combine(RepoRoot(), "playbooks", "regime-calibration.json");
+        var pb = PlaybookParser.Parse(File.ReadAllText(path));
+
+        // Steps 4-7 should be exitlab-eval with increasing regime specificity
+        var evalSteps = pb.Steps.Where(s => s.Kind == StepKinds.ExitLabEval).ToList();
+        evalSteps.Should().HaveCount(4, "regime playbook evaluates all-sessions + 3 per-regime");
+
+        // Step 4 (index 4): all-sessions (no regime filter)
+        evalSteps[0].Params.ContainsKey("regime").Should().BeFalse("first eval is pooled (no regime filter)");
+
+        // Steps 5-7 (indices 5-7): per-regime with explicit "regime" key
+        evalSteps[1].Params["regime"]!.GetValue<string>().Should().Be("London-NY");
+        evalSteps[2].Params["regime"]!.GetValue<string>().Should().Be("London");
+        evalSteps[3].Params["regime"]!.GetValue<string>().Should().Be("Asian");
+
+        // The apply-calibration step must carry a regime key
+        var calStep = pb.Steps.Single(s => s.Kind == StepKinds.ApplyCalibration);
+        calStep.Params["regime"]!.GetValue<string>().Should().Be("London-NY");
     }
 
     private static string RepoRoot()

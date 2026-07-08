@@ -10,6 +10,9 @@ public sealed record ExitLabEvaluateRequest
     public double?[]? TpMultiples { get; init; }
     public double?[]? BeTriggers { get; init; }
     public double?[]? TrailMultiples { get; init; }
+    // P6.4: optional trading-session regime filter — when set, only trades whose entry bar falls in this
+    // session are evaluated (SessionDetector labels: Asian, London, NewYork, Asian-London, London-NY, Pacific).
+    public string? Regime { get; init; }
 }
 
 public sealed record ExitLabCellResponse
@@ -36,6 +39,11 @@ public sealed record ExitLabEvaluateResponse
     public required List<ExitLabCellResponse> Cells { get; init; }
     public double[]? DefaultSlMultiples { get; init; }
     public double?[]? DefaultTpMultiples { get; init; }
+    // P6.4: regime-conditioned calibration — the regime filter that was applied (null = all sessions).
+    public string? Regime { get; init; }
+    // P6.4: trade-count breakdown by trading session (SessionDetector labels). Provided even when
+    // a single regime is selected so the caller can see the data distribution across sessions.
+    public Dictionary<string, int>? RegimeBreakdown { get; init; }
 }
 
 /// <summary>P3.4 — save a calibrated exit rule for a (strategy, symbol, timeframe, regime) cell.</summary>

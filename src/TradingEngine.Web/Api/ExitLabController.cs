@@ -2,6 +2,7 @@ using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
 using TradingEngine.Risk.Compliance;
+using TradingEngine.Services;
 using TradingEngine.Services.ExitLab;
 using TradingEngine.Web.Dtos.ExitLab;
 
@@ -37,9 +38,13 @@ public sealed class ExitLabController : ControllerBase
         var beTriggers = req.BeTriggers ?? ExitGridEvaluator.DefaultBeTriggers;
         var trailMultiples = req.TrailMultiples ?? ExitGridEvaluator.DefaultTrailMultiples;
 
-        // Load excursion paths for the requested trades
+        // Load excursion paths for the requested trades.
+        // P6.4: compute trading-session regime per trade via SessionDetector on OpenedAtUtc,
+        // accumulate a regime breakdown, and optionally filter by the requested regime.
         var inputs = new List<TradeExcursionInput>();
+        var regimeBreakdown = new Dictionary<string, int>();
         var malformedCount = 0;
+        var filteredByRegime = 0;
         for (var i = 0; i < req.PositionIds.Count && i < req.RunIds.Count; i++)
         {
             var pathJson = await _excursions.GetAsync(req.RunIds[i], req.PositionIds[i], ct);
@@ -65,6 +70,17 @@ public sealed class ExitLabController : ControllerBase
             }
             if (points.Count == 0) continue;
 
+            // P6.4: label the entry bar's trading session
+            var regime = SessionDetector.Detect(trade.OpenedAtUtc);
+            regimeBreakdown[regime] = regimeBreakdown.TryGetValue(regime, out var c) ? c + 1 : 1;
+
+            // P6.4: optional per-regime filtering
+            if (req.Regime is not null && !string.Equals(regime, req.Regime, StringComparison.OrdinalIgnoreCase))
+            {
+                filteredByRegime++;
+                continue;
+            }
+
             inputs.Add(new TradeExcursionInput
             {
                 Direction = trade.Direction == "Short" ? TradeDirection.Short : TradeDirection.Long,
@@ -83,6 +99,8 @@ public sealed class ExitLabController : ControllerBase
                 TotalTrades = 0, TotalCells = 0, Cells = [],
                 MalformedPathCount = malformedCount,
                 DefaultSlMultiples = slMultiples, DefaultTpMultiples = tpMultiples,
+                Regime = req.Regime,
+                RegimeBreakdown = regimeBreakdown.Count > 0 ? regimeBreakdown : null,
             });
         }
 
@@ -120,6 +138,8 @@ public sealed class ExitLabController : ControllerBase
             Cells = cellResponses,
             DefaultSlMultiples = slMultiples,
             DefaultTpMultiples = tpMultiples,
+            Regime = req.Regime,
+            RegimeBreakdown = regimeBreakdown.Count > 0 ? regimeBreakdown : null,
         });
     }
 

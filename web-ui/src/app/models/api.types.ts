@@ -578,6 +578,8 @@ export interface ExitLabEvaluateResponse {
   cells: ExitLabCellResponse[];
   defaultSlMultiples: number[];
   defaultTpMultiples: (number | null)[];
+  regime?: string | null;
+  regimeBreakdown?: Record<string, number> | null;
 }
 
 export interface ExitLabEvaluateRequest {
@@ -588,6 +590,7 @@ export interface ExitLabEvaluateRequest {
   tpMultiples?: (number | null)[];
   beTriggers?: (number | null)[];
   trailMultiples?: (number | null)[];
+  regime?: string | null;
 }
 
 export interface SaveCalibrationRequest {
