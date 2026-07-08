@@ -232,33 +232,34 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** P3.1 foundation `0de44c2` (P2.1 = `ccf6aa4`), + a docs
-commit (TRACKER/RESUME/evidence/RECONCILE §P2.2). Conductor bookkeeping SHAs interleave.
-**Session (s10, P2):** QA of s8/s9 P1 = **confirmed** (build 0/5, Unit 534/6, Integration 117, fast Sim 144,
-golden empty; R5 DB: ReferenceScales=84, StrategyConfigs Method:0×8+MR:1, head M42). Delivered:
-- **P2.1 (ccf6aa4, F8):** `RunStateMachine` (Domain, pure) — queued→starting→running→finalizing→terminal
-  with an allowed-transition map; TryTransition never throws, terminal is a no-op (double-cancel). Single
-  guarded writer `TransitionRun` in the orchestrator (grep `.Status =`→1 hit); happy path forced through
-  `finalizing`; `Cancel` idempotent+truthful (CancelRequested intent, no lying mid-finalize cancelled) +
-  best-effort ctrader-cli tree kill; RunStateMachineTests **32/32**.
-- **P2.2:** auto-promoted **DONE (OWNER-PENDING — needs cTrader creds)**; gate template in
-  `docs/audit/RECONCILE-FINDINGS.md §P2.2`.
-- **P3.1 foundation (0de44c2):** new `TradingEngine.ResearchCli` (`research`) — Verdict/GateEvaluator/
-  CliArgs/RunJson/ApiClient + verbs `run validate`/`run await`/`reconcile`; ResearchCliTests **11/11**.
+**Branch:** `iter/parity-pipeline` — **HEAD:** P3.2b playbook engine `4464a09` (P3.4 files `7bf2edb`,
+P3.2a persistence `e5e9e86`, P3.1 verbs `e3dcb9d`). Conductor bookkeeping SHAs interleave.
+**Session (s12, P3):** QA of s10/s11 P2.1+P3.1-foundation = **confirmed** (build 0/5; RunStateMachine
+52 cases/32 methods; ResearchCli 11/11; runtime head M42, ReferenceScales=84). Delivered P3.1/P3.2/P3.4-files:
+- **P3.1 (e3dcb9d):** finished ResearchCli verbs — `data ensure`, `run start [--compare-both][--explore]`,
+  `exitlab eval`, `walkforward`; pure helpers InventoryCoverage/StartRunPlan/ExitLabResult.
+- **P3.2a (e5e9e86, Q6):** M43 `ResearchPipelines`+`ResearchPipelineSteps` tables + mappings + migration;
+  `ResearchPipelinesController` (`/api/research/pipelines`: list/get/create/update/update-step/approve/reject).
+- **P3.2b (4464a09):** dumb sequential `PlaybookExecutor` (10 typed step kinds, resume-by-content-hash,
+  owner-gate parks) behind `IStepRunner`/`IPipelineStore` seams; `HttpStepRunner` reuses the verb helpers;
+  `ApiPipelineStore` persists via the API (Q3, never the DB). Verbs `pipeline run/status/approve/reject`.
+- **P3.4 files (7bf2edb):** `playbooks/venue-parity.json` + `explore-exit.json` + README (shapes unit-tested).
 
-**Gates GREEN (documented battery):** `dotnet build TradingEngine.slnx -c Debug` 0err/5warn; Unit
-`--no-build` 577/0/6; Integration 117/0/0; fast Sim `--filter "RequiresCTrader!=true&Category!=E2E&
-Category!=Slow&Category!=NetMQ"` 144/0/0; `git diff --stat -- **/*golden*.json` empty (NO rebaseline).
+**Gates GREEN:** `dotnet build TradingEngine.slnx -c Debug` 0err/5warn; Unit `--no-build` **622/0/6**
+(ResearchCli filter 36/0); Integration **120/0/0**; fast Sim `--filter "RequiresCTrader!=true&Category!=E2E&
+Category!=Slow&Category!=NetMQ"` **144/0/0**; `git diff --stat -- **/*golden*.json` empty (NO rebaseline).
+**R5:** applied M43 to the LIVE Web DB — `__EFMigrationsHistory` head `20260708173645_M43_ResearchPipelines`;
+`ResearchPipelines`+`ResearchPipelineSteps`+unique step index present.
 
-**Next step:** finish **P3.1** verbs (`data ensure`, `run start [--compare-both]`, `exitlab eval`,
-`walkforward`, `report`, `pipeline`) → **P3.2** playbook engine (ResearchPipelines/Steps DB, Q6) → **P3.3**
-UI `/research`. ResearchCli live end-to-end needs the app running (owner/next-session).
+**Next step:** **P3.3 UI `/research`** (thin read + approve owner-gates; reads `/api/research/pipelines`;
+one driven smoke via run-shamshir skill, R6). Then **P3.4 LIVE** end-to-end (app up + data + creds) →
+run `pipeline run playbooks/venue-parity.json` to completion + committed reconcile → the P3 gate.
 
-**Open traps:** (1) `Tests.Architecture` has **2 PRE-EXISTING fails** (EnginePurity; ExitCalibrationEntity
-!IAuditable) — NOT in the gate battery, Engine/Infra untouched this session; don't attribute to P2/P3.
-(2) `finalizing` is transient in-memory ONLY — never persisted (end-record writes after the terminal
-transition); do not add it to RunStatusResolver/DB. (3) live cancel/watchdog/orphan-kill + every P0 cTrader
-run are creds-gated → OWNER-PENDING (P2.2). (4) `BuildInfo.g.cs` + `web-ui/.../build-info.ts` re-dirty each
-build (leave uncommitted); `.conductor/` orchestrator-managed. (5) commit via `git commit -F <file>`
-(PowerShell mangles multi-line `-m`). (6) `npx tsc --noEmit` 2 pre-existing errors (P5).
+**Open traps:** (1) `Tests.Architecture` `EntityAuditableTests` red on **ExitCalibrationEntity ONLY**
+(pre-existing; EnginePurity also pre-exists) — NOT in the gate battery; the 2 new pipeline entities ARE
+compliant. (2) Playbook engine is HTTP-only (Q3) — executor persists via `/api/research/pipelines`, never
+the DB; keep it that way. (3) live pipeline run needs the app running — CLI is unit-proven, not run
+end-to-end this session. (4) `BuildInfo.g.cs` + `web-ui/.../build-info.ts` re-dirty each build (leave
+uncommitted); `.conductor/` orchestrator-managed. (5) commit via `git commit -F <file>` (PowerShell
+mangles multi-line `-m`). (6) `npx tsc --noEmit` 2 pre-existing errors (P5).
 

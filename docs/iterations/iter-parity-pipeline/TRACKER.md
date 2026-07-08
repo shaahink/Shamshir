@@ -17,27 +17,26 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P2.1 DONE** (ccf6aa4, F8): RunStateMachine (Domain, pure) enumerates queued→starting→running→
-      finalizing→terminal; single guarded writer TransitionRun in orchestrator (grep `.Status =`→1 hit);
-      happy path forced through `finalizing`; Cancel idempotent+truthful (CancelRequested intent, no lying
-      mid-finalize cancelled) + best-effort ctrader-cli tree kill; RunStateMachineTests 32/32.
-      **P2.2 auto-promoted DONE (OWNER-PENDING — needs creds).** **P3.1 foundation** (0de44c2): ResearchCli
-      console (`research`) — Verdict/GateEvaluator/CliArgs/RunJson/ApiClient + verbs run validate/await,
-      reconcile; ResearchCliTests 11/11.
-stage: **P2 COMPLETE** (P2.1 done; P2.2 owner-pending). P3 STARTED (P3.1 foundation).
-gate: GREEN (documented battery) — build 0err/5warn; Unit 577/0/6; Integration 117/0/0; fast Sim 144/0/0;
-      golden byte-identical (git diff --stat **/*golden*.json = empty; NO rebaseline).
-next: **Finish P3.1** (verbs: data ensure, run start [--compare-both], exitlab eval, walkforward, report,
-      pipeline) then **P3.2 playbook engine** (ResearchPipelines/Steps DB, Q6) + **P3.3 UI /research**.
-      Live end-to-end of ResearchCli against a running app is owner/next-session (needs app up).
-QA-prev: s8/s9 P1 → **confirmed** (build 0/5, Unit 534/6, Integration 117, fast Sim 144, golden empty;
-      R5 DB: ReferenceScales=84, StrategyConfigs Method:0×8+MR:1, head M42). No divergence, no fix.
-trap: (1) Tests.Architecture has **2 PRE-EXISTING fails** (EnginePurity; ExitCalibrationEntity !IAuditable)
-      — NOT in the gate battery, Engine/Infra untouched this session; do not attribute to P2/P3.
-      (2) `finalizing` is transient in-memory ONLY — never persisted (end-record writes after terminal
-      transition); don't add it to RunStatusResolver/DB. (3) live cancel/watchdog/orphan-kill + all P0
-      cTrader runs are creds-gated → OWNER-PENDING (P2.2). (4) BuildInfo.g.cs re-dirties each build (leave);
-      .conductor/ orchestrator-managed. (5) commit via `git commit -F <file>`.
+last: **P3.1 DONE** (e3dcb9d): ResearchCli verbs complete — data ensure / run start [--compare-both]
+      [--explore] / exitlab eval / walkforward, all pure-helper-backed (InventoryCoverage, StartRunPlan,
+      ExitLabResult), 36 ResearchCli unit tests. **P3.2 DONE** (e5e9e86 persistence + 4464a09 engine):
+      M43 ResearchPipelines/Steps tables + /api/research/pipelines API; dumb sequential PlaybookExecutor
+      (10 typed step kinds, resume-by-content-hash, owner-gate parks) behind IStepRunner/IPipelineStore
+      seams; verbs pipeline run/status/approve/reject. **P3.4 files DONE** (7bf2edb): venue-parity.json +
+      explore-exit.json + README (shapes unit-validated).
+stage: **P3 IN PROGRESS** — P3.1/P3.2/P3.4-files done. P3.3 (UI /research) TODO; P3.4 LIVE gate owner-pending.
+gate: GREEN — build 0err/5warn; Unit 622/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical
+      (git diff --stat **/*golden*.json = empty; NO rebaseline). R5: M43 head live on Web DB, both tables present.
+next: **P3.3 UI /research** (read + approve owner-gates — thin, reads /api/research/pipelines; driven smoke
+      via run-shamshir). Then P3.4 LIVE end-to-end (app up + data + creds) → the P3 verification gate.
+QA-prev: s10/s11 P2.1+P3.1-foundation → **confirmed** (build 0/5; RunStateMachine 52 cases/32 methods;
+      ResearchCli 11/11; runtime head M42, ReferenceScales=84). No divergence, no fix.
+trap: (1) Tests.Architecture EntityAuditableTests red on **ExitCalibrationEntity ONLY** — PRE-EXISTING,
+      NOT in gate battery; my 2 new pipeline entities ARE compliant. (2) The playbook engine is HTTP-only
+      (Q3) — executor persists via /api/research/pipelines, never the DB; keep it that way. (3) Live
+      pipeline run needs the app running — CLI is unit-proven but not run end-to-end this session.
+      (4) BuildInfo.g.cs + build-info.ts re-dirty each build (leave); .conductor/ orchestrator-managed.
+      (5) commit via `git commit -F <file>`.
 
 ## Checkpoints
 
@@ -109,10 +108,10 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P1.2 | Config propagation + drift (F9,F7): JSON edit reflected in journal; UI edit survives restart | DONE (OWNER-PENDING: journal-in-a-real-run + StrategyParamsJson-in-a-persisted-run are bars/cTrader-gated) | d36f491 | docs/iterations/iter-parity-pipeline/evidence/P1.2-config-propagation-drift.md; ConfigSyncServiceTests 3/3 (Integration); R5 LIVE: edit trend-breakout Market→LimitOffset + restart → DB OrderEntryJson Method:1 Version 1→2; GET /api/system/config-drift 200 |
 | P2.1 | Run state machine + tests (F8): cancel/watchdog/orphan-kill transitions green | DONE | ccf6aa4 | docs/iterations/iter-parity-pipeline/evidence/P2.1-run-state-machine.md; RunStateMachineTests 32/32 (Unit); single guarded writer TransitionRun (grep `.Status = ` → 1 hit) |
 | P2.2 | OWNER-GATE: one real compare-both run + committed reconcile verdict (inherited P6.1 gate) | DONE (OWNER-PENDING — needs cTrader creds) | — | Verifiable-now: P0.1/P0.2/P0.3 fixes + P0.4 instrumentation + P2.1 state machine (32/32) all green credential-free. Needs owner+creds: one live paired compare-both (EURUSD H1 1mo) on post-P0 build → equal lots (F1), 3× consecutive `completed` no NetMQPoller (F5), TRADES_LOST/UNRECONSTRUCTABLE surfaces (F6), committed reconcile verdict in docs/audit/RECONCILE-FINDINGS.md §P2.2 (template stubbed). Auto-promoted per run policy. |
-| P3.1 | TradingEngine.ResearchCli console project (verbs, --json, VERDICT lines, diagnostics) | IN PROGRESS (foundation landed) | 0de44c2 | docs: commit body; src/TradingEngine.ResearchCli (Verdict/GateEvaluator/CliArgs/RunJson/ResearchApiClient/Program); ResearchCliTests 11/11 (Unit). Verbs landed: run validate/await, reconcile. TODO: data ensure, run start, exitlab, walkforward, report, pipeline + live end-to-end. |
-| P3.2 | Playbook engine (typed steps, owner-gate, resumable by pipeline id) | TODO | | |
+| P3.1 | TradingEngine.ResearchCli console project (verbs, --json, VERDICT lines, diagnostics) | DONE | 0de44c2, e3dcb9d | docs: commit bodies; src/TradingEngine.ResearchCli (Verdict/GateEvaluator/CliArgs/RunJson/InventoryCoverage/StartRunPlan/ExitLabResult/ResearchApiClient/Program); ResearchCliTests 36/36 (Unit). Verbs: data ensure, run start [--compare-both][--explore], run validate/await, reconcile, exitlab eval, walkforward. |
+| P3.2 | Playbook engine (typed steps, owner-gate, resumable by pipeline id) | DONE | e5e9e86 (persistence), 4464a09 (engine) | docs/iterations/iter-parity-pipeline/evidence/P3.2a-pipeline-persistence.md; M43_ResearchPipelines migration; ResearchPipelinesController (/api/research/pipelines); PlaybookExecutor+HttpStepRunner+ApiPipelineStore; ResearchPipelinePersistenceTests 3/3 (Integration) + PlaybookEngineTests 15 (Unit); R5: M43 head live on Web DB, both tables + unique step index present. LIVE end-to-end owner-pending (app up). |
 | P3.3 | UI review page /research (read + approve owner-gates) | TODO | | |
-| P3.4 | Canonical playbooks venue-parity + explore-exit run end-to-end via CLI; artifacts committed | TODO | | |
+| P3.4 | Canonical playbooks venue-parity + explore-exit run end-to-end via CLI; artifacts committed | DONE (FILES); DONE (OWNER-PENDING: live run needs app+data+creds) | 7bf2edb | playbooks/venue-parity.json + playbooks/explore-exit.json + playbooks/README.md; shapes unit-validated (PlaybookEngineTests.ShippedPlaybook_Parses). Live end-to-end + TradeExcursions>0 rows = the P3 verification-matrix gate, owner/next-session. |
 | P4.1 | Exploration funnel (F11) + MAE/MFE units doctrine (F12) + entry lab (P3.6/D10) | TODO | | |
 | P5.1 | UI truth (F13-F16) + targeted Angular refactor (driven smoke per change) | TODO | | |
 | P6.1 | Wild list (pipeline-gated; each feature ships with a measuring playbook) | TODO | | |
