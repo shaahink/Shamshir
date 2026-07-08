@@ -1,11 +1,32 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 19:23 UTC · branch `iter/parity-pipeline` · HEAD `f8481cd`_
+_Updated 2026-07-08 19:38 UTC · branch `iter/parity-pipeline` · HEAD `8fadd58`_
 
-**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P4 — Lab golden paths · attempts used 0
-**Checkpoints:** 15/17 done · **Sessions run:** 17 · **Cost:** $1.2824 · **Tokens:** 842,819 in / 373,867 out / 171,108 think
+**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P5 — UI truth + Angular refactor · attempts used 0 · working ▸ P5.1
+**Checkpoints:** 15/17 done · **Sessions run:** 18 · **Cost:** $1.2824 · **Tokens:** 842,819 in / 373,867 out / 171,108 think
 **Confirmed phases:** P0, P1, P2, P3, P4
+
+## Latest activity (live)
+
+_Session #18 (Deliver) · running 15m · last output 3s ago · $0.0794_
+
+**Thinking:**
+> Golden: byte-identical (no diff). BuildInfo.g.cs and build-info.ts are pre-existing dirty files (shouldn't be committed). Let me commit only the actual changes: - TRACKER.md - BacktestOrchestrator.cs - RunProgress.cs - run-hub.service.ts - run-monitor.component.ts  BuildInfo files should NOT be comm…
+> P5.1a committed (8fadd58). Now let me move to P5.1b (F15 start button pending state + idempotency key).  For F15: - Client-side: Add a local `starting` signal in new-backtest.component.ts, set synchronously on click - Server-side: Add idempotencyKey to StartRunRequest, check for duplicates  Let me r…
+> Now let me implement F15. I need to read the new-backtest component and the runs.store to understand the flow.
+
+**Recent actions:**
+- `20:38:02` » bash git diff --stat -- "**/*golden*.json" 2>&1
+- `20:38:02` » bash git diff --stat 2>&1
+- `20:38:09` · Good. Golden byte-identical. Let me commit P5.1a.
+- `20:38:10` » bash git add src/TradingEngine.Web/Services/BacktestOrchestrator.cs src/TradingEngine.Web/Services/RunProgress.cs web-ui/src/app/core/signalr/run-hub.service.ts…
+- `20:38:21` » bash git commit -m "feat(P5.1a): F13 equity truth — nullable equity in progress envelopes, no 0-anchor  F13 fix per PLAN 88: - Server: RunProgress.Equity change…
+- `20:38:32` » todowrite 4 todos
+- `20:38:41` » read web-ui\src\app\features\runs\new-backtest\new-backtest.component.ts
+- `20:38:42` » read web-ui\src\app\features\runs\runs.store.ts
+- `20:38:42` · Now F15: start button pending state. Let me read the key files.
+- `20:38:42` » read web-ui\src\app\features\runs\runs.service.ts
 
 ## Stage progress
 
@@ -16,7 +37,7 @@ _Updated 2026-07-08 19:23 UTC · branch `iter/parity-pipeline` · HEAD `f8481cd`
 | P2 | Lifecycle robustness + headline gate | 2/2 | confirmed ✓ |
 | P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
 | P4 | Lab golden paths | 1/1 | confirmed ✓ |
-| P5 | UI truth + Angular refactor | 0/1 | todo |
+| P5 | UI truth + Angular refactor | 0/1 | **← active** |
 | P6 | Wild list (pipeline-gated) | 0/1 | todo |
 
 ## Sessions
@@ -40,6 +61,7 @@ _Updated 2026-07-08 19:23 UTC · branch `iter/parity-pipeline` · HEAD `f8481cd`
 | 15 | P3 | Audit | 1 | 07-08 18:30 | 0:14 | Progress |  | 2 |  | $0.0740 | 79,867/15,468 |
 | 16 | P4 | Deliver | 1 | 07-08 18:46 | 0:27 | Advanced | P4.1 | 3 | build:OK | $0.1892 | 229,115/27,015 |
 | 17 | P4 | Audit | 1 | 07-08 19:14 | 0:07 | Progress |  | 2 |  | $0.0458 | 50,008/12,348 |
+| 18 | P5 | Deliver | 1 | 07-08 19:23 | … | running |  | 0 |  |  |  |
 
 ### Commits by session
 
