@@ -17,25 +17,32 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s28 rebuild fix** (6207473) — FIX session: Angular staleness after P6.5 UI changes
-stage: **P6 IN PROGRESS** — P6.1-P6.5 delivered; P6.6-P6.8 remain TODO.
-gate: GREEN — build 0err/5warn; Unit 676/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden byte-identical; tsc 0 errors
-next: **P6.6 meta-allocator** (PLAN §9 #4) or **P6.7 entry-quality decomposition** (§9 #8)
+last: **s29 P6.6 meta-allocator** — MetaAllocator domain + playbook step + tests
+stage: **P6 IN PROGRESS** — P6.1-P6.6 delivered; P6.7-P6.8 remain TODO.
+gate: GREEN — build 0err/0warn; Unit 689/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden 61/61 byte-identical
+next: **P6.7 entry-quality decomposition** (PLAN §9 #8)
 trap: (1) Session labels not wired into TradeExcursions.
   (2) SpreadVolNoTradeFilter no strategy config wiring.
   (3) Playbook 3 (triage-sweep.json) not created.
-  (4) BlockBootstrapper writes bars to real MarketData table — synthetic
-  bars need cleanup after runs or a dedicated table. (5) Bootstrap
-  controller uses DateTime.UtcNow directly. (6) NEW: any session that
-  touches web-ui/src/*.ts MUST run `npm run build` before committing;
-  angular staleness guard will fail dotnet build otherwise.
+  (4) BlockBootstrapper writes bars to real MarketDataShard.
+  (5) BlockBootstrapController uses DateTime.UtcNow.
+  (6) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
+  (7) Any session touching web-ui/src/*.ts MUST run `npm run build`.
 
 ## Checkpoints
 
 Status ∈ TODO · IN PROGRESS · DONE · BLOCKED. Evidence = an artifact path produced by a run this
 phase (a code path is not evidence). Scope changes get a `> scope change:` line under the row.
 
+> QA-previous (s29 QA of s28): **confirmed.** Full gate battery re-run
+> verbatim: build 0err/0warn, Unit 676/0/6, Integration 120/0/0,
+> fast Sim 144/0/0, golden 61/61 byte-identical. Independently verified
+> 2 claims: (tests) SpreadVolNoTradeFilter 6/6, BlockBootstrapper 9/9,
+> SessionDetector 17/17 all green; (runtime/R5) DB: 9 StrategyConfigs
+> with OrderMethod 0×8 + 1×1 (Q1 Market revert holds), ReferenceScales=84,
+> migration head M45. No divergence — proceeded to P6.6.
+>
 > QA-previous (s2 QA of P0.0): **confirmed**. Re-ran the full P0.0 gate battery verbatim — build
 > 0err/5warn, Unit 508/0/6, fast Sim 139/0/0, golden 61/61. Independently verified 2 claims: (runtime/R5)
 > `sqlite3 …Web/data/trading.db` StrategyConfigs = Method:0 ×8 + Method:1 mean-reversion (matches JSON —
@@ -112,7 +119,7 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P6.3 | Wild list: spread/vol no-trade filter (SpreadVolNoTradeFilter + playbook) | DONE | e6c45aa | SpreadVolNoTradeFilter 6 tests; playbooks/spread-vol-filter.json; blocks trades on excess spread OR ATR |
 | P6.4 | Wild list: regime-conditioned calibration | DONE | 611d26d | docs: commit body; playbooks/regime-calibration.json; RegimePlaybook_HasPerRegimeExitLabSteps test (Unit); ShippedPlaybook_Parses 6/6; ExitLabController Evaluate() partitions by SessionDetector regime, optional filter, RegimeBreakdown in response |
 | P6.5 | Wild list: block-bootstrap tapes | DONE (OWNER-PENDING — needs live app up to exercise endpoint end-to-end) | 23bed7c | playbooks/block-bootstrap.json; BlockBootstrapperTests 9/9 (Unit); ShippedPlaybook_Parses 5/5 |
-| P6.6 | Wild list: meta-allocator | TODO | | |
+| P6.6 | Wild list: meta-allocator | DONE (OWNER-PENDING — live playbook run needs app+data) | <SHA> | playbooks/meta-allocator.json; MetaAllocatorTests 12/12 (Unit); R5: playbook parses per ShippedPlaybook_Parses 8/8 |
 | P6.7 | Wild list: entry-quality decomposition | TODO | | |
 | P6.8 | Wild list: pyramiding policy | TODO | | |
 

@@ -232,23 +232,22 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** 6207473 (s28, FIX: ng staleness guard)
-**Session (s28, FIX):** Conductor observed build-red after s27 commits. Root cause:
-  s27 (P6.5) committed Angular source changes to web-ui/src/ but never ran
-  `npm run build`. wwwroot/ is gitignored, so the stale wwwroot/index.html from
-  a prior build was older than the new TypeScript source. The staleness guard
-  (bee34c6) correctly caught this. Fix: `npm run build` + commit updated
-  BuildInfo.g.cs / build-info.ts stamp files.
-**Gates GREEN:** build 0err/5warn; Unit 676/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden byte-identical; tsc 0 errors.
-**Next step:** P6.6 meta-allocator (PLAN §9 #4).
+**Branch:** `iter/parity-pipeline` — **HEAD:** <SHA> (s29, P6.6 meta-allocator)
+**Session (s29, P6.6):** Delivered meta-allocator: MetaAllocator domain computation
+  (contribution = avgR × √frequency × confidence), meta-allocate playbook
+  step kind + HttpStepRunner handler that fetches scoreboard data, playbook
+  JSON, 12 unit tests. Live playbook run is OWNER-PENDING (needs app+data).
+**Gates GREEN:** build 0err/0warn; Unit 689/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden 61/61 byte-identical.
+**Next step:** P6.7 entry-quality decomposition (PLAN §9 #8).
 **Open traps:** (1) Session labels not wired into TradeExcursions.
   (2) SpreadVolNoTradeFilter no strategy config wiring.
   (3) Playbook 3 (triage-sweep.json) not created.
   (4) BlockBootstrapper writes synthetic bars to real MarketDataShard.
   (5) BlockBootstrapController uses DateTime.UtcNow.
   (6) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-  (7) NEW TRAP: any session touching web-ui/src/*.ts MUST run `npm run build`
-  before committing — the staleness guard will fail dotnet build otherwise.
-  (8) QA-previous (s27): build-red (angular staleness).
+  (7) Any session touching web-ui/src/*.ts MUST run `npm run build`
+  before committing — angular staleness guard will fail dotnet build
+  otherwise.
+  (8) QA-previous (s28): confirmed — all gates held, no divergence.
 

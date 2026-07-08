@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using TradingEngine.Domain;
+using TradingEngine.Domain.Experiments;
 
 namespace TradingEngine.ResearchCli;
 
@@ -42,6 +43,7 @@ public sealed class HttpStepRunner : IStepRunner
             StepKinds.OwnerGate => OwnerGate(step),
             StepKinds.ApplyCalibration => await ApplyCalibrationAsync(step, ct),
             StepKinds.BlockBootstrap => await BlockBootstrapAsync(step, context, ct),
+            StepKinds.MetaAllocate => await MetaAllocateAsync(step, context, ct),
             StepKinds.Report => await Report(step, context),
             _ => StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "unknown-step")).Render()),
         };
@@ -329,6 +331,112 @@ public sealed class HttpStepRunner : IStepRunner
             : StepOutcome.Fail(Verdict.Failing(fields.ToArray()).Render());
     }
 
+    private async Task<StepOutcome> MetaAllocateAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var topN = Int(step, "topN", 4);
+        var minTrades = Int(step, "minTrades", 10);
+        var freqWeight = Double(step, "frequencyWeight", 0.3);
+        var parkFraction = Double(step, "parkFraction", 0.1);
+
+        var scoreboardJson = await _client.GetAsync("api/scoreboard", ct);
+        if (scoreboardJson is null)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-scoreboard-response")).Render());
+
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(scoreboardJson);
+        }
+        catch (JsonException ex)
+        {
+            return StepOutcome.Fail(Verdict.Failing(
+                VerdictField.Of("error", "scoreboard-parse"),
+                VerdictField.Of("detail", ex.Message)).Render());
+        }
+
+        if (root is not JsonArray arr || arr.Count == 0)
+        {
+            return StepOutcome.Fail(Verdict.Failing(
+                VerdictField.Of("error", "scoreboard-empty"),
+                VerdictField.Of("detail", "Scoreboard returned no cells. Run a backtest first.")).Render());
+        }
+
+        var cells = new List<CellMetrics>();
+        foreach (var item in arr)
+        {
+            if (item is not JsonObject obj) continue;
+            var e = obj["enabled"]?.GetValue<bool>() ?? true;
+            var p = obj["parked"]?.GetValue<bool>() ?? false;
+            cells.Add(new CellMetrics(
+                StrategyId: obj["strategyId"]?.GetValue<string>() ?? "?",
+                Symbol: obj["symbol"]?.GetValue<string>() ?? "?",
+                Timeframe: obj["timeframe"]?.GetValue<string>() ?? "?",
+                AvgR: obj["latestAvgR"]?.GetValue<double>() ?? 0,
+                TotalTrades: obj["totalTrades"]?.GetValue<int>() ?? 0,
+                TradesPerWeek: obj["tradesPerWeek"]?.GetValue<double>() ?? 0,
+                Enabled: e,
+                Parked: p));
+        }
+
+        var opts = new MetaAllocatorOptions
+        {
+            TopN = topN,
+            MinTrades = minTrades,
+            FrequencyWeight = freqWeight,
+            ParkFraction = parkFraction,
+        };
+
+        var result = MetaAllocator.Allocate(cells, opts);
+
+        context.Values["meta-allocate:cells-evaluated"] = result.CellsEvaluated.ToString();
+        context.Values["meta-allocate:cells-recommended"] = result.CellsRecommended.ToString();
+        context.Values["meta-allocate:total-score"] = result.TotalScore.ToString("F4");
+
+        var fields = new List<VerdictField>
+        {
+            VerdictField.Of("cells-evaluated", result.CellsEvaluated),
+            VerdictField.Of("cells-scored", result.Allocations.Count),
+            VerdictField.Of("cells-recommended", result.CellsRecommended),
+        };
+
+        var keep = result.Allocations.Where(a => a.Recommendation == "keep").ToList();
+        var monitor = result.Allocations.Where(a => a.Recommendation == "monitor").ToList();
+        var park = result.Allocations.Where(a => a.Recommendation == "park").ToList();
+
+        if (keep.Count > 0)
+        {
+            var top = keep[0];
+            fields.Add(VerdictField.Of("top-cell", $"{top.StrategyId}/{top.Symbol}/{top.Timeframe}"));
+            fields.Add(VerdictField.Of("top-score", top.ContributionScore));
+            fields.Add(VerdictField.Of("top-weight", top.Weight));
+
+            context.Values["meta-allocate:top-cell"] = $"{top.StrategyId}/{top.Symbol}/{top.Timeframe}";
+            context.Values["meta-allocate:top-score"] = top.ContributionScore.ToString("F4");
+            context.Values["meta-allocate:top-weight"] = top.Weight.ToString("P1");
+
+            for (var i = 0; i < keep.Count; i++)
+            {
+                var k = keep[i];
+                var label = $"keep-{i + 1}";
+                context.Values[$"meta-allocate:{label}"] =
+                    $"{k.StrategyId}/{k.Symbol}/{k.Timeframe} w={k.Weight:P1} score={k.ContributionScore:F4}";
+            }
+        }
+
+        foreach (var p in park)
+        {
+            context.Values[$"meta-allocate:park:{p.StrategyId}/{p.Symbol}/{p.Timeframe}"] =
+                $"score={p.ContributionScore:F4} threshold={result.Allocations[0].ContributionScore * parkFraction:F4}";
+        }
+
+        var hasRecommendations = keep.Count > 0 || monitor.Count > 0;
+        var verdict = hasRecommendations
+            ? Verdict.Passing(fields.ToArray()).Render()
+            : Verdict.Failing(fields.ToArray()).Render();
+
+        return hasRecommendations ? StepOutcome.Pass(verdict) : StepOutcome.Fail(verdict);
+    }
+
     private async Task<StepOutcome> Report(PlaybookStep step, PipelineContext context)
     {
         // A report step summarizes the context's accumulated values into a markdown file written to the
@@ -398,6 +506,10 @@ public sealed class HttpStepRunner : IStepRunner
     private static int Int(PlaybookStep step, string key, int fallback) =>
         step.Params.TryGetPropertyValue(key, out var node) && node is not null && node.GetValueKind() == JsonValueKind.Number
             ? node.GetValue<int>() : fallback;
+
+    private static double Double(PlaybookStep step, string key, double fallback) =>
+        step.Params.TryGetPropertyValue(key, out var node) && node is not null && node.GetValueKind() == JsonValueKind.Number
+            ? node.GetValue<double>() : fallback;
 
     private static IReadOnlyList<string> StrArray(PlaybookStep step, string key)
     {

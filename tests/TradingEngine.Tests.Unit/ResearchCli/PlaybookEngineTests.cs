@@ -177,6 +177,7 @@ public sealed class PlaybookEngineTests
     [InlineData("spread-vol-filter.json")]
     [InlineData("regime-calibration.json")]
     [InlineData("block-bootstrap.json")]
+    [InlineData("meta-allocator.json")]
     public void ShippedPlaybook_Parses_AndHasKnownStepKinds(string file)
     {
         var path = Path.Combine(RepoRoot(), "playbooks", file);
