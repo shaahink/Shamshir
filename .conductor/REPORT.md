@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 03:07 UTC · branch `iter/parity-pipeline` · HEAD `b73d250`_
+_Updated 2026-07-08 03:22 UTC · branch `iter/parity-pipeline` · HEAD `c8357f5`_
 
 **Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.1
@@ -8,24 +8,24 @@ _Updated 2026-07-08 03:07 UTC · branch `iter/parity-pipeline` · HEAD `b73d250`
 
 ## Latest activity (live)
 
-_Session #2 (Deliver) · running 30m · last output 79s ago · $0.0728_
+_Session #2 (Deliver) · running 45m · last output 11s ago · $0.0883_
 
 **Thinking:**
-> I'm realizing the golden snapshot only captures the core decision data without the DetailJson field, so adding that field won't affect the committed golden file. The determinism tests are checking something different from what the snapshot serializes.  But there's a contradiction here — the plan say…
-> I'm mapping out the SESSION PLAN and tracing how `_engineMode` flows into `EngineRunner`, specifically whether the fix needs to be conditional on `EngineMode.Backtest`. Looking at the F1 mechanism in `EngineRunner.RunAsync` around lines 114-124 to understand the exact flow.  The core issue is that i…
-> I'm verifying how the kernel's acceptance path interacts with golden fixtures and access patterns before starting the implementation. Let me check if DeterminismTests compare against a committed baseline and verify that the hard-coded EffectKinds in BarNarrativeTests won't be affected by our changes…
+> I'm noticing something important about the reconciliation flow—when `RegisterReconcileHandler` updates equity levels, it's pulling from `_riskManager.InitialBalance`, but I need to trace back where the drawdown actually gets initialized with the config balance in the backtest setup.  The real issue …
+> I'm tracing how the RiskManager's drawdown gets initialized across different execution paths — the test path uses `InitializeDrawdownIfNeeded` on the AccountProcessor, but in the production cTrader backtest kernel, the initial balance comes from `Drawdown.InitialAccountBalance` at line 114, so I nee…
+> I'm trying to trace whether `_riskManager.InitialBalance` reflects the configured balance before RunAsync executes, particularly on the cTrader path where the initial balance might default to zero or an uninitialized state before GetAccountStateAsync updates it with the actual account balance. So th…
 
 **Recent actions:**
-- `03:59:04` » bash Get-ChildItem -Recurse -Path tests -Include *.json,*.approved.txt,*.verified.txt | Select-String -List -Pattern "drawdownScale|clampedLots|rawLots|pipValue…
-- `03:59:34` · Let me read DeterminismTests fully to determine whether the golden actually moves when DetailJson changes.
-- `03:59:34` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\DeterminismTests.cs
-- `04:01:15` » read src\TradingEngine.Infrastructure\Venues\CTrader\CTraderBrokerAdapter.cs
-- `04:01:15` · The DeterminismTests and kernel-path golden tests compare run-to-run (not a committed baseline). The only committed baseline is `golden-snapshot.json`, captured…
-- `04:01:15` » grep interface IMessageTransport|_lastKnownState =|hello
-- `04:06:11` » todowrite 5 todos
-- `04:06:11` · ## QA verdict + findings  **QA of previous session (P0.0) — CONFIRMED.** Re-ran the full gate battery: - `dotnet build TradingEngine.slnx -c Debug` → **0 err / …
-- `04:06:32` · Let me verify one more thing before coding: whether any committed json file HAS content that could change.
-- `04:06:33` » bash $json = Get-Content tests/TradingEngine.Tests.Simulation/GoldenReplay/golden-snapshot.json -Raw | ConvertFrom-Json; $first = $json.journal[0] | ConvertTo-J…
+- `04:19:23` · Let me find where the RiskManager drawdown/InitialBalance is set from config balance in the host wiring.
+- `04:19:23` » grep InitializeDrawdown|InitialBalance|new RiskManager|RegisterConnectedHandler|RegisterReconcileHandler
+- `04:20:59` · I need to find where the RiskManager drawdown gets initialized with the config balance in the backtest path, since my fix relies on `_riskManager.InitialBalance…
+- `04:20:59` » grep InitializeDrawdown|InitializeDrawdownIfNeeded
+- `04:21:30` » grep SetInitialBalance|InitialBalance =|InitializeDrawdown|SizingOptions|BacktestBalance|Engine:Balance|Simulation:Balance
+- `04:21:30` » read src\TradingEngine.Host\EngineServiceCollectionExtensions.cs
+- `04:21:31` · I need to verify where the config balance reaches the RiskManager/EngineRunner in the cTrader backtest path — my fix depends on `_riskManager.InitialBalance` ho…
+- `04:22:30` » read src\TradingEngine.Domain\EngineHostOptions.cs
+- `04:22:32` · My fix depends on `_riskManager.InitialBalance` holding the config balance at line 114, but the kernel path may not initialize it. Let me verify the actual sour…
+- `04:22:32` » grep _balance =|decimal _balance|balance,|Balance,
 
 ## Stage progress
 
