@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 16:27 UTC · branch `iter/parity-pipeline` · HEAD `9605f10`_
+_Updated 2026-07-08 16:42 UTC · branch `iter/parity-pipeline` · HEAD `ccf6aa4`_
 
 **Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P2 — Lifecycle robustness + headline gate · attempts used 0 · working ▸ P2.1
@@ -9,24 +9,24 @@ _Updated 2026-07-08 16:27 UTC · branch `iter/parity-pipeline` · HEAD `9605f10`
 
 ## Latest activity (live)
 
-_Session #10 (Deliver) · running 15m · last output 27s ago · $0.0236_
+_Session #10 (Deliver) · running 30m · last output 5s ago · $0.0501_
 
 **Thinking:**
-> I need to extract the `KillCtraderProcessTreeAsync` method from the existing reaper block so I can reuse it in the cancel logic, then add a watchdog diagnostic to track this operation.
-> I'm extracting the inline logic into a separate method called `KillCtraderProcessTreeAsync` that takes the run ID and reason as parameters, then replacing the original block with a call to this new method.
-> I should build the Web and Domain projects first to catch any compile errors before writing tests. I'm also noticing that the `GetCurrentProgress` method's status switch statement needs to handle the new `finalizing` and `completed-with-warnings` states—`finalizing` will correctly map to "running" a…
+> I'm moving on to build the JSON mapper that converts run-detail JSON into RunGateInput, along with a static parser for RunJson that's pure and testable. After that, I'll need to create the HttpClient wrapper for ResearchApiClient and set up Program.cs.
+> Now that ResearchCli compiles successfully, I'm moving on to write unit tests for the core components—Verdict, GateEvaluator, CliArgs, and RunJson. I need to add a project reference from Tests.Unit to ResearchCli so the test project can access these classes.
+> The ResearchCli tests are passing, so now I need to check if the Architecture tests have any rules about project references—like whether Domain can reference Infrastructure or if there's a whitelist of allowed dependencies. Since ResearchCli only references Domain, it should be fine, but I want to b…
 
 **Recent actions:**
-- `17:24:44` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `17:24:57` · Now extract `KillCtraderProcessTreeAsync` from the inline reaper. Let me find the current reaper block location.
-- `17:24:58` » bash cd C:\Code\Shamshir; git grep -n "GetProcessesByName(\"ctrader-cli\")\|GetProcessesByName(\"cTrader.Automate\")\|CTRADER|REAP\|after the engine has dispose…
-- `17:25:12` » bash cd C:\Code\Shamshir; Select-String -Path src/TradingEngine.Web/Services/BacktestOrchestrator.cs -Pattern "GetProcessesByName|after the engine has disposed"…
-- `17:25:21` » read src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `17:25:49` · Replace the inline reaper with a call to the extracted method:
-- `17:25:49` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `17:26:14` · Now add the `KillCtraderProcessTreeAsync` method. Let me place it right after `AllocatePorts`:
-- `17:26:14` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
-- `17:26:40` · Let me build to catch errors before writing tests.
+- `17:38:46` · Now add the project to the solution and build it.
+- `17:39:09` » bash cd C:\Code\Shamshir; dotnet build src/TradingEngine.ResearchCli/TradingEngine.ResearchCli.csproj -c Debug 2>&1 | Select-String -Pattern "error|Build succee…
+- `17:39:21` » read tests\TradingEngine.Tests.Unit\TradingEngine.Tests.Unit.csproj
+- `17:39:22` · ResearchCli builds clean. Now add unit tests. First reference the project from Tests.Unit.
+- `17:39:30` » edit tests\TradingEngine.Tests.Unit\TradingEngine.Tests.Unit.csproj
+- `17:40:06` » write tests\TradingEngine.Tests.Unit\ResearchCli\ResearchCliTests.cs
+- `17:40:39` » bash cd C:\Code\Shamshir; dotnet test tests/TradingEngine.Tests.Unit -c Debug --filter "FullyQualifiedName~ResearchCliTests" 2>&1 | Select-String -Pattern "erro…
+- `17:40:54` · 11/11 pass. Now full gate battery (new project added — include Architecture tests).
+- `17:41:15` » bash cd C:\Code\Shamshir; echo "Full build slnx..."; dotnet build TradingEngine.slnx -c Debug 2>&1 | Select-String -Pattern "error|Warning\(s\)|Error\(s\)" | Se…
+- `17:42:01` » bash cd C:\Code\Shamshir; echo "Unit + Architecture..."; dotnet test tests/TradingEngine.Tests.Unit --no-build -c Debug 2>&1 | Select-String -Pattern "Passed!|F…
 
 ## Stage progress
 
