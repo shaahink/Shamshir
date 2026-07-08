@@ -86,6 +86,15 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 > [P1.1], StrategyConfigs Method:0 ×8 + mean-reversion Method:1 [P1.2/Q1], migration head M42_ConfigSeedHash;
 > (tests) full battery re-run green incl golden. s9 audit commit 795807f (lint-config repo-root unify + 2
 > ConfigSync tests) reviewed — ratchet-only, no regression. No divergence, no fix needed → proceed to P2.1.
+>
+> QA-previous (s12 QA of s10/s11 P2.1 + P3.1 foundation): **confirmed.** Build `dotnet build TradingEngine.slnx
+> -c Debug` = 0 err / 5 warn (net6 TFM transitive warnings only). Verified 2 claims: (tests) re-ran Unit
+> `--no-build` filtered — RunStateMachine 52/0 (32 methods incl theory rows = the claimed "32/32"),
+> ResearchCli 11/11; (runtime/R5) `c:\adb\sqlite3.exe …Web/data/trading.db` → migration head
+> M42_ConfigSeedHash, ReferenceScales=84, no `%research%` tables yet (P3.2 not started — matches TODO).
+> Reviewed 0de44c2 (ResearchCli foundation) + bce458d (deterministic await-timeout) — pure helpers
+> (Verdict/GateEvaluator/RunJson/CliArgs) are deterministic + tolerant, HTTP shell thin, no DateTime.UtcNow,
+> no Console.WriteLine leakage into decision paths. No divergence, no fix needed → continue P3.1 verbs + P3.2.
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|

@@ -119,4 +119,93 @@ public sealed class ResearchCliTests
         run.TotalTrades.Should().Be(0);
         run.WarningsJson.Should().BeNull();
     }
+
+    // --- P3.1 finish: data ensure / run start / exitlab / walkforward pure helpers ---
+
+    [Fact]
+    public void Coverage_FlagsMissingCell_WhenSymbolTimeframeAbsent()
+    {
+        var inv = InventoryCoverage.ParseInventory("""
+            [{"symbol":"EURUSD","timeframe":"H1","barCount":5000,
+              "firstBar":"2026-01-01T00:00:00Z","lastBar":"2026-07-01T00:00:00Z"}]
+            """);
+        var cells = InventoryCoverage.Evaluate(inv, ["EURUSD", "XAUUSD"], ["H1"], null, null);
+        cells.Should().HaveCount(2);
+        cells.Single(c => c.Symbol == "EURUSD").Satisfied.Should().BeTrue();
+        var missing = InventoryCoverage.Missing(cells);
+        missing.Should().ContainSingle(c => c.Symbol == "XAUUSD" && !c.Present);
+    }
+
+    [Fact]
+    public void Coverage_FailsRange_WhenInventoryDoesNotSpanRequestedWindow()
+    {
+        var inv = InventoryCoverage.ParseInventory("""
+            [{"symbol":"EURUSD","timeframe":"H1","barCount":100,
+              "firstBar":"2026-03-01T00:00:00Z","lastBar":"2026-04-01T00:00:00Z"}]
+            """);
+        var cells = InventoryCoverage.Evaluate(inv, ["eurusd"], ["h1"],
+            new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc));
+        cells.Single().Satisfied.Should().BeFalse();
+        cells.Single().Present.Should().BeTrue();
+        cells.Single().CoversRange.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Coverage_ZeroBars_IsNotSatisfied_EvenWhenPresent()
+    {
+        var inv = InventoryCoverage.ParseInventory("""
+            [{"symbol":"EURUSD","timeframe":"H1","barCount":0,"firstBar":null,"lastBar":null}]
+            """);
+        var cells = InventoryCoverage.Evaluate(inv, ["EURUSD"], ["H1"], null, null);
+        cells.Single().Satisfied.Should().BeFalse();
+    }
+
+    [Fact]
+    public void StartRunPlan_Overrides_WinOverPlanFile()
+    {
+        var plan = """{"symbols":["EURUSD"],"periods":["H1"],"venue":"replay"}""";
+        var body = StartRunPlan.BuildBody(plan, venue: "tape", compareBoth: true, explore: true);
+        using var doc = System.Text.Json.JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        root.GetProperty("venue").GetString().Should().Be("tape");
+        root.GetProperty("compareBoth").GetBoolean().Should().BeTrue();
+        root.GetProperty("explorationMode").GetBoolean().Should().BeTrue();
+        root.GetProperty("recordExcursions").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public void StartRunPlan_LeavesPlanUntouched_WhenNoOverrides()
+    {
+        var plan = """{"symbols":["EURUSD"],"venue":"tape"}""";
+        var body = StartRunPlan.BuildBody(plan, venue: null, compareBoth: false, explore: false);
+        using var doc = System.Text.Json.JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("venue").GetString().Should().Be("tape");
+        doc.RootElement.TryGetProperty("compareBoth", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void StartRunPlan_Throws_OnNonObjectPlan()
+    {
+        var act = () => StartRunPlan.BuildBody("[1,2,3]", null, false, false);
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void StartRunPlan_ParsesStartResponse()
+    {
+        var (runId, status) = StartRunPlan.ParseStartResponse("""{"runId":"abc123","status":"starting"}""");
+        runId.Should().Be("abc123");
+        status.Should().Be("starting");
+    }
+
+    [Fact]
+    public void ExitLabResult_ParsesSummary_AndJobId()
+    {
+        var (trades, cells) = ExitLabResult.ParseSummary("""{"totalTrades":42,"totalCells":180,"cells":[]}""");
+        trades.Should().Be(42);
+        cells.Should().Be(180);
+        ExitLabResult.ParseJobId("""{"jobId":"11111111-2222-3333-4444-555555555555","status":"enqueued"}""")
+            .Should().Be("11111111-2222-3333-4444-555555555555");
+    }
 }

@@ -15,12 +15,20 @@ try
 {
     switch (cli.Verb)
     {
+        case "data ensure":
+            return await DataEnsureAsync(cli, baseUrl, timeout);
+        case "run start":
+            return await RunStartAsync(cli, baseUrl, timeout);
         case "run validate":
             return await RunValidateAsync(cli, baseUrl, timeout);
         case "run await":
             return await RunAwaitAsync(cli, baseUrl, timeout);
         case "reconcile":
             return await ReconcileAsync(cli, baseUrl, timeout);
+        case "exitlab eval":
+            return await ExitLabEvalAsync(cli, baseUrl, timeout);
+        case "walkforward":
+            return await WalkForwardAsync(cli, baseUrl, timeout);
         default:
             PrintUsage();
             Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "unknown-verb")).Render());
@@ -137,15 +145,168 @@ static async Task<int> ReconcileAsync(CliArgs cli, string baseUrl, TimeSpan time
     return 0;
 }
 
+static async Task<int> DataEnsureAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var symbols = SplitCsv(cli.Option("symbols"));
+    var tfs = SplitCsv(cli.Option("tfs"));
+    if (symbols.Count == 0 || tfs.Count == 0)
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-symbols-or-tfs")).Render());
+        return 2;
+    }
+    var from = ParseDate(cli.Option("from"));
+    var to = ParseDate(cli.Option("to"));
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var inventoryJson = await client.GetInventoryAsync(CancellationToken.None);
+    var inventory = InventoryCoverage.ParseInventory(inventoryJson);
+    var cells = InventoryCoverage.Evaluate(inventory, symbols, tfs, from, to);
+    var missing = InventoryCoverage.Missing(cells);
+
+    if (missing.Count == 0)
+    {
+        Console.WriteLine(Verdict.Passing(
+            VerdictField.Of("cells", cells.Count),
+            VerdictField.Of("missing", 0)).Render());
+        return 0;
+    }
+
+    // Per Q3 the CLI drives the running app; it kicks the download but never blocks the pipeline on a
+    // long ingest here — the playbook's `ensure-data` step (P3.2) re-checks coverage as its own gate.
+    if (cli.Flag("download"))
+    {
+        foreach (var group in missing.GroupBy(m => m.Symbol, StringComparer.OrdinalIgnoreCase))
+        {
+            var body = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                symbol = group.Key,
+                tfs = group.Select(g => g.Timeframe).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                from,
+                to,
+                days = from is null ? 30 : 0,
+            });
+            await client.StartDownloadAsync(body, CancellationToken.None);
+        }
+    }
+
+    var detail = string.Join(",", missing.Select(m => $"{m.Symbol}:{m.Timeframe}"));
+    Console.WriteLine(Verdict.Failing(
+        VerdictField.Of("cells", cells.Count),
+        VerdictField.Of("missing", missing.Count),
+        VerdictField.Of("downloadQueued", cli.Flag("download") ? "true" : "false"),
+        VerdictField.Of("gaps", detail)).Render());
+    return 1;
+}
+
+static async Task<int> RunStartAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var planPath = cli.Option("plan");
+    if (string.IsNullOrWhiteSpace(planPath) || !File.Exists(planPath))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-plan")).Render());
+        return 2;
+    }
+
+    var planJson = await File.ReadAllTextAsync(planPath);
+    string body;
+    try
+    {
+        body = StartRunPlan.BuildBody(planJson, cli.Option("venue"), cli.Flag("compare-both"), cli.Flag("explore"));
+    }
+    catch (ArgumentException ex)
+    {
+        Console.Error.WriteLine($"DIAG: {ex.Message}");
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "invalid-plan")).Render());
+        return 2;
+    }
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var respJson = await client.StartRunAsync(body, CancellationToken.None);
+    var (runId, status) = StartRunPlan.ParseStartResponse(respJson);
+    if (string.IsNullOrWhiteSpace(runId))
+    {
+        Console.WriteLine(respJson);
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "no-runId")).Render());
+        return 1;
+    }
+
+    Console.WriteLine(Verdict.Passing(
+        VerdictField.Of("runId", runId),
+        VerdictField.Of("status", status)).Render());
+    return 0;
+}
+
+static async Task<int> ExitLabEvalAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var gridPath = cli.Option("grid");
+    if (string.IsNullOrWhiteSpace(gridPath) || !File.Exists(gridPath))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-grid")).Render());
+        return 2;
+    }
+
+    var body = await File.ReadAllTextAsync(gridPath);
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.PostAsync("api/exit-lab/evaluate", body, CancellationToken.None);
+    if (cli.Flag("json"))
+    {
+        Console.WriteLine(json);
+    }
+
+    var (totalTrades, totalCells) = ExitLabResult.ParseSummary(json);
+    var verdict = totalCells > 0
+        ? Verdict.Passing(VerdictField.Of("trades", totalTrades), VerdictField.Of("cells", totalCells))
+        : Verdict.Failing(VerdictField.Of("trades", totalTrades), VerdictField.Of("cells", 0), VerdictField.Of("error", "no-cells"));
+    Console.WriteLine(verdict.Render());
+    return verdict.ExitCode;
+}
+
+static async Task<int> WalkForwardAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var specPath = cli.Option("spec");
+    if (string.IsNullOrWhiteSpace(specPath) || !File.Exists(specPath))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-spec")).Render());
+        return 2;
+    }
+
+    var body = await File.ReadAllTextAsync(specPath);
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.PostAsync("api/walk-forward/start", body, CancellationToken.None);
+    var jobId = ExitLabResult.ParseJobId(json);
+    if (string.IsNullOrWhiteSpace(jobId))
+    {
+        Console.WriteLine(json);
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "no-jobId")).Render());
+        return 1;
+    }
+    Console.WriteLine(Verdict.Passing(VerdictField.Of("jobId", jobId)).Render());
+    return 0;
+}
+
+static List<string> SplitCsv(string? csv) =>
+    string.IsNullOrWhiteSpace(csv)
+        ? []
+        : [.. csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+static DateTime? ParseDate(string? value) =>
+    DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+        System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var dt)
+        ? dt : null;
+
 static void PrintUsage()
 {
     Console.Error.WriteLine("""
         TradingEngine.ResearchCli (research) — drives the running Shamshir Web app over HTTP.
         Usage:
+          research data ensure  --symbols EURUSD,XAUUSD --tfs H1,M15 [--from 2026-01-01 --to 2026-07-01] [--download]
+          research run start    --plan plan.json [--venue tape] [--compare-both] [--explore]
           research run validate <runId> [--require-status completed] [--min-trades 1]
                                         [--forbid-warnings] [--forbid-warning-code TRADES_LOST] [--json]
           research run await    <runId> [--timeout 1800] [--poll-ms 2000]
           research reconcile    --left <runId> --right <runId> [--json]
+          research exitlab eval --grid grid.json [--json]
+          research walkforward  --spec spec.json
         Global: [--base-url https://localhost:7108] (or env SHAMSHIR_BASE_URL)
         Every command prints a final `VERDICT: PASS|FAIL …` line; exit code mirrors it.
         """);
