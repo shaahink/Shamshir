@@ -1,10 +1,31 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 05:34 UTC · branch `iter/parity-pipeline` · HEAD `572b4ee`_
+_Updated 2026-07-08 05:49 UTC · branch `iter/parity-pipeline` · HEAD `18c82a7`_
 
-**Status:** Idle
+**Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.3
-**Checkpoints:** 4/17 done · **Sessions run:** 3 · **Cost:** $0.2766 · **Tokens:** 130,635 in / 75,219 out / 38,673 think
+**Checkpoints:** 4/17 done · **Sessions run:** 4 · **Cost:** $0.2766 · **Tokens:** 130,635 in / 75,219 out / 38,673 think
+
+## Latest activity (live)
+
+_Session #4 (Deliver) · running 15m · last output 22s ago · $0.0159_
+
+**Thinking:**
+> I'm working through the design for P0.3, which focuses on ensuring trade persistence integrity. The key requirements are reconciling closed positions in the journal against TradeResults rows at finalization, draining the TradePersistenceHandler before writing the end record, and attaching a warning …
+> Now I'm thinking through the P0.3 design for trade persistence integrity. The key requirement is that finalization must verify the counts match between closed positions in the journal and the TradeResults rows for that run. I need to flush the TradePersistenceHandler completely before writing the en…
+> I'm working through the trade persistence barrier design. The key piece is that finalization needs to reconcile the count of closed positions in the journal against the actual TradeResults rows written during the run. Before writing the end record, I need to flush the TradePersistenceHandler to ensu…
+
+**Recent actions:**
+- `06:44:14` » read src\TradingEngine.Domain\Interfaces\ITradeRepository.cs
+- `06:46:57` » bash Select-String -Path (Get-ChildItem -Recurse -Path src\TradingEngine.Web -Filter "*.cs").FullName -Pattern "ISymbolInfoRegistry|AddSingleton<.*SymbolInfoReg…
+- `06:46:58` · I have deep understanding now. Let me check DI registration in Web root and the symbol registry availability, plus the SqliteInMemory test helper.
+- `06:46:59` » bash Get-ChildItem -Recurse -Path tests\TradingEngine.Tests.Integration -Filter "SqliteInMemory.cs" | Select-Object FullName; Write-Output "---symbolregistry im…
+- `06:47:51` » bash Get-Content src\TradingEngine.Domain\ValueObjects\Price.cs -ErrorAction SilentlyContinue; Write-Output "===SYMBOL==="; Get-ChildItem -Recurse -Path src\Tra…
+- `06:47:52` · Let me examine the value object serialization shapes (critical for journal backfill) and check if EffectsJson is deserialized anywhere already.
+- `06:47:53` » bash foreach ($f in "Symbol.cs","Money.cs","Pips.cs","EngineEffect.cs") { $p = Get-ChildItem -Recurse -Path src\TradingEngine.Domain -Filter $f | Select-Object …
+- `06:49:13` » read src\TradingEngine.Host\EffectExecutor.cs
+- `06:49:14` · Let me check PipCalculator's location and EffectExecutor's dependencies to design the backfill reconstruction.
+- `06:49:16` » bash $p = Get-ChildItem -Recurse -Path src -Filter "PipCalculator.cs" | Select-Object -First 1; Write-Output $p.FullName; Select-String -Path $p.FullName -Patte…
 
 ## Stage progress
 
@@ -25,6 +46,7 @@ _Updated 2026-07-08 05:34 UTC · branch `iter/parity-pipeline` · HEAD `572b4ee`
 | 1 | P0 | Deliver | 1 | 07-08 02:17 | 0:19 | Advanced | P0.0 | 5 | build:OK | $0.0273 | 1,510/12,485 |
 | 2 | P0 | Deliver | 1 | 07-08 02:37 | 1:30 | Advanced | P0.1 P0.5 | 8 | build:OK | $0.1384 | 124,506/30,176 |
 | 3 | P0 | Deliver | 1 | 07-08 04:09 | 1:25 | Advanced | P0.2 | 8 | build:OK | $0.1109 | 4,619/32,558 |
+| 4 | P0 | Deliver | 1 | 07-08 05:34 | … | running |  | 0 |  |  |  |
 
 ### Commits by session
 
