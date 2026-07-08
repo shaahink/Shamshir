@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 04:54 UTC · branch `iter/parity-pipeline` · HEAD `6533c7e`_
+_Updated 2026-07-08 05:09 UTC · branch `iter/parity-pipeline` · HEAD `cda0755`_
 
 **Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.2
@@ -8,24 +8,24 @@ _Updated 2026-07-08 04:54 UTC · branch `iter/parity-pipeline` · HEAD `6533c7e`
 
 ## Latest activity (live)
 
-_Session #3 (Deliver) · running 45m · last output 89s ago · $0.0483_
+_Session #3 (Deliver) · running 60m · last output 2s ago · $0.0628_
 
 **Thinking:**
-> I'm creating a `RunStatus` static class in the Domain layer to centralize the status derivation logic, which will solve the problem of status being calculated in multiple places. The resolver will take inputs like completion timestamp, error messages, warnings, and result indicators to determine the…
-> I need to add ConfigSetId back in.
-> Let me double-check the original SaveAsync mapping to make sure I got the order right.
+> I'm trying to figure out how to generate the migration by checking the previous M40 migration and how it was created—whether there's a design-time factory or if I need to use the Web project as the startup since that's where the DI is configured. Let me see if I can just run the migration generation…
+> I need to check the BacktestRunState structure to see if there's a Warnings field and understand how the Status is defined.
+> I need to restore the `BacktestRunState` record declaration that got accidentally removed.
 
 **Recent actions:**
-- `05:50:31` » edit src\TradingEngine.Infrastructure\Persistence\Entities\BacktestRunEntity.cs
-- `05:52:00` » edit src\TradingEngine.Infrastructure\Persistence\TradingDbContext.cs
-- `05:52:13` · Now the BacktestRunSummary record. I'll add `WarningsJson` as an optional param at the end (before the profiling defaults to avoid breaking positional callers..…
-- `05:52:13` » edit src\TradingEngine.Domain\Interfaces\IBacktestRunRepository.cs
-- `05:52:25` » edit src\TradingEngine.Infrastructure\Persistence\Repositories\SqliteBacktestRunRepository.cs
-- `05:52:25` · Now the repository: persist WarningsJson on Save/Update and include it in the reconciled summary read.
-- `05:52:36` » edit src\TradingEngine.Infrastructure\Persistence\Repositories\SqliteBacktestRunRepository.cs
-- `05:52:36` · That edit removed ConfigSetId. Let me fix it.
-- `05:52:49` » read src\TradingEngine.Infrastructure\Persistence\Repositories\SqliteBacktestRunRepository.cs
-- `05:52:49` · Let me re-read the SaveAsync mapping to confirm it's intact.
+- `06:04:08` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `06:06:08` · Now the finalization logic. Let me update the main try-block finalization (lines ~414-432) to compute status with warnings and pass WarningsJson to the end reco…
+- `06:06:08` » read src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `06:06:32` · Now let me update the finalization. The key change: compute status using RunStatusResolver + warnings, and thread WarningsJson through. I'll add a helper `Build…
+- `06:06:32` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `06:06:46` · Now add the `MergeWarningsJson` helper. Let me add it near WriteEndRecordAsync and also thread WarningsJson into the end record. First, update WriteEndRecordAsy…
+- `06:06:46` » read src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `06:09:05` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `06:09:17` · Now update `RunEngineNetMqAsync`'s teardown `finally` block to capture teardown exceptions as warnings instead of letting them propagate. Let me re-read that fi…
+- `06:09:17` » read src\TradingEngine.Web\Services\BacktestOrchestrator.cs
 
 ## Stage progress
 
