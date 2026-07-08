@@ -29,6 +29,14 @@ try
             return await ExitLabEvalAsync(cli, baseUrl, timeout);
         case "walkforward":
             return await WalkForwardAsync(cli, baseUrl, timeout);
+        case "pipeline run":
+            return await PipelineRunAsync(cli, baseUrl, timeout);
+        case "pipeline status":
+            return await PipelineStatusAsync(cli, baseUrl, timeout);
+        case "pipeline approve":
+            return await PipelineApproveAsync(cli, baseUrl, timeout, approve: true);
+        case "pipeline reject":
+            return await PipelineApproveAsync(cli, baseUrl, timeout, approve: false);
         default:
             PrintUsage();
             Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "unknown-verb")).Render());
@@ -284,6 +292,99 @@ static async Task<int> WalkForwardAsync(CliArgs cli, string baseUrl, TimeSpan ti
     return 0;
 }
 
+static async Task<int> PipelineRunAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var path = cli.Positionals.ElementAtOrDefault(2) ?? cli.Option("playbook");
+    if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-playbook")).Render());
+        return 2;
+    }
+
+    var playbookJson = await File.ReadAllTextAsync(path);
+    Playbook playbook;
+    try
+    {
+        playbook = PlaybookParser.Parse(playbookJson);
+    }
+    catch (ArgumentException ex)
+    {
+        Console.Error.WriteLine($"DIAG: {ex.Message}");
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "invalid-playbook")).Render());
+        return 2;
+    }
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var runner = new HttpStepRunner(client, TimeSpan.FromMilliseconds(cli.Option("poll-ms", 2000)));
+    var store = new ApiPipelineStore(client);
+    var executor = new PlaybookExecutor(runner, store);
+
+    PipelineResult result;
+    if (Guid.TryParse(cli.Option("resume"), out var resumeId))
+    {
+        result = await executor.ResumeAsync(playbook, resumeId, ResolveArtifactDir(cli, resumeId), CancellationToken.None);
+    }
+    else
+    {
+        // Artifact dir is created lazily once we know the id — start with the base and let the CLI thread
+        // the pipeline id in via a second (resume) invocation if the owner wants a stable path up front.
+        var pipelineDir = cli.Option("artifact-dir");
+        result = await executor.RunAsync(playbook, playbookJson, pipelineDir, CancellationToken.None);
+    }
+
+    Console.WriteLine(result.ToVerdict().Render());
+    return result.ToVerdict().ExitCode;
+}
+
+static string? ResolveArtifactDir(CliArgs cli, Guid id)
+{
+    var baseDir = cli.Option("artifact-dir");
+    return string.IsNullOrWhiteSpace(baseDir) ? null : baseDir;
+}
+
+static async Task<int> PipelineStatusAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var id = cli.Positionals.ElementAtOrDefault(2) ?? cli.Option("id");
+    if (string.IsNullOrWhiteSpace(id))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-id")).Render());
+        return 2;
+    }
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.GetAsync($"api/research/pipelines/{id}", CancellationToken.None);
+    if (cli.Flag("json"))
+    {
+        Console.WriteLine(json);
+    }
+    var record = ApiPipelineStore.ParseRecord(json);
+    var passed = record.Steps.Count(s => s.Status is "passed" or "approved" or "skipped");
+    Console.WriteLine(Verdict.Passing(
+        VerdictField.Of("pipeline", record.Id.ToString()),
+        VerdictField.Of("status", record.Status),
+        VerdictField.Of("passed", passed),
+        VerdictField.Of("steps", record.Steps.Count)).Render());
+    return 0;
+}
+
+static async Task<int> PipelineApproveAsync(CliArgs cli, string baseUrl, TimeSpan timeout, bool approve)
+{
+    var id = cli.Positionals.ElementAtOrDefault(2) ?? cli.Option("id");
+    if (string.IsNullOrWhiteSpace(id))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-id")).Render());
+        return 2;
+    }
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var verb = approve ? "approve" : "reject";
+    await client.PostAsync($"api/research/pipelines/{id}/{verb}", "{}", CancellationToken.None);
+    Console.WriteLine(Verdict.Passing(
+        VerdictField.Of("pipeline", id),
+        VerdictField.Of("decision", verb)).Render());
+    return 0;
+}
+
 static List<string> SplitCsv(string? csv) =>
     string.IsNullOrWhiteSpace(csv)
         ? []
@@ -307,6 +408,10 @@ static void PrintUsage()
           research reconcile    --left <runId> --right <runId> [--json]
           research exitlab eval --grid grid.json [--json]
           research walkforward  --spec spec.json
+          research pipeline run    <playbook.json> [--resume <id>] [--artifact-dir <dir>] [--poll-ms 2000]
+          research pipeline status <id> [--json]
+          research pipeline approve <id>
+          research pipeline reject  <id>
         Global: [--base-url https://localhost:7108] (or env SHAMSHIR_BASE_URL)
         Every command prints a final `VERDICT: PASS|FAIL …` line; exit code mirrors it.
         """);

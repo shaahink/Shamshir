@@ -70,6 +70,13 @@ public sealed class ResearchApiClient : IDisposable
         return await resp.Content.ReadAsStringAsync(ct);
     }
 
+    public async Task<string> PutAsync(string path, string bodyJson, CancellationToken ct)
+    {
+        using var resp = await _http.PutAsync(path, Body(bodyJson), ct);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsStringAsync(ct);
+    }
+
     public async Task<string> GetAsync(string path, CancellationToken ct)
     {
         using var resp = await _http.GetAsync(path, ct);
