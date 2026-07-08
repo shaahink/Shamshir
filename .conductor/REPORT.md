@@ -1,32 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 17:04 UTC · branch `iter/parity-pipeline` · HEAD `40cbf62`_
+_Updated 2026-07-08 17:10 UTC · branch `iter/parity-pipeline` · HEAD `b96df2c`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P2 — Lifecycle robustness + headline gate · attempts used 0
-**Checkpoints:** 10/17 done · **Sessions run:** 11 · **Cost:** $0.6522 · **Tokens:** 147,062 in / 231,861 out / 110,936 think
+**Checkpoints:** 10/17 done · **Sessions run:** 11 · **Cost:** $0.7086 · **Tokens:** 212,698 in / 245,710 out / 117,063 think
 **Confirmed phases:** P0, P1
-
-## Latest activity (live)
-
-_Session #11 (Audit) · running 15m · last output 9s ago · $0.0437_
-
-**Thinking:**
-> The console output from Serilog is creating too much noise to see the actual test failure clearly. I should re-run the integration tests and filter the output to focus on just the failed test summary at the end, where xUnit lists which tests failed.
-> I need to get the actual failure details from the test run—the summary output didn't capture them. Let me run the integration suite again with a TRX logger to get a clean, parseable output that shows exactly which test failed.
-> The failure details aren't showing up in that output file—the verbose run might have been cut off or the error block didn't get captured properly. This could be a flaky test, so I'll run the integration suite fresh and log the results to a trx file for more reliable parsing.
-
-**Recent actions:**
-- `18:01:41` » bash dotnet test tests/TradingEngine.Tests.Simulation --no-build -c Debug --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ" 2>&1 | S…
-- `18:01:49` » bash dotnet test tests/TradingEngine.Tests.Integration --no-build -c Debug 2>&1 | Select-Object -Last 3
-- `18:02:39` · Integration has 1 failure. Let me find which test failed.
-- `18:03:01` » bash dotnet test tests/TradingEngine.Tests.Integration --no-build -c Debug -v detailed 2>&1 | Select-String -Pattern "Failed|FAILED|Error|error:"
-- `18:03:14` · The output is noisy with tolerated DB errors. Let me find the actual failed test name from the saved output.
-- `18:03:15` » bash Select-String -Path "C:\Users\shahi\.local\share\opencode\tool-output\tool_f42aeafc6001vBcQ6XDZ5rfNhC" -Pattern "\[FAIL\]|Failed TradingEngine|Assert\.|Exp…
-- `18:03:34` » bash Select-String -Path "C:\Users\shahi\.local\share\opencode\tool-output\tool_f42aeafc6001vBcQ6XDZ5rfNhC" -Pattern "Error Message:|Stack Trace:|Failed \[|\bFa…
-- `18:03:50` » bash Select-String -Path "C:\Users\shahi\.local\share\opencode\tool-output\tool_f42aeafc6001vBcQ6XDZ5rfNhC" -Pattern "^\s+Failed\s+TradingEngine" | Select-Objec…
-- `18:04:04` » bash Select-String -Path "C:\Users\shahi\.local\share\opencode\tool-output\tool_f42aeafc6001vBcQ6XDZ5rfNhC" -Pattern "\[FAIL\]" | Select-Object -First 20
-- `18:04:14` · Let me re-run the integration suite with a TRX logger to reliably identify the failing test.
+**Pending:** full-battery phase gate for P2
 
 ## Stage progress
 
@@ -54,19 +34,10 @@ _Session #11 (Audit) · running 15m · last output 9s ago · $0.0437_
 | 8 | P1 | Deliver | 2 | 07-08 14:18 | 1:36 | Advanced | P1.1 P1.2 | 5 | build:OK | $0.1096 | 4,363/41,198 |
 | 9 | P1 | Audit | 1 | 07-08 15:55 | 0:14 | Progress |  | 2 |  | $0.0205 | 1,153/9,010 |
 | 10 | P2 | Deliver | 1 | 07-08 16:12 | 0:36 | Advanced | P2.1 P2.2 | 5 | build:OK | $0.0666 | 2,844/33,456 |
-| 11 | P2 | Audit | 1 | 07-08 16:49 | … | running |  | 0 |  |  |  |
+| 11 | P2 | Audit | 1 | 07-08 16:49 | 0:21 | Progress |  | 4 |  | $0.0565 | 65,636/13,849 |
 
 ### Commits by session
 
-- **s3 (P0 Deliver)** — 8 commit(s):
-  - 572b4ee docs(P0.2): tracker + AGENTS RESUME — P0.2 done (F5), next P0.3 (F6)
-  - de4c8e7 feat(P0.2,F5,Q5): run-status truth — completed-with-warnings separates result from teardown
-  - 0a4d73f chore(conductor): s3 P0 working ▸P0.2 @ 06:24
-  - 563b65b chore(conductor): s3 P0 working ▸P0.2 @ 06:09
-  - cda0755 chore(conductor): s3 P0 working ▸P0.2 @ 05:54
-  - 6533c7e fix(P0.2,F5): idempotent NetMqMessageTransport.DisconnectAsync — kills the disposed-NetMQPoller crash
-  - cba8e92 chore(conductor): s3 P0 working ▸P0.2 @ 05:39
-  - 3a4e4b6 chore(conductor): s3 P0 working ▸P0.2 @ 05:24
 - **s4 (P0 Deliver)** — 4 commit(s):
   - 3a14186 docs(P0.3): record commit SHA 3d0c7cc in tracker evidence column
   - 3d0c7cc feat(P0.3,F6): trade-persistence integrity barrier — no more vanishing trades
@@ -97,11 +68,17 @@ _Session #11 (Audit) · running 15m · last output 9s ago · $0.0437_
   - 3979871 chore(conductor): s10 P2 working ▸P2.1 @ 17:42
   - ccf6aa4 feat(P2.1,F8): run lifecycle state machine — forbid illegal jumps in ONE place
   - 4b5e8b5 chore(conductor): s10 P2 working ▸P2.1 @ 17:27
+- **s11 (P2 Audit)** — 4 commit(s):
+  - b96df2c docs(P2): honest phase handover — audit verdict, fixed bugs, OWNER-PENDING P2.2, risks for P3
+  - bce458d fix(P3.1): deterministic await-timeout verdict in `research run await`
+  - b7b15cb fix(P2.1,F8): lifecycle audit-trail integrity + non-blocking cancel reap
+  - fc23a50 chore(conductor): s11 P2 working ▸P2 @ 18:04
 
 ## Phase handovers (audit)
 
 - `.conductor/handovers/P0.md`
 - `.conductor/handovers/P1.md`
+- `.conductor/handovers/P2.md`
 
 ## Last gate run
 
@@ -109,15 +86,7 @@ build:OK
 
 ## Last session result
 
-> I'll start the pre-session ritual. Let me read the mandatory docs in order.
-> Let me read the PLAN P2 section, AUDIT findings F8/F16, and the conductor-DEBT file.
-> Now let me read the AUDIT findings F8/F16, WORKFLOW, and conductor-DEBT.
-> Now let me read the AUDIT F8/F16 sections and WORKFLOW.md.
-> Now let me read WORKFLOW §4/§6 and examine the orchestrator code that P2.1 will touch.
-> Now let me examine the orchestrator and run-state code. This is the heart of P2.1.
-> The orchestrator is large. Let me find the state model, status assignments, and cancel logic.
-> Let me look at the cTrader CLI process management and the watchdog/timeout logic.
-> Let me check test architecture and existing run-lifec…
+> SESSION-RESULT: P2.1 (run lifecycle state machine + orchestrator wiring) is genuinely solid and the audit hardened three real defects; P2.2 (cTrader queue + compare-both first-class + the headline reconcile gate) remains unimplemented and is auto-promoted to DONE (OWNER-PENDING) per this run's policy — recorded honestly, not oversold. I fixed: (1) a false `ILLEGAL transition` LogWarning + `LIFECYCLE` journal row emitted whenever an OperationCanceled landed while a run was already `finalizing` (cancel/timeout-during-finalize), by adding a pure `RunStateMachine.Classify → {Legal, IdempotentNoOp, Illegal}` that distinguishes benign self-transitions/terminal-leaving from real ordering bugs — `Ca…
 
 ## Tracker handoff
 
