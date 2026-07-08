@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 02:52 UTC · branch `iter/parity-pipeline` · HEAD `e42aac6`_
+_Updated 2026-07-08 03:07 UTC · branch `iter/parity-pipeline` · HEAD `b73d250`_
 
 **Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.1
@@ -8,24 +8,24 @@ _Updated 2026-07-08 02:52 UTC · branch `iter/parity-pipeline` · HEAD `e42aac6`
 
 ## Latest activity (live)
 
-_Session #2 (Deliver) · running 15m · last output 38s ago · $0.0090_
+_Session #2 (Deliver) · running 30m · last output 79s ago · $0.0728_
 
 **Thinking:**
-> The golden snapshot only captures the phase, event, guard result, and reason—not the DetailJson field. So I need to verify whether adding DetailJson to the accept-path DecisionRecords would actually change what gets stored in the golden fixtures.  Looking at the kernel's DecideProposed method, the a…
-> I'm seeing the distinction now—the golden snapshot captures the old engine's decision journal with phase transitions and guard results, but doesn't include the detailed JSON data. Meanwhile, the kernel-path tests serialize the full effects JSON, which is what drives the determinism checks.  The key …
-> I'm tracing through the accept path in `Kernel.DecideProposed` and noticing it emits effects from the posDecision reducer, SubmitOrder, and RegisterRisk, but there's no RecordDecisionEvent being triggered. The plan mentions extending the `OrderSubmitted` DecisionRecord's `DetailJson`, but I'm realiz…
+> I'm realizing the golden snapshot only captures the core decision data without the DetailJson field, so adding that field won't affect the committed golden file. The determinism tests are checking something different from what the snapshot serializes.  But there's a contradiction here — the plan say…
+> I'm mapping out the SESSION PLAN and tracing how `_engineMode` flows into `EngineRunner`, specifically whether the fix needs to be conditional on `EngineMode.Backtest`. Looking at the F1 mechanism in `EngineRunner.RunAsync` around lines 114-124 to understand the exact flow.  The core issue is that i…
+> I'm verifying how the kernel's acceptance path interacts with golden fixtures and access patterns before starting the implementation. Let me check if DeterminismTests compare against a committed baseline and verify that the hard-coded EffectKinds in BarNarrativeTests won't be affected by our changes…
 
 **Recent actions:**
-- `03:47:55` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\JournalLosslessTests.cs
-- `03:48:32` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\JournalSourceOfTruthTests.cs
-- `03:48:32` · The golden `GoldenReplayTests` captures only `(PhaseBefore, Event, GuardResult, Reason)` from the OLD engine oracle — not DetailJson. Let me check the kernel-pa…
-- `03:48:32` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\KernelBacktestLoopGoldenTests.cs
-- `03:49:26` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\KernelOrderGateEquivalenceTests.cs
-- `03:49:27` » grep RecordDecisionEvent|EffectKinds\.|SubmitOrder\)|Effects\[|Effects\.Count|Effects\.Should|effects\.Count
-- `03:49:27` · I now understand the golden mechanics. Critical insight: `golden-snapshot.json` is captured from the OLD oracle's `DecisionJournal` (only `PhaseBefore/Event/Gua…
-- `03:49:56` » read src\TradingEngine.Engine\PositionLifecycle.cs
-- `03:50:01` · The accept path is subtle. Let me examine what `EngineReducer.Apply(OrderSubmitted)` and `PositionLifecycle` emit, since that determines where DetailJson lands …
-- `03:50:01` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\KernelEvaluatorEquivalenceTests.cs
+- `03:59:04` » bash Get-ChildItem -Recurse -Path tests -Include *.json,*.approved.txt,*.verified.txt | Select-String -List -Pattern "drawdownScale|clampedLots|rawLots|pipValue…
+- `03:59:34` · Let me read DeterminismTests fully to determine whether the golden actually moves when DetailJson changes.
+- `03:59:34` » read tests\TradingEngine.Tests.Simulation\GoldenReplay\DeterminismTests.cs
+- `04:01:15` » read src\TradingEngine.Infrastructure\Venues\CTrader\CTraderBrokerAdapter.cs
+- `04:01:15` · The DeterminismTests and kernel-path golden tests compare run-to-run (not a committed baseline). The only committed baseline is `golden-snapshot.json`, captured…
+- `04:01:15` » grep interface IMessageTransport|_lastKnownState =|hello
+- `04:06:11` » todowrite 5 todos
+- `04:06:11` · ## QA verdict + findings  **QA of previous session (P0.0) — CONFIRMED.** Re-ran the full gate battery: - `dotnet build TradingEngine.slnx -c Debug` → **0 err / …
+- `04:06:32` · Let me verify one more thing before coding: whether any committed json file HAS content that could change.
+- `04:06:33` » bash $json = Get-Content tests/TradingEngine.Tests.Simulation/GoldenReplay/golden-snapshot.json -Raw | ConvertFrom-Json; $first = $json.journal[0] | ConvertTo-J…
 
 ## Stage progress
 
