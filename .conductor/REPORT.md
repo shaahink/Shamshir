@@ -1,37 +1,16 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 06:04 UTC · branch `iter/parity-pipeline` · HEAD `536f017`_
+_Updated 2026-07-08 06:18 UTC · branch `iter/parity-pipeline` · HEAD `3a14186`_
 
-**Status:** Running
-**Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.3
-**Checkpoints:** 4/17 done · **Sessions run:** 4 · **Cost:** $0.2766 · **Tokens:** 130,635 in / 75,219 out / 38,673 think
-
-## Latest activity (live)
-
-_Session #4 (Deliver) · running 30m · last output 32s ago · $0.0362_
-
-**Thinking:**
-> I'm thinking through the dependency injection setup for the barrier—it needs a scoped journal query, scoped trade repository, singleton symbol registry, and a Func for the cross-rate provider. For the barrier itself, I want to keep it self-contained and testable by injecting the database context alo…
-> The cross-rate provider is registered only in the inner engine host's DI container, but the barrier runs in the Web orchestrator scope where it's not available. However, I realize the barrier reconstructs TradeResults from journal effects, and the `PublishTradeClosed` effect already contains the pro…
-> I'm designing a barrier that reconciles trade data between the journal and persisted storage. It'll count PublishTradeClosed effects in the journal, compare that against the TradeResults row count, and if there's a mismatch, reconstruct the missing trades from the effects JSON and persist them befor…
-
-**Recent actions:**
-- `07:00:18` » bash Write-Output "Building after EffectExecutor refactor..."; dotnet build TradingEngine.slnx -c Debug 2>&1 | Select-String -Pattern "error|Build succeeded|Err…
-- `07:00:33` » bash Write-Output "Running: golden + determinism (must be byte-identical after refactor)..."; dotnet test tests/TradingEngine.Tests.Simulation --no-build --filt…
-- `07:01:16` · Golden 61/61 byte-identical after the refactor — the extraction is faithful. Let me verify the DI registrations for the barrier's dependencies.
-- `07:01:17` » bash Select-String -Path src\TradingEngine.Web\Configuration\ServiceRegistration.cs -Pattern "IJournalQueryRepository|Func<string, string, decimal>|CrossRate|Ge…
-- `07:01:25` » read src\TradingEngine.Web\Configuration\ServiceRegistration.cs
-- `07:01:40` » bash Select-String -Path (Get-ChildItem -Recurse -Path src\TradingEngine.Web -Filter "*.cs").FullName -Pattern "Func<string, string, decimal>" | Select-Object P…
-- `07:02:46` · Now I'll create the `TradePersistenceBarrier` in Infrastructure. First, confirm Infrastructure references Services (for TradeResultFactory) and check the Engine…
-- `07:02:46` » bash Select-String -Path src\TradingEngine.Infrastructure\TradingEngine.Infrastructure.csproj -Pattern "TradingEngine.Services"; Write-Output "===Infrastructure…
-- `07:04:09` · Let me verify the EngineEffect base has no polymorphic attribute (would break direct deserialization).
-- `07:04:09` » read src\TradingEngine.Domain\Events\EngineEffects.cs
+**Status:** Idle
+**Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.4
+**Checkpoints:** 5/17 done · **Sessions run:** 4 · **Cost:** $0.3482 · **Tokens:** 133,450 in / 100,949 out / 57,216 think
 
 ## Stage progress
 
 | Stage | Title | Done | State |
 |---|---|---|---|
-| P0 | Parity truth repair (the spine) | 4/6 | **← active** |
+| P0 | Parity truth repair (the spine) | 5/6 | **← active** |
 | P1 | Config & DB truth | 0/2 | todo |
 | P2 | Lifecycle robustness + headline gate | 0/2 | todo |
 | P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | todo |
@@ -46,7 +25,7 @@ _Session #4 (Deliver) · running 30m · last output 32s ago · $0.0362_
 | 1 | P0 | Deliver | 1 | 07-08 02:17 | 0:19 | Advanced | P0.0 | 5 | build:OK | $0.0273 | 1,510/12,485 |
 | 2 | P0 | Deliver | 1 | 07-08 02:37 | 1:30 | Advanced | P0.1 P0.5 | 8 | build:OK | $0.1384 | 124,506/30,176 |
 | 3 | P0 | Deliver | 1 | 07-08 04:09 | 1:25 | Advanced | P0.2 | 8 | build:OK | $0.1109 | 4,619/32,558 |
-| 4 | P0 | Deliver | 1 | 07-08 05:34 | … | running |  | 0 |  |  |  |
+| 4 | P0 | Deliver | 1 | 07-08 05:34 | 0:43 | Advanced | P0.3 | 4 | build:OK | $0.0716 | 2,815/25,730 |
 
 ### Commits by session
 
@@ -74,6 +53,11 @@ _Session #4 (Deliver) · running 30m · last output 32s ago · $0.0362_
   - 6533c7e fix(P0.2,F5): idempotent NetMqMessageTransport.DisconnectAsync — kills the disposed-NetMQPoller crash
   - cba8e92 chore(conductor): s3 P0 working ▸P0.2 @ 05:39
   - 3a4e4b6 chore(conductor): s3 P0 working ▸P0.2 @ 05:24
+- **s4 (P0 Deliver)** — 4 commit(s):
+  - 3a14186 docs(P0.3): record commit SHA 3d0c7cc in tracker evidence column
+  - 3d0c7cc feat(P0.3,F6): trade-persistence integrity barrier — no more vanishing trades
+  - ca49876 chore(conductor): s4 P0 working ▸P0.3 @ 07:04
+  - 536f017 chore(conductor): s4 P0 working ▸P0.3 @ 06:49
 
 ## Last gate run
 
@@ -81,30 +65,29 @@ build:OK
 
 ## Last session result
 
-> I'll start with the pre-session ritual. Let me read the required docs and check git state in parallel.
-> Now let me read the PLAN.md (my stage section P0) and AUDIT.md (F1/F2/F5/F6).
-> Now let me read the AUDIT.md findings relevant to my stage (F1/F2/F5/F6) and the P0.1 evidence artifact.
-> Now let me QA the previous session. Let me read the P0.1 evidence and the key source files for P0.2.
-> Now let me start QA. First, kick off the build (heartbeat) and read relevant workflow docs in parallel.
-> 
-> Running: `dotnet build TradingEngine.slnx -c Debug` (expect 1-3 minutes)...
-> Build green (0 err / 5 warn). Now QA the previous session — running the gate battery. Let me run Unit and the fast Simulation f…
+> I'll start the pre-session ritual. Reading the mandatory docs in order.
+> Now the AUDIT findings relevant to my stage (F1/F2/F5/F6), plus git status and log.
+> Working tree matches RESUME block (only BuildInfo.g.cs regenerated + untracked .conductor). Now reading WORKFLOW, relevant reference sections, and the P0.2 evidence + code I'll touch for P0.3.
+> QA of the previous session first. Let me re-run the P0.2 gate battery and locate the code I'll touch for P0.3.
+> Now let me run the QA gate battery (P0.2). Starting with the build.
+> Build: 0 err / 5 warn (matches). Now the test gates in parallel.
+> Unit 522/0/6 and Integration 104/0/0 — both match the claim. Now the fast Simulation filter and golde…
 
 ## Tracker handoff
 
 ```
-last: **P0.2 DONE** (2 commits) — 6533c7e fix(F5): idempotent NetMqMessageTransport.DisconnectAsync
-      (kills disposed-NetMQPoller crash at source; R3 fail-before/pass-after); de4c8e7 feat(F5,Q5):
-      RunStatusResolver + WarningsJson (M41) → complete run + teardown fault = completed-with-warnings,
-      never failed. QA-previous(P0.1/P0.5): confirmed. R5: WarningsJson column live in Web DB.
-stage: **P0 IN PROGRESS** — P0.0/P0.1/P0.2/P0.5 done; **P0.3 (trade persistence barrier, F6) is next**.
-gate: GREEN — build 0 err/5 warn; Unit 522/0/6 (+14); fast Sim 144/0/0; golden 61/61 byte-identical
-      (NO rebaseline); Integration 104/0/0 (+3).
-next: **P0.3** — finalization reconciles closed-positions-in-journal vs TradeResults rows; flush
-      TradePersistenceHandler before end record; on mismatch attach warning TRADES_LOST:{exp}:{persisted}
-      (reuse P0.2 WarningsJson) + journal-backfill missing TradeResults from StepRecords. BTC-scenario
-      test: fills journaled + venue killed before closes settle ⇒ completed-with-warnings, not TotalTrades=0.
-      See PLAN §3 P0.3 + AUDIT F6.
-trap: P0.2 real 3× headless cTrader run is OWNER-PENDING (needs creds; mechanism proven credential-free).
-      BuildInfo.g.cs re-dirties every build (committed generated metadata). P2.2 OWNER-GATE. tsc 2 pre-existing (P5).
+last: **P0.3 DONE** (1 commit) — TradePersistenceBarrier (F6): finalization reconciles journalled
+      PublishTradeClosed vs TradeResults rows and journal-backfills lost trades via TradeResultFactory
+      (extracted verbatim from EffectExecutor → golden byte-identical); shortfall → TRADES_LOST:{exp}:{persisted}
+      warning → completed-with-warnings (reuses P0.2 plumbing). QA-previous(P0.2): confirmed.
+stage: **P0 IN PROGRESS** — P0.0/P0.1/P0.2/P0.3/P0.5 done; **P0.4 (entry-latency instrumentation, F2) is next**.
+gate: GREEN — build 0 err/5 warn; Unit 522/0/6; fast Sim 144/0/0; golden 61/61 byte-identical
+      (NO rebaseline); Integration 107/0/0 (+3).
+next: **P0.4** — reconcile output gains per-trade entryDelayBars (+seconds) proposal→fill for both runs +
+      per-run distribution summary; NO cBot behavior change (Q4 measure-first). Gate: paired mini-run
+      reconcile shows tape delay ≈1 M1 bar + quantifies cTrader delay; number → docs/audit/RECONCILE-FINDINGS.md.
+      See PLAN §3 P0.4 + AUDIT F2. (Reconcile endpoint: GET /api/backtest/analytics/reconcile.)
+trap: P0.3 real cTrader BTC-scenario run is OWNER-PENDING (needs creds; mechanism proven credential-free).
+      P0.2 real 3× headless cTrader run also OWNER-PENDING. BuildInfo.g.cs re-dirties every build (leave it).
+      P2.2 OWNER-GATE. tsc 2 pre-existing (P5). P0.4 is measure-only — a number in RECONCILE-FINDINGS is the gate.
 ```
