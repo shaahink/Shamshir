@@ -3,7 +3,7 @@
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
 **Branch:** `iter/quant-model--p1-tf-agnostic` (active) / `develop` (authoritative, merged)
 **Created:** 2026-06-18
-**Updated:** 2026-07-06 (P6.1 in-progress: compare-both infrastructure bugs fixed, reconcile pending owner verification)
+**Updated:** 2026-07-07 (NEW ITERATION: iter-parity-pipeline — owner audit found critical venue-parity bugs; see RESUME block at the bottom)
 
 ---
 
@@ -18,13 +18,15 @@ At the start of every session:
 5. **`docs/WORKFLOW.md`** — Agent workflow rules, code standards, handover format
 6. **`DECISIONS.md`** — All resolved decisions (D1–D96)
 7. **`docs/OPEN-ISSUES.md`** — ALL remaining bugs + tasks (single source of truth, kept current)
-8. **`docs/iterations/iter-quant-model/PROGRESS.md`** — Session handover: what happened, what's next (current iteration)
-9. **`docs/audit/PROGRESS.md`** — Progress metrics, gate history, branch state
-10. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology
-11. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
-12. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
-13. **`docs/CTRADER-TEST-POLICY.md`** — cTrader test triage: which tests stay, which move to tape
-14. **`docs/audit/RECONCILE-FINDINGS.md`** — Pre-registered fidelity gaps (F1–F5) + V4 run template
+8. **`docs/iterations/iter-parity-pipeline/AUDIT.md`** — CURRENT ITERATION: evidence audit (findings F1–F16, retrospective R1–R10)
+9. **`docs/iterations/iter-parity-pipeline/PLAN.md`** — CURRENT ITERATION: phased plan P-0→P6 + session protocol (§10 is MANDATORY)
+10. **`docs/iterations/iter-quant-model/PROGRESS.md`** — Previous iteration handover (historical context)
+11. **`docs/audit/PROGRESS.md`** — Progress metrics, gate history, branch state
+12. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology
+13. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
+14. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
+15. **`docs/CTRADER-TEST-POLICY.md`** — cTrader test triage: which tests stay, which move to tape
+16. **`docs/audit/RECONCILE-FINDINGS.md`** — Pre-registered fidelity gaps (F1–F5) + V4 run template
 
 ## Build and test
 
@@ -65,34 +67,35 @@ tests/
 - **`BoundedChannelFullMode.Wait`** for order/trade channels; `DropOldest` only for analytics.
 - **`IEngineClock`** for all time — never `DateTime.UtcNow` directly.
 
-## Current state (iter/quant-model--p1-tf-agnostic)
+## Current state (iter-parity-pipeline — NEW iteration, 2026-07-07)
 
-- P0–P5 delivered and gated. **P6 in progress** — compare-both infrastructure bugs fixed, reconcile pending owner verification.
-- P4.5 (all 7 sub-phases + carry-forward cleanup) complete.
-- **All gates green:** Unit 504/0/6, Integration 101/0, Simulation 127/0 byte-identical
-- **Gate filter:** `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ&Category!=CtraderContract"`
-- cTrader-backed tests are triaged: keep-set tagged `Category=CtraderContract`, 5 tests retired.
-- Parent branch `iter/quant-model` has P0 (3 gated commits pushed to origin)
+The owner ran paired tape/cTrader backtests after iter-quant-model and kept the DB for audit. The
+audit (`docs/iterations/iter-parity-pipeline/AUDIT.md`) found critical parity bugs the previous
+iteration's gates never caught:
+
+- **F1 (CRITICAL):** cTrader path sizes orders at exactly ¼ of tape risk for byte-identical proposals
+- **F2 (CRITICAL):** cTrader entries fill one full decision bar later than tape, every trade
+- **F5 (CRITICAL):** every cTrader run saved `failed` (NetMQPoller teardown) despite complete stats — the committed B4 fix did NOT work
+- **F6 (CRITICAL):** a run journalled 12 proposals + 17 fills but persisted 0 TradeResults
+- **F9:** the agent's LimitOffset switch never propagated — DB StrategyConfigs still Market; the F5 kernel fix was never exercised
+- **F10:** two databases; Host CLI crashes on startup against the un-migrated root `data/trading.db`
+
+The working tree is UNCOMMITTED (~24 modified + 3 new files) — land it per PLAN P-0, do not batch-commit.
 
 ## What's next
 
-See `docs/iterations/iter-quant-model/PLAN.md` §3 for the full iteration spec.
-**Current phase: P6 — Oracle backstop (compare-both reconcile).** Three infrastructure bugs fixed;
-next step is to drive a successful compare-both run and produce reconcile output.
+See `docs/iterations/iter-parity-pipeline/PLAN.md`. Phase order: P-0 (land tree) → P0 (parity truth:
+¼-sizing, status truth, trade-persistence barrier, latency instrumentation) → P1 (one DB + config
+propagation) → P2 (run state machine + cTrader queue + compare-both first-class → the inherited P6.1
+gate) → P3 (ResearchCli pipeline — the centerpiece) → P4 (labs) → P5 (UI truth) → P6 (wild list).
 
-- P6.1: Compare-both reconcile — **blocked on: verify 3 fixes work with a real compare-both API call.** Once the owner runs `POST /api/runs/compare-both` and it completes with both tape + cTrader trades, `GET /api/backtest/analytics/reconcile?left=...&right=...` produces the diff. Record findings in `RECONCILE-FINDINGS.md`.
-- P6.2: Per-bar recorded spread — code not started, unblocked once P6.1 verify passes.
-- P6.3: Weekly drift habit + reconcile-health — unblocked once P6.1 verify passes.
-- P7: FTMO ops readiness — blocked on P6.1 evidence (MaxDD accuracy confirmation).
+Owner decisions Q1–Q6 have locked defaults in PLAN §0 — read them before P-0 (Q1 reverts the 8
+strategy JSONs to Market).
 
-Carried-forward debts (not P6 blockers, but keep visible):
-- `MISSING_DATA` verdict (P1.5.4) — zero hits repo-wide; deferred to verdict-funnel UI
-- `ReferenceScales` population (P3.4b) — 14/84 cells populated; full population needs CLI invocation
-- Kernel-path limit orders reach cTrader as Market (P2.7 carry-forward) — investigate in P6 reconcile
-- `AddOnResolver.Ride` Calibrated — explicitly deferred (line 88 comment, "P3 slot")
-- `VenueSessionEntity` missing `IAuditableEntity` — Architecture test pre-existing failure
-- M15 triage excluded from P5.3 — needs dedicated sweep run
-- 1-month triage window — insufficient for H4; needs 6m-1y re-run
+Inherited debts (tracked in PLAN, do not lose): `MISSING_DATA` verdict funnel, `ReferenceScales`
+84-cell population (blocked by F10), `AddOnResolver.Ride` Calibrated, `VenueSessionEntity` audit
+interface, M15 triage sweep, longer triage window for H4, P3.6 entry lab (full handover at
+`docs/iterations/iter-quant-model/P3.6-HANDOVER.md`).
 
 ---
 
@@ -224,3 +227,31 @@ changes needed.
 8. When driving the web app: kill all dotnet processes before rebuilding (MSB3021 lock)
 9. Use `Invoke-RestMethod` for API calls, not `curl.exe` (Windows quoting)
 10. The app's cwd MUST be `src/TradingEngine.Web` so it finds `data/trading.db` and `wwwroot`
+
+---
+
+## RESUME (iter-parity-pipeline — replace this whole block each session)
+
+**Branch:** `iter/parity-pipeline` · **HEAD after this session:** `9686242` (+ conductor bookkeeping commits).
+**Session (s1, P0):** P0.0 DONE — landed the working tree in 3 deliberate commits (R4, no mega-batch):
+`9570ad6` fix(F5) kernel Entry threading + isLimit-from-request.Type + 2 tests; `bf74d4b` test(P7,P3.3)
+14 evaluator/replayer tests; `9686242` feat(ui) compare-both toggle + Q1 revert (8 JSONs→Market, kept
+companion fields) + iteration docs. No previous session to QA (P0.0 was first).
+
+**Gates GREEN (commands):** `dotnet build TradingEngine.slnx -c Debug` → 0 err/5 warn (pre-existing
+net6.0 cBot NuGet); `dotnet test tests/TradingEngine.Tests.Unit --no-build` → 508/0/6;
+`dotnet test tests/TradingEngine.Tests.Simulation --no-build --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ&Category!=CtraderContract"`
+→ 139/0/0; golden filter → 61/61 byte-identical. R5: `sqlite3 src/TradingEngine.Web/data/trading.db`
+StrategyConfigs = Method:0 (Market) ×8, Method:1 (Limit) mean-reversion — JSON now matches runtime.
+
+**Next step:** **P0.1 (¼-sizing F1)** — enrich `OrderSubmitted` DetailJson with sizing inputs in
+`Kernel.DecideProposed` (R7); write `VenueSizingParityTests` (FakeTransport, tape vs cTrader, same bars
+⇒ equal Lots/RiskAmount — NO cTrader creds); prove the ×0.25 mechanism (hypothesis 1: hello balance 25k
+adopted over config 100k), fix, then a **SEPARATE golden REBASELINE commit** (DetailJson WILL move — do
+not fold into the fix). See PLAN §3 P0.1 + AUDIT F1.
+
+**Open traps:** (1) `npx tsc --noEmit` has 2 PRE-EXISTING spec/e2e errors (`runs.service.spec.ts:47`,
+`ui-smoke.spec.ts:59`) — unrelated to P0.0, app-scope compiles clean; fix in P5. (2) `BuildInfo.g.cs`
+(cBot) regenerates on every build → re-dirties; it's committed generated metadata (don't fight it).
+(3) `.conductor/` is orchestrator-managed (own `.gitignore`), intentionally untracked. (4) golden rule
+says "63/63" fixtures; the test-level count is 61 — different metric, left as-is. (5) P2.2 is an OWNER-GATE.
