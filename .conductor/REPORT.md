@@ -1,32 +1,11 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 22:18 UTC · branch `iter/parity-pipeline` · HEAD `90e484a`_
+_Updated 2026-07-08 22:21 UTC · branch `iter/parity-pipeline` · HEAD `7f04409`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P6 — Wild list (pipeline-gated) · attempts used 2 · working ▸ P6.5
-**Checkpoints:** 20/24 done · **Sessions run:** 26 · **Cost:** $2.0574 · **Tokens:** 1,851,311 in / 481,161 out / 241,059 think
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P6 — Wild list (pipeline-gated) · attempts used 3 · working ▸ P6.5
+**Checkpoints:** 20/24 done · **Sessions run:** 26 · **Cost:** $2.2450 · **Tokens:** 2,103,903 in / 502,396 out / 271,247 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5
-
-## Latest activity (live)
-
-_Session #26 (Fix) · running 30m · last output 4s ago · $0.1171_
-
-**Thinking:**
-> Now let me update the TRACKER.md and AGENTS.md RESUME block. Let me first read the current files to understand the format and what needs to change.
-> Now let me update the TRACKER.md handoff block. The key changes: 1. Toast files trap #5 is now resolved 2. Build issue fixed 3. Current state reflects the session #26 fixes  Let me also update the AGENTS.md RESUME block.
-> Now let me update the AGENTS.md RESUME block:
-
-**Recent actions:**
-- `23:17:11` » bash cd C:\Code\Shamshir # Show what I've changed (excluding auto-generated files) git --no-pager diff scripts/rebuild-ng-if-stale.ps1 git --no-pager diff src/T…
-- `23:17:17` » todowrite 2 todos
-- `23:17:28` » bash cd C:\Code\Shamshir git add scripts/rebuild-ng-if-stale.ps1 src/TradingEngine.Web/TradingEngine.Web.csproj git commit -m "fix(build): change Angular auto-r…
-- `23:17:43` » bash cd C:\Code\Shamshir # Check if app.component.ts references toast were committed in s21 git --no-pager log --oneline --all -- web-ui/src/app/app.component.t…
-- `23:17:53` » bash cd C:\Code\Shamshir git --no-pager show 2e6fb66 --name-only | Select-String "toast"
-- `23:18:06` » bash cd C:\Code\Shamshir git --no-pager diff-tree --no-commit-id -r --name-only 2e6fb66 | Select-String "toast"
-- `23:18:16` » bash cd C:\Code\Shamshir git add web-ui/src/app/core/toast/ git commit -m "fix(ui): add missing toast files omitted from s21 commit 2e6fb66  Commit 2e6fb66 (fea…
-- `23:18:23` · Now update TRACKER.md and AGENTS.md:
-- `23:18:23` » read docs\iterations\iter-parity-pipeline\TRACKER.md
-- `23:18:36` » edit docs\iterations\iter-parity-pipeline\TRACKER.md
 
 ## Stage progress
 
@@ -69,13 +48,10 @@ _Session #26 (Fix) · running 30m · last output 4s ago · $0.1171_
 | 23 | P6 | Fix | 2 | 07-08 21:23 | 0:00 | AgentError |  | 0 | build:OK |  |  |
 | 24 | P6 | Fix | 3 | 07-08 21:25 | 0:00 | AgentError |  | 0 | build:OK |  |  |
 | 25 | P6 | Fix | 4 | 07-08 21:26 | 0:20 | GatesRed | P6.4 | 3 | build:FAIL | $0.1286 | 184,512/17,798 |
-| 26 | P6 | Fix | 3 | 07-08 21:48 | … | running |  | 0 |  |  |  |
+| 26 | P6 | Fix | 3 | 07-08 21:48 | 0:31 | Progress |  | 5 | build:OK | $0.1876 | 252,592/21,235 |
 
 ### Commits by session
 
-- **s15 (P3 Audit)** — 2 commit(s):
-  - bbe990a docs(P3): honest phase handover — audit findings, fixes, weaknesses, follow-ups
-  - e554b72 fix(P3): audit — apply-calibration no longer stale-passes, report writes artifact, executor auto-creates artifact dir
 - **s16 (P4 Deliver)** — 3 commit(s):
   - a5bcce9 docs(P4.1): session s16 bookkeeping — P4.1 DONE, gates green, RESUME updated
   - 9aa9b87 feat(P4.1): exploration funnel (F11) + MAE/MFE units doctrine (F12)
@@ -110,6 +86,12 @@ _Session #26 (Fix) · running 30m · last output 4s ago · $0.1171_
   - e458199 docs(s25): update TRACKER + RESUME for P6.4 delivery
   - 611d26d feat(P6.4): regime-conditioned calibration — regime filter on exitlab eval + playbook
   - b115c16 chore(conductor): s25 P6 working ▸P6.4 @ 22:41
+- **s26 (P6 Fix)** — 5 commit(s):
+  - 7f04409 docs(s26): update TRACKER + RESUME for build fix
+  - cbf2c75 chore(conductor): s26 P6 working ▸P6.5 @ 23:18
+  - 90e484a fix(ui): add missing toast files omitted from s21 commit 2e6fb66
+  - bee34c6 fix(build): change Angular auto-rebuild to staleness guard (.NET 10 compat)
+  - a7fc6dc chore(conductor): s26 P6 working ▸P6.5 @ 23:03
 
 ## Phase handovers (audit)
 
@@ -122,81 +104,31 @@ _Session #26 (Fix) · running 30m · last output 4s ago · $0.1171_
 
 ## Last gate run
 
-build:FAIL
-
-<details><summary>build — exit 1</summary>
-
-```
-& -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector
-    & -> Empty sub-selector[0m
-  
-  [39m[22m
-  Output location: C:\Code\Shamshir\src\TradingEngine.Web\wwwroot
-  
-  Angular: build complete
-C:\Program Files\dotnet\sdk\10.0.301\Sdks\Microsoft.NET.Sdk.StaticWebAssets\targets\Microsoft.NET.Sdk.StaticWebAssets.targets(706,5): error : System.InvalidOperationException: No file exists for the asset at either location 'C:\Code\Shamshir\src\TradingEngine.Web\wwwroot\main-M2O5KDLU.js' or 'wwwroot\main-M2O5KDLU.js'. [C:\Code\Shamshir\src\TradingEngine.Web\TradingEngine.Web.csproj]
-C:\Program Files\dotnet\sdk\10.0.301\Sdks\Microsoft.NET.Sdk.StaticWebAssets\targets\Microsoft.NET.Sdk.StaticWebAssets.targets(706,5): error :    at Microsoft.AspNetCore.StaticWebAssets.Tasks.StaticWebAsset.ResolveFile(String identity, String originalItemSpec) [C:\Code\Shamshir\src\TradingEngine.Web\TradingEngine.Web.csproj]
-C:\Program Files\dotnet\sdk\10.0.301\Sdks\Microsoft.NET.Sdk.StaticWebAssets\targets\Microsoft.NET.Sdk.StaticWebAssets.targets(706,5): error :    at Microsoft.AspNetCore.StaticWebAssets.Tasks.DefineStaticWebAssets.ResolveFileDetails(String originalItemSpec, String identity) [C:\Code\Shamshir\src\TradingEngine.Web\TradingEngine.Web.csproj]
-C:\Program Files\dotnet\sdk\10.0.301\Sdks\Microsoft.NET.Sdk.StaticWebAssets\targets\Microsoft.NET.Sdk.StaticWebAssets.targets(706,5): error :    at Microsoft.AspNetCore.StaticWebAssets.Tasks.DefineStaticWebAssets.Execute() [C:\Code\Shamshir\src\TradingEngine.Web\TradingEngine.Web.csproj]
-
-Build FAILED.
-
-C:\Users\shahi\.nuget\packages\system.formats.asn1\10.0.6\buildTransitive\netcoreapp2.0\System.Formats.Asn1.targets(4,5): warning : System.Formats.Asn1 10.0.6 doesn't support net6.0 and has not been tested with it. Consider upgrading your TargetFramework to net8.0 or later. You may also set <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings> in the project file to ignore this warning and attempt to run in this unsupported configuration at your own risk. [C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\TradingEngine.Adapters.CTrader.csproj]
-C:\Users\shahi\.nuget\packages\microsoft.bcl.cryptography\10.0.6\buildTransitive\netcoreapp2.0\Microsoft.Bcl.Cryptography.targets(4,5): warning : Microsoft.Bcl.Cryptography 10.0.6 doesn't support net6.0 and has not been tested with it. Consider upgrading your TargetFramework to net8.0 or later. You may also set <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings> in the project file to ignore this warning and attempt to run in this unsupported configuration at your own risk. [C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\TradingEngine.Adapters.CTrader.csproj]
-C:\Users\shahi\.nuget\packages\system.security.cryptography.pkcs\10.0.6\buildTransitive\netcoreapp2.0\System.Security.Cryptography.Pkcs.targets(4,5): warning : System.Security.Cryptography.Pkcs 10.0.6 doesn't support net6.0 and has not been tested with it. Consider upgrading your TargetFramework to net8.0 or later. You may also set <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings> in the project file to ignore this warning and attempt to run in this unsupported configuration at your own risk. [C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\TradingEngine.Adapters.CTrader.csproj]
-C:\Users\shahi\.nuget\packages\system.security.cryptography.xml\10.0.6\buildTransitive\netcoreapp2.0\System.Security.Cryptography.Xml.targets(4,5): warning : System.Security.Cryptography.Xml 10.0.6 doesn't support net6.0 and has not been tested with it. Consider upgrading your TargetFramework to net8.0 or later. You may also set <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings> in the project file to ignore this warning and attempt to run in this unsupported configuration at your own risk. [C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\TradingEngine.Adapters.CTrader.csproj]
-C:\Users\shahi\.nuget\packages\system.collections.immutable\10.0.7\buildTransitive\netcoreapp2.0\System.Collections.Immutable.targets(4,5): warning : System.Collections.Immutable 10.0.7 doesn't support net6.0 and has not been tested with it. Consider upgrading your TargetFramework to net8.0 or later. You may also set <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings> in the project file to ignore this warning and attempt to run in this unsupported configuration at your own risk. [C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\TradingEngine.Adapters.CTrader.csproj]
-C:\Program Files\dotnet\sdk\10.0.301\Sdks\Microsoft.NET.Sdk.StaticWebAssets\targets\Microsoft.NET.Sdk.StaticWebAssets.targets(706,5): error : System.InvalidOperationException: No file exists for the asset at either location 'C:\Code\Shamshir\src\TradingEngine.Web\wwwroot\main-M2O5KDLU.js' or 'wwwroot\main-M2O5KDLU.js'. [C:\Code\Shamshir\src\TradingEngine.Web\TradingEngine.Web.csproj]
-C:\Program Files\dotnet\sdk\10.0.301\Sdks\Microsoft.NET.Sdk.StaticWebAssets\targets\Microsoft.NET.Sdk.StaticWebAssets.targets(706,5): error :    at Microsoft.AspNetCore.StaticWebAssets.Tasks.StaticWebAsset.ResolveFile(String identity, String originalItemSpec) [C:\Code\Shamshir\src\TradingEngine.Web\TradingEngine.Web.csproj]
-C:\Program Files\dotnet\sdk\10.0.301\Sdks\Microsoft.NET.Sdk.StaticWebAssets\targets\Microsoft.NET.Sdk.StaticWebAssets.targets(706,5): error :    at Microsoft.AspNetCore.StaticWebAssets.Tasks.DefineStaticWebAssets.ResolveFileDetails(String originalItemSpec, String identity) [C:\Code\Shamshir\src\TradingEngine.Web\TradingEngine.Web.csproj]
-C:\Program Files\dotnet\sdk\10.0.301\Sdks\Microsoft.NET.Sdk.StaticWebAssets\targets\Microsoft.NET.Sdk.StaticWebAssets.targets(706,5): error :    at Microsoft.AspNetCore.StaticWebAssets.Tasks.DefineStaticWebAssets.Execute() [C:\Code\Shamshir\src\TradingEngine.Web\TradingEngine.Web.csproj]
-    5 Warning(s)
-    1 Error(s)
-
-Time Elapsed 00:00:45.75
-```
-</details>
+build:OK
 
 ## Last session result
 
-> Let me start by understanding the current state and reproducing the failure.
-> First, let me run the gate battery to see the current state.
-> Build fails with Angular static web asset mismatch. Let me diagnose.
-> Build: 0 errors, 5 warnings (expected). Now run the test suite.
-> Gates: Build 0err/5warn, Unit 664/0/6, Integration 120/0/0, fast Sim 144/0/0. Now check golden + tsc, then understand P6.4 requirements.
-> All gates GREEN. Now let me understand the P6.4 deliverable — regime-conditioned calibration. Let me explore the codebase.
-> Now I have a thorough understanding. Let me design P6.4.
-> Let me check the UI exit-lab component to ensure backward compatibility.
-> Now I have complete understandi…
+> SESSION-RESULT:
+> 
+> **Reproduced:** The Conductor's `main-M2O5KDLU.js` error was caused by .NET 10's static web assets pipeline evaluating `@(Content)` items at project evaluation time (before any targets run). When new Angular source files (toast components) made the source tree newer than wwwroot, `dotnet build` triggered an `ng build` that changed content-hash filenames. `DefineStaticWebAssets` then failed because the evaluated `@(Content)` items referenced files that `ng build` had deleted.
+> 
+> **Fix:** Replaced the auto-rebuild MSBuild target with a staleness guard (`EnsureAngularCurrent`). If Angular source is newer than wwwroot, the build fails with a clear message: "Run `npm run build` fir…
 
 ## Tracker handoff
 
 ```
-last: **P6.4 DONE** (611d26d) — regime-conditioned calibration
+last: **s26 build fix** (bee34c6, 90e484a) — Angular staleness guard + toast files
 stage: **P6 IN PROGRESS** — P6.1-P6.4 delivered; P6.5-P6.8 remain TODO.
-gate: GREEN — build 0err/5warn; Unit 666/0/6 (+2: RegimePlaybook test + 6th shipped parse);
-  Integration 120/0/0; fast Sim 144/0/0; golden byte-identical; tsc 0 errors;
-  6 shipped playbooks parse.
-next: **P6.5 block-bootstrap tapes** (PLAN §9 #5) — synthetic tape generation for robustness testing.
-trap: (1) Session labels not wired into TradeExcursions (SessionDetector consumed in ExitLabController
-  only). (2) SpreadVolNoTradeFilter has no strategy config wiring. (3) Playbook 3 (triage-sweep.json)
-  never created. (4) BuildInfo.g.cs + build-info.ts dirty each build (leave). (5) Toast files
-  (toast.component.ts, toast.service.ts) untracked — s21 commit 2e6fb66 never included them despite
-  claiming toast delivery; app.component.ts references them. (6) SaveCalibration uses DateTime.UtcNow
-  (pre-existing). (7) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-QA-prev: s25/P6.4 — confirmed (full gate battery + 2 independent claims verified: regime playbook
-  parses 6/6 + ExitLabController RegimeBreakdown computed from SessionDetector).
+gate: GREEN — build 0err/5warn; Unit 666/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden byte-identical; tsc 0 errors
+next: **P6.5 block-bootstrap tapes** (PLAN §9 #5)
+trap: (1) Session labels not wired into TradeExcursions. (2) SpreadVolNoTradeFilter
+  no strategy config wiring. (3) Playbook 3 (triage-sweep.json) not created.
+  (4) BuildInfo.g.cs + build-info.ts dirty each build (leave). (5) SaveCalibration
+  uses DateTime.UtcNow (pre-existing). (6) EntityAuditableTests red on
+  ExitCalibrationEntity (pre-existing).
+fix(s26): Removed Angular auto-rebuild from dotnet build — .NET 10 SDK evaluates
+  @(Content) before targets, making mid-build ng build impossible. Replaced with
+  staleness guard that fails fast with clear message. Toast files (s21 regression)
+  committed.
 ```
