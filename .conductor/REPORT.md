@@ -1,11 +1,32 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 18:46 UTC · branch `iter/parity-pipeline` · HEAD `67ac812`_
+_Updated 2026-07-08 19:01 UTC · branch `iter/parity-pipeline` · HEAD `939def0`_
 
-**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P3 — Research pipeline (ResearchCli + playbooks) · attempts used 0
-**Checkpoints:** 14/17 done · **Sessions run:** 15 · **Cost:** $1.0474 · **Tokens:** 563,696 in / 334,504 out / 147,250 think
+**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P4 — Lab golden paths · attempts used 0 · working ▸ P4.1
+**Checkpoints:** 14/17 done · **Sessions run:** 16 · **Cost:** $1.0474 · **Tokens:** 563,696 in / 334,504 out / 147,250 think
 **Confirmed phases:** P0, P1, P2, P3
+
+## Latest activity (live)
+
+_Session #16 (Deliver) · running 15m · last output 25s ago · $0.0594_
+
+**Thinking:**
+> All gates green: - Unit: 624/0/6 - Integration: 120/0/0 - Fast Sim: 144/0/0  Golden byte-identical check doesn't need to be re-run since my changes are all DTO/UI additions (no kernel or fixture changes).  F11 is done. Now let me move to F12 (MAE/MFE units doctrine).  F12 requires: 1. Add R-normaliz…
+> Let me look at PipSize/SymbolInfo and how pip calculations are done. I also need to understand how MaxAdverseExcursion gets computed from the tape path.
+> Let me look at SymbolInfo and the registry.
+
+**Recent actions:**
+- `20:00:13` · Build: 0 errors, 5 warnings. Running gates for the F11 checkpoint:
+- `20:00:19` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build 2>&1 | Select-Object -Last 3
+- `20:00:28` » bash dotnet test tests/TradingEngine.Tests.Simulation --no-build --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ" 2>&1 | Select-Obj…
+- `20:00:32` » bash dotnet test tests/TradingEngine.Tests.Integration --no-build 2>&1 | Select-Object -Last 3
+- `20:01:01` » todowrite 2 todos
+- `20:01:01` · F11 gates green. Now implementing **F12 — MAE/MFE units doctrine**. Let me first understand the existing pip size infrastructure:
+- `20:01:06` » grep PipSize|pipSize|pip.size
+- `20:01:07` » grep class SymbolInfo
+- `20:01:11` » read src\TradingEngine.Domain\SymbolInfo\SymbolInfo.cs
+- `20:01:12` » read src\TradingEngine.Infrastructure\SymbolInfoRegistry.cs
 
 ## Stage progress
 
@@ -15,7 +36,7 @@ _Updated 2026-07-08 18:46 UTC · branch `iter/parity-pipeline` · HEAD `67ac812`
 | P1 | Config & DB truth | 2/2 | confirmed ✓ |
 | P2 | Lifecycle robustness + headline gate | 2/2 | confirmed ✓ |
 | P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
-| P4 | Lab golden paths | 0/1 | todo |
+| P4 | Lab golden paths | 0/1 | **← active** |
 | P5 | UI truth + Angular refactor | 0/1 | todo |
 | P6 | Wild list (pipeline-gated) | 0/1 | todo |
 
@@ -38,6 +59,7 @@ _Updated 2026-07-08 18:46 UTC · branch `iter/parity-pipeline` · HEAD `67ac812`
 | 13 | P3 | Deliver | 1 | 07-08 18:04 | 0:07 | NoProgress |  | 0 | build:OK | $0.0374 | 63,378/4,917 |
 | 14 | P3 | Fix | 2 | 07-08 18:13 | 0:14 | Advanced | P3.3 | 2 | build:OK | $0.1204 | 203,515/13,269 |
 | 15 | P3 | Audit | 1 | 07-08 18:30 | 0:14 | Progress |  | 2 |  | $0.0740 | 79,867/15,468 |
+| 16 | P4 | Deliver | 1 | 07-08 18:46 | … | running |  | 0 |  |  |  |
 
 ### Commits by session
 
