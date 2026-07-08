@@ -33,8 +33,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private readonly IMemoryCache? _memoryCache;
     private readonly ConcurrentDictionary<string, BacktestRunState> _runs = new();
     private readonly ConcurrentDictionary<string, string> _idempotencyKeys = new();
+    private readonly object _idempotencyLock = new();
 
     private const string RunsListCacheKey = "runs:all";
+    private const int MaxIdempotencyKeys = 10_000;
 
     private sealed record TradeStats(decimal NetProfit, decimal GrossPnL, decimal CommissionTotal, decimal SwapTotal, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
 
@@ -162,7 +164,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var barsTotal = state.BarsTotal > 0 ? state.BarsTotal : 0;
         double percent;
         double? etaSeconds;
-        if (status == "completed")
+        if (status is "completed" or "completed-with-warnings")
         {
             percent = 100.0;
             etaSeconds = 0;
@@ -342,7 +344,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         if (state is null) return null;
         var status = state.Status switch
         {
-            "completed" or "failed" or "cancelled" => state.Status,
+            "completed" or "completed-with-warnings" or "failed" or "cancelled" => state.Status,
             _ => "running",
         };
         return BuildProgress(state, status);
@@ -353,17 +355,38 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     public async Task<string> StartAsync(BacktestConfig cfg, CancellationToken ct)
     {
         var idemKey = cfg.CustomParams.GetValueOrDefault("IdempotencyKey");
-        if (!string.IsNullOrWhiteSpace(idemKey) && _idempotencyKeys.TryGetValue(idemKey, out var existingRunId))
+        if (string.IsNullOrWhiteSpace(idemKey))
+        {
+            var state = Start(cfg);
+            await Task.CompletedTask;
+            return state.RunId;
+        }
+
+        if (_idempotencyKeys.TryGetValue(idemKey, out var existingRunId))
         {
             _logger.LogInformation("Idempotency key {Key} already used for run {RunId} — returning existing", idemKey, existingRunId);
             return existingRunId;
         }
 
-        var state = Start(cfg);
-        if (!string.IsNullOrWhiteSpace(idemKey))
-            _idempotencyKeys.TryAdd(idemKey, state.RunId);
-        await Task.CompletedTask;
-        return state.RunId;
+        lock (_idempotencyLock)
+        {
+            if (_idempotencyKeys.TryGetValue(idemKey, out existingRunId))
+            {
+                _logger.LogInformation("Idempotency key {Key} already used for run {RunId} — returning existing", idemKey, existingRunId);
+                return existingRunId;
+            }
+
+            var state = Start(cfg);
+            _idempotencyKeys[idemKey] = state.RunId;
+
+            if (_idempotencyKeys.Count > MaxIdempotencyKeys)
+            {
+                _logger.LogWarning("Idempotency key dictionary exceeded {Max} entries — clearing", MaxIdempotencyKeys);
+                _idempotencyKeys.Clear();
+            }
+
+            return state.RunId;
+        }
     }
 
     public void Cancel(string runId)
