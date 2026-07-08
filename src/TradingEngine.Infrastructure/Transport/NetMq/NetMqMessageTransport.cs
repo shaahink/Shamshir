@@ -29,6 +29,14 @@ public sealed class NetMqMessageTransport : IMessageTransport, ITransportStatusS
     private NetMQQueue<(byte[] Identity, string Json)>? _sendQueue;
     private byte[]? _cBotIdentity;
 
+    // P0.2 (F5): teardown must be idempotent. The orchestrator disconnects twice on a cTrader run —
+    // once via the BarStream safety-net force-disconnect, then again via host disposal
+    // (adapter.DisposeAsync → transport.DisconnectAsync). NetMQPoller.Stop()/Dispose() throw
+    // ObjectDisposedException("NetMQPoller") on a second call, and that exception used to propagate to
+    // the orchestrator's outer catch and stamp a COMPLETE run as `failed` (the audited F5 crash). A
+    // single-shot guard makes the second teardown a no-op so a completed run stays completed.
+    private int _teardownStarted;
+
     private TransportPhase _phase = TransportPhase.Disconnected;
     private DateTime? _connectedAtUtc;
     private DateTime? _disconnectedAtUtc;
@@ -79,6 +87,12 @@ public sealed class NetMqMessageTransport : IMessageTransport, ITransportStatusS
 
     public async Task DisconnectAsync(CancellationToken ct)
     {
+        // P0.2 (F5): idempotent — only the first caller tears down the poller/sockets. A second call
+        // (host disposal after the safety-net force-disconnect) returns immediately instead of calling
+        // NetMQPoller.Stop() on an already-disposed poller, which threw the F5 "disposed NetMQPoller".
+        if (Interlocked.Exchange(ref _teardownStarted, 1) == 1)
+            return;
+
         TransitionTo(TransportPhase.Disconnected);
         _disconnectedAtUtc = DateTime.UtcNow;
 
