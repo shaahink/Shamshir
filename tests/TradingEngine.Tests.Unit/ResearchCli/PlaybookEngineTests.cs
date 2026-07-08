@@ -178,6 +178,7 @@ public sealed class PlaybookEngineTests
     [InlineData("regime-calibration.json")]
     [InlineData("block-bootstrap.json")]
     [InlineData("meta-allocator.json")]
+    [InlineData("entry-quality.json")]
     public void ShippedPlaybook_Parses_AndHasKnownStepKinds(string file)
     {
         var path = Path.Combine(RepoRoot(), "playbooks", file);

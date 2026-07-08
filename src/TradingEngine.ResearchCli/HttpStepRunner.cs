@@ -44,6 +44,7 @@ public sealed class HttpStepRunner : IStepRunner
             StepKinds.ApplyCalibration => await ApplyCalibrationAsync(step, ct),
             StepKinds.BlockBootstrap => await BlockBootstrapAsync(step, context, ct),
             StepKinds.MetaAllocate => await MetaAllocateAsync(step, context, ct),
+            StepKinds.EntryQuality => await EntryQualityAsync(step, ct),
             StepKinds.Report => await Report(step, context),
             _ => StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "unknown-step")).Render()),
         };
@@ -435,6 +436,84 @@ public sealed class HttpStepRunner : IStepRunner
             : Verdict.Failing(fields.ToArray()).Render();
 
         return hasRecommendations ? StepOutcome.Pass(verdict) : StepOutcome.Fail(verdict);
+    }
+
+    private async Task<StepOutcome> EntryQualityAsync(PlaybookStep step, CancellationToken ct)
+    {
+        var runId = Str(step, "runId");
+        if (string.IsNullOrEmpty(runId))
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "entry-quality requires runId param")).Render());
+
+        var strategyId = Str(step, "strategyId") ?? "";
+        var minTrades = Int(step, "minTrades", 10);
+
+        var query = $"api/entry-quality?runId={Uri.EscapeDataString(runId)}&minTrades={minTrades}";
+        if (!string.IsNullOrEmpty(strategyId))
+            query += $"&strategyId={Uri.EscapeDataString(strategyId)}";
+
+        var json = await _client.GetAsync(query, ct);
+        if (json is null)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-entry-quality-response")).Render());
+
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(json);
+        }
+        catch (JsonException ex)
+        {
+            return StepOutcome.Fail(Verdict.Failing(
+                VerdictField.Of("error", "entry-quality-parse"),
+                VerdictField.Of("detail", ex.Message)).Render());
+        }
+
+        if (root is not JsonObject obj)
+        {
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "invalid-entry-quality-response")).Render());
+        }
+
+        if (obj["error"] is JsonNode errNode)
+        {
+            var errMsg = errNode.GetValue<string>() ?? "unknown error";
+            var totalTrades = obj["totalTrades"]?.GetValue<int>() ?? 0;
+            return StepOutcome.Fail(Verdict.Failing(
+                VerdictField.Of("error", errMsg),
+                VerdictField.Of("totalTrades", totalTrades)).Render());
+        }
+
+        var rSquared = obj["rSquared"]?.GetValue<double>() ?? 0;
+        var summary = obj["summary"]?.GetValue<string>() ?? "";
+        var observations = obj["validObservations"]?.GetValue<int>() ?? 0;
+        var features = obj["features"] as JsonArray ?? [];
+
+        var fields = new List<VerdictField>
+        {
+            VerdictField.Of("runId", runId),
+            VerdictField.Of("observations", observations),
+            VerdictField.Of("rSquared", Math.Round(rSquared, 4)),
+            VerdictField.Of("summary", summary),
+        };
+
+        foreach (var f in features)
+        {
+            if (f is JsonObject fObj)
+            {
+                var name = fObj["name"]?.GetValue<string>() ?? "?";
+                var coeff = fObj["coefficient"]?.GetValue<double>() ?? 0;
+                var t = fObj["tStatistic"]?.GetValue<double>() ?? 0;
+                if (Math.Abs(t) > 2.0)
+                {
+                    var dir = coeff > 0 ? "+" : "";
+                    fields.Add(VerdictField.Of(name, $"{dir}{coeff:F4} (t={t:F1})"));
+                }
+            }
+        }
+
+        var verdict = rSquared > 0.01
+            ? Verdict.Passing(fields.ToArray()).Render()
+            : Verdict.Passing(fields.ToArray()).Render(); // always "pass" — this is diagnostic, not a gate
+
+        return StepOutcome.Pass(verdict);
     }
 
     private async Task<StepOutcome> Report(PlaybookStep step, PipelineContext context)

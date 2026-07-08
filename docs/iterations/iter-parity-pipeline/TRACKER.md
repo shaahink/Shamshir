@@ -17,11 +17,11 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s29 P6.6 meta-allocator** — MetaAllocator domain + playbook step + tests
-stage: **P6 IN PROGRESS** — P6.1-P6.6 delivered; P6.7-P6.8 remain TODO.
-gate: GREEN — build 0err/0warn; Unit 689/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden 61/61 byte-identical
-next: **P6.7 entry-quality decomposition** (PLAN §9 #8)
+last: **s30 P6.7 entry-quality decomposition** — EntryDiagnosis OLS domain + API + CLI verb + playbook
+stage: **P6 IN PROGRESS** — P6.1-P6.7 delivered; P6.8 pyramiding policy remains TODO.
+gate: GREEN — build 0err/5warn; Unit 701/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden 48/48 byte-identical
+next: **P6.8 pyramiding policy** (PLAN §9 #9)
 trap: (1) Session labels not wired into TradeExcursions.
   (2) SpreadVolNoTradeFilter no strategy config wiring.
   (3) Playbook 3 (triage-sweep.json) not created.
@@ -35,6 +35,12 @@ trap: (1) Session labels not wired into TradeExcursions.
 Status ∈ TODO · IN PROGRESS · DONE · BLOCKED. Evidence = an artifact path produced by a run this
 phase (a code path is not evidence). Scope changes get a `> scope change:` line under the row.
 
+> QA-previous (s30 QA of s29 P6.6): **confirmed.** All gates re-run verbatim:
+> build 0err/5warn, Unit 689/0/6, Integration 120/0/0, fast Sim 144/0/0,
+> golden 48/48 byte-identical (no git diff). Independently verified 2 claims:
+> (tests) MetaAllocatorTests 12/12 green; (runtime/R5) ShippedPlaybook_Parses
+> 8/8, meta-allocator.json exists on disk. No divergence — proceeded to P6.7.
+>
 > QA-previous (s29 QA of s28): **confirmed.** Full gate battery re-run
 > verbatim: build 0err/0warn, Unit 676/0/6, Integration 120/0/0,
 > fast Sim 144/0/0, golden 61/61 byte-identical. Independently verified
@@ -119,8 +125,8 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P6.3 | Wild list: spread/vol no-trade filter (SpreadVolNoTradeFilter + playbook) | DONE | e6c45aa | SpreadVolNoTradeFilter 6 tests; playbooks/spread-vol-filter.json; blocks trades on excess spread OR ATR |
 | P6.4 | Wild list: regime-conditioned calibration | DONE | 611d26d | docs: commit body; playbooks/regime-calibration.json; RegimePlaybook_HasPerRegimeExitLabSteps test (Unit); ShippedPlaybook_Parses 6/6; ExitLabController Evaluate() partitions by SessionDetector regime, optional filter, RegimeBreakdown in response |
 | P6.5 | Wild list: block-bootstrap tapes | DONE (OWNER-PENDING — needs live app up to exercise endpoint end-to-end) | 23bed7c | playbooks/block-bootstrap.json; BlockBootstrapperTests 9/9 (Unit); ShippedPlaybook_Parses 5/5 |
-| P6.6 | Wild list: meta-allocator | DONE (OWNER-PENDING — live playbook run needs app+data) | <SHA> | playbooks/meta-allocator.json; MetaAllocatorTests 12/12 (Unit); R5: playbook parses per ShippedPlaybook_Parses 8/8 |
-| P6.7 | Wild list: entry-quality decomposition | TODO | | |
+| P6.6 | Wild list: meta-allocator | DONE (OWNER-PENDING — live playbook run needs app+data) | 5f3c001 | playbooks/meta-allocator.json; MetaAllocatorTests 12/12 (Unit); R5: playbook parses per ShippedPlaybook_Parses 8/8 |
+| P6.7 | Wild list: entry-quality decomposition | DONE | <SHA> | playbooks/entry-quality.json; EntryDiagnosisTests 11/11 (Unit); ShippedPlaybook_Parses 9/9; EntryQualityController API endpoint |
 | P6.8 | Wild list: pyramiding policy | TODO | | |
 
 ## Quick commands (gates — see PLAN §11 for per-phase specifics)

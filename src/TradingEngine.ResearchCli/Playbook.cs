@@ -87,12 +87,13 @@ public static class StepKinds
     public const string OwnerGate = "owner-gate";
     public const string MetaAllocate = "meta-allocate";
     public const string BlockBootstrap = "block-bootstrap";
+    public const string EntryQuality = "entry-quality";
     public const string Report = "report";
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
     {
         EnsureData, DataQuality, StartRun, AwaitRun, AssertGates, Reconcile, ExitLabEval,
-        WalkForward, ApplyCalibration, OwnerGate, MetaAllocate, BlockBootstrap, Report,
+        WalkForward, ApplyCalibration, OwnerGate, MetaAllocate, BlockBootstrap, EntryQuality, Report,
     };
 
     public static bool IsKnown(string kind) => All.Contains(kind);

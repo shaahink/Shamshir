@@ -39,6 +39,8 @@ try
             return await PipelineApproveAsync(cli, baseUrl, timeout, approve: true);
         case "pipeline reject":
             return await PipelineApproveAsync(cli, baseUrl, timeout, approve: false);
+        case "entry-quality":
+            return await EntryQualityAsync(cli, baseUrl, timeout);
         default:
             PrintUsage();
             Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "unknown-verb")).Render());
@@ -418,6 +420,76 @@ static async Task<int> PipelineApproveAsync(CliArgs cli, string baseUrl, TimeSpa
     return 0;
 }
 
+static async Task<int> EntryQualityAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var runId = cli.Positionals.ElementAtOrDefault(2);
+    if (string.IsNullOrWhiteSpace(runId))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-runId")).Render());
+        return 2;
+    }
+
+    var strategyId = cli.Option("strategy");
+    var minTrades = cli.Option("min-trades", 10);
+
+    var query = $"api/entry-quality?runId={Uri.EscapeDataString(runId)}&minTrades={minTrades}";
+    if (!string.IsNullOrEmpty(strategyId))
+        query += $"&strategyId={Uri.EscapeDataString(strategyId)}";
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.GetAsync(query, CancellationToken.None);
+
+    if (cli.Flag("json"))
+        Console.WriteLine(json);
+
+    if (json is null)
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "no-response")).Render());
+        return 1;
+    }
+
+    using var doc = System.Text.Json.JsonDocument.Parse(json);
+    var root = doc.RootElement;
+
+    if (root.TryGetProperty("error", out var err))
+    {
+        Console.WriteLine(Verdict.Failing(
+            VerdictField.Of("error", err.GetString() ?? "unknown"),
+            VerdictField.Of("totalTrades", root.TryGetProperty("totalTrades", out var tt) ? tt.GetInt32() : 0)).Render());
+        return 1;
+    }
+
+    var rSquared = root.TryGetProperty("rSquared", out var rs) ? rs.GetDouble() : 0.0;
+    var summary = root.TryGetProperty("summary", out var s) ? s.GetString() ?? "" : "";
+    var observations = root.TryGetProperty("validObservations", out var vo) ? vo.GetInt32() : 0;
+
+    var fields = new List<VerdictField>
+    {
+        VerdictField.Of("runId", runId),
+        VerdictField.Of("observations", observations),
+        VerdictField.Of("rSquared", Math.Round(rSquared, 4).ToString()),
+        VerdictField.Of("parameters", (root.TryGetProperty("parameters", out var p) ? p.GetInt32() : 0).ToString()),
+    };
+
+    if (root.TryGetProperty("features", out var feats) && feats.ValueKind == System.Text.Json.JsonValueKind.Array)
+    {
+        foreach (var f in feats.EnumerateArray())
+        {
+            var name = f.GetProperty("name").GetString() ?? "?";
+            var coeff = f.GetProperty("coefficient").GetDouble();
+            var tStat = f.GetProperty("tStatistic").GetDouble();
+            if (Math.Abs(tStat) > 1.5)
+            {
+                var dir = coeff > 0 ? "+" : "";
+                fields.Add(VerdictField.Of(name, $"{dir}{coeff:F4} t={tStat:F1}"));
+            }
+        }
+    }
+
+    Console.WriteLine(Verdict.Passing(fields.ToArray()).Render());
+    return 0;
+}
+
 static List<string> SplitCsv(string? csv) =>
     string.IsNullOrWhiteSpace(csv)
         ? []
@@ -446,6 +518,7 @@ static void PrintUsage()
           research pipeline status <id> [--json]
           research pipeline approve <id>
           research pipeline reject  <id>
+          research entry-quality <runId> [--strategy <id>] [--min-trades 10] [--json]
         Global: [--base-url https://localhost:7108] (or env SHAMSHIR_BASE_URL)
         Every command prints a final `VERDICT: PASS|FAIL …` line; exit code mirrors it.
         """);
