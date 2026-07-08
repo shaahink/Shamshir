@@ -16,20 +16,26 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P0.3 DONE** (1 commit) — TradePersistenceBarrier (F6): finalization reconciles journalled
-      PublishTradeClosed vs TradeResults rows and journal-backfills lost trades via TradeResultFactory
-      (extracted verbatim from EffectExecutor → golden byte-identical); shortfall → TRADES_LOST:{exp}:{persisted}
-      warning → completed-with-warnings (reuses P0.2 plumbing). QA-previous(P0.2): confirmed.
-stage: **P0 IN PROGRESS** — P0.0/P0.1/P0.2/P0.3/P0.5 done; **P0.4 (entry-latency instrumentation, F2) is next**.
-gate: GREEN — build 0 err/5 warn; Unit 522/0/6; fast Sim 144/0/0; golden 61/61 byte-identical
-      (NO rebaseline); Integration 107/0/0 (+3).
-next: **P0.4** — reconcile output gains per-trade entryDelayBars (+seconds) proposal→fill for both runs +
-      per-run distribution summary; NO cBot behavior change (Q4 measure-first). Gate: paired mini-run
-      reconcile shows tape delay ≈1 M1 bar + quantifies cTrader delay; number → docs/audit/RECONCILE-FINDINGS.md.
-      See PLAN §3 P0.4 + AUDIT F2. (Reconcile endpoint: GET /api/backtest/analytics/reconcile.)
-trap: P0.3 real cTrader BTC-scenario run is OWNER-PENDING (needs creds; mechanism proven credential-free).
-      P0.2 real 3× headless cTrader run also OWNER-PENDING. BuildInfo.g.cs re-dirties every build (leave it).
-      P2.2 OWNER-GATE. tsc 2 pre-existing (P5). P0.4 is measure-only — a number in RECONCILE-FINDINGS is the gate.
+last: **P0.4 DONE** (8277df2) — entry-latency instrumentation (F2, Q4 measure-first). Reconcile endpoint
+      gains per-run leftLatency/rightLatency (per-trade entryDelaySeconds+entryDelayBars, proposal→fill on
+      OrderId, + distribution). MEASURED credential-free from the kept audit DB: tape 3660s=1.017 H1 bars
+      (≈1 M1 past the bar close), cTrader 7200s=2.0 bars → venue gap 3540s ≈ 1 decision bar (AUDIT F2).
+      QA-previous(P0.3): **confirmed for delivered scope; diverged on F6 closure** → new residual **F6-R**.
+stage: **P0 spine COMPLETE** (P0.0–P0.5 all DONE; real paired/headless cTrader runs OWNER-PENDING). **Next
+      stage P1** — start P1.1 (one database, F10).
+gate: GREEN — build 0 err/5 warn; Unit 528/0/6; Integration 108/0/0; fast Sim 144/0/0; golden 61/61
+      byte-identical (NO rebaseline; git diff --stat *golden-snapshot.json = empty).
+next: **P1.1 (one DB, F10)** — single DB path shared by Web + Host CLI; startup fails loud on pending
+      migrations; archive stale root data/trading.db; compute-reference-scales populates 84/84 cells.
+      See PLAN §4 P1.1 + AUDIT F10. THEN P1.2 (config propagation/drift, F9/F7).
+trap: **F6-R (NEW, from P0.3 QA):** the audited F6 run f7b0538d has 0 journalled PublishTradeClosed effects
+      (its 7 closes came via Reconcile events, lost before journalling) → P0.3's barrier computes expected=0,
+      emits NO TRADES_LOST warning → still TotalTrades=0. P0.3 fixes the persistence-channel-loss F6 case
+      (successful cTrader runs DO journal PublishTradeClosed: 44175d3e=3,817af3f5=24,81729685=7) but NOT the
+      crashed-teardown case. Needs owner decision (see P0.3 residual row). Out of P0.4 stage + STOP condition
+      (kernel/adapter reconcile-close semantics) — deliberately NOT fixed this session.
+      Also: OWNER-PENDING real cTrader runs (P0.1/P0.2/P0.3/P0.4 all creds-gated); P2.2 OWNER-GATE; BuildInfo.g.cs
+      re-dirties every build (leave it); tsc 2 pre-existing (P5).
 
 ## Checkpoints
 
@@ -53,6 +59,17 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 > claims: (runtime/R5) `sqlite3 …Web/data/trading.db` PRAGMA table_info(BacktestRuns) → `WarningsJson TEXT`
 > present, `__EFMigrationsHistory` head = `20260708050224_M41_RunWarnings`; (tests) RunStatusResolver +
 > RunStatusTruth 12/0. No divergence; no fix needed.
+>
+> QA-previous (s5 QA of P0.3): **confirmed for delivered scope; diverged on F6 closure.** Full gate battery
+> re-run verbatim: build 0err/5warn, Unit 522/0/6, Integration 107/0/0, fast Sim 144/0/0, golden 61/61
+> byte-identical. Verified 2 claims: (tests) `TradePersistenceBarrier` 3/3; (runtime/R5) `sqlite3
+> …Web/data/trading.db` — the audited F6 run `f7b0538d` has **0** journalled PublishTradeClosed effects
+> (7 closes came via Reconcile events), 0 TradeResults, TotalTrades=0; the *successful* cTrader runs DO
+> journal PublishTradeClosed (44175d3e=3, 817af3f5=24, 81729685=7). **Divergence:** P0.3's barrier backfills
+> only from PublishTradeClosed, so for `f7b0538d` it computes expected=0 → no TRADES_LOST warning → still
+> TotalTrades=0. P0.3's synthetic test is correct + green, but the audited crashed-teardown case is neither
+> recovered nor flagged → new residual **F6-R** (below). NOT fixed this session (out of P0.4 stage + STOP:
+> touches cTrader reconcile-close/kernel semantics; needs owner decision on approach).
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
@@ -60,7 +77,8 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P0.1 | ¼-sizing bug (F1): VenueSizingParityTests green + equal lots in a paired mini-run DB | DONE (OWNER-PENDING: paired DB run needs creds) | a6aa08c | docs/iterations/iter-parity-pipeline/evidence/P0.1-sizing-parity.md; VenueSizingParityTests 5/5 (Category=VenueParity) |
 | P0.2 | Run-status truth (F5): real ctrader run ends completed; fault→completed-with-warnings | DONE (OWNER-PENDING: real 3× headless ctrader run needs creds) | 6533c7e, de4c8e7 | docs/iterations/iter-parity-pipeline/evidence/P0.2-status-truth.md; RunStatusResolverTests (Unit) + RunStatusTruthTests (Integration); R5: M41 WarningsJson column live in Web DB |
 | P0.3 | Trade persistence barrier (F6): BTC-scenario test; count mismatch surfaces + backfill | DONE (OWNER-PENDING: real cTrader BTC-scenario run needs creds) | 3d0c7cc | docs/iterations/iter-parity-pipeline/evidence/P0.3-trade-persistence-barrier.md; TradePersistenceBarrierTests 3/3 (Integration) |
-| P0.4 | Entry-latency instrumentation (F2): entryDelayBars in reconcile output | TODO | | |
+> residual (F6-R, found s5 QA): P0.3 backfills only from journalled PublishTradeClosed. The audited f7b0538d has 0 of those (7 closes came via Reconcile events, lost before journalling) → barrier computes expected=0, no TRADES_LOST warning, TotalTrades stays 0. Fixes the persistence-channel-loss F6 case but NOT the crashed-teardown case. Options for owner/next session: (a) make the cTrader VenueManaged reconcile→close path emit PublishTradeClosed into the journal before teardown (kernel/adapter-adjacent); (b) barrier detects "fills opened but no closes+no trades" and emits a TRADES_UNRECONSTRUCTABLE warning (detection-only, can't restore economics); (c) accept as known cTrader-crash limitation. Recommend (a) longer-term, (b) as a cheap safety net. Needs owner decision — NOT done in P0.4 (out of stage + STOP: kernel semantics).
+| P0.4 | Entry-latency instrumentation (F2): entryDelayBars in reconcile output | DONE (OWNER-PENDING: live paired-run confirmation needs creds) | 8277df2 | docs/iterations/iter-parity-pipeline/evidence/P0.4-entry-latency.md; docs/audit/RECONCILE-FINDINGS.md §P0.4 (real numbers: tape 3660s/1.017 bars, cTrader 7200s/2.0 bars, gap 3540s); EntryLatencyAnalyzerTests 6/6 (Unit) + EntryLatencyReconcileTests 1/1 (Integration) |
 | P0.5 | Venue-parity test tier (R8): Category=VenueParity wired into the standard gate filter | DONE | a6aa08c | fast-Sim filter 139→144 (5 VenueParity tests ride the standard gate); evidence P0.1 §6 |
 | P1.1 | One database (F10): Host CLI verbs run against the Web DB; 84/84 ReferenceScales rows | TODO | | |
 | P1.2 | Config propagation + drift (F9,F7): JSON edit reflected in journal; UI edit survives restart | TODO | | |

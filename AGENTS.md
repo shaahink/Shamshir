@@ -232,38 +232,34 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD after this session:** the P0.3 commit (+ conductor bookkeeping).
-**Session (s4, P0):** QA of P0.2 = **confirmed** (full gate battery re-run verbatim + 2 independent
-claims: R5 DB `WarningsJson TEXT` column live + M41 head of `__EFMigrationsHistory`; RunStatusResolver
-+RunStatusTruth 12/0). Then landed **P0.3 (F6)** in 1 commit:
-- Trade-persistence integrity barrier. `TradePersistenceBarrier` (Infrastructure) streams the journal,
-  collects every `PublishTradeClosed` from `EffectsJson` (parallel to `EffectKinds`, PascalCase +
-  JsonStringEnumConverter — verified against the audit DB shape), reconciles vs `TradeResults` rows,
-  and journal-backfills lost trades. Shortfall → `AddTeardownWarning("TRADES_LOST:{exp}:{persisted}")`
-  → **completed-with-warnings** (reuses the exact P0.2 plumbing). Wired in `BacktestOrchestrator.RunAsync`
-  after a successful run, BEFORE `GetTradeStatsAsync` (backfill first so stats count restored trades).
-- Anti-drift: extracted `EffectExecutor.HandlePublishTradeClosed` construction VERBATIM into
-  `TradeResultFactory.FromClose` (Services); live + backfill build trades identically. Golden held
-  byte-identical → proved the extraction faithful. R3: `TradePersistenceBarrierTests` 3/3
-  (BTC-scenario BEFORE 0 trades / AFTER 3 restored; partial-persist no-dup; fully-persist no-loss).
+**Branch:** `iter/parity-pipeline` — **HEAD after this session:** the P0.4 commit `8277df2` (+ the docs
+commit updating TRACKER/RESUME + conductor bookkeeping).
+**Session (s5, P0):** QA of P0.3 = **confirmed for delivered scope; diverged on F6 closure** (full gate
+battery re-run verbatim; TradePersistenceBarrier 3/3; runtime/R5 DB check found the divergence → new
+residual **F6-R**, see below). Then landed **P0.4 (F2, Q4 measure-first)** in 1 commit:
+- Reconcile endpoint gains per-run `leftLatency`/`rightLatency`: per-trade `entryDelaySeconds`+
+  `entryDelayBars` (proposal `OrderProposed.OccurredAtUtc` → fill `TradeResult.OpenedAtUtc`, joined on
+  `OrderId`) + median/mean/min/max distribution. Pure `EntryLatencyAnalyzer` (Infrastructure); I/O in
+  `LedgerReconcileService.BuildEntryLatencyAsync`. NO cBot/kernel change; golden untouched (no rebaseline).
+- **F2 measured credential-free** from the kept audit DB (`src/TradingEngine.Web/data/trading.db`): tape
+  3660s = 1.017 H1 bars (= 1 M1 past the decision-bar close), cTrader 7200s = 2.0 bars → **venue gap
+  3540s ≈ 1 decision bar**. Number in `docs/audit/RECONCILE-FINDINGS.md` §P0.4 + evidence file.
 
 **Gates GREEN (commands):** `dotnet build TradingEngine.slnx -c Debug` → 0 err/5 warn; Unit `--no-build`
-→ 522/0/6; fast Sim filter `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ&Category!=CtraderContract`
-→ 144/0/0; golden `FullyQualifiedName~Golden` → 61/61 byte-identical; Integration → 107/0/0 (+3).
+→ 528/0/6; fast Sim `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ&Category!=CtraderContract`
+→ 144/0/0; golden `FullyQualifiedName~Golden` → 61/61 byte-identical (diff-stat empty); Integration → 108/0/0.
 
-**Next step:** **P0.4 (entry-latency instrumentation, F2, Q4 measure-first)** — reconcile output gains
-per-trade `entryDelayBars` (+seconds) proposal→fill for BOTH runs + a per-run distribution summary. NO
-cBot behavior change. Reconcile endpoint = `GET /api/backtest/analytics/reconcile?left&right`. Gate: a
-paired mini-run reconcile shows tape delay ≈1 M1 bar + quantifies the cTrader delay → the number goes in
-`docs/audit/RECONCILE-FINDINGS.md` as F2 evidence. A number in that doc IS the gate output (measure-only).
+**Next step:** **P0 spine is complete → start P1.1 (one database, F10)** — single DB path shared by Web +
+Host CLI; startup fails loud on pending migrations with the exact path; archive stale root
+`data/trading.db` (check BacktestRuns count first); `compute-reference-scales` populates 84/84 cells.
+See PLAN §4 P1.1 + AUDIT F10. Then P1.2 (config propagation/drift, F9/F7).
 
-**Open traps:** (1) DON'T attempt a live cTrader run to "verify" P0.2/P0.3 — needs creds (STOP condition,
-the trap that stalled a prior session); both are proven credential-free. P0.2 real 3× headless + P0.3
-real BTC-scenario are OWNER-PENDING. (2) Golden has NOT moved P0.1→P0.3 — do not phantom-rebaseline; the
-P0.3 EffectExecutor refactor is a pure extraction (verify with `git diff --stat -- *golden-snapshot.json`
-= empty). (3) P0.4 is MEASURE-ONLY — do not rebuild the cBot loop unless the measurement shows >1-bar or
-variable lag (Q4). (4) `BuildInfo.g.cs` (cBot) regenerates every build → re-dirties; leave it uncommitted.
-(5) `.conductor/` orchestrator-managed, untracked. (6) `npx tsc --noEmit` has 2 PRE-EXISTING errors (P5).
-(7) P2.2 OWNER-GATE. (8) Root container now has a `Func<string,string,decimal>` cross-rate provider (added
-for the barrier backfill) using CrossRateStore defaults — fine for currency-tagging; live runs still use
-the per-run engine host's own CrossRateStore.
+**Open traps:** (1) **F6-R (NEW):** the audited F6 run `f7b0538d` has 0 journalled PublishTradeClosed
+(closes came via 7 Reconcile events, lost before journalling) → P0.3's barrier finds expected=0, emits no
+warning → still TotalTrades=0. P0.3 fixes the persistence-channel-loss F6 case (successful cTrader runs DO
+journal PublishTradeClosed) but NOT the crashed-teardown case. Owner decision needed (options a/b/c in
+TRACKER P0.3 residual row). Do NOT fix blind — STOP condition (kernel/adapter reconcile-close semantics).
+(2) All P0 real cTrader runs (P0.1/P0.2/P0.3/P0.4) are OWNER-PENDING (creds) — do NOT attempt live runs to
+"verify"; all are proven credential-free. (3) Golden has NOT moved through P0.4 — no phantom rebaseline.
+(4) `BuildInfo.g.cs` (cBot) re-dirties every build; leave it uncommitted. (5) `.conductor/` untracked,
+orchestrator-managed. (6) `npx tsc --noEmit` has 2 PRE-EXISTING errors (P5). (7) P2.2 OWNER-GATE.
