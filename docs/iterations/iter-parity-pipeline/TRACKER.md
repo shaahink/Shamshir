@@ -17,20 +17,18 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s26 build fix** (bee34c6, 90e484a) — Angular staleness guard + toast files
-stage: **P6 IN PROGRESS** — P6.1-P6.4 delivered; P6.5-P6.8 remain TODO.
-gate: GREEN — build 0err/5warn; Unit 666/0/6; Integration 120/0/0;
+last: **s27 P6.5 block-bootstrap tapes** (23bed7c)
+stage: **P6 IN PROGRESS** — P6.1-P6.5 delivered; P6.6-P6.8 remain TODO.
+gate: GREEN — build 0err/5warn; Unit 676/0/6; Integration 120/0/0;
   fast Sim 144/0/0; golden byte-identical; tsc 0 errors
-next: **P6.5 block-bootstrap tapes** (PLAN §9 #5)
-trap: (1) Session labels not wired into TradeExcursions. (2) SpreadVolNoTradeFilter
-  no strategy config wiring. (3) Playbook 3 (triage-sweep.json) not created.
-  (4) BuildInfo.g.cs + build-info.ts dirty each build (leave). (5) SaveCalibration
-  uses DateTime.UtcNow (pre-existing). (6) EntityAuditableTests red on
-  ExitCalibrationEntity (pre-existing).
-fix(s26): Removed Angular auto-rebuild from dotnet build — .NET 10 SDK evaluates
-  @(Content) before targets, making mid-build ng build impossible. Replaced with
-  staleness guard that fails fast with clear message. Toast files (s21 regression)
-  committed.
+next: **P6.6 meta-allocator** (PLAN §9 #4) or **P6.7 entry-quality decomposition** (§9 #8)
+trap: (1) Session labels not wired into TradeExcursions.
+  (2) SpreadVolNoTradeFilter no strategy config wiring.
+  (3) Playbook 3 (triage-sweep.json) not created.
+  (4) BlockBootstrapper writes bars to real MarketData table — synthetic
+  bars need cleanup after runs or a dedicated table. (5) Bootstrap
+  controller uses DateTime.UtcNow directly (unavoidable — no IEngineClock
+  in Web API path).
 
 ## Checkpoints
 
@@ -112,7 +110,7 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P6.2 | Wild list: session fingerprinting (SessionDetector + playbook) | DONE | 1598970 | SessionDetector 17 tests; playbooks/session-fingerprint.json; exported constants for pipeline report dimension |
 | P6.3 | Wild list: spread/vol no-trade filter (SpreadVolNoTradeFilter + playbook) | DONE | e6c45aa | SpreadVolNoTradeFilter 6 tests; playbooks/spread-vol-filter.json; blocks trades on excess spread OR ATR |
 | P6.4 | Wild list: regime-conditioned calibration | DONE | 611d26d | docs: commit body; playbooks/regime-calibration.json; RegimePlaybook_HasPerRegimeExitLabSteps test (Unit); ShippedPlaybook_Parses 6/6; ExitLabController Evaluate() partitions by SessionDetector regime, optional filter, RegimeBreakdown in response |
-| P6.5 | Wild list: block-bootstrap tapes | TODO | | |
+| P6.5 | Wild list: block-bootstrap tapes | DONE (OWNER-PENDING — needs live app up to exercise endpoint end-to-end) | 23bed7c | playbooks/block-bootstrap.json; BlockBootstrapperTests 9/9 (Unit); ShippedPlaybook_Parses 5/5 |
 | P6.6 | Wild list: meta-allocator | TODO | | |
 | P6.7 | Wild list: entry-quality decomposition | TODO | | |
 | P6.8 | Wild list: pyramiding policy | TODO | | |

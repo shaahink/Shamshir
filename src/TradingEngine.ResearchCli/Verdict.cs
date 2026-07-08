@@ -40,4 +40,13 @@ public readonly record struct VerdictField(string Key, string Value)
 
     public static VerdictField Of(string key, int value) =>
         new(key, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    public static VerdictField Of(string key, long value) =>
+        new(key, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    public static VerdictField Of(string key, decimal value) =>
+        new(key, value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+
+    public static VerdictField Of(string key, double value) =>
+        new(key, value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
 }

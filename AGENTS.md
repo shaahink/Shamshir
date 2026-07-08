@@ -232,23 +232,22 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** 90e484a (s26, build fix)
-**Session (s26, build fix):** Reproduced + fixed the Conductor's build failure.
-  Root cause: .NET 10 SDK evaluates @(Content) items at project evaluation time
-  (before any targets run). When ng build ran inside dotnet build, it changed
-  content-hash filenames in wwwroot, but MSBuild already collected the old
-  filenames. DefineStaticWebAssets then failed "No file exists for the asset."
-  Fix: Replaced auto-rebuild with staleness guard — if src > wwwroot, fail early
-  with clear message. User runs `npm run build` first. Also committed missing
-  toast files (toast.component.ts, toast.service.ts) omitted from s21 commit
-  2e6fb66 (app.component.ts already imported them).
-**Gates GREEN:** build 0err/5warn; Unit 666/0/6; Integration 120/0/0;
+**Branch:** `iter/parity-pipeline` — **HEAD:** TBD (s27, P6.5 block-bootstrap)
+**Session (s27, P6.5):** Delivered BlockBootstrapper + API endpoint + ResearchCli step
+  + measuring playbook. BlockBootstrapper reads bars, partitions into weekly blocks,
+  resamples with replacement to generate N synthetic tapes, and remaps timestamps.
+  API endpoint writes synthetic bars to MarketDataShard (source="bootstrap-{id}"),
+  starts tape backtests via IBacktestCommandService. ResearchCli step kind
+  "block-bootstrap" polls runs and reports DD distribution (min/median/max/mean).
+**Gates GREEN:** build 0err/5warn; Unit 676/0/6; Integration 120/0/0;
   fast Sim 144/0/0; golden byte-identical; tsc 0 errors.
-**Next step:** P6.5 block-bootstrap tapes (PLAN §9 #5).
+**Next step:** P6.6 meta-allocator (PLAN §9 #4).
 **Open traps:** (1) Session labels not wired into TradeExcursions.
-  (2) SpreadVolNoTradeFilter has no strategy config wiring.
-  (3) Playbook 3 (triage-sweep.json) never created.
-  (4) BuildInfo.g.cs + build-info.ts re-dirty each build (leave).
-  (5) SaveCalibration uses DateTime.UtcNow (pre-existing).
+  (2) SpreadVolNoTradeFilter no strategy config wiring.
+  (3) Playbook 3 (triage-sweep.json) not created.
+  (4) BlockBootstrapper writes synthetic bars to real MarketDataShard — needs
+  cleanup mechanism post-run or a dedicated BootstrapBar table.
+  (5) BlockBootstrapController uses DateTime.UtcNow (no IEngineClock in API path).
   (6) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
+  (7) QA-previous (s26): confirmed — full gate battery re-run verbatim.
 

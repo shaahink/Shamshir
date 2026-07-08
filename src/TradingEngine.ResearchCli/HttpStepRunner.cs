@@ -41,6 +41,7 @@ public sealed class HttpStepRunner : IStepRunner
             StepKinds.WalkForward => await WalkForwardAsync(step, ct),
             StepKinds.OwnerGate => OwnerGate(step),
             StepKinds.ApplyCalibration => await ApplyCalibrationAsync(step, ct),
+            StepKinds.BlockBootstrap => await BlockBootstrapAsync(step, context, ct),
             StepKinds.Report => await Report(step, context),
             _ => StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "unknown-step")).Render()),
         };
@@ -219,6 +220,115 @@ public sealed class HttpStepRunner : IStepRunner
             VerdictField.Of("reason", reason)).Render());
     }
 
+    private async Task<StepOutcome> BlockBootstrapAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var symbol = Str(step, "symbol") ?? "EURUSD";
+        var tf = Str(step, "tf") ?? "H1";
+        var from = Str(step, "from") ?? "2024-01-01";
+        var to = Str(step, "to") ?? "2024-07-01";
+        var n = Int(step, "n", 100);
+        var blockSize = Str(step, "blockSize") ?? "week";
+        var strategyIds = StrArray(step, "strategyIds");
+        var balance = Int(step, "balance", 100_000);
+        var timeout = Int(step, "timeout", 1800);
+
+        var body = $@"{{
+            ""symbol"": ""{symbol}"",
+            ""timeframe"": ""{tf}"",
+            ""from"": ""{from}"",
+            ""to"": ""{to}"",
+            ""n"": {n},
+            ""blockSize"": ""{blockSize}"",
+            ""strategyIds"": [{string.Join(",", strategyIds.Select(s => $"\"{s}\""))}],
+            ""balance"": {balance}
+        }}";
+
+        var json = await _client.PostAsync("api/research/block-bootstrap", body, ct);
+        if (json is null)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-response")).Render());
+
+        var tapeCount = ParseInt(json, "tapeCount");
+        var runIds = ParseStringArray(json, "runIds");
+
+        context.Values["block-bootstrap:tapeCount"] = tapeCount.ToString();
+        context.Values["block-bootstrap:runIds"] = string.Join(",", runIds);
+
+        var completed = 0;
+        var failed = 0;
+        var ddPcts = new List<decimal>();
+        var netPnls = new List<decimal>();
+        var tradeCounts = new List<int>();
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeout));
+
+        while (completed + failed < runIds.Length && !cts.IsCancellationRequested)
+        {
+            await Task.Delay(_pollInterval, ct);
+            completed = 0;
+            failed = 0;
+            ddPcts.Clear();
+            netPnls.Clear();
+            tradeCounts.Clear();
+
+            foreach (var id in runIds)
+            {
+                var runJson = await _client.GetAsync($"api/runs/{id}", cts.Token);
+                if (runJson is null) continue;
+
+                var status = ParseString(runJson, "status") ?? "";
+                var isTerminal = status is "completed" or "completed-with-warnings" or "failed" or "cancelled";
+                if (!isTerminal) continue;
+
+                if (status is "completed" or "completed-with-warnings")
+                {
+                    completed++;
+                    ddPcts.Add((decimal?)(ParseDouble(runJson, "maxDrawdownPct") ?? 0) ?? 0);
+                    netPnls.Add((decimal)(ParseDouble(runJson, "netProfit") ?? 0));
+                    tradeCounts.Add(ParseInt(runJson, "totalTrades"));
+                }
+                else
+                {
+                    failed++;
+                }
+            }
+        }
+
+        if (completed + failed == 0)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "timeout")).Render());
+
+        var fields = new List<VerdictField>
+        {
+            VerdictField.Of("tapes-generated", tapeCount),
+            VerdictField.Of("runs-completed", completed),
+            VerdictField.Of("runs-failed", failed),
+        };
+
+        if (ddPcts.Count > 0)
+        {
+            var sorted = ddPcts.OrderBy(d => d).ToList();
+            fields.Add(VerdictField.Of("dd-min", sorted[0]));
+            fields.Add(VerdictField.Of("dd-median", sorted[sorted.Count / 2]));
+            fields.Add(VerdictField.Of("dd-max", sorted[^1]));
+            fields.Add(VerdictField.Of("dd-mean", Math.Round(sorted.Average(), 2)));
+        }
+
+        if (netPnls.Count > 0)
+        {
+            var sorted = netPnls.OrderBy(d => d).ToList();
+            fields.Add(VerdictField.Of("pnl-min", sorted[0]));
+            fields.Add(VerdictField.Of("pnl-median", sorted[sorted.Count / 2]));
+            fields.Add(VerdictField.Of("pnl-max", sorted[^1]));
+        }
+
+        if (tradeCounts.Count > 0)
+        {
+            fields.Add(VerdictField.Of("trades-mean", Math.Round(tradeCounts.Average(), 1)));
+        }
+
+        return failed == 0
+            ? StepOutcome.Pass(Verdict.Passing(fields.ToArray()).Render())
+            : StepOutcome.Fail(Verdict.Failing(fields.ToArray()).Render());
+    }
+
     private async Task<StepOutcome> Report(PlaybookStep step, PipelineContext context)
     {
         // A report step summarizes the context's accumulated values into a markdown file written to the
@@ -315,6 +425,30 @@ public sealed class HttpStepRunner : IStepRunner
 
     private static List<string> SplitCsv(string? csv) =>
         string.IsNullOrWhiteSpace(csv) ? [] : [.. csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+    private static int ParseInt(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty(key, out var el)
+            && el.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? el.GetInt32() : 0;
+    }
+
+    private static double? ParseDouble(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty(key, out var el)
+            && el.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? el.GetDouble() : null;
+    }
+
+    private static string[] ParseStringArray(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty(key, out var el) || el.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return [];
+        return el.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s.Length > 0).ToArray();
+    }
 
     private static DateTime? Date(PlaybookStep step, string key) =>
         DateTime.TryParse(Str(step, key), System.Globalization.CultureInfo.InvariantCulture,
