@@ -65,12 +65,49 @@ public sealed class Kernel(KernelConfig config) : IKernel
         var positionId = posDecision.State.Positions.Values
             .FirstOrDefault(x => x.OrderId == p.OrderId)?.PositionId ?? p.OrderId;
 
-        var effects = new List<EngineEffect>(posDecision.Effects)
+        // R7/P0.1 (F1): make the sizing decision self-describing on the journal. The accept-path
+        // DecisionRecord (emitted by PositionLifecycle as "Accepted" with DetailJson "{}") is rewritten
+        // to carry the gate's resolved sizing inputs+outputs, so a venue divergence (e.g. equityAtGate
+        // 25k vs 100k → ¼ lots) is visible in the journal instead of requiring DB archaeology.
+        var enriched = new List<EngineEffect>(posDecision.Effects.Count);
+        for (var i = 0; i < posDecision.Effects.Count; i++)
+        {
+            if (posDecision.Effects[i] is RecordDecisionEvent rde && gate.Sizing is { } s)
+            {
+                enriched.Add(new RecordDecisionEvent(rde.Decision with { DetailJson = SizingDetailJson(s) }));
+            }
+            else
+            {
+                enriched.Add(posDecision.Effects[i]);
+            }
+        }
+
+        var effects = new List<EngineEffect>(enriched)
         {
             new SubmitOrder(p.OrderId, p.Symbol, p.Direction, gate.Lots, p.LimitPrice, p.StopLoss, p.TakeProfit, p.StrategyId, p.OrderType, p.Entry),
             new RegisterRisk(positionId, p.StrategyId, gate.RiskAmount),
         };
         return new EngineDecision(posDecision.State, effects);
+    }
+
+    // Compact, culture-invariant sizing story for the journal (R7). Kept in-kernel so the pure decision
+    // core owns its own observability payload; serialized with invariant formatting for byte-stable replay.
+    private static string SizingDetailJson(KernelSizing.SizingBreakdown s)
+    {
+        static string D(decimal v) => v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        static string F(double v) => v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return "{"
+            + $"\"equityAtGate\":{D(s.EquityAtGate)},"
+            + $"\"drawdownScale\":{D(s.DrawdownScale)},"
+            + $"\"lotSizingMethod\":\"{s.Method}\","
+            + $"\"riskPct\":{F(s.RiskPct)},"
+            + $"\"kellyFraction\":{F(s.KellyFraction)},"
+            + $"\"slPips\":{D(s.SlPips)},"
+            + $"\"pipValuePerLot\":{D(s.PipValuePerLot)},"
+            + $"\"rawLots\":{D(s.RawLots)},"
+            + $"\"clampedLots\":{D(s.Lots)},"
+            + $"\"riskAmount\":{D(s.RiskAmount)}"
+            + "}";
     }
 
     private EngineDecision DecideEquity(EngineState state, EquityObserved eq)

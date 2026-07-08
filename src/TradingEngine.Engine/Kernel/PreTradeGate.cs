@@ -24,10 +24,10 @@ namespace TradingEngine.Engine;
 /// </summary>
 public static class PreTradeGate
 {
-    public readonly record struct GateResult(bool Accepted, decimal Lots, decimal RiskAmount, string? RejectReason)
+    public readonly record struct GateResult(bool Accepted, decimal Lots, decimal RiskAmount, string? RejectReason, KernelSizing.SizingBreakdown? Sizing = null)
     {
         public static GateResult Reject(string reason) => new(false, 0m, 0m, reason);
-        public static GateResult Accept(decimal lots, decimal riskAmount) => new(true, lots, riskAmount, null);
+        public static GateResult Accept(decimal lots, decimal riskAmount, KernelSizing.SizingBreakdown sizing) => new(true, lots, riskAmount, null, sizing);
     }
 
     public static GateResult Evaluate(
@@ -140,8 +140,9 @@ public static class PreTradeGate
         // 5. Sizing (H5/H6).
         var drawdownScale = (decimal)KernelSizing.ComputeScaleFactor(
             state.Drawdown.CurrentMaxDrawdown, c.MaxTotalLoss, profile.DrawdownScaleThreshold, profile.DrawdownScaleFloor);
-        var lots = KernelSizing.Calculate(
+        var breakdown = KernelSizing.Explain(
             equity, profile, p.SlPips, p.PipValuePerLot, drawdownScale, symbol.MaxLots, symbol.MinLots, symbol.LotStep);
+        var lots = breakdown.Lots;
         if (lots <= 0)
         {
             return GateResult.Reject("ZERO_LOTS");
@@ -218,7 +219,10 @@ public static class PreTradeGate
             }
         }
 
-        return GateResult.Accept(lots, riskAmount);
+        // The budget loop above may have downsized lots (and thus riskAmount); reflect the FINAL
+        // decision in the journaled breakdown so DetailJson never disagrees with the accepted lots.
+        var finalBreakdown = breakdown with { Lots = lots, RiskAmount = riskAmount };
+        return GateResult.Accept(lots, riskAmount, finalBreakdown);
     }
 
     private static decimal SumWorstCase(IReadOnlyList<ProjectedPosition> open)

@@ -40,6 +40,24 @@ public static class KernelSizing
     }
 
     /// <summary>
+    /// The sizing decision made observable (P0.1/R7): the resolved intermediate values behind the final
+    /// clamped <see cref="Lots"/>, so a venue-parity divergence (F1) is visible in the journal instead of
+    /// requiring DB archaeology. <see cref="RawLots"/> is the unclamped candidate; <see cref="Lots"/> is
+    /// after step/min/max clamping; <see cref="RiskAmount"/> is the clamped worst-case stop loss in money.
+    /// </summary>
+    public readonly record struct SizingBreakdown(
+        string Method,
+        decimal EquityAtGate,
+        double RiskPct,
+        double KellyFraction,
+        decimal DrawdownScale,
+        decimal SlPips,
+        decimal PipValuePerLot,
+        decimal RawLots,
+        decimal Lots,
+        decimal RiskAmount);
+
+    /// <summary>
     /// Size a candidate order. <paramref name="slPips"/> is the stop distance in pips and
     /// <paramref name="pipValuePerLot"/> the cross-rate-aware pip value (both supplied by the evaluator
     /// via <see cref="OrderProposed"/>). Returns lots clamped to the symbol's step/min/max.
@@ -47,29 +65,54 @@ public static class KernelSizing
     public static decimal Calculate(
         decimal equity, RiskProfile profile, decimal slPips, decimal pipValuePerLot,
         decimal drawdownScale, decimal maxLots, decimal minLots, decimal lotStep)
+        => Explain(equity, profile, slPips, pipValuePerLot, drawdownScale, maxLots, minLots, lotStep).Lots;
+
+    /// <summary>
+    /// Same math as <see cref="Calculate"/> (the final <see cref="SizingBreakdown.Lots"/> is byte-identical),
+    /// but also returns the resolved inputs+intermediates for the journal (R7). The kernel calls this so the
+    /// <c>OrderProposed</c> DecisionRecord carries the sizing story; <see cref="Calculate"/> delegates here.
+    /// </summary>
+    public static SizingBreakdown Explain(
+        decimal equity, RiskProfile profile, decimal slPips, decimal pipValuePerLot,
+        decimal drawdownScale, decimal maxLots, decimal minLots, decimal lotStep)
     {
+        var method = profile.LotSizingMethod.ToString();
+
         if (slPips <= 0 || pipValuePerLot <= 0)
         {
-            return 0m;
+            return new SizingBreakdown(method, equity, profile.RiskPerTradePercent, profile.KellyFraction,
+                drawdownScale, slPips, pipValuePerLot, 0m, 0m, 0m);
         }
 
-        return profile.LotSizingMethod switch
+        var (rawLots, lots) = profile.LotSizingMethod switch
         {
             // H6: apply the drawdown scale to fixed methods too.
-            LotSizingMethod.FixedLots => Clamp(profile.FixedLots * drawdownScale, maxLots, minLots, lotStep),
-            LotSizingMethod.FixedDollarRisk => FromRiskAmount(profile.FixedDollarRisk * drawdownScale, slPips, pipValuePerLot, maxLots, minLots, lotStep),
-            LotSizingMethod.KellyFraction => FromRiskAmount(equity * (decimal)profile.RiskPerTradePercent * (decimal)profile.KellyFraction * drawdownScale, slPips, pipValuePerLot, maxLots, minLots, lotStep),
+            LotSizingMethod.FixedLots => RawAndClamped(profile.FixedLots * drawdownScale, maxLots, minLots, lotStep),
+            LotSizingMethod.FixedDollarRisk => RiskRawAndClamped(profile.FixedDollarRisk * drawdownScale, slPips, pipValuePerLot, maxLots, minLots, lotStep),
+            LotSizingMethod.KellyFraction => RiskRawAndClamped(equity * (decimal)profile.RiskPerTradePercent * (decimal)profile.KellyFraction * drawdownScale, slPips, pipValuePerLot, maxLots, minLots, lotStep),
             // H5: AntiMartingale is a real, EXPLICIT branch (no silent fall-through). TODO(deepseek): drive
             // the multiplier/steps off the recent-trade streak (profile.AntiMartingaleMultiplier /
             // AntiMartingaleMaxSteps) instead of treating it as plain PercentRisk.
-            LotSizingMethod.AntiMartingale => FromRiskAmount(equity * (decimal)profile.RiskPerTradePercent * drawdownScale, slPips, pipValuePerLot, maxLots, minLots, lotStep),
-            _ => FromRiskAmount(equity * (decimal)profile.RiskPerTradePercent * drawdownScale, slPips, pipValuePerLot, maxLots, minLots, lotStep),
+            LotSizingMethod.AntiMartingale => RiskRawAndClamped(equity * (decimal)profile.RiskPerTradePercent * drawdownScale, slPips, pipValuePerLot, maxLots, minLots, lotStep),
+            _ => RiskRawAndClamped(equity * (decimal)profile.RiskPerTradePercent * drawdownScale, slPips, pipValuePerLot, maxLots, minLots, lotStep),
         };
+
+        return new SizingBreakdown(method, equity, profile.RiskPerTradePercent, profile.KellyFraction,
+            drawdownScale, slPips, pipValuePerLot, rawLots, lots, lots * slPips * pipValuePerLot);
     }
 
     public static decimal FromRiskAmount(decimal riskAmount, decimal slPips, decimal pipValuePerLot, decimal maxLots, decimal minLots, decimal lotStep)
     {
         return Clamp(riskAmount / (slPips * pipValuePerLot), maxLots, minLots, lotStep);
+    }
+
+    private static (decimal Raw, decimal Clamped) RawAndClamped(decimal rawLots, decimal maxLots, decimal minLots, decimal lotStep)
+        => (rawLots, Clamp(rawLots, maxLots, minLots, lotStep));
+
+    private static (decimal Raw, decimal Clamped) RiskRawAndClamped(decimal riskAmount, decimal slPips, decimal pipValuePerLot, decimal maxLots, decimal minLots, decimal lotStep)
+    {
+        var raw = riskAmount / (slPips * pipValuePerLot);
+        return (raw, Clamp(raw, maxLots, minLots, lotStep));
     }
 
     private static decimal Clamp(decimal rawLots, decimal maxLots, decimal minLots, decimal lotStep)

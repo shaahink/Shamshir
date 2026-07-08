@@ -109,7 +109,7 @@ public static class EngineServiceCollectionExtensions
     {
         var catalog = new SymbolCatalog(options.SolutionRoot);
         var symbols = catalog.GetAll();
-        services.AddSingleton(new EngineRunContext(options.RunId) { DiagnosticsEnabled = options.DiagnosticsEnabled });
+        services.AddSingleton(new EngineRunContext(options.RunId) { DiagnosticsEnabled = options.DiagnosticsEnabled, InitialBalance = options.InitialBalance });
         services.AddSingleton(options.AdapterFactory);
 
         var symbolRegistry = new SymbolInfoRegistry();

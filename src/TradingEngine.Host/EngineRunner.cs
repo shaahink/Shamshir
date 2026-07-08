@@ -111,21 +111,43 @@ public sealed class EngineRunner
 
         await _broker.ConnectAsync(ct);
 
-        decimal initialBalance = _riskManager.InitialBalance > 0 ? _riskManager.InitialBalance : 10_000m;
+        decimal venueBalance = 0m, venueEquity = 0m;
         try
         {
             var accountState = await _broker.GetAccountStateAsync(ct);
-            if (accountState.Balance > 0)
-            {
-                initialBalance = accountState.Balance;
-                _riskManager.UpdateEquityLevels(accountState.Equity);
-                _logger.LogInformation("Startup reconciliation: Balance={Balance} Equity={Equity}",
-                    accountState.Balance, accountState.Equity);
-            }
+            venueBalance = accountState.Balance;
+            venueEquity = accountState.Equity;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Startup reconciliation failed — continuing with clean state");
+        }
+
+        var resolution = ResolveInitialBalance(
+            _engineMode, _runContext.InitialBalance, _riskManager.InitialBalance, venueBalance);
+        decimal initialBalance = resolution.InitialBalance;
+
+        // Keep the legacy RiskManager equity tracker seeded (it was always seeded at startup pre-P0.1).
+        // Live/paper adopt the venue equity; backtest seeds the RESOLVED (config) balance so the legacy
+        // tracker agrees with the kernel authority instead of the stale venue hello (F1).
+        if (resolution.AdoptVenueEquity)
+        {
+            _riskManager.UpdateEquityLevels(venueEquity);
+            _logger.LogInformation("Startup reconciliation: Balance={Balance} Equity={Equity}",
+                venueBalance, venueEquity);
+        }
+        else if (initialBalance > 0)
+        {
+            _riskManager.UpdateEquityLevels(initialBalance);
+        }
+        if (resolution.HasDrift)
+        {
+            // P0.1 (F1): the audited ¼-sizing bug — a cTrader demo hello reporting 25k overrode the
+            // configured 100k, so every gate sized at ¼ risk on the cTrader leg. In backtest the config
+            // balance is authoritative; a disagreeing venue balance is recorded here, never adopted.
+            _logger.LogWarning(
+                "Startup balance drift: venue reported Balance={VenueBalance} but backtest uses configured InitialBalance={ConfigBalance} — venue value NOT adopted (F1 parity guard)",
+                venueBalance, _runContext.InitialBalance);
         }
 
         await _indicatorSnapshot.WarmUpIndicatorsAsync(ct);
@@ -174,6 +196,42 @@ public sealed class EngineRunner
 
         _logger.LogInformation("Kernel engine stopped. Bars={Bars} OpenPositions={Open}",
             Interlocked.Read(ref _barCount), finalState.Positions.Count);
+    }
+
+    /// <summary>
+    /// P0.1 (F1) — pure, testable balance-source resolution. In BACKTEST mode the configured
+    /// initialBalance is authoritative and a disagreeing venue-reported balance is flagged as drift but
+    /// NEVER adopted (the audited ¼-sizing bug: a cTrader demo hello reporting 25k overrode config 100k →
+    /// every gate sized at ¼ risk). In LIVE/PAPER the venue balance is the truth and is adopted. Falls back
+    /// to the venue balance in backtest only when no configured balance is available, and to 10k as a last
+    /// resort — mirroring the pre-P0.1 default.
+    /// </summary>
+    public readonly record struct BalanceResolution(decimal InitialBalance, bool AdoptVenueEquity, bool HasDrift);
+
+    public static BalanceResolution ResolveInitialBalance(
+        EngineMode mode, decimal configBalance, decimal riskManagerBalance, decimal venueBalance)
+    {
+        // The configured backtest balance can arrive either on the run context (preferred, P0.1) or via a
+        // pre-initialized RiskManager drawdown (legacy/tests). Prefer the explicit run-context value.
+        var configured = configBalance > 0 ? configBalance : riskManagerBalance;
+
+        if (mode == EngineMode.Backtest)
+        {
+            if (configured > 0)
+            {
+                var hasDrift = venueBalance > 0 && venueBalance != configured;
+                return new BalanceResolution(configured, AdoptVenueEquity: false, HasDrift: hasDrift);
+            }
+            // No configured balance (older callers): fall back to the venue's, else 10k.
+            return new BalanceResolution(venueBalance > 0 ? venueBalance : 10_000m, AdoptVenueEquity: false, HasDrift: false);
+        }
+
+        // Live / paper: the venue balance is authoritative.
+        if (venueBalance > 0)
+        {
+            return new BalanceResolution(venueBalance, AdoptVenueEquity: true, HasDrift: false);
+        }
+        return new BalanceResolution(configured > 0 ? configured : 10_000m, AdoptVenueEquity: false, HasDrift: false);
     }
 
     private void FlushTimingReport(KernelBacktestLoop loop)
