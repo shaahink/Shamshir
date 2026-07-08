@@ -1,32 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 23:53 UTC · branch `iter/parity-pipeline` · HEAD `69b172c`_
+_Updated 2026-07-08 23:58 UTC · branch `iter/parity-pipeline` · HEAD `a2ab895`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P6 — Wild list (pipeline-gated) · attempts used 0 · working ▸ P6.8
-**Checkpoints:** 23/24 done · **Sessions run:** 31 · **Cost:** $2.9888 · **Tokens:** 3,258,227 in / 597,150 out / 321,306 think
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P6 — Wild list (pipeline-gated) · attempts used 0
+**Checkpoints:** 24/24 done · **Sessions run:** 31 · **Cost:** $3.1424 · **Tokens:** 3,469,423 in / 628,437 out / 334,037 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5
-
-## Latest activity (live)
-
-_Session #31 (Deliver) · running 15m · last output 2s ago · $0.0800_
-
-**Thinking:**
-> Now let me add the CLI verb and playbook step. Starting with Playbook.cs for the step kind.
-> Now add the CLI verb to Program.cs and the step handler to HttpStepRunner.cs.
-> Now I need to add the PyramidEvalAsync method to Program.cs and the usage info. Let me add it before the PrintUsage method.
-
-**Recent actions:**
-- `00:52:58` » edit src\TradingEngine.Web\Dtos\ExitLab\ExitLabDtos.cs
-- `00:52:58` · Now let me add all the remaining pieces. Starting with DTOs, API endpoint, CLI verb, and playbook step.
-- `00:53:19` » edit src\TradingEngine.Web\Api\ExitLabController.cs
-- `00:53:19` · Now let me add the endpoint to ExitLabController. I'll add it after the `GetRunExcursions` endpoint.
-- `00:53:26` » edit src\TradingEngine.Web\Api\ExitLabController.cs
-- `00:53:32` » edit src\TradingEngine.ResearchCli\Playbook.cs
-- `00:53:32` · Now let me add the step kind and CLI verb in parallel.
-- `00:53:37` » edit src\TradingEngine.ResearchCli\Program.cs
-- `00:53:37` · Now let me add the CLI verb and HttpStepRunner handler.
-- `00:53:48` » edit src\TradingEngine.ResearchCli\Program.cs
+**Pending:** auto-fix audit for P6
 
 ## Stage progress
 
@@ -38,7 +18,7 @@ _Session #31 (Deliver) · running 15m · last output 2s ago · $0.0800_
 | P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
 | P4 | Lab golden paths | 1/1 | confirmed ✓ |
 | P5 | UI truth + Angular refactor | 1/1 | confirmed ✓ |
-| P6 | Wild list (pipeline-gated) | 7/8 | **← active** |
+| P6 | Wild list (pipeline-gated) | 8/8 | gating… |
 
 ## Sessions
 
@@ -73,12 +53,10 @@ _Session #31 (Deliver) · running 15m · last output 2s ago · $0.0800_
 | 28 | P6 | Fix | 3 | 07-08 22:44 | 0:05 | Progress |  | 2 | build:OK | $0.0427 | 72,553/5,483 |
 | 29 | P6 | Deliver | 4 | 07-08 22:50 | 0:17 | Advanced | P6.6 | 2 | build:OK | $0.1689 | 279,442/20,530 |
 | 30 | P6 | Deliver | 1 | 07-08 23:08 | 0:28 | Advanced | P6.7 | 3 | build:OK | $0.2726 | 394,325/45,075 |
-| 31 | P6 | Deliver | 1 | 07-08 23:38 | … | running |  | 0 |  |  |  |
+| 31 | P6 | Deliver | 1 | 07-08 23:38 | 0:18 | Advanced | P6.8 | 2 | build:OK | $0.1536 | 211,196/31,287 |
 
 ### Commits by session
 
-- **s20 (P5 Fix)** — 1 commit(s):
-  - 6c6893f P5.1c-tscfix: fix 2 tsc errors blocking web-tsc gate (s20)
 - **s21 (P6 Deliver)** — 7 commit(s):
   - 36f5e0f docs(s21): update TRACKER + RESUME for P6.1-P6.3 delivery
   - e6c45aa feat(P6.3): spread/vol no-trade filter — SpreadVolNoTradeFilter + playbook
@@ -111,6 +89,9 @@ _Session #31 (Deliver) · running 15m · last output 2s ago · $0.0800_
   - 1a4e302 chore(s30): update RESUME + TRACKER for P6.7 delivery (061068c)
   - 061068c feat(P6.7): entry-quality decomposition — OLS diagnosis of trade-entry drivers (domain + tests + API + CLI + playbook)
   - 449ec79 chore(conductor): s30 P6 working ▸P6.7 @ 00:23
+- **s31 (P6 Deliver)** — 2 commit(s):
+  - a2ab895 feat(P6.8): pyramiding policy — diagnosis of structured adds over excursion paths
+  - e32f54b chore(conductor): s31 P6 working ▸P6.8 @ 00:53
 
 ## Phase handovers (audit)
 
@@ -127,20 +108,22 @@ build:OK
 
 ## Last session result
 
-> Starting pre-session ritual. Reading mandatory docs in order.
-> Now I'll run the QA gates for session s29 (P6.6). Starting with build and the fast verification battery.
-> Build: 0 errors, 5 warnings (pre-existing net6.0 TFM). Now running unit tests and fast simulation in parallel.
-> All gates GREEN. Now I'll independently verify two tracker claims: one from the runtime store, one from tests.
-> **QA-previous (s29 P6.6): CONFIRMED.** All gates: build 0err/5warn, Unit 689/0/6, Integration 120/0/0, fast Sim 144/0/0, golden 48/48 byte-identical (no git diff). Independently verified: (tests) MetaAllocatorTests 12/12; (runtime) ShippedPlaybook_Parses 8/8, meta-allocator.json exists on disk. No divergen…
+> Let me continue reading the rest of AGENTS.md and PLAN.md P6 section.
+> Now let me QA the previous session (s30 P6.7). I'll run the gate battery and read the relevant docs in parallel.
+> Build is green (0 errors, 5 warnings — same 5 net6.0 TFM warnings). Now running the full gate battery and searching DECISIONS.md for relevant decisions.
+> Gates match RESUME exactly. Now checking golden tests and reading the pyramiding context from the original plan.
+> Golden: 61 passed, 0 failed. All gates match. Now let me independently verify TWO claims from the previous session (P6.7) — one runtime (R5), one tests.
+> QA confirmed: EntryDiagnosisTests 11/11, playbooks/entry-quality.json exists. Now let me expl…
 
 ## Tracker handoff
 
 ```
-last: **s30 P6.7 entry-quality decomposition** — EntryDiagnosis OLS domain + API + CLI verb + playbook
-stage: **P6 IN PROGRESS** — P6.1-P6.7 delivered; P6.8 pyramiding policy remains TODO.
-gate: GREEN — build 0err/5warn; Unit 701/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden 48/48 byte-identical
-next: **P6.8 pyramiding policy** (PLAN §9 #9)
+last: **s31 P6.8 pyramiding policy** — PyramidDiagnosis domain (12 tests) + API + CLI + playbook
+stage: **P6 COMPLETE** — all P6.1-P6.8 delivered.
+gate: GREEN — build 0err/5warn; Unit 714/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden 61/61; ShippedPlaybook_Parses 10/10
+next: P6 wild list complete. Next per owner: P3.5 triage-sweep playbook (trap #3)
+  or P7 beyond wild list.
 trap: (1) Session labels not wired into TradeExcursions.
   (2) SpreadVolNoTradeFilter no strategy config wiring.
   (3) Playbook 3 (triage-sweep.json) not created.
