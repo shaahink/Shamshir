@@ -1,32 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 20:26 UTC · branch `iter/parity-pipeline` · HEAD `46ba5ab`_
+_Updated 2026-07-08 20:29 UTC · branch `iter/parity-pipeline` · HEAD `a057a6b`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P5 — UI truth + Angular refactor · attempts used 0
-**Checkpoints:** 16/17 done · **Sessions run:** 19 · **Cost:** $1.5309 · **Tokens:** 1,154,422 in / 403,542 out / 193,567 think
+**Checkpoints:** 16/17 done · **Sessions run:** 19 · **Cost:** $1.6049 · **Tokens:** 1,233,242 in / 416,344 out / 209,121 think
 **Confirmed phases:** P0, P1, P2, P3, P4
-
-## Latest activity (live)
-
-_Session #19 (Audit) · running 30m · last output 0s ago · $0.0602_
-
-**Thinking:**
-> Golden is byte-identical. All 3 golden determinism tests pass.  Now let me commit the fixes. Let me check the diff first.
-> The diff looks clean. Let me now commit these audit fixes with a clear message. The changes are all in one file (BacktestOrchestrator.cs).  Let me verify git status first.
-> The `BuildInfo.g.cs` and `build-info.ts` are auto-generated build artifacts that change on every build. I should NOT commit those. Let me only commit the BacktestOrchestrator.cs file.
-
-**Recent actions:**
-- `21:18:27` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --filter "FullyQualifiedName~KernelBacktestLoop|FullyQualifiedName~KernelEvaluator|FullyQualified…
-- `21:21:42` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --filter "FullyQualifiedName~Scenarios|FullyQualifiedName~Risk|FullyQualifiedName~PositionManagem…
-- `21:25:14` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --filter "FullyQualifiedName~Scenarios|FullyQualifiedName~Risk|FullyQualifiedName~PositionManagem…
-- `21:25:28` » todowrite 3 todos
-- `21:25:28` · The 2 failures (`NetMQBridgeTest`, `PipelineE2ETests.EurUsd_H1_3Days`) are pre-existing infrastructure-dependent tests (cTrader/NetMQ credentials). Not related …
-- `21:26:20` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --filter "GoldenReplay_MatchesBaseline|KernelFullRun_MatchesGolden|Journal_Determinism_ByteIdenti…
-- `21:26:28` · Golden byte-identical: 3/3 golden determinism tests pass. Now let me commit the fixes.
-- `21:26:28` » bash git diff src/TradingEngine.Web/Services/BacktestOrchestrator.cs
-- `21:26:35` » bash git status --short
-- `21:26:45` » bash git add src/TradingEngine.Web/Services/BacktestOrchestrator.cs; git commit -m "audit(P5): fix idempotency race + completed-with-warnings progress  B1 (CRIT…
+**Pending:** full-battery phase gate for P5
 
 ## Stage progress
 
@@ -62,16 +42,10 @@ _Session #19 (Audit) · running 30m · last output 0s ago · $0.0602_
 | 16 | P4 | Deliver | 1 | 07-08 18:46 | 0:27 | Advanced | P4.1 | 3 | build:OK | $0.1892 | 229,115/27,015 |
 | 17 | P4 | Audit | 1 | 07-08 19:14 | 0:07 | Progress |  | 2 |  | $0.0458 | 50,008/12,348 |
 | 18 | P5 | Deliver | 1 | 07-08 19:23 | 0:32 | Advanced | P5.1 | 6 | build:OK | $0.2486 | 311,603/29,675 |
-| 19 | P5 | Audit | 1 | 07-08 19:56 | … | running |  | 0 |  |  |  |
+| 19 | P5 | Audit | 1 | 07-08 19:56 | 0:32 | Progress |  | 5 |  | $0.0740 | 78,820/12,802 |
 
 ### Commits by session
 
-- **s10 (P2 Deliver)** — 5 commit(s):
-  - ab1805f docs(P2,P3): tracker + RESUME + evidence — P2.1 DONE, P2.2 OWNER-PENDING, P3.1 foundation
-  - 0de44c2 feat(P3.1): TradingEngine.ResearchCli foundation — HTTP driver + machine verdicts
-  - 3979871 chore(conductor): s10 P2 working ▸P2.1 @ 17:42
-  - ccf6aa4 feat(P2.1,F8): run lifecycle state machine — forbid illegal jumps in ONE place
-  - 4b5e8b5 chore(conductor): s10 P2 working ▸P2.1 @ 17:27
 - **s11 (P2 Audit)** — 4 commit(s):
   - b96df2c docs(P2): honest phase handover — audit verdict, fixed bugs, OWNER-PENDING P2.2, risks for P3
   - bce458d fix(P3.1): deterministic await-timeout verdict in `research run await`
@@ -106,6 +80,12 @@ _Session #19 (Audit) · running 30m · last output 0s ago · $0.0602_
   - 87f5a5c feat(P5.1b): F15 start button pending state + idempotency key
   - 587e129 chore(conductor): s18 P5 working ▸P5.1 @ 20:38
   - 8fadd58 feat(P5.1a): F13 equity truth — nullable equity in progress envelopes, no 0-anchor
+- **s19 (P5 Audit)** — 5 commit(s):
+  - a057a6b docs: fix gitignore to un-ignore handovers directory before its contents
+  - bc0b7a4 docs: s19 audit — P5 honest handover (4 fixes, 1 deferred, all gates green)
+  - 3a13476 chore(conductor): s19 P5 working ▸P5 @ 21:26
+  - 46ba5ab audit(P5): fix idempotency race + completed-with-warnings progress
+  - d29a177 chore(conductor): s19 P5 working ▸P5 @ 21:11
 
 ## Phase handovers (audit)
 
@@ -114,6 +94,7 @@ _Session #19 (Audit) · running 30m · last output 0s ago · $0.0602_
 - `.conductor/handovers/P2.md`
 - `.conductor/handovers/P3.md`
 - `.conductor/handovers/P4.md`
+- `.conductor/handovers/P5.md`
 
 ## Last gate run
 
@@ -121,13 +102,7 @@ build:OK
 
 ## Last session result
 
-> Now let me check git state, read the workflow, and load the run-shamshir skill.
-> The M44 migration claim needs checking — the live DB shows M43 as head, not M44. Let me verify whether M44 exists on disk.
-> M44 migration file exists on disk but **not applied to the live DB** — this is a QA divergence. Let me run the full gate battery and then fix this.
-> M44 migration is on disk but not applied to the live DB. This is the QA divergence. Let me apply it.
-> No design-time factory — I'll apply M44 directly since it's two ALTER TABLE columns.
-> M44 applied. Now let me update the TRACKER QA verdict and explore the UI codebase before planning.
-> Now I have a complete picture. Let me produce the session …
+> SESSION-RESULT: P5 audit **PASS**. Found and fixed 4 bugs: B1 (CRITICAL — idempotency TOCTOU race fixed with double-checked locking), B2 (MEDIUM — unbounded dictionary growth capped at 10K), B3 (MEDIUM — `completed-with-warnings` progress bar now shows 100% instead of 99.9%), B5 (MEDIUM — `completed-with-warnings` now correctly sent as `RunCompleted` on join). 1 low-risk inconsistency (B4, TS nullable types on risk fields) deferred. All gates green: build 0err, unit 638/0/6, integration 120/0/0, simulation 198 pass (2 pre-existing infra failures), golden byte-identical. Handover written to `.conductor/handovers/P5.md` with full evidence paths, weakness disclosures, and concrete P6 follow-ups…
 
 ## Tracker handoff
 
