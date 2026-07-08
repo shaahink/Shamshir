@@ -28,6 +28,8 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<WalkForwardJobEntity> WalkForwardJobs => Set<WalkForwardJobEntity>();
     public DbSet<WalkForwardWindowResultEntity> WalkForwardWindowResults => Set<WalkForwardWindowResultEntity>();
     public DbSet<StrategyCellParkEntity> StrategyCellParks => Set<StrategyCellParkEntity>();
+    public DbSet<ResearchPipelineEntity> ResearchPipelines => Set<ResearchPipelineEntity>();
+    public DbSet<ResearchPipelineStepEntity> ResearchPipelineSteps => Set<ResearchPipelineStepEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,6 +44,8 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
         modelBuilder.ApplyConfiguration(new ReferenceScaleMapping());
         modelBuilder.ApplyConfiguration(new WalkForwardJobMapping());
         modelBuilder.ApplyConfiguration(new WalkForwardWindowResultMapping());
+        modelBuilder.ApplyConfiguration(new ResearchPipelineMapping());
+        modelBuilder.ApplyConfiguration(new ResearchPipelineStepMapping());
 
         modelBuilder.Entity<StrategyCellParkEntity>(e =>
         {
