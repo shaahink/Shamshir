@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 22:43 UTC · branch `iter/parity-pipeline` · HEAD `cf10399`_
+_Updated 2026-07-08 22:50 UTC · branch `iter/parity-pipeline` · HEAD `86fccbc`_
 
 **Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P6 — Wild list (pipeline-gated) · attempts used 4 · working ▸ P6.6
-**Checkpoints:** 21/24 done · **Sessions run:** 27 · **Cost:** $2.5046 · **Tokens:** 2,511,907 in / 526,062 out / 290,248 think
+**Stage:** P6 — Wild list (pipeline-gated) · attempts used 3 · working ▸ P6.6
+**Checkpoints:** 21/24 done · **Sessions run:** 28 · **Cost:** $2.5473 · **Tokens:** 2,584,460 in / 531,545 out / 294,753 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5
 
 ## Stage progress
@@ -50,12 +50,10 @@ _Updated 2026-07-08 22:43 UTC · branch `iter/parity-pipeline` · HEAD `cf10399`
 | 25 | P6 | Fix | 4 | 07-08 21:26 | 0:20 | GatesRed | P6.4 | 3 | build:FAIL | $0.1286 | 184,512/17,798 |
 | 26 | P6 | Fix | 3 | 07-08 21:48 | 0:31 | Progress |  | 5 | build:OK | $0.1876 | 252,592/21,235 |
 | 27 | P6 | Deliver | 4 | 07-08 22:21 | 0:21 | GatesRed | P6.5 | 3 | build:FAIL | $0.2596 | 408,004/23,666 |
+| 28 | P6 | Fix | 3 | 07-08 22:44 | 0:05 | Progress |  | 2 | build:OK | $0.0427 | 72,553/5,483 |
 
 ### Commits by session
 
-- **s17 (P4 Audit)** — 2 commit(s):
-  - 00f42df docs(P4): honest phase handover — audit findings, fixes, weaknesses, follow-ups
-  - c3d67aa fix(P4): audit hardening — edge-case guards + type sync
 - **s18 (P5 Deliver)** — 6 commit(s):
   - e9f7207 docs(P5.1): session s18 bookkeeping — P5.1a-c DONE, gates green, RESUME updated
   - 09fc807 feat(P5.1c): F16 compare-both child visibility + status chips + M45 migration
@@ -93,6 +91,9 @@ _Updated 2026-07-08 22:43 UTC · branch `iter/parity-pipeline` · HEAD `cf10399`
   - cf10399 docs(s27): update RESUME + TRACKER for P6.5 delivery
   - ea8d6b1 feat(P6.5): block-bootstrap tapes — synthetic bar generation via block resampling
   - 418c597 chore(conductor): s27 P6 working ▸P6.5 @ 23:36
+- **s28 (P6 Fix)** — 2 commit(s):
+  - 86fccbc docs(s28): update RESUME + TRACKER after angular staleness fix
+  - 6207473 fix(build): update build-stamp files for Angular rebuild after P6.5 UI changes
 
 ## Phase handovers (audit)
 
@@ -105,68 +106,22 @@ _Updated 2026-07-08 22:43 UTC · branch `iter/parity-pipeline` · HEAD `cf10399`
 
 ## Last gate run
 
-build:FAIL
-
-<details><summary>build — exit 1</summary>
-
-```
-TradingEngine.Adapters.CTrader -> C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\bin\Debug\net6.0\Shamshir.dll
-  TradingEngine.Domain -> C:\Code\Shamshir\src\TradingEngine.Domain\bin\Debug\net10.0\TradingEngine.Domain.dll
-  TradingEngine.Adapters.CTrader -> C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\bin\Debug\net6.0\src.algo
-  TradingEngine.Adapters.CTrader -> C:\Users\shahi\OneDrive\Documents\cAlgo\Sources\Robots\src.algo
-  TradingEngine.Engine -> C:\Code\Shamshir\src\TradingEngine.Engine\bin\Debug\net10.0\TradingEngine.Engine.dll
-  TradingEngine.ResearchCli -> C:\Code\Shamshir\src\TradingEngine.ResearchCli\bin\Debug\net10.0\research.dll
-  TradingEngine.Application -> C:\Code\Shamshir\src\TradingEngine.Application\bin\Debug\net10.0\TradingEngine.Application.dll
-  TradingEngine.Services -> C:\Code\Shamshir\src\TradingEngine.Services\bin\Debug\net10.0\TradingEngine.Services.dll
-  TradingEngine.Risk -> C:\Code\Shamshir\src\TradingEngine.Risk\bin\Debug\net10.0\TradingEngine.Risk.dll
-  TradingEngine.Strategies -> C:\Code\Shamshir\src\TradingEngine.Strategies\bin\Debug\net10.0\TradingEngine.Strategies.dll
-  TradingEngine.Infrastructure -> C:\Code\Shamshir\src\TradingEngine.Infrastructure\bin\Debug\net10.0\TradingEngine.Infrastructure.dll
-  TradingEngine.Experiments -> C:\Code\Shamshir\src\TradingEngine.Experiments\bin\Debug\net10.0\TradingEngine.Experiments.dll
-  TradingEngine.CTraderRunner -> C:\Code\Shamshir\src\TradingEngine.CTraderRunner\bin\Debug\net10.0\TradingEngine.CTraderRunner.dll
-  TradingEngine.Host -> C:\Code\Shamshir\src\TradingEngine.Host\bin\Debug\net10.0\TradingEngine.Host.dll
-  Angular: STALE! src (07/08/2026 23:40:08) is newer than wwwroot index.html.
-  
-  The Angular source has changed since the last build.
-  Re-run with:  npm --prefix C:\Code\Shamshir\web-ui run build
-  Then re-run dotnet build.
-  
-  The Angular output cannot be rebuilt inside dotnet build because
-  .NET 10's static web assets pipeline evaluates wwwroot before targets run.
-C:\Code\Shamshir\src\TradingEngine.Web\TradingEngine.Web.csproj(45,5): error MSB3073: The command "powershell -NoProfile -ExecutionPolicy Bypass -File "..\..\scripts\rebuild-ng-if-stale.ps1" -NgProjectDir "..\..\web-ui" -NgBuildStamp "C:\Code\Shamshir\src\TradingEngine.Web\wwwroot\.ng-build-stamp"" exited with code 1.
-  TradingEngine.Tests.Support -> C:\Code\Shamshir\tests\TradingEngine.Tests.Support\bin\Debug\net10.0\TradingEngine.Tests.Support.dll
-  TradingEngine.Tests.Architecture -> C:\Code\Shamshir\tests\TradingEngine.Tests.Architecture\bin\Debug\net10.0\TradingEngine.Tests.Architecture.dll
-  TradingEngine.Tests.Unit -> C:\Code\Shamshir\tests\TradingEngine.Tests.Unit\bin\Debug\net10.0\TradingEngine.Tests.Unit.dll
-  TradingEngine.Tests.Simulation -> C:\Code\Shamshir\tests\TradingEngine.Tests.Simulation\bin\Debug\net10.0\TradingEngine.Tests.Simulation.dll
-
-Build FAILED.
-
-C:\Users\shahi\.nuget\packages\system.formats.asn1\10.0.6\buildTransitive\netcoreapp2.0\System.Formats.Asn1.targets(4,5): warning : System.Formats.Asn1 10.0.6 doesn't support net6.0 and has not been tested with it. Consider upgrading your TargetFramework to net8.0 or later. You may also set <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings> in the project file to ignore this warning and attempt to run in this unsupported configuration at your own risk. [C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\TradingEngine.Adapters.CTrader.csproj]
-C:\Users\shahi\.nuget\packages\microsoft.bcl.cryptography\10.0.6\buildTransitive\netcoreapp2.0\Microsoft.Bcl.Cryptography.targets(4,5): warning : Microsoft.Bcl.Cryptography 10.0.6 doesn't support net6.0 and has not been tested with it. Consider upgrading your TargetFramework to net8.0 or later. You may also set <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings> in the project file to ignore this warning and attempt to run in this unsupported configuration at your own risk. [C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\TradingEngine.Adapters.CTrader.csproj]
-C:\Users\shahi\.nuget\packages\system.security.cryptography.pkcs\10.0.6\buildTransitive\netcoreapp2.0\System.Security.Cryptography.Pkcs.targets(4,5): warning : System.Security.Cryptography.Pkcs 10.0.6 doesn't support net6.0 and has not been tested with it. Consider upgrading your TargetFramework to net8.0 or later. You may also set <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings> in the project file to ignore this warning and attempt to run in this unsupported configuration at your own risk. [C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\TradingEngine.Adapters.CTrader.csproj]
-C:\Users\shahi\.nuget\packages\system.security.cryptography.xml\10.0.6\buildTransitive\netcoreapp2.0\System.Security.Cryptography.Xml.targets(4,5): warning : System.Security.Cryptography.Xml 10.0.6 doesn't support net6.0 and has not been tested with it. Consider upgrading your TargetFramework to net8.0 or later. You may also set <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings> in the project file to ignore this warning and attempt to run in this unsupported configuration at your own risk. [C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\TradingEngine.Adapters.CTrader.csproj]
-C:\Users\shahi\.nuget\packages\system.collections.immutable\10.0.7\buildTransitive\netcoreapp2.0\System.Collections.Immutable.targets(4,5): warning : System.Collections.Immutable 10.0.7 doesn't support net6.0 and has not been tested with it. Consider upgrading your TargetFramework to net8.0 or later. You may also set <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings> in the project file to ignore this warning and attempt to run in this unsupported configuration at your own risk. [C:\Code\Shamshir\src\TradingEngine.Adapters.CTrader\TradingEngine.Adapters.CTrader.csproj]
-C:\Code\Shamshir\src\TradingEngine.Web\TradingEngine.Web.csproj(45,5): error MSB3073: The command "powershell -NoProfile -ExecutionPolicy Bypass -File "..\..\scripts\rebuild-ng-if-stale.ps1" -NgProjectDir "..\..\web-ui" -NgBuildStamp "C:\Code\Shamshir\src\TradingEngine.Web\wwwroot\.ng-build-stamp"" exited with code 1.
-    5 Warning(s)
-    1 Error(s)
-
-Time Elapsed 00:01:01.29
-```
-</details>
+build:OK
 
 ## Last session result
 
-> Now let me plan the entire session. But first, let me finalize the QA of s26.
-> QA of s26 is **confirmed**. Gates all green after re-run (flaky `ModifyConfirmation` test passed on retry). Runtime DB: migration M45, ReferenceScales=84, StrategyConfigs=9. Golden byte-identical.
-> 
-> Now let me plan P6.5. Let me quickly check a few more reference files before the planning block.
-> SESSION PLAN:
-> - **Checkpoints to deliver:** P6.5.1 BlockBootstrapper service, P6.5.2 API endpoint, P6.5.3 ResearchCli step kind, P6.5.4 Playbook, P6.5.5 Tests
-> - **Files to create:** `src/TradingEngine.Infrastructure/MarketData/BlockBootstrapper.cs`, `tests/TradingEngine.Tests.Unit/MarketData/BlockBootstrapperTests.cs`, `pla…
+> Let me reproduce the failure and investigate the root cause.
+> Root cause is clear: Angular source files are newer than `wwwroot/index.html`. The staleness guard script correctly detects this. Need to rebuild Angular, then re-run `dotnet build`.
+> Angular rebuilt. Now rebuild .NET:
+> Build green (0 errors, 5 warnings). Now run the full gate battery.
+> All gates green. Two generated files are dirty (both build-stamp files, expected). Let me check if they should be ignored:
+> The generated build-stamp files are stale from the previous branch. Let me check `.gitignore` and clean this up properly.
+> The root cause: s27 committed Angular source changes but never ran `npm run build`. Since `wwwroot/` is…
 
 ## Tracker handoff
 
 ```
-last: **s27 P6.5 block-bootstrap tapes** (23bed7c)
+last: **s28 rebuild fix** (6207473) — FIX session: Angular staleness after P6.5 UI changes
 stage: **P6 IN PROGRESS** — P6.1-P6.5 delivered; P6.6-P6.8 remain TODO.
 gate: GREEN — build 0err/5warn; Unit 676/0/6; Integration 120/0/0;
   fast Sim 144/0/0; golden byte-identical; tsc 0 errors
@@ -176,6 +131,7 @@ trap: (1) Session labels not wired into TradeExcursions.
   (3) Playbook 3 (triage-sweep.json) not created.
   (4) BlockBootstrapper writes bars to real MarketData table — synthetic
   bars need cleanup after runs or a dedicated table. (5) Bootstrap
-  controller uses DateTime.UtcNow directly (unavoidable — no IEngineClock
-  in Web API path).
+  controller uses DateTime.UtcNow directly. (6) NEW: any session that
+  touches web-ui/src/*.ts MUST run `npm run build` before committing;
+  angular staleness guard will fail dotnet build otherwise.
 ```
