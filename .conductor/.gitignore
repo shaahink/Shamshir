@@ -1,4 +1,5 @@
 *
 !.gitignore
 !REPORT.md
+!handovers/
 !handovers/**
