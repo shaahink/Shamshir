@@ -1,0 +1,38 @@
+{
+  "name": "session-fingerprint",
+  "description": "P6.2 canonical session-fingerprinting check: labels trades by market session (Asian/London/NY/overlap/Pacific) using UTC open-time classification. Run this to see per-session trade distribution. The dimension is available in the exit lab grid as a filter once the session label is populated on trade excursions.",
+  "steps": [
+    {
+      "kind": "ensure-data",
+      "symbols": "EURUSD",
+      "tfs": "H1",
+      "from": "2026-01-01",
+      "to": "2026-04-01"
+    },
+    {
+      "kind": "start-run",
+      "as": "exploreRun",
+      "venue": "tape",
+      "symbols": ["EURUSD"],
+      "periods": ["H1"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-04-01T00:00:00Z",
+      "balance": 100000,
+      "explore": true
+    },
+    {
+      "kind": "await-run",
+      "runId": "exploreRun",
+      "timeout": 3600
+    },
+    {
+      "kind": "assert-gates",
+      "runId": "exploreRun",
+      "requireStatus": "completed",
+      "minTrades": 1
+    },
+    {
+      "kind": "report"
+    }
+  ]
+}
