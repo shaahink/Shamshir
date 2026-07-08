@@ -28,6 +28,12 @@ public sealed class BacktestRunEntity : IAuditableEntity
     public double WinRatePct { get; set; }
     public int ExitCode { get; set; }
     public string? ErrorMessage { get; set; }
+
+    // P0.2 (F5, Q5): teardown/persistence anomalies attached to a run that still produced a complete
+    // result. Populated => status is `completed-with-warnings`, never `failed`. ErrorMessage stays null
+    // (a warning is not a failure). JSON array of { code, detail, atUtc }.
+    public string? WarningsJson { get; set; }
+
     public string? ReportJsonPath { get; set; }
     public string? DatasetId { get; set; }
     public string? ConfigSetId { get; set; }

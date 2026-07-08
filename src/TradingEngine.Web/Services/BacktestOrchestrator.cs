@@ -37,6 +37,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     private sealed record TradeStats(decimal NetProfit, decimal GrossPnL, decimal CommissionTotal, decimal SwapTotal, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
 
+    // P0.2 (F5, Q5): a teardown/persistence anomaly that does NOT invalidate a complete engine result.
+    public sealed record RunWarning(string Code, string Detail, DateTime AtUtc);
+
     public sealed record BacktestRunState
     {
         public required string RunId { get; init; }
@@ -44,6 +47,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public string Status { get; set; } = "starting";
         public BacktestResult? Result { get; set; }
         public string? Error { get; set; }
+
+        // P0.2 (F5, Q5): teardown/persistence anomalies collected during a run that still produced a
+        // complete engine result. Non-empty => the run finalizes `completed-with-warnings`, never
+        // `failed`. Thread-safe: teardown warnings are appended from the run's finally block.
+        public ConcurrentQueue<RunWarning> Warnings { get; } = new();
         public string Symbol { get; init; } = "";
         public string Period { get; init; } = "";
         public ConcurrentQueue<string> LogLines { get; init; } = new();
@@ -422,12 +430,22 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 WinRatePct = tradeStats.WinRatePct,
             };
 
+            // P0.2 (F5, Q5): fold any teardown/persistence warnings collected during the run (e.g. the
+            // in-process cTrader leg's transport teardown) into the result. A run that produced a
+            // complete result but hit a teardown fault is `completed-with-warnings`, never `failed`.
+            var warningsJson = MergeWarningsJson(state, result.WarningsJson);
+            result = result with { WarningsJson = warningsJson };
+
             state.Result = result;
-            state.Status = result.Success ? "completed" : "failed";
+            state.Status = result.Success
+                ? (RunStatusResolver.HasWarnings(warningsJson)
+                    ? RunStatusResolver.CompletedWithWarnings
+                    : RunStatusResolver.Completed)
+                : RunStatusResolver.Failed;
             state.Error = result.ErrorMessage;
 
             EnqueueLog(runId, state.LogLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Done. Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1} Gross={tradeStats.GrossPnL:N2} Comm={tradeStats.CommissionTotal:N2} Swap={tradeStats.SwapTotal:N2}");
+                $"[{DateTime.UtcNow:HH:mm:ss}] Done. Status={state.Status} Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1} Gross={tradeStats.GrossPnL:N2} Comm={tradeStats.CommissionTotal:N2} Swap={tradeStats.SwapTotal:N2}");
 
             finalized = await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson);
         }
@@ -610,7 +628,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 result.ReportJsonPath,
                 WallElapsedMs: wallElapsedMs,
                 BarsPerSec: barsPerSec,
-                TotalBars: totalBars);
+                TotalBars: totalBars,
+                WarningsJson: result.WarningsJson);
             await repo.UpdateAsync(summary, CancellationToken.None);
             return true;
         }
@@ -619,6 +638,45 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             _logger.LogWarning(ex, "Failed to write end record for {RunId}", runId);
             return false;
         }
+    }
+
+    // P0.2 (F5, Q5): serialize the run's collected teardown/persistence warnings into a JSON array,
+    // merging any warnings already carried on the result (e.g. from the cTrader leg). Returns null when
+    // there are none, so a clean run keeps WarningsJson NULL and resolves to plain `completed`.
+    private static string? MergeWarningsJson(BacktestRunState state, string? existingJson)
+    {
+        var warnings = new List<RunWarning>();
+
+        if (RunStatusResolver.HasWarnings(existingJson))
+        {
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<List<RunWarning>>(existingJson!);
+                if (parsed is not null) warnings.AddRange(parsed);
+            }
+            catch { /* malformed prior warnings must never break finalization */ }
+        }
+
+        while (state.Warnings.TryDequeue(out var w))
+            warnings.Add(w);
+
+        return warnings.Count == 0 ? null : JsonSerializer.Serialize(warnings);
+    }
+
+    // P0.2 (F5, Q5): record a teardown/persistence anomaly against the run without failing it.
+    private void AddTeardownWarning(string runId, string code, string detail)
+    {
+        if (_runs.TryGetValue(runId, out var state))
+            state.Warnings.Enqueue(new RunWarning(code, detail, DateTime.UtcNow));
+        _logger.LogWarning("RUN_WARNING|run={RunId}|code={Code}|detail={Detail}", runId, code, detail);
+    }
+
+    // P0.2 (F5, Q5): run one teardown step in isolation. A fault after a complete engine result becomes
+    // a warning, never a propagated exception (which the outer catch would turn into `failed`).
+    private async Task SafeTeardownStepAsync(string runId, string code, Func<Task> step)
+    {
+        try { await step(); }
+        catch (Exception ex) { AddTeardownWarning(runId, code, ex.Message); }
     }
 
     // Builds the engine's LoadedConfig from the DATABASE (canonical config source) rather than letting
@@ -1322,6 +1380,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
         finally
         {
+            // P0.2 (F5, Q5): the engine has already produced a complete result by the time we get here.
+            // Any exception during transport/host teardown must NOT propagate to the orchestrator's outer
+            // catch (which would stamp this complete run `failed`). Each step is isolated and records a
+            // warning instead — the run downgrades to `completed-with-warnings`, never `failed`. The
+            // idempotent transport fix (6533c7e) removes the known NetMQPoller race at source; this is the
+            // durable safety net for any future teardown fault.
             var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
             var barDone = adapter.BarStream.Completion;
             var safety = Task.Delay(TimeSpan.FromSeconds(30));
@@ -1330,14 +1394,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 _logger.LogWarning("CTRADER|BAR_STREAM_TIMEOUT|run={RunId}|forcing disconnect", runId);
                 EnqueueLog(runId, logLines,
                     $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: Bar stream did not complete — forcing disconnect");
+                AddTeardownWarning(runId, "BAR_STREAM_TIMEOUT", "Bar stream did not complete within 30s — forced disconnect");
                 try { await adapter.DisconnectAsync(CancellationToken.None); } catch { }
-                await barDone;
+                try { await barDone; } catch { }
             }
-            ctraderBarCount = _runs[runId].BarCount;
-            await FlushRunPersistenceAsync(innerHost);
-            CaptureFinalEquity(_runs[runId], innerHost, runId);
-            await innerHost.StopAsync(CancellationToken.None);
-            await DisposeHostAsync(innerHost);
+            ctraderBarCount = _runs.TryGetValue(runId, out var rs) ? rs.BarCount : 0;
+            await SafeTeardownStepAsync(runId, "FLUSH_PERSISTENCE", () => FlushRunPersistenceAsync(innerHost));
+            try { CaptureFinalEquity(_runs[runId], innerHost, runId); }
+            catch (Exception ex) { AddTeardownWarning(runId, "CAPTURE_EQUITY", ex.Message); }
+            await SafeTeardownStepAsync(runId, "HOST_STOP", () => innerHost.StopAsync(CancellationToken.None));
+            await SafeTeardownStepAsync(runId, "HOST_DISPOSE", () => DisposeHostAsync(innerHost));
         }
 
         // iter-redesign-ctrader P6.3: after the engine has disposed and the run is done, kill any

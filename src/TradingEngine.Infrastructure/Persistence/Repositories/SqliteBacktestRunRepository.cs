@@ -31,6 +31,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             WinRatePct = run.WinRatePct,
             ExitCode = run.ExitCode,
             ErrorMessage = run.ErrorMessage,
+            WarningsJson = run.WarningsJson,
             ReportJsonPath = run.ReportJsonPath,
             DatasetId = run.DatasetId,
             ConfigSetId = run.ConfigSetId,
@@ -66,6 +67,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         entity.WinRatePct = run.WinRatePct;
         entity.ExitCode = run.ExitCode;
         entity.ErrorMessage = run.ErrorMessage;
+        entity.WarningsJson = run.WarningsJson;
         entity.EffectiveConfigJson = run.EffectiveConfigJson;
         entity.ReportJsonPath = run.ReportJsonPath;
         entity.WallElapsedMs = run.WallElapsedMs;
@@ -220,7 +222,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             e.DatasetId, e.ConfigSetId, e.Seed, e.ParentRunId,
             e.RunPlanJson, e.Venue, e.RiskProfileId, e.GovernorEnabled, e.RegimeEnabled,
             e.CommissionPerMillion, e.SpreadPips,
-            e.WallElapsedMs, e.BarsPerSec, e.TotalBars);
+            e.WallElapsedMs, e.BarsPerSec, e.TotalBars, e.WarningsJson);
     }
 
     public async Task DeleteAsync(string runId, CancellationToken ct)

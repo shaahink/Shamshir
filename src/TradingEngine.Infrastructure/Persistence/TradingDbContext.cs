@@ -55,6 +55,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.ToTable("BacktestRuns");
             e.HasKey(x => x.RunId);
             e.Property(x => x.EffectiveConfigJson).HasColumnType("TEXT");
+            e.Property(x => x.WarningsJson).HasColumnType("TEXT");
             e.HasIndex(x => x.StartedAtUtc);
         });
 

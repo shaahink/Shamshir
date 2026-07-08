@@ -23,6 +23,10 @@ public sealed record RunDetailResponse
     public double WinRatePct { get; init; }
     public string? ErrorMessage { get; init; }
     public int ExitCode { get; init; }
+
+    // P0.2 (F5, Q5): teardown/persistence warnings on a `completed-with-warnings` run.
+    public string? WarningsJson { get; init; }
+
     public string? EffectiveConfigJson { get; init; }
     public string? ReportJsonPath { get; init; }
 

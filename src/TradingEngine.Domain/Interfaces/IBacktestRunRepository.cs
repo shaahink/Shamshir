@@ -39,7 +39,10 @@ public sealed record BacktestRunSummary(
     double SpreadPips = 0,
     long WallElapsedMs = 0,
     double BarsPerSec = 0,
-    int TotalBars = 0);
+    int TotalBars = 0,
+    // P0.2 (F5, Q5): teardown/persistence warnings on a run that still produced a complete result.
+    // Populated => `completed-with-warnings`; ErrorMessage stays null.
+    string? WarningsJson = null);
 
 public interface IBacktestRunRepository
 {

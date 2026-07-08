@@ -52,6 +52,8 @@ public sealed class RunQueryService : IRunQueryService
                 CreatedAtUtc = r.CreatedAtUtc,
                 Status = r.CompletedAtUtc == default ? "running"
                     : r.ErrorMessage != null ? "failed"
+                    : (r.WarningsJson != null && r.WarningsJson != "" && r.WarningsJson != "[]" && r.WarningsJson != "{}")
+                        ? "completed-with-warnings"
                     : "completed",
                 Symbol = r.Symbol,
                 Period = r.Period,
@@ -70,6 +72,7 @@ public sealed class RunQueryService : IRunQueryService
                 ErrorMessage = r.ErrorMessage,
             Venue = r.Venue ?? "replay",
                 RiskProfileId = r.RiskProfileId,
+                WarningsJson = r.WarningsJson,
             })
             .ToListAsync(ct);
 
@@ -118,6 +121,7 @@ public sealed class RunQueryService : IRunQueryService
             WinRatePct = r.WinRatePct,
             ErrorMessage = r.ErrorMessage,
             ExitCode = r.ExitCode,
+            WarningsJson = r.WarningsJson,
             EffectiveConfigJson = r.EffectiveConfigJson,
             ReportJsonPath = r.ReportJsonPath,
             RunPlanJson = r.RunPlanJson,
@@ -493,17 +497,14 @@ public sealed class RunQueryService : IRunQueryService
 
     private static string ResolveStatus(BacktestRunSummary r, BacktestOrchestrator? orchestrator)
     {
-        if (r.CompletedAtUtc != default)
-        {
-            return r.ErrorMessage != null ? "failed" : "completed";
-        }
+        var isStuck = r.CompletedAtUtc == default
+            && DateTime.UtcNow - r.StartedAtUtc > StuckThreshold
+            && orchestrator?.GetState(r.RunId) is null;
 
-        if (DateTime.UtcNow - r.StartedAtUtc > StuckThreshold
-            && (orchestrator?.GetState(r.RunId) is null))
-        {
-            return "failed";
-        }
-
-        return "running";
+        return RunStatusResolver.Resolve(
+            isCompleted: r.CompletedAtUtc != default,
+            errorMessage: r.ErrorMessage,
+            warningsJson: r.WarningsJson,
+            isStuck: isStuck);
     }
 }

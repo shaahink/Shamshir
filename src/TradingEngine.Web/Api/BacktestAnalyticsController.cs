@@ -35,7 +35,10 @@ public class BacktestAnalyticsController : ControllerBase
         var result = runs.Take(50).Select(r => new
         {
             r.RunId,
-            status = r.CompletedAtUtc == default ? "running" : r.ErrorMessage == null ? "completed" : "failed",
+            status = RunStatusResolver.Resolve(
+                isCompleted: r.CompletedAtUtc != default,
+                errorMessage: r.ErrorMessage,
+                warningsJson: r.WarningsJson),
             r.NetProfit,
             r.MaxDrawdownPct,
             r.TotalTrades,
