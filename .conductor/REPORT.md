@@ -1,32 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 19:53 UTC · branch `iter/parity-pipeline` · HEAD `87f5a5c`_
+_Updated 2026-07-08 19:56 UTC · branch `iter/parity-pipeline` · HEAD `e9f7207`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P5 — UI truth + Angular refactor · attempts used 0 · working ▸ P5.1
-**Checkpoints:** 15/17 done · **Sessions run:** 18 · **Cost:** $1.2824 · **Tokens:** 842,819 in / 373,867 out / 171,108 think
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P5 — UI truth + Angular refactor · attempts used 0
+**Checkpoints:** 16/17 done · **Sessions run:** 18 · **Cost:** $1.5309 · **Tokens:** 1,154,422 in / 403,542 out / 193,567 think
 **Confirmed phases:** P0, P1, P2, P3, P4
-
-## Latest activity (live)
-
-_Session #18 (Deliver) · running 30m · last output 0s ago · $0.1588_
-
-**Thinking:**
-> The migration timestamp is `20260708194903`, not `20260708204902`. Let me fix the `__EFMigrationsHistory` row.  Actually, it's simpler to just let EF handle the migration properly. But the problem is that I manually added the column before the migration could run. The migration would try to add the …
-> Good, column dropped and bad migration entry removed. Now let EF auto-migrate properly.
-> Driven smoke passed — 11/11. The app started, auto-migrated M45, and a test run completed. Let me now verify the migration was applied correctly.
-
-**Recent actions:**
-- `20:52:43` » bash git diff --stat -- "**/*golden*.json" 2>&1
-- `20:52:47` » bash node .claude/skills/run-shamshir/driver.mjs 2>&1 | Select-Object -Last 5
-- `20:52:58` » bash node .claude/skills/run-shamshir/driver.mjs 2>&1 | Select-Object -Last 15
-- `20:53:08` » bash node .claude/skills/run-shamshir/driver.mjs 2>&1 | Select-Object -First 20
-- `20:53:13` » read {"filePath":"C:\\Code\\Shamshir\\src\\TradingEngine.Infrastructure\\Persistence\\Migrations\\20260708204902_M45_ComparePairId.cs"}
-- `20:53:18` » glob
-- `20:53:27` » bash c:\adb\sqlite3.exe "src\TradingEngine.Web\data\trading.db" "DELETE FROM __EFMigrationsHistory WHERE MigrationId = '20260708204902_M45_ComparePairId'; ALTER…
-- `20:53:39` » bash node .claude/skills/run-shamshir/driver.mjs 2>&1 | Select-Object -Last 5
-- `20:53:45` · Driven smoke 11/11. Verify migration applied:
-- `20:53:45` » bash c:\adb\sqlite3.exe "src\TradingEngine.Web\data\trading.db" "SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId DESC LIMIT 3;" 2>&1
+**Pending:** auto-fix audit for P5
 
 ## Stage progress
 
@@ -37,7 +17,7 @@ _Session #18 (Deliver) · running 30m · last output 0s ago · $0.1588_
 | P2 | Lifecycle robustness + headline gate | 2/2 | confirmed ✓ |
 | P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
 | P4 | Lab golden paths | 1/1 | confirmed ✓ |
-| P5 | UI truth + Angular refactor | 0/1 | **← active** |
+| P5 | UI truth + Angular refactor | 1/1 | gating… |
 | P6 | Wild list (pipeline-gated) | 0/1 | todo |
 
 ## Sessions
@@ -61,13 +41,10 @@ _Session #18 (Deliver) · running 30m · last output 0s ago · $0.1588_
 | 15 | P3 | Audit | 1 | 07-08 18:30 | 0:14 | Progress |  | 2 |  | $0.0740 | 79,867/15,468 |
 | 16 | P4 | Deliver | 1 | 07-08 18:46 | 0:27 | Advanced | P4.1 | 3 | build:OK | $0.1892 | 229,115/27,015 |
 | 17 | P4 | Audit | 1 | 07-08 19:14 | 0:07 | Progress |  | 2 |  | $0.0458 | 50,008/12,348 |
-| 18 | P5 | Deliver | 1 | 07-08 19:23 | … | running |  | 0 |  |  |  |
+| 18 | P5 | Deliver | 1 | 07-08 19:23 | 0:32 | Advanced | P5.1 | 6 | build:OK | $0.2486 | 311,603/29,675 |
 
 ### Commits by session
 
-- **s9 (P1 Audit)** — 2 commit(s):
-  - 7c661b0 docs(P1): honest phase handover — audit verdict + solid/weak/deferred/risks
-  - 795807f audit(P1): harden config/DB truth — unify repo-root in lint-config + cover uncovered sync branches
 - **s10 (P2 Deliver)** — 5 commit(s):
   - ab1805f docs(P2,P3): tracker + RESUME + evidence — P2.1 DONE, P2.2 OWNER-PENDING, P3.1 foundation
   - 0de44c2 feat(P3.1): TradingEngine.ResearchCli foundation — HTTP driver + machine verdicts
@@ -101,6 +78,13 @@ _Session #18 (Deliver) · running 30m · last output 0s ago · $0.1588_
 - **s17 (P4 Audit)** — 2 commit(s):
   - 00f42df docs(P4): honest phase handover — audit findings, fixes, weaknesses, follow-ups
   - c3d67aa fix(P4): audit hardening — edge-case guards + type sync
+- **s18 (P5 Deliver)** — 6 commit(s):
+  - e9f7207 docs(P5.1): session s18 bookkeeping — P5.1a-c DONE, gates green, RESUME updated
+  - 09fc807 feat(P5.1c): F16 compare-both child visibility + status chips + M45 migration
+  - 63c4a66 chore(conductor): s18 P5 working ▸P5.1 @ 20:53
+  - 87f5a5c feat(P5.1b): F15 start button pending state + idempotency key
+  - 587e129 chore(conductor): s18 P5 working ▸P5.1 @ 20:38
+  - 8fadd58 feat(P5.1a): F13 equity truth — nullable equity in progress envelopes, no 0-anchor
 
 ## Phase handovers (audit)
 
@@ -112,29 +96,36 @@ _Session #18 (Deliver) · running 30m · last output 0s ago · $0.1588_
 
 ## Last gate run
 
-build:OK · unit:OK · sim-fast:OK
+build:OK
 
 ## Last session result
 
-> SESSION-RESULT: **Audit PASS with hardening.** Reviewed the full P4 diff (22 files, 1812 insertions) spanning exploration funnel (F11), MAE/MFE doctrine (F12), M44 migration, backfill endpoint, and Angular wiring. Found 3 gaps: MaeMfeNormalizer lacked NaN/Infinity/zero-price guards (silent incorrect results), SqliteTradeRepository.SaveAsync lacked the zero-price gate that BackfillMaeMfe has, and TypeScript types were out of sync with backend DTOs. Fixed all three root causes, added 8 edge-case tests (638→646 unit), and verified gates green (build 0/5w, Unit 646/0/6, Integration 120/0/0, Sim 144/0/0, golden byte-identical). Committed `c3d67aa` (fixes+tests) and `00f42df` (handover) to `iter/p…
+> Now let me check git state, read the workflow, and load the run-shamshir skill.
+> The M44 migration claim needs checking — the live DB shows M43 as head, not M44. Let me verify whether M44 exists on disk.
+> M44 migration file exists on disk but **not applied to the live DB** — this is a QA divergence. Let me run the full gate battery and then fix this.
+> M44 migration is on disk but not applied to the live DB. This is the QA divergence. Let me apply it.
+> No design-time factory — I'll apply M44 directly since it's two ALTER TABLE columns.
+> M44 applied. Now let me update the TRACKER QA verdict and explore the UI codebase before planning.
+> Now I have a complete picture. Let me produce the session …
 
 ## Tracker handoff
 
 ```
-last: **P4.1 DONE** (9aa9b87): Exploration funnel (F11 — report banner + ExitLab empty-state) + MAE/MFE
-      units doctrine (F12 — MaeR/MfeR columns, M44 migration, 6 tests, backfill endpoint). P3.6 entry lab
-      DEFERRED (blocked on P2.2 owner-pending cTrader creds — D97).
-stage: **P4 IN PROGRESS** — P4.1 done. P4 remaining per PLAN §7: P3.6 entry lab (deferred to P2.2 gate).
-gate: GREEN — build 0err/5warn; Unit 630/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical.
-next: **P5.1 UI truth (F13-F16) + Angular refactor** OR continue research-labs (EntryLab when P2.2 clears).
-       P4.1 live verification (driven smoke F11 + backfill endpoint F12) owner-pending — see evidence column.
-QA-prev: s16 P4.1 — **confirmed** (build 0/5w; Unit 630/0/6; Integration 120/0/0; fast Sim 144/0/0; golden
-      byte-identical). Independently verified: R5 M44 migration present on Web DB; MaeMfeNormalizerTests 6/6.
-trap: F11 driven smoke NOT run (app not started); F12 backfill endpoint NOT run against live DB rows.
-trap: (1) Tests.Architecture EntityAuditableTests red on **ExitCalibrationEntity ONLY** — PRE-EXISTING,
-      NOT in gate battery; my 2 new pipeline entities ARE compliant. (2) The playbook engine is HTTP-only
-      (Q3) — executor persists via /api/research/pipelines, never the DB; keep it that way. (3) Live
-      pipeline run needs the app running — CLI is unit-proven but not run end-to-end this session.
-      (4) BuildInfo.g.cs + build-info.ts re-dirty each build (leave); .conductor/ orchestrator-managed.
-      (5) commit via `git commit -F <file>`.
+last: **P5.1c DONE** (09fc807): F16 compare-both child visibility (M45 ComparePairId migration, parentRunId
+      + comparePairId in API, run list parent/child grouping) + status chips (completed-with-warnings amber,
+      cancelled/queued amber, running neutral) + F13 equity nullable (8fadd58) + F14 timeline label (8fadd58)
+      + F15 start button pending + idempotency (87f5a5c).
+stage: **P5 IN PROGRESS** — P5.1a-c done. P5 remaining per PLAN §8: Angular refactor (signals migration for
+      new-backtest class fields, runs.store consolidation, global error toast).
+gate: GREEN — build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical;
+      driven smoke 11/11 each commit.
+next: **P5.1d Angular refactor** (finish signals migration for 10+ new-backtest class fields → signals with
+       (ngModelChange), consolidate RunProgressEnvelope processing into runs.store, add global error toast).
+       Then P6 wild list per PLAN §9.
+QA-prev: s16 P4.1 — **confirmed, 1 divergence FIXED** (build confirmed; tests green; M44 migration ON DISK
+      but not applied to live DB — manually applied MaeR/MfeR columns + M44 migration row in this session).
+trap: (1) New-backtest class fields still plain fields (not signals). (2) runs.store.ts still minimal.
+      (3) No global error toast. (4) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
+      (5) BuildInfo.g.cs + build-info.ts re-dirty each build (leave). (6) tsc 2 pre-existing errors.
+      (7) P4.1 traps (F11 smoke, F12 backfill) owner-pending.
 ```
