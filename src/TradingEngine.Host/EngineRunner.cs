@@ -147,7 +147,7 @@ public sealed class EngineRunner
             // balance is authoritative; a disagreeing venue balance is recorded here, never adopted.
             _logger.LogWarning(
                 "Startup balance drift: venue reported Balance={VenueBalance} but backtest uses configured InitialBalance={ConfigBalance} — venue value NOT adopted (F1 parity guard)",
-                venueBalance, _runContext.InitialBalance);
+                venueBalance, initialBalance);
         }
 
         await _indicatorSnapshot.WarmUpIndicatorsAsync(ct);

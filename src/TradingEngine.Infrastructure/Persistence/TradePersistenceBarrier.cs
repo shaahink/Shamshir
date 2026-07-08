@@ -35,7 +35,7 @@ public sealed class TradePersistenceBarrier(
     {
         try
         {
-            var journalCloses = await CollectJournalClosesAsync(runId, ct);
+            var (journalCloses, closeFills) = await CollectAsync(runId, ct);
             var expected = journalCloses.Count;
 
             // Multiset of already-persisted closes keyed by the close's identity, so partial closes
@@ -53,7 +53,7 @@ public sealed class TradePersistenceBarrier(
             }
 
             if (expected <= persisted)
-                return new TradePersistenceReconciliation(expected, persisted, 0);
+                return new TradePersistenceReconciliation(expected, persisted, 0) { JournalCloseFills = closeFills };
 
             var backfilled = 0;
             foreach (var close in journalCloses)
@@ -87,7 +87,7 @@ public sealed class TradePersistenceBarrier(
                     runId, expected, persisted, backfilled);
             }
 
-            return new TradePersistenceReconciliation(expected, persisted, backfilled);
+            return new TradePersistenceReconciliation(expected, persisted, backfilled) { JournalCloseFills = closeFills };
         }
         catch (Exception ex)
         {
@@ -98,11 +98,22 @@ public sealed class TradePersistenceBarrier(
         }
     }
 
-    private async Task<List<PublishTradeClosed>> CollectJournalClosesAsync(string runId, CancellationToken ct)
+    private async Task<(List<PublishTradeClosed> Closes, int CloseFills)> CollectAsync(string runId, CancellationToken ct)
     {
         var closes = new List<PublishTradeClosed>();
+        var closeFills = 0;
         await foreach (var step in journal.StreamByRunAsync(runId, afterSeq: null, ct))
         {
+            // F6-R: count venue-authoritative CLOSE fills (OrderFilled with a non-null CloseReason). On a
+            // crashed cTrader teardown the close→PublishTradeClosed→TradeResult path never runs, so there
+            // are no PublishTradeClosed effects to reconstruct from — but the OrderFilled close events
+            // remain journalled. This count lets the barrier detect "the venue closed N positions yet zero
+            // trades were persisted or reconstructable" (the audited f7b0538d signature) and surface it as
+            // a warning instead of a silent TotalTrades=0. Detection-only: the open+close-fill pairing that
+            // would rebuild the economics is the deferred owner-decision (option a), not done here.
+            if (step.EventKind == "OrderFilled" && HasCloseReason(step.EventJson))
+                closeFills++;
+
             if (step.EffectKinds.Count == 0 || !step.EffectKinds.Contains(nameof(PublishTradeClosed)))
                 continue;
             if (string.IsNullOrEmpty(step.EffectsJson) || step.EffectsJson == "[]")
@@ -123,7 +134,28 @@ public sealed class TradePersistenceBarrier(
                     closes.Add(close);
             }
         }
-        return closes;
+        return (closes, closeFills);
+    }
+
+    // A close fill carries a non-null, non-empty CloseReason (SL/TP/STOPOUT/CLOSED); entry fills leave it
+    // null. The journal writes OrderFilled EventJson PascalCase (verified against the audit DB), so a
+    // case-sensitive property probe is correct and avoids a full deserialize of the event.
+    private static bool HasCloseReason(string? eventJson)
+    {
+        if (string.IsNullOrEmpty(eventJson) || eventJson == "{}")
+            return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(eventJson);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("CloseReason", out var v)
+                && v.ValueKind == JsonValueKind.String
+                && !string.IsNullOrEmpty(v.GetString());
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string Key(Guid positionId, DateTime closedAtUtc, string exitReason, decimal lots) =>
@@ -137,6 +169,20 @@ public sealed record TradePersistenceReconciliation(int Expected, int Persisted,
     // A count mismatch (some trades were lost and had to be backfilled, or could not be) is the F6 signal
     // that must surface as a run warning → completed-with-warnings, never a silent lower TotalTrades.
     public bool HasLoss => Failed || Persisted < Expected;
+
+    // F6-R (audited f7b0538d): the venue journalled close fills (OrderFilled with a CloseReason) but a
+    // crashed teardown lost the close→PublishTradeClosed→TradeResult path, so there are NO
+    // PublishTradeClosed effects to reconstruct from and nothing was persisted. Distinct from HasLoss:
+    // here Expected is 0 (no reconstruction source), so the trades can only be DETECTED, not restored —
+    // the economics-rebuilding open/close-fill pairing is the deferred owner-decision (option a). This
+    // flag guarantees the run never reports a silent TotalTrades=0 for a venue that actually closed
+    // positions. False-positive-free: healthy runs always have PublishTradeClosed effects (Expected > 0)
+    // or persisted trades, so Persisted + Backfilled is never 0 for them (verified across the 6 audit runs).
+    public bool Unreconstructable => !Failed && Persisted + Backfilled == 0 && JournalCloseFills > 0;
+
+    // Count of venue-authoritative close fills seen in the journal (OrderFilled with a non-null
+    // CloseReason). A lower bound on the positions the venue actually closed, independent of persistence.
+    public int JournalCloseFills { get; init; }
 
     public bool Failed { get; init; }
     public string? FailureDetail { get; init; }

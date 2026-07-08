@@ -81,6 +81,36 @@ public sealed class TradePersistenceBarrierTests : IDisposable
         });
     }
 
+    // F6-R: seed a venue CLOSE fill as it lands in the journal on the crashed-teardown path — an
+    // OrderFilled EVENT carrying a non-null CloseReason, with NO PublishTradeClosed effect (the effect
+    // that the lost close→TradeResult path would have produced). This is the exact f7b0538d signature:
+    // the journal proves the venue closed a position, but nothing reconstructable was persisted.
+    private void SeedCloseFillOnly(TradingDbContext db, long seq, Guid orderId, string closeReason, decimal netProfit)
+    {
+        var eventJson = JsonSerializer.Serialize(new
+        {
+            OrderId = orderId,
+            Symbol = new { Value = "BTCUSD" },
+            FilledLots = 1.0m,
+            FillPrice = new { Value = 60500m },
+            GrossProfit = netProfit + 30m,
+            NetProfit = netProfit,
+            Commission = 30m,
+            Swap = 0m,
+            CloseReason = closeReason,
+        });
+        db.JournalEntries.Add(new JournalEntryEntity
+        {
+            RunId = Run,
+            Seq = seq,
+            SimTimeUtc = new DateTime(2026, 6, 20, 0, 0, 0, DateTimeKind.Utc).AddHours(seq),
+            EventKind = "OrderFilled",
+            EventJson = eventJson,
+            EffectKinds = JsonSerializer.Serialize(new[] { "RecordDecisionEvent" }, EffectOpts),
+            EffectsJson = JsonSerializer.Serialize(new object[] { new { Reason = closeReason } }, EffectOpts),
+        });
+    }
+
     private TradePersistenceBarrier NewBarrier(TradingDbContext db)
     {
         var reg = BtcRegistry();
@@ -207,6 +237,72 @@ public sealed class TradePersistenceBarrierTests : IDisposable
         recon.Persisted.Should().Be(1);
         recon.Backfilled.Should().Be(0);
         recon.HasLoss.Should().BeFalse("everything already persisted ⇒ clean completed, no warning");
+    }
+
+    // ── F6-R (audited f7b0538d): the crashed-teardown case the PublishTradeClosed backfill CANNOT
+    //    recover. The venue closed 7 positions (OrderFilled close events in the journal) but the crash
+    //    left 0 PublishTradeClosed effects and 0 TradeResults. Backfill finds nothing to rebuild from
+    //    (Expected=0), so this must at minimum be DETECTED and surfaced — never a silent TotalTrades=0. ──
+    [Fact]
+    public async Task CrashedTeardown_CloseFillsButNoPublishTradeClosed_IsUnreconstructable()
+    {
+        using (var db = _db.NewContext())
+        {
+            SeedCloseFillOnly(db, 1, Guid.Parse("00000001-0000-0000-0000-000000000000"), "SL", -81m);
+            SeedCloseFillOnly(db, 2, Guid.Parse("00000002-0000-0000-0000-000000000000"), "SL", -122m);
+            SeedCloseFillOnly(db, 3, Guid.Parse("00000003-0000-0000-0000-000000000000"), "TP", 210m);
+            await db.SaveChangesAsync();
+        }
+
+        TradePersistenceReconciliation recon;
+        using (var db = _db.NewContext())
+        {
+            recon = await NewBarrier(db).ReconcileAndBackfillAsync(Run, CancellationToken.None);
+        }
+
+        recon.Expected.Should().Be(0, "no PublishTradeClosed effects survived the crash");
+        recon.Persisted.Should().Be(0);
+        recon.Backfilled.Should().Be(0, "there is nothing to reconstruct from — economics recovery is deferred (option a)");
+        recon.JournalCloseFills.Should().Be(3, "the journal still proves the venue closed 3 positions");
+        recon.HasLoss.Should().BeFalse("HasLoss is the backfill-shortfall signal; Expected=0 makes it false");
+        recon.Unreconstructable.Should().BeTrue(
+            "the F6-R signal: close fills journalled but zero persisted/reconstructable ⇒ surface, never silent zero");
+
+        // AFTER: still zero TradeResults (can't rebuild economics), but the caller now has a truthful
+        // signal to stamp completed-with-warnings via TRADES_UNRECONSTRUCTABLE instead of TotalTrades=0.
+        using (var db = _db.NewContext())
+        {
+            (await db.Trades.CountAsync(t => t.RunId == Run)).Should().Be(0);
+        }
+    }
+
+    // ── False-positive guard: a HEALTHY run with an extra venue close-fill that legitimately did NOT
+    //    become a separate trade (the audited 817af3f5 had 26 close-fills but 24 PublishTradeClosed/
+    //    trades) must NOT be flagged Unreconstructable — because trades WERE persisted (Persisted>0). ──
+    [Fact]
+    public async Task HealthyRun_ExtraCloseFill_ButTradesPersisted_IsNotUnreconstructable()
+    {
+        var p1 = Guid.Parse("00000000-0000-0000-0000-0000000000c1");
+        using (var db = _db.NewContext())
+        {
+            // One real close (PublishTradeClosed effect) that DOES backfill…
+            SeedClose(db, 1, p1, 60000m, 60800m, "TP", 800m);
+            // …plus a stray close-fill event with no matching effect (partial-fill noise, as on 817af3f5).
+            SeedCloseFillOnly(db, 2, Guid.Parse("00000000-0000-0000-0000-0000000000c2"), "CLOSED", 0m);
+            await db.SaveChangesAsync();
+        }
+
+        TradePersistenceReconciliation recon;
+        using (var db = _db.NewContext())
+        {
+            recon = await NewBarrier(db).ReconcileAndBackfillAsync(Run, CancellationToken.None);
+        }
+
+        recon.Expected.Should().Be(1);
+        recon.Backfilled.Should().Be(1, "the real close is backfilled");
+        recon.JournalCloseFills.Should().BeGreaterThan(0, "the stray close-fill is counted…");
+        recon.Unreconstructable.Should().BeFalse(
+            "…but a trade WAS reconstructed (Persisted+Backfilled>0), so this is not the crashed-teardown case");
     }
 
     public void Dispose()

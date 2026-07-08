@@ -1639,6 +1639,17 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 return;
             }
 
+            // F6-R: the venue closed positions (journalled close fills) but a crashed teardown lost the
+            // close→TradeResult path AND left no PublishTradeClosed effects to backfill from — nothing was
+            // persisted and nothing is economically reconstructable here. Surface it honestly instead of a
+            // silent TotalTrades=0; economics recovery via open/close-fill pairing is a deferred follow-up.
+            if (recon.Unreconstructable)
+            {
+                AddTeardownWarning(runId, $"TRADES_UNRECONSTRUCTABLE:{recon.JournalCloseFills}",
+                    $"journal has {recon.JournalCloseFills} venue close-fill(s) but 0 PublishTradeClosed effects and 0 persisted trades — trades lost to a crashed teardown and cannot be reconstructed from the journal (F6-R)");
+                return;
+            }
+
             if (recon.HasLoss)
             {
                 var stillMissing = recon.Expected - recon.Persisted - recon.Backfilled;
