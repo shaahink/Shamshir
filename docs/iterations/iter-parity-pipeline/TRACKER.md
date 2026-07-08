@@ -17,19 +17,20 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P5.1d DONE** (2e6fb66) + **P6.1 DONE** (2bac5d3) + **P6.2 DONE** (1598970) + **P6.3 DONE** (e6c45aa)
-stage: **P6 IN PROGRESS** — P6.1 data-quality, P6.2 session-fingerprint, P6.3 spread-vol-filter delivered.
-  P6.4-P6.8 (regime calibration, bootstrap tapes, meta-allocator, entry-quality, pyramiding) remain TODO.
-gate: GREEN — build 0err/5warn; Unit 664/0/6 (+26 from 638); Integration 120/0/0; fast Sim 144/0/0;
-  golden byte-identical; tsc 0 errors; 5 shipped playbooks parse (data-quality, session-fingerprint,
-  spread-vol-filter, venue-parity, explore-exit). No driven smoke run (UI changes were pure refactor).
-next: **P6.4 regime-conditioned calibration** (PLAN §9 #5) — add regime dimension to exit-lab grid,
-  calibrate per-regime exit rules, measure via playbook.
-trap: (1) Session labels not yet wired into TradeExcursions — SessionDetector is ready but not consumed
-  (needs schema migration or computed API field). (2) SpreadVolNoTradeFilter has no strategy config
-  integration — strategy JSONs don't expose it yet. (3) Playbook 3 (triage-sweep.json) never created.
-  (4) BuildInfo.g.cs + build-info.ts re-dirty each build (leave).
-QA-prev: s20/P5.1c-tscfix — confirmed (full gate battery + 2 independent claims verified).
+last: **P6.4 DONE** (611d26d) — regime-conditioned calibration
+stage: **P6 IN PROGRESS** — P6.1-P6.4 delivered; P6.5-P6.8 remain TODO.
+gate: GREEN — build 0err/5warn; Unit 666/0/6 (+2: RegimePlaybook test + 6th shipped parse);
+  Integration 120/0/0; fast Sim 144/0/0; golden byte-identical; tsc 0 errors;
+  6 shipped playbooks parse.
+next: **P6.5 block-bootstrap tapes** (PLAN §9 #5) — synthetic tape generation for robustness testing.
+trap: (1) Session labels not wired into TradeExcursions (SessionDetector consumed in ExitLabController
+  only). (2) SpreadVolNoTradeFilter has no strategy config wiring. (3) Playbook 3 (triage-sweep.json)
+  never created. (4) BuildInfo.g.cs + build-info.ts dirty each build (leave). (5) Toast files
+  (toast.component.ts, toast.service.ts) untracked — s21 commit 2e6fb66 never included them despite
+  claiming toast delivery; app.component.ts references them. (6) SaveCalibration uses DateTime.UtcNow
+  (pre-existing). (7) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
+QA-prev: s25/P6.4 — confirmed (full gate battery + 2 independent claims verified: regime playbook
+  parses 6/6 + ExitLabController RegimeBreakdown computed from SessionDetector).
 
 ## Checkpoints
 
@@ -110,7 +111,7 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P6.1 | Wild list: data-quality sentinel (ResearchCli verb + playbook) | DONE | 2bac5d3 | ResearchCli `data quality` verb + data-quality step kind + playbooks/data-quality.json; ShippedPlaybook_Parses 5/5 |
 | P6.2 | Wild list: session fingerprinting (SessionDetector + playbook) | DONE | 1598970 | SessionDetector 17 tests; playbooks/session-fingerprint.json; exported constants for pipeline report dimension |
 | P6.3 | Wild list: spread/vol no-trade filter (SpreadVolNoTradeFilter + playbook) | DONE | e6c45aa | SpreadVolNoTradeFilter 6 tests; playbooks/spread-vol-filter.json; blocks trades on excess spread OR ATR |
-| P6.4 | Wild list: regime-conditioned calibration | TODO | | |
+| P6.4 | Wild list: regime-conditioned calibration | DONE | 611d26d | docs: commit body; playbooks/regime-calibration.json; RegimePlaybook_HasPerRegimeExitLabSteps test (Unit); ShippedPlaybook_Parses 6/6; ExitLabController Evaluate() partitions by SessionDetector regime, optional filter, RegimeBreakdown in response |
 | P6.5 | Wild list: block-bootstrap tapes | TODO | | |
 | P6.6 | Wild list: meta-allocator | TODO | | |
 | P6.7 | Wild list: entry-quality decomposition | TODO | | |

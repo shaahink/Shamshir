@@ -232,15 +232,22 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** e6c45aa (s21, P6.3 spread/vol no-trade filter)
-**Session (s21, P6):** Delivered P6.1 (data-quality ResearchCli verb + playbook), P6.2 (session fingerprinting — SessionDetector with 17 tests + playbook), P6.3 (spread/vol no-trade filter — SpreadVolNoTradeFilter with 6 tests + playbook). Also finished P5.1d Angular refactor: 16 new-backtest fields→signals, ToastService/ToastComponent, runs.store progress consolidation.
-**Gates GREEN:** build 0err/5warn; Unit 664/0/6; Integration 120/0/0; fast Sim 144/0/0; golden
-  byte-identical; tsc 0 errors; 5 shipped playbooks parse via ShippedPlaybook_Parses.
-**Next step:** P6.4 regime-conditioned calibration (PLAN §9 #5) — add regime as exit-lab grid dimension,
-  calibrate per-regime exit rules, create measuring playbook. Also: P6.5 bootstrap tapes.
-**Open traps:** (1) Session labels not yet wired into TradeExcursions — SessionDetector ready but
-  unconsumed (needs schema migration or computed API field). (2) SpreadVolNoTradeFilter has no strategy
-  config wiring — strategy JSONs don't expose it yet. (3) Playbook 3 (triage-sweep.json) never created.
-  (4) BuildInfo.g.cs + build-info.ts dirty each build (leave). (5) EntityAuditableTests red on
-  ExitCalibrationEntity (pre-existing). (6) P2.2/P3.4 P6.1-gate remain OWNER-PENDING (cTrader creds).
+**Branch:** `iter/parity-pipeline` — **HEAD:** 611d26d (s25, P6.4 regime-conditioned calibration)
+**Session (s25, P6.4):** Delivered regime-conditioned calibration — SessionDetector wired into
+  ExitLabController.Evaluate() for per-trade regime labeling + optional regime filter. New
+  ExitLabEvaluateRequest.Regime + ExitLabEvaluateResponse.RegimeBreakdown. Angular exit-lab: regime
+  filter input, breakdown chips, regime in save calibration form. New playbook
+  regime-calibration.json (explore → eval all+per-regime → owner-gate → apply → report).
+  RegimePlaybook_HasPerRegimeExitLabSteps 1/1. ShippedPlaybook_Parses 6/6.
+**Gates GREEN:** build 0err/5warn; Unit 666/0/6; Integration 120/0/0; fast Sim 144/0/0; golden
+  byte-identical; tsc 0 errors; 6 shipped playbooks parse.
+**Next step:** P6.5 block-bootstrap tapes (PLAN §9 #5) — synthetic tape generation for robustness
+  testing. Also: P6.6 meta-allocator, P6.7 entry-quality decomposition, P6.8 pyramiding policy.
+**Open traps:** (1) Session labels not wired into TradeExcursions schema — SessionDetector consumed
+  in ExitLabController only (via OpenedAtUtc at evaluation time). (2) SpreadVolNoTradeFilter has no
+  strategy config wiring. (3) Playbook 3 (triage-sweep.json) never created. (4) Toast files
+  (toast.component.ts + toast.service.ts) remain untracked — s21 commit 2e6fb66 never staged them
+  despite app.component.ts importing ToastComponent. (5) BuildInfo.g.cs + build-info.ts re-dirty
+  each build (leave). (6) SaveCalibration uses DateTime.UtcNow (pre-existing). (7) P2.2/P3.4
+  P6.1-gate remain OWNER-PENDING (cTrader creds).
 
