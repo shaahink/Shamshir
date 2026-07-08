@@ -156,6 +156,14 @@ public static class ServiceRegistration
         services.AddSingleton<DownloadJobService>();
         services.AddSingleton<ReferenceScalePopulator>();
         services.AddSingleton<DataQualityValidator>();
+        // P1.2 (F9): propagate config/strategies + config/risk-profiles JSON edits into the DB on startup
+        // (and expose GET /api/system/config-drift), without clobbering UI hand-edits.
+        services.AddScoped(sp => new TradingEngine.Infrastructure.Configuration.ConfigSyncService(
+            sp.GetRequiredService<TradingDbContext>(),
+            sp.GetRequiredService<IStrategyConfigStore>(),
+            sp.GetRequiredService<IRiskProfileStore>(),
+            DbPathResolver.FindRepoRoot(),
+            sp.GetRequiredService<ILogger<TradingEngine.Infrastructure.Configuration.ConfigSyncService>>()));
         services.AddScoped<IReferenceScaleLookup, SqliteReferenceScaleLookup>();
         services.AddSingleton<SweepRunnerService>();
         services.AddScoped<Services.LedgerReconcileService>();

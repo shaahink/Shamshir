@@ -591,7 +591,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var summary = new BacktestRunSummary(
                 runId, startedAt, DateTime.MinValue,
                 cfg.Symbol, cfg.Period, SymbolsJson(cfg.Symbols), PeriodsJson(cfg.Periods), cfg.Start, cfg.End,
-                cfg.Balance, "", "{}", effectiveConfigJson,
+                cfg.Balance, "", effectiveConfigJson ?? "{}", effectiveConfigJson,
                 0, 0, 0, 0, 0, 0, 0, 0, -1, null,
                 ReportJsonPath: null, DatasetId: datasetId, ConfigSetId: configSetId, Seed: 42,
                 ParentRunId: string.IsNullOrWhiteSpace(parentRunId) ? null : parentRunId,
@@ -628,7 +628,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var summary = new BacktestRunSummary(
                 runId, startedAt, DateTime.UtcNow,
                 cfg.Symbol, cfg.Period, SymbolsJson(cfg.Symbols), PeriodsJson(cfg.Periods), cfg.Start, cfg.End,
-                cfg.Balance, result.AlgoHash, "{}", effectiveConfigJson,
+                cfg.Balance, result.AlgoHash, effectiveConfigJson ?? "{}", effectiveConfigJson,
                 stats.NetProfit, stats.GrossPnL, stats.CommissionTotal, stats.SwapTotal, stats.MaxDrawdownPct,
                 stats.TotalTrades, stats.WinningTrades, stats.WinRatePct,
                 result.ExitCode, result.ErrorMessage,

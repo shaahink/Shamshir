@@ -40,6 +40,13 @@ public static class MiddlewarePipeline
             scope.ServiceProvider.GetRequiredService<IAddOnPackStore>(), packLogger);
         await packSeeder.SeedAsync(default);
 
+        // P1.2 (F9): after the one-time seeders, propagate any config/strategies + config/risk-profiles
+        // JSON edits into the DB (bump Version, log), unless the row was hand-edited via UI since seed —
+        // in which case it is reported as drift by GET /api/system/config-drift instead of being clobbered.
+        var configSync = scope.ServiceProvider
+            .GetRequiredService<TradingEngine.Infrastructure.Configuration.ConfigSyncService>();
+        await configSync.SyncAsync();
+
         // Single-origin hosting: ASP.NET serves the built Angular SPA (web-ui → wwwroot) alongside the
         // JSON API, the SignalR hub and the Scalar docs. One `dotnet run` gives the whole app — no
         // separate `ng serve`/proxy/port-4200 needed (that remains available for HMR via `npm start`).

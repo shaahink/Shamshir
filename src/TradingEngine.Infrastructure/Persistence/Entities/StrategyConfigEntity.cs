@@ -21,4 +21,11 @@ public sealed class StrategyConfigEntity : IAuditableEntity
     public int Version { get; set; } = 1;
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
+
+    // P1.2 (F9): content hash of the source config/strategies/*.json at the last sync-from-disk, and when
+    // that sync happened. Drift detection compares the current file hash against SeededHash; a UI/hand edit
+    // is inferred from UpdatedAtUtc > SeededAtUtc (so an edited-on-disk file is NOT clobbered when the row
+    // was hand-edited since the last seed). Null SeededHash = never synced from a file yet (pre-M42 rows).
+    public string? SeededHash { get; set; }
+    public DateTime? SeededAtUtc { get; set; }
 }

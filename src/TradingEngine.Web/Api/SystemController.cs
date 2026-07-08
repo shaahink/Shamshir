@@ -58,6 +58,41 @@ public sealed class SystemController : ControllerBase
         });
     }
 
+    // P1.2 (F9): report config drift between config/*.json and the DB. Read-only — the startup sync
+    // already propagates non-hand-edited JSON changes; this surfaces hand-edited conflicts and any edits
+    // made to the files while the app is running (pending the next restart).
+    [HttpGet("config-drift")]
+    public async Task<IActionResult> GetConfigDrift(CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var sync = scope.ServiceProvider.GetRequiredService<ConfigSyncService>();
+        var result = await sync.DetectDriftAsync(ct);
+        return Ok(new
+        {
+            inSync = result.InSync,
+            baselined = result.Baselined,
+            resyncPending = result.Resynced,
+            conflicts = result.Conflicts,
+            hasDrift = result.Conflicts > 0 || result.Resynced > 0,
+            drift = result.Drift.Select(d => new
+            {
+                d.ConfigType,
+                d.Id,
+                status = d.Status.ToString(),
+                d.FileHash,
+                d.DbSeededHash,
+                d.UpdatedAtUtc,
+                d.SeededAtUtc,
+            }),
+            entries = result.Entries.Select(d => new
+            {
+                d.ConfigType,
+                d.Id,
+                status = d.Status.ToString(),
+            }),
+        });
+    }
+
     // P6.3: reconcile health — days since last run, nudge to run compare-both weekly.
     [HttpGet("reconcile-health")]
     public async Task<IActionResult> GetReconcileHealth(CancellationToken ct)
