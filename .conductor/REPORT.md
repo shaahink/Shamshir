@@ -1,11 +1,32 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 16:12 UTC · branch `iter/parity-pipeline` · HEAD `cb25ad0`_
+_Updated 2026-07-08 16:27 UTC · branch `iter/parity-pipeline` · HEAD `9605f10`_
 
-**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P1 — Config & DB truth · attempts used 0
-**Checkpoints:** 8/17 done · **Sessions run:** 9 · **Cost:** $0.5856 · **Tokens:** 144,218 in / 198,405 out / 104,850 think
+**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Stage:** P2 — Lifecycle robustness + headline gate · attempts used 0 · working ▸ P2.1
+**Checkpoints:** 8/17 done · **Sessions run:** 10 · **Cost:** $0.5856 · **Tokens:** 144,218 in / 198,405 out / 104,850 think
 **Confirmed phases:** P0, P1
+
+## Latest activity (live)
+
+_Session #10 (Deliver) · running 15m · last output 27s ago · $0.0236_
+
+**Thinking:**
+> I need to extract the `KillCtraderProcessTreeAsync` method from the existing reaper block so I can reuse it in the cancel logic, then add a watchdog diagnostic to track this operation.
+> I'm extracting the inline logic into a separate method called `KillCtraderProcessTreeAsync` that takes the run ID and reason as parameters, then replacing the original block with a call to this new method.
+> I should build the Web and Domain projects first to catch any compile errors before writing tests. I'm also noticing that the `GetCurrentProgress` method's status switch statement needs to handle the new `finalizing` and `completed-with-warnings` states—`finalizing` will correctly map to "running" a…
+
+**Recent actions:**
+- `17:24:44` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `17:24:57` · Now extract `KillCtraderProcessTreeAsync` from the inline reaper. Let me find the current reaper block location.
+- `17:24:58` » bash cd C:\Code\Shamshir; git grep -n "GetProcessesByName(\"ctrader-cli\")\|GetProcessesByName(\"cTrader.Automate\")\|CTRADER|REAP\|after the engine has dispose…
+- `17:25:12` » bash cd C:\Code\Shamshir; Select-String -Path src/TradingEngine.Web/Services/BacktestOrchestrator.cs -Pattern "GetProcessesByName|after the engine has disposed"…
+- `17:25:21` » read src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `17:25:49` · Replace the inline reaper with a call to the extracted method:
+- `17:25:49` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `17:26:14` · Now add the `KillCtraderProcessTreeAsync` method. Let me place it right after `AllocatePorts`:
+- `17:26:14` » edit src\TradingEngine.Web\Services\BacktestOrchestrator.cs
+- `17:26:40` · Let me build to catch errors before writing tests.
 
 ## Stage progress
 
@@ -13,7 +34,7 @@ _Updated 2026-07-08 16:12 UTC · branch `iter/parity-pipeline` · HEAD `cb25ad0`
 |---|---|---|---|
 | P0 | Parity truth repair (the spine) | 6/6 | confirmed ✓ |
 | P1 | Config & DB truth | 2/2 | confirmed ✓ |
-| P2 | Lifecycle robustness + headline gate | 0/2 | todo |
+| P2 | Lifecycle robustness + headline gate | 0/2 | **← active** |
 | P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | todo |
 | P4 | Lab golden paths | 0/1 | todo |
 | P5 | UI truth + Angular refactor | 0/1 | todo |
@@ -32,6 +53,7 @@ _Updated 2026-07-08 16:12 UTC · branch `iter/parity-pipeline` · HEAD `cb25ad0`
 | 7 | P1 | Deliver | 1 | 07-08 14:02 | 0:15 | Progress |  | 1 | build:OK | $0.0160 | 873/3,880 |
 | 8 | P1 | Deliver | 2 | 07-08 14:18 | 1:36 | Advanced | P1.1 P1.2 | 5 | build:OK | $0.1096 | 4,363/41,198 |
 | 9 | P1 | Audit | 1 | 07-08 15:55 | 0:14 | Progress |  | 2 |  | $0.0205 | 1,153/9,010 |
+| 10 | P2 | Deliver | 1 | 07-08 16:12 | … | running |  | 0 |  |  |  |
 
 ### Commits by session
 
