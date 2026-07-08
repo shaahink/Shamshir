@@ -232,7 +232,7 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** <SHA> (s30, P6.7 entry-quality decomposition)
+**Branch:** `iter/parity-pipeline` — **HEAD:** 061068c (s30, P6.7 entry-quality decomposition)
 **Session (s30, P6.7):** Delivered entry-quality decomposition: EntryDiagnosis OLS domain
   (AtrPercentile, EmaDistanceAtr, SqueezeAge, Session dummies → RMultiple),
   11 unit tests, EntryQualityController API endpoint, ResearchCli

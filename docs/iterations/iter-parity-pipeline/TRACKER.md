@@ -126,7 +126,7 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P6.4 | Wild list: regime-conditioned calibration | DONE | 611d26d | docs: commit body; playbooks/regime-calibration.json; RegimePlaybook_HasPerRegimeExitLabSteps test (Unit); ShippedPlaybook_Parses 6/6; ExitLabController Evaluate() partitions by SessionDetector regime, optional filter, RegimeBreakdown in response |
 | P6.5 | Wild list: block-bootstrap tapes | DONE (OWNER-PENDING — needs live app up to exercise endpoint end-to-end) | 23bed7c | playbooks/block-bootstrap.json; BlockBootstrapperTests 9/9 (Unit); ShippedPlaybook_Parses 5/5 |
 | P6.6 | Wild list: meta-allocator | DONE (OWNER-PENDING — live playbook run needs app+data) | 5f3c001 | playbooks/meta-allocator.json; MetaAllocatorTests 12/12 (Unit); R5: playbook parses per ShippedPlaybook_Parses 8/8 |
-| P6.7 | Wild list: entry-quality decomposition | DONE | <SHA> | playbooks/entry-quality.json; EntryDiagnosisTests 11/11 (Unit); ShippedPlaybook_Parses 9/9; EntryQualityController API endpoint |
+| P6.7 | Wild list: entry-quality decomposition | DONE | 061068c | playbooks/entry-quality.json; EntryDiagnosisTests 11/11 (Unit); ShippedPlaybook_Parses 9/9; EntryQualityController API endpoint |
 | P6.8 | Wild list: pyramiding policy | TODO | | |
 
 ## Quick commands (gates — see PLAN §11 for per-phase specifics)
