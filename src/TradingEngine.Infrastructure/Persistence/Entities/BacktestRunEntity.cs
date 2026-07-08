@@ -40,6 +40,9 @@ public sealed class BacktestRunEntity : IAuditableEntity
     public int Seed { get; set; }
     public string? ParentRunId { get; set; }
 
+    // P5.1 (F16): shared key for compare-both pairs (tape parent + cTrader child). Null for solo runs.
+    public string? ComparePairId { get; set; }
+
     // iter-strategy-system P2 (D5): persist the run's full selection so the report shows exactly what was
     // run. RunPlanJson is the array of rows (strategy, symbol, timeframe, pack); the rest are the run-level
     // choices the builder sends (D4).

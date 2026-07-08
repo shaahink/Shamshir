@@ -1,10 +1,16 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink, Router } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { RunsStore } from '../runs.store';
 import { RunsApiService } from '../runs.service';
 import { BadgeComponent } from '../../../shared/badge.component';
 import { formatSymbols } from '../../../shared/symbols.helper';
+import type { RunSummary } from '../../../models/api.types';
+
+interface RunListItem {
+  run: RunSummary;
+  indent: boolean;
+}
 
 @Component({
   selector: 'app-run-list',
@@ -69,47 +75,47 @@ import { formatSymbols } from '../../../shared/symbols.helper';
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-800">
-              @for (run of store.runs(); track run.runId) {
-                <tr class="cursor-pointer transition hover:bg-gray-800/30" [routerLink]="['/runs', run.runId]">
+              @for (item of groupedRuns(); track item.run.runId) {
+                <tr class="cursor-pointer transition hover:bg-gray-800/30" [routerLink]="['/runs', item.run.runId]">
                   <td class="px-4 py-2">
                     <input
                       type="checkbox"
-                      [checked]="isSelected(run.runId)"
-                      (click)="toggleSelect($event, run.runId)"
+                      [checked]="isSelected(item.run.runId)"
+                      (click)="toggleSelect($event, item.run.runId)"
                       class="h-3.5 w-3.5 rounded border-gray-600 bg-gray-800 text-emerald-500 focus:ring-emerald-500"
                     />
                   </td>
-                  <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-400">
-                    {{ run.runId.slice(0, 8) }}
+                  <td class="whitespace-nowrap px-4 py-2 font-mono text-xs" [class.pl-8]="item.indent" [class.text-gray-400]="!item.indent" [class.text-gray-500]="item.indent">
+                    @if (item.indent) { ↳ } {{ item.run.runId.slice(0, 8) }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-2">
                     <app-badge
-                      [label]="run.status"
-                      [variant]="run.status === 'completed' ? 'success' : run.status === 'failed' ? 'error' : 'warning'"
+                      [label]="statusLabel(item.run.status)"
+                      [variant]="statusVariant(item.run.status)"
                     />
                   </td>
                   <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-500">
-                    {{ venueLabel(run.venue) }}
+                    {{ venueLabel(item.run.venue) }}
                   </td>
-                  <td class="whitespace-nowrap px-4 py-2 font-mono text-xs">{{ symbolsDisplay(run) }}</td>
+                  <td class="whitespace-nowrap px-4 py-2 font-mono text-xs">{{ symbolsDisplay(item.run) }}</td>
                   <td
                     class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums"
-                    [class.text-emerald-400]="run.netProfit > 0"
-                    [class.text-red-400]="run.netProfit < 0"
+                    [class.text-emerald-400]="item.run.netProfit > 0"
+                    [class.text-red-400]="item.run.netProfit < 0"
                   >
-                    {{ run.netProfit.toFixed(2) }}
+                    {{ item.run.netProfit.toFixed(2) }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums text-red-400">
-                    {{ (run.maxDrawdownPct * 100).toFixed(2) }}%
+                    {{ (item.run.maxDrawdownPct * 100).toFixed(2) }}%
                   </td>
                   <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums">
-                    {{ run.totalTrades }}
+                    {{ item.run.totalTrades }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums text-gray-400">
-                    {{ (run.winRatePct * 100).toFixed(1) }}%
+                    {{ (item.run.winRatePct * 100).toFixed(1) }}%
                   </td>
                   <td class="whitespace-nowrap px-4 py-2 text-right font-mono text-xs tabular-nums text-gray-500">
-                    {{ run.createdAtUtc ? (run.createdAtUtc | date: 'MM-dd HH:mm') : '—' }}
+                    {{ item.run.createdAtUtc ? (item.run.createdAtUtc | date: 'MM-dd HH:mm') : '—' }}
                   </td>
                 </tr>
               }
@@ -128,6 +134,37 @@ export class RunListComponent implements OnInit {
   selectedRuns = signal<string[]>([]);
   deleting = signal(false);
   symbolsDisplay = formatSymbols;
+
+  groupedRuns = computed<RunListItem[]>(() => {
+    const runs = this.store.runs();
+    const result: RunListItem[] = [];
+    const byComparePair = new Map<string, RunSummary[]>();
+    const children = new Set<string>();
+
+    for (const r of runs) {
+      if (r.comparePairId) {
+        const list = byComparePair.get(r.comparePairId) ?? [];
+        list.push(r);
+        byComparePair.set(r.comparePairId, list);
+      }
+      if (r.parentRunId) children.add(r.runId);
+    }
+
+    for (const r of runs) {
+      if (children.has(r.runId)) continue; // child runs handled inside their group
+      result.push({ run: r, indent: false });
+
+      const pairId = r.comparePairId;
+      if (pairId) {
+        const siblings = (byComparePair.get(pairId) ?? [])
+          .filter((s) => s.runId !== r.runId);
+        for (const s of siblings) {
+          result.push({ run: s, indent: true });
+        }
+      }
+    }
+    return result;
+  });
 
   ngOnInit(): void {
     this.store.loadRuns();
@@ -168,5 +205,17 @@ export class RunListComponent implements OnInit {
     if (v === 'tape') return 'tape';
     if (v === 'ctrader' || v === 'ctrader-desktop') return 'cTrader';
     return v;
+  }
+
+  statusLabel(s: string): string {
+    if (s === 'completed-with-warnings') return 'warnings';
+    return s;
+  }
+
+  statusVariant(s: string): 'success' | 'error' | 'warning' | 'neutral' {
+    if (s === 'completed') return 'success';
+    if (s === 'failed') return 'error';
+    if (s === 'completed-with-warnings' || s === 'cancelled' || s === 'queued') return 'warning';
+    return 'neutral';
   }
 }

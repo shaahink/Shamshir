@@ -21,6 +21,7 @@ export interface RunSummary {
   datasetId?: string | null;
   configSetId?: string | null;
   venue?: string | null;
+  comparePairId?: string | null;
 }
 
 export interface RunDetail {
@@ -66,6 +67,7 @@ export interface RunDetail {
   explorationMode?: boolean;
   // P4.1 (F11): whether excursion paths were recorded.
   recordExcursions?: boolean;
+  comparePairId?: string | null;
 }
 
 export interface TradeListResponse {

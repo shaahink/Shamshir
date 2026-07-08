@@ -73,6 +73,8 @@ public sealed class RunQueryService : IRunQueryService
             Venue = r.Venue ?? "replay",
                 RiskProfileId = r.RiskProfileId,
                 WarningsJson = r.WarningsJson,
+                ParentRunId = r.ParentRunId,
+                ComparePairId = r.ComparePairId,
             })
             .ToListAsync(ct);
 
@@ -134,6 +136,8 @@ public sealed class RunQueryService : IRunQueryService
             WallElapsedMs = r.WallElapsedMs,
             BarsPerSec = r.BarsPerSec,
             TotalBars = r.TotalBars,
+            ParentRunId = r.ParentRunId,
+            ComparePairId = r.ComparePairId,
         };
     }
 

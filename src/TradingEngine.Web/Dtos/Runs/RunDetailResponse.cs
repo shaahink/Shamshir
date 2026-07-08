@@ -48,4 +48,8 @@ public sealed record RunDetailResponse
 
     // P4.1 (F11): whether excursion paths were recorded for this run.
     public bool RecordExcursions { get; init; }
+
+    // P5.1 (F16): parent and compare-pair linkage for child runs and compare-both grouping.
+    public string? ParentRunId { get; init; }
+    public string? ComparePairId { get; init; }
 }

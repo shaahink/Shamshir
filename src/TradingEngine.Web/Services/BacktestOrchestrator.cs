@@ -706,7 +706,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 WallElapsedMs: wallElapsedMs,
                 BarsPerSec: barsPerSec,
                 TotalBars: totalBars,
-                WarningsJson: result.WarningsJson);
+                WarningsJson: result.WarningsJson,
+                ComparePairId: cfg.CustomParams.GetValueOrDefault("ComparePairId"),
+                ParentRunId: cfg.CustomParams.GetValueOrDefault("ParentRunId"));
             await repo.UpdateAsync(summary, CancellationToken.None);
             return true;
         }

@@ -23,4 +23,6 @@ public sealed record RunListResponse
     public string? WarningsJson { get; init; }
     public string? Venue { get; init; }
     public string? RiskProfileId { get; init; }
+    public string? ParentRunId { get; init; }
+    public string? ComparePairId { get; init; }
 }

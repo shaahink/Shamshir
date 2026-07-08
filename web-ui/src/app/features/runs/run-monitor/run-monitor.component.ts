@@ -51,7 +51,7 @@ const NARRATIVE_LIMIT = 100;
         </div>
       }
 
-      @if (terminal() && status() === 'completed') {
+      @if (terminal() && (status() === 'completed' || status() === 'completed-with-warnings')) {
         <div class="rounded-lg border border-emerald-800 bg-emerald-900/20 p-4 flex items-center justify-between">
           <div>
             <div class="text-sm text-emerald-400">Run completed</div>

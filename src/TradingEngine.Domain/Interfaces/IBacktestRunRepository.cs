@@ -42,7 +42,9 @@ public sealed record BacktestRunSummary(
     int TotalBars = 0,
     // P0.2 (F5, Q5): teardown/persistence warnings on a run that still produced a complete result.
     // Populated => `completed-with-warnings`; ErrorMessage stays null.
-    string? WarningsJson = null);
+    string? WarningsJson = null,
+    // P5.1 (F16): shared key for compare-both pairs. Null for solo runs.
+    string? ComparePairId = null);
 
 public interface IBacktestRunRepository
 {
