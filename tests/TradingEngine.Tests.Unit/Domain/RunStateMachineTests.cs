@@ -129,4 +129,59 @@ public sealed class RunStateMachineTests
         RunStateMachine.Cancelled.Should().Be(RunStatusResolver.Cancelled);
         RunStateMachine.Failed.Should().Be(RunStatusResolver.Failed);
     }
+
+    // --- Classify: the guarded writer must tell an idempotent no-op apart from a real ordering bug so
+    // the LIFECYCLE journal flag stays reserved for genuine violations (audit-trail integrity). ---
+
+    [Theory]
+    [InlineData(RunStateMachine.Queued, RunStateMachine.Starting)]
+    [InlineData(RunStateMachine.Starting, RunStateMachine.Running)]
+    [InlineData(RunStateMachine.Running, RunStateMachine.Finalizing)]
+    [InlineData(RunStateMachine.Finalizing, RunStateMachine.Completed)]
+    [InlineData(RunStateMachine.Finalizing, RunStateMachine.Cancelled)]
+    public void Classify_LegalEdge_IsLegal(string from, string to) =>
+        RunStateMachine.Classify(from, to).Should().Be(RunStateMachine.TransitionKind.Legal);
+
+    [Theory]
+    // The exact bug this fixes: an OperationCanceled that lands while already finalizing re-enters
+    // finalizing — that must be a benign no-op, NOT a false "illegal transition" warning + journal row.
+    [InlineData(RunStateMachine.Finalizing, RunStateMachine.Finalizing)]
+    [InlineData(RunStateMachine.Running, RunStateMachine.Running)]
+    [InlineData(RunStateMachine.Starting, RunStateMachine.Starting)]
+    // Leaving a terminal is the sanctioned double-cancel / post-completion-teardown no-op.
+    [InlineData(RunStateMachine.Cancelled, RunStateMachine.Cancelled)]
+    [InlineData(RunStateMachine.Completed, RunStateMachine.Completed)]
+    [InlineData(RunStateMachine.Completed, RunStateMachine.Failed)]
+    [InlineData(RunStateMachine.Cancelled, RunStateMachine.Completed)]
+    [InlineData(RunStateMachine.Failed, RunStateMachine.Running)]
+    public void Classify_NoOp_ForSelfTransitionOrLeavingTerminal(string from, string to) =>
+        RunStateMachine.Classify(from, to).Should().Be(RunStateMachine.TransitionKind.IdempotentNoOp);
+
+    [Theory]
+    // A genuine ordering violation from a live non-terminal state — the ONLY thing that should warn+journal.
+    [InlineData(RunStateMachine.Running, RunStateMachine.Completed)]
+    [InlineData(RunStateMachine.Running, RunStateMachine.Starting)]
+    [InlineData(RunStateMachine.Queued, RunStateMachine.Completed)]
+    [InlineData(RunStateMachine.Finalizing, RunStateMachine.Running)]
+    // Jumps involving an unknown state (that actually change the value) are illegal, not benign.
+    [InlineData("bogus", RunStateMachine.Running)]
+    [InlineData(RunStateMachine.Running, "bogus")]
+    public void Classify_GenuineOrderingViolation_IsIllegal(string from, string to) =>
+        RunStateMachine.Classify(from, to).Should().Be(RunStateMachine.TransitionKind.Illegal);
+
+    [Fact]
+    public void Classify_NeverContradicts_CanTransition()
+    {
+        // Every state pair: Classify==Legal iff CanTransition==true (the two agree on legality; Classify
+        // only adds the no-op/illegal split on top of the rejected set).
+        var universe = RunStateMachine.AllStates.Append("bogus").ToArray();
+        foreach (var from in universe)
+        {
+            foreach (var to in universe)
+            {
+                var legal = RunStateMachine.Classify(from, to) == RunStateMachine.TransitionKind.Legal;
+                legal.Should().Be(RunStateMachine.CanTransition(from, to), $"{from}->{to}");
+            }
+        }
+    }
 }

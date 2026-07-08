@@ -388,21 +388,25 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private void TransitionRun(BacktestRunState state, string to)
     {
         var from = state.Status;
-        if (RunStateMachine.TryTransition(from, to, out _))
+        switch (RunStateMachine.Classify(from, to))
         {
-            state.Status = to;
-            _logger.LogDebug("Run {RunId} {From}->{To}", state.RunId, from, to);
-            return;
-        }
+            case RunStateMachine.TransitionKind.Legal:
+                state.Status = to;
+                _logger.LogDebug("Run {RunId} {From}->{To}", state.RunId, from, to);
+                return;
 
-        if (RunStateMachine.IsTerminal(from))
-        {
-            _logger.LogDebug("Run {RunId} transition {From}->{To} ignored (terminal)", state.RunId, from, to);
-            return;
-        }
+            case RunStateMachine.TransitionKind.IdempotentNoOp:
+                // Re-entering the current state (e.g. an OperationCanceled that lands while already
+                // finalizing) or leaving a terminal (double-cancel, post-completion teardown). Not a bug —
+                // do NOT warn/journal, or the LIFECYCLE flag stops meaning "real ordering violation".
+                _logger.LogDebug("Run {RunId} transition {From}->{To} ignored (no-op)", state.RunId, from, to);
+                return;
 
-        _logger.LogWarning("Run {RunId} ILLEGAL transition {From}->{To} rejected; status unchanged", state.RunId, from, to);
-        _journal.Write(state.RunId, "LIFECYCLE", $"illegal transition {from}->{to} rejected");
+            default:
+                _logger.LogWarning("Run {RunId} ILLEGAL transition {From}->{To} rejected; status unchanged", state.RunId, from, to);
+                _journal.Write(state.RunId, "LIFECYCLE", $"illegal transition {from}->{to} rejected");
+                return;
+        }
     }
 
     public void SetSpeed(string runId, float speed)
@@ -1593,8 +1597,12 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     /// safe under the serialized queue). Best-effort + fully isolated: a failure to reap must never
     /// propagate (it would otherwise fault a cancel or a finalize). Each kill is journalled to
     /// VenueSessions so an orphan-kill is auditable rather than silent.
+    ///
+    /// The synchronous enumerate+kill work is offloaded to the thread pool so the cancel path (which
+    /// invokes this fire-and-forget from the Cancel API/web-request thread) is never blocked on a slow
+    /// <c>Process.Kill(entireProcessTree)</c>; the reaper simply awaits the same offloaded work.
     /// </summary>
-    private async Task KillCtraderProcessTreeAsync(string runId, string reason)
+    private Task KillCtraderProcessTreeAsync(string runId, string reason) => Task.Run(() =>
     {
         foreach (var image in new[] { "ctrader-cli", "cTrader.Automate" })
         {
@@ -1620,8 +1628,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 finally { proc.Dispose(); }
             }
         }
-        await Task.CompletedTask;
-    }
+    });
 
     private void RecordReap(string runId, string image, int pid, string reason)
     {
