@@ -1,12 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 18:30 UTC · branch `iter/parity-pipeline` · HEAD `085c06d`_
+_Updated 2026-07-08 18:44 UTC · branch `iter/parity-pipeline` · HEAD `bbe990a`_
 
 **Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P3 — Research pipeline (ResearchCli + playbooks) · attempts used 0
-**Checkpoints:** 14/17 done · **Sessions run:** 14 · **Cost:** $0.9734 · **Tokens:** 483,829 in / 319,036 out / 136,230 think
+**Checkpoints:** 14/17 done · **Sessions run:** 15 · **Cost:** $1.0474 · **Tokens:** 563,696 in / 334,504 out / 147,250 think
 **Confirmed phases:** P0, P1, P2
-**Pending:** auto-fix audit for P3
+**Pending:** full-battery phase gate for P3
 
 ## Stage progress
 
@@ -38,13 +38,10 @@ _Updated 2026-07-08 18:30 UTC · branch `iter/parity-pipeline` · HEAD `085c06d`
 | 12 | P3 | Deliver | 1 | 07-08 17:12 | 0:51 | Advanced | P3.1 P3.2 P3.4 | 8 | build:OK | $0.1071 | 4,238/55,140 |
 | 13 | P3 | Deliver | 1 | 07-08 18:04 | 0:07 | NoProgress |  | 0 | build:OK | $0.0374 | 63,378/4,917 |
 | 14 | P3 | Fix | 2 | 07-08 18:13 | 0:14 | Advanced | P3.3 | 2 | build:OK | $0.1204 | 203,515/13,269 |
+| 15 | P3 | Audit | 1 | 07-08 18:30 | 0:14 | Progress |  | 2 |  | $0.0740 | 79,867/15,468 |
 
 ### Commits by session
 
-- **s6 (P0 Audit)** — 3 commit(s):
-  - fbb1b1e docs(P0-audit): P0 phase handover + tracker F6-R update
-  - 305a853 fix(P0-audit,F6-R): detect unreconstructable venue closes; honest drift log
-  - 60c2003 chore(conductor): s6 P0 working ▸P0 @ 08:02
 - **s7 (P1 Deliver)** — 1 commit(s):
   - 245db11 chore(conductor): s7 P1 working ▸P1.1 @ 15:17
 - **s8 (P1 Deliver)** — 5 commit(s):
@@ -79,12 +76,16 @@ _Updated 2026-07-08 18:30 UTC · branch `iter/parity-pipeline` · HEAD `085c06d`
 - **s14 (P3 Fix)** — 2 commit(s):
   - 085c06d docs(P3.3): session s14 bookkeeping — P3.3 DONE, gates green, RESUME updated
   - 8bca2cb feat(P3.3): UI /research review page — pipeline list + detail + approve/reject
+- **s15 (P3 Audit)** — 2 commit(s):
+  - bbe990a docs(P3): honest phase handover — audit findings, fixes, weaknesses, follow-ups
+  - e554b72 fix(P3): audit — apply-calibration no longer stale-passes, report writes artifact, executor auto-creates artifact dir
 
 ## Phase handovers (audit)
 
 - `.conductor/handovers/P0.md`
 - `.conductor/handovers/P1.md`
 - `.conductor/handovers/P2.md`
+- `.conductor/handovers/P3.md`
 
 ## Last gate run
 
@@ -92,14 +93,7 @@ build:OK
 
 ## Last session result
 
-> Now I understand the landscape. Let me follow the session protocol: QA the previous session's claims by running the gate battery, then proceed to P3.3.
-> Running the full gate battery in parallel:
-> Build 0err/5warn, golden byte-identical. Now running tests:
-> QA confirmed: all gates match s12 claims. Build 0/5w, Unit 622/0/6, Integration 120/0/0, Fast Sim 144/0/0, golden byte-identical. No divergence.
-> Now delivering P3.3 — the UI `/research` review page. Let me explore existing Angular patterns and the research API.
-> Now I have everything I need. Let me read the key files I'll be modifying and start building P3.3.
-> Let me look at a simpler feature page for pattern reference:
-> Now I have the f…
+> SESSION-RESULT:** Audit PASS — three shallow/stubbed implementations hardened (ApplyCalibrationAsync now checks server response instead of stale-passing, Report step writes markdown artifact to disk, executor auto-creates artifact dir when none supplied), 2 new tests added, gates stay green at build 0/5w, Unit 624/0/6 (+2), Integration 120/0/0, fast Sim 144/0/0, golden byte-identical — no regressions. Pushed commits `e554b72` (fixes + tests) and `bbe990a` (handover). The core playbook engine, persistence layer, CLI verbs, and UI review page are structurally correct. The one genuine gap — cTrader child run ID discovery for the venue-parity reconcile step — is deferred per tracker OWNER-PENDIN…
 
 ## Tracker handoff
 
