@@ -14,7 +14,10 @@ public static class Program
         }
         if (args.Length >= 1 && args[0] == "lint-config")
         {
-            var lintRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+            // F10 (P1.1): resolve the repo root via the single source of truth (DbPathResolver), not the
+            // fragile fixed five-levels-up heuristic — so lint-config finds the SAME config/ tree the Web
+            // app and the other Host verbs use regardless of launch depth.
+            var lintRoot = DbPathResolver.FindRepoRoot();
             var violations = ConfigLinter.LintDirectories(
                 Path.Combine(lintRoot, "config", "strategies"),
                 Path.Combine(lintRoot, "config", "risk-profiles"));

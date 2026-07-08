@@ -131,5 +131,47 @@ public sealed class ConfigSyncServiceTests : IDisposable
         drift.Conflicts.Should().Be(1);
     }
 
+    [Fact]
+    public async Task NewStrategyFileWithNoDbRow_isInserted_andHashRecorded()
+    {
+        // F9 edge case: a strategy JSON that has never been seeded (a strategy shipped after the DB was
+        // first seeded) must be INSERTED on sync, not silently ignored, and get its hash recorded.
+        await SeedFromFilesAsync();
+        await (NewService(out _)).SyncAsync();  // baseline the one seeded strategy
+
+        var root = DbPathResolver.FindRepoRoot();
+        var newFile = Path.Combine(_baseDir, "config", "strategies", "super-trend.json");
+        File.Copy(Path.Combine(root, "config", "strategies", "super-trend.json"), newFile);
+
+        var result = await (NewService(out _)).SyncAsync();
+
+        result.Resynced.Should().BeGreaterThanOrEqualTo(1, "the never-seeded strategy is applied");
+        var ctx = _mem.NewContext();
+        var inserted = ctx.StrategyConfigs.AsNoTracking().SingleOrDefault(s => s.Id == "super-trend");
+        inserted.Should().NotBeNull("the new strategy JSON must be inserted into the runtime store");
+        inserted!.SeededHash.Should().Be(ConfigSyncService.HashFile(newFile));
+    }
+
+    [Fact]
+    public async Task RiskProfileEdit_notHandEdited_propagatesToDb()
+    {
+        // The risk-profile propagation path (F9 covers both strategies AND risk profiles) — a disk edit
+        // to a non-hand-edited profile must reach the runtime store.
+        await SeedFromFilesAsync();
+        await (NewService(out _)).SyncAsync();  // baseline
+
+        var edited = File.ReadAllText(_riskFile)
+            .Replace("\"riskPerTradePercent\": 0.005", "\"riskPerTradePercent\": 0.0075");
+        edited.Should().NotBe(File.ReadAllText(_riskFile), "the edit must actually change the file");
+        File.WriteAllText(_riskFile, edited);
+
+        var result = await (NewService(out _)).SyncAsync();
+
+        result.Resynced.Should().BeGreaterThanOrEqualTo(1);
+        var row = _mem.NewContext().RiskProfiles.AsNoTracking().Single(p => p.Id == "standard");
+        row.Json.Should().Contain("0.0075", "the edited risk-per-trade must have propagated into the DB");
+        row.SeededHash.Should().Be(ConfigSyncService.HashFile(_riskFile));
+    }
+
     public void Dispose() => _mem.Dispose();
 }
