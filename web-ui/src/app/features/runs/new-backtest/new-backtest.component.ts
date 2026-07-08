@@ -168,8 +168,8 @@ interface CoverageInfo {
                     <button (click)="setDateRange(12)" class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-400 hover:bg-gray-800">1Y</button>
                   </div>
                   <div class="space-y-1.5">
-                    <input type="date" [(ngModel)]="startDate" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
-                    <input type="date" [(ngModel)]="endDate" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                    <input type="date" [ngModel]="startDate()" (ngModelChange)="startDate.set($event)" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                    <input type="date" [ngModel]="endDate()" (ngModelChange)="endDate.set($event)" class="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
                   </div>
                 </div>
                 <div>
@@ -199,7 +199,7 @@ interface CoverageInfo {
                   <div class="rounded border border-gray-700 p-2 space-y-1">
                     <h4 class="text-xs font-medium text-gray-400">Data Coverage</h4>
                     @if (safeRange()) {
-                      <button (click)="startDate = safeRange()!.from; endDate = safeRange()!.to"
+                      <button (click)="startDate.set(safeRange()!.from); endDate.set(safeRange()!.to)"
                         class="text-xs text-emerald-400 hover:underline mb-1">
                         Snap to available: {{ safeRange()!.from }} – {{ safeRange()!.to }}
                       </button>
@@ -308,6 +308,13 @@ interface CoverageInfo {
               <input type="checkbox" [(ngModel)]="recordExcursions" class="h-3 w-3 rounded" />
               Record excursions (MAE/MFE path)
             </label>
+            @if (venue === 'tape') {
+              <label class="mt-2 flex items-center gap-2 text-xs text-amber-300 cursor-pointer"
+                title="Run the same config on both tape and cTrader venues side-by-side. Results include a reconciliation diff.">
+                <input type="checkbox" [(ngModel)]="compareBoth" class="h-3 w-3 rounded" />
+                Compare vs cTrader (dual-venue)
+              </label>
+            }
             <button (click)="applyExplorationPreset()"
               [class]="chipClass(explorationMode) + ' w-full mt-2'"
               title="SL=ATR×4, TP=none, no add-ons, governor off, record excursions — the entry signal runs bare for exit-lab calibration">
@@ -382,8 +389,8 @@ export class NewBacktestComponent implements OnInit {
   rows = signal<BuilderRow[]>([]);
   enabledCount = computed(() => this.rows().filter((r) => r.enabled).length);
 
-  startDate = '';
-  endDate = '';
+  startDate = signal('');
+  endDate = signal('');
   balance = 100_000;
   commission = 30;
   spread = 1;
@@ -399,6 +406,7 @@ export class NewBacktestComponent implements OnInit {
   honestFills = true;
   recordExcursions = false;
   explorationMode = false;
+  compareBoth = false;
 
   packs = signal<{ id: string; name: string }[]>([]);
   strategies = signal<StrategySummary[]>([]);
@@ -413,8 +421,8 @@ export class NewBacktestComponent implements OnInit {
   coverageMap = computed(() => {
     const inv = this.inventory();
     const map = new Map<string, { decisionTf: boolean; m1: boolean }>();
-    const from = this.startDate ? new Date(this.startDate + 'T00:00:00').getTime() : 0;
-    const to = this.endDate ? new Date(this.endDate + 'T00:00:00').getTime() : 0;
+    const from = this.startDate() ? new Date(this.startDate() + 'T00:00:00').getTime() : 0;
+    const to = this.endDate() ? new Date(this.endDate() + 'T00:00:00').getTime() : 0;
 
     for (const item of inv) {
       const key = `${item.symbol}|${item.timeframe.toLowerCase()}`;
@@ -465,8 +473,8 @@ export class NewBacktestComponent implements OnInit {
   });
 
   canStart = computed(() => {
-    return this.enabledCount() > 0 && !!this.startDate && !!this.endDate
-      && new Date(this.startDate) < new Date(this.endDate)
+    return this.enabledCount() > 0 && !!this.startDate() && !!this.endDate()
+      && new Date(this.startDate()) < new Date(this.endDate())
       && this.balance > 0
       && (this.venue !== 'tape' || this.missingCoverage().length === 0);
   });
@@ -474,9 +482,9 @@ export class NewBacktestComponent implements OnInit {
   safeRange = computed(() => {
     if (this.venue !== 'tape') return null;
     const inv = this.inventory();
-    if (!inv.length || !this.startDate || !this.endDate) return null;
-    const from = new Date(this.startDate + 'T00:00:00').getTime();
-    const to = new Date(this.endDate + 'T00:00:00').getTime();
+    if (!inv.length || !this.startDate() || !this.endDate()) return null;
+    const from = new Date(this.startDate() + 'T00:00:00').getTime();
+    const to = new Date(this.endDate() + 'T00:00:00').getTime();
     let maxFirst = 0;
     let minLast = Infinity;
     let found = false;
@@ -500,8 +508,8 @@ export class NewBacktestComponent implements OnInit {
 
   startDisabledReason = computed(() => {
     if (this.enabledCount() === 0) return 'No rows enabled';
-    if (!this.startDate || !this.endDate) return 'Select start and end dates';
-    if (new Date(this.startDate) >= new Date(this.endDate)) return 'Start date must be before end date';
+    if (!this.startDate() || !this.endDate()) return 'Select start and end dates';
+    if (new Date(this.startDate()) >= new Date(this.endDate())) return 'Start date must be before end date';
     if (!this.balance || this.balance <= 0) return 'Balance must be greater than 0';
     if (this.venue === 'tape' && this.missingCoverage().length > 0) return 'Data coverage missing';
     return null;
@@ -511,10 +519,10 @@ export class NewBacktestComponent implements OnInit {
 
   constructor() {
     const now = new Date();
-    this.endDate = now.toISOString().slice(0, 10);
+    this.endDate.set(now.toISOString().slice(0, 10));
     const d = new Date(now);
     d.setMonth(d.getMonth() - 1);
-    this.startDate = d.toISOString().slice(0, 10);
+    this.startDate.set(d.toISOString().slice(0, 10));
   }
 
   async ngOnInit(): Promise<void> {
@@ -539,8 +547,8 @@ export class NewBacktestComponent implements OnInit {
       try {
         const src = await this.runsApi.getRun(sourceRunId);
         if (src) {
-          this.startDate = (src.backtestFrom || '').slice(0, 10);
-          this.endDate = (src.backtestTo || '').slice(0, 10);
+          this.startDate.set((src.backtestFrom || '').slice(0, 10));
+          this.endDate.set((src.backtestTo || '').slice(0, 10));
           this.balance = src.initialBalance || 100000;
           const parse = (v: unknown): string[] => {
             try { const a = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(a) ? a : []; } catch { return []; }
@@ -612,10 +620,10 @@ export class NewBacktestComponent implements OnInit {
 
   setDateRange(months: number): void {
     const now = new Date();
-    this.endDate = now.toISOString().slice(0, 10);
+    this.endDate.set(now.toISOString().slice(0, 10));
     const d = new Date(now);
     d.setMonth(d.getMonth() - months);
-    this.startDate = d.toISOString().slice(0, 10);
+    this.startDate.set(d.toISOString().slice(0, 10));
   }
 
   async start(): Promise<void> {
@@ -624,8 +632,8 @@ export class NewBacktestComponent implements OnInit {
       this.error.set('Select at least one strategy, symbol and timeframe.');
       return;
     }
-    if (!this.startDate || !this.endDate) { this.error.set('Select start and end dates.'); return; }
-    if (new Date(this.startDate) >= new Date(this.endDate)) { this.error.set('Start date must be before end date.'); return; }
+    if (!this.startDate() || !this.endDate()) { this.error.set('Select start and end dates.'); return; }
+    if (new Date(this.startDate()) >= new Date(this.endDate())) { this.error.set('Start date must be before end date.'); return; }
     if (!this.balance || this.balance <= 0) { this.error.set('Balance must be greater than 0.'); return; }
     if (this.venue === 'tape' && this.missingCoverage().length > 0) {
       this.error.set('Data coverage missing for: ' + this.missingCoverage().join(', '));
@@ -642,8 +650,8 @@ export class NewBacktestComponent implements OnInit {
     }));
 
     const req: StartRunRequest = {
-      start: this.startDate,
-      end: this.endDate,
+      start: this.startDate(),
+      end: this.endDate(),
       balance: this.balance,
       commissionPerMillion: this.commission,
       spreadPips: this.spread,
@@ -663,6 +671,7 @@ export class NewBacktestComponent implements OnInit {
       honestFills: this.honestFills ? undefined : false,
       recordExcursions: this.recordExcursions ? true : undefined,
       explorationMode: this.explorationMode ? true : undefined,
+      compareBoth: this.compareBoth ? true : undefined,
     };
     this.saveSetup();
     try {
@@ -710,8 +719,8 @@ export class NewBacktestComponent implements OnInit {
     try {
       const setup = {
         name: this._pendingSetupName || undefined,
-        startDate: this.startDate,
-        endDate: this.endDate,
+        startDate: this.startDate(),
+        endDate: this.endDate(),
         balance: this.balance,
         commission: this.commission,
         spread: this.spread,
@@ -726,6 +735,7 @@ export class NewBacktestComponent implements OnInit {
         honestFills: this.honestFills,
         recordExcursions: this.recordExcursions,
         explorationMode: this.explorationMode,
+        compareBoth: this.compareBoth,
         strategies: [...this.selectedStrategyIds()],
         symbols: [...this.selectedSymbols()],
         periods: [...this.selectedPeriods()],
@@ -749,8 +759,8 @@ export class NewBacktestComponent implements OnInit {
       const existing = JSON.parse(localStorage.getItem(this.SETUP_STORAGE_KEY) || '[]');
       const setup = existing[index];
       if (!setup) return;
-      this.startDate = setup.startDate || this.startDate;
-      this.endDate = setup.endDate || this.endDate;
+      this.startDate.set(setup.startDate || this.startDate());
+      this.endDate.set(setup.endDate || this.endDate());
       this.balance = setup.balance ?? this.balance;
       this.commission = setup.commission ?? this.commission;
       this.spread = setup.spread ?? this.spread;
@@ -765,6 +775,7 @@ export class NewBacktestComponent implements OnInit {
       this.honestFills = setup.honestFills ?? this.honestFills;
       this.recordExcursions = setup.recordExcursions ?? this.recordExcursions;
       this.explorationMode = setup.explorationMode ?? this.explorationMode;
+      this.compareBoth = setup.compareBoth ?? this.compareBoth;
       if (setup.strategies?.length) this.selectedStrategyIds.set(new Set(setup.strategies));
       if (setup.symbols?.length) this.selectedSymbols.set(new Set(setup.symbols));
       if (setup.periods?.length) this.selectedPeriods.set(new Set(setup.periods));

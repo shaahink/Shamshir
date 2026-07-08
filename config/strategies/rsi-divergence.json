@@ -11,10 +11,13 @@
                          "allowHighVolatility":  false
                      },
     "orderEntry":  {
-                       "method":  "Market",
-                       "maxSlippagePips":  2.0,
-                       "maxSlippageSpreadMultiple":  2.0
-                   },
+                        "method":  "Market",
+                        "limitOffsetPips":  3.0,
+                        "limitOffsetAtrFraction":  0.15,
+                        "limitOrderExpiryBars":  12,
+                        "maxSlippagePips":  2.0,
+                        "maxSlippageSpreadMultiple":  2.0
+                    },
     "positionManagement":  {
                                "stopLoss":  {
                                                 "method":  "AtrMultiple",

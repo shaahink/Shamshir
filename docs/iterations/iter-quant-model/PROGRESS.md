@@ -14,20 +14,27 @@ Do not batch multiple subphases into one commit — the next agent needs to bise
 
 ## Resume here
 
-→ **P5 is COMPLETE.** All 4 sub-phases delivered. P5.1 (data-quality validator + ReferenceScales)
-→ P5.2 (non-FX tests already existed) → P5.3 (exploration triage: 126-cell sweep, triage report)
-→ P5.4 (exposure groups config + PreTradeGate per-group caps + portfolio report).
+→ **ITERATION COMPLETE (2026-07-07).** All phases P0–P7 delivered and gated. P3.6 is the sole
+→ remaining phase — DEFERRED to next iteration per owner decision (unsure about engine/backtest
+→ hook-point mechanics; wants P6.1 compare-both reconcile evidence first).
 
-**Next: P6 — Oracle backstop (owner-driven):** tape vs cTrader reconcile, per-bar recorded spread,
-weekly drift habit. See PLAN.md §3 P6 + §9.3 direction.
+→ **P6/P7 pre-review clean-up is COMPLETE.** F5 (kernel limit orders → cTrader) fixed, all 9
+→ strategies now use LimitOffset entry, compare-both UI toggle added, MISSING_DATA verdict
+→ implemented, P7 evaluator tests (11 new) written, ExitReplayer validation gate (3 tests) written.
 
-**Carried-forward debts (not P6 blockers, but keep visible):**
-- `MISSING_DATA` verdict (P1.5.4) — zero hits repo-wide; deferred to verdict-funnel UI
-- `ReferenceScales` population (P3.4b) — 14 rows populated (1 per symbol); full 84-cell pending
-- Kernel-path limit orders reach cTrader as Market (P2.7 carry-forward) — investigate in P6 reconcile
+**Next iteration:** P6.1 compare-both actual run with cTrader credentials → reconcile → then P3.6.
+Full implementable plan at `P3.6-HANDOVER.md` (32 files mapped, all hook points code-trace-verified).
+
+**Carried-forward into next iteration:**
+- P3.6 Proposal ledger + entry-tactic lab (D10) — **DEFERRED**, full plan at `P3.6-HANDOVER.md`
+- P6.1 Successful compare-both run — blocked on owner's cTrader credentials (B1–B4 fixed)
+- `ReferenceScales` full 84-cell population — CLI invocation pending (14/84 today)
+- M15 triage data — excluded from P5.3 sweep; ~3× more bars per cell
+- P7 news flatten — placeholder, needs news calendar integration
+
+**Carried-forward nit debt (low impact, don't block):**
 - `AddOnResolver.Ride` Calibrated — explicitly deferred (line 88 comment, "P3 slot")
 - `VenueSessionEntity` missing `IAuditableEntity` (Architecture test, pre-existing)
-- `EngineReducer.cs:436` now fixed — `ReconcileToVenue` takes `simTimeUtc` parameter from caller
 
 **cTrader test triage (owner request, 2026-07-05):** policy written at `docs/CTRADER-TEST-POLICY.md` —
 keep-set (connection/round-trip/ledger-reconcile/data-acquisition) gets `Category=CtraderContract`; the
@@ -130,7 +137,7 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P0.2 Spread convention | **Done** | Both adapters unified via shared `SpreadConvention` helper. |
 | P0.3 Honest entry timing | **Done** | Tape only, per plan. |
 | P1 TF-agnostic bank | **Done** | P1.1–P1.4 on `iter/quant-model--p1-tf-agnostic`. |
-| P1.5 Close review gaps | **Done** | P1.5.1–P1.5.3 fixed+tested; P1.5.4 (MISSING_DATA) deferred to P2. |
+| P1.5 Close review gaps | **Done** | P1.5.1–P1.5.3 fixed+tested; P1.5.4 (MISSING_DATA) now implemented (2026-07-07). |
 | P2.1 Indicator series API | **Done** | Ring buffer + 4 strategies ported off private fragile state. |
 | P2.2 rsi-divergence rewrite | **Done** | Real pivot-based divergence via PivotFinder + P2.1's series. |
 | P2.3 Edge semantics | **Done** | ema-alignment/trend-breakout/bb-squeeze real edges, not conditions. |
@@ -140,15 +147,18 @@ section above — `EngineReducer.cs:436` and `VenueSessionEntity`, neither file 
 | P2.7 Stop orders | **Done** | `OrderType.Stop` end-to-end: kernel plumbing bug fix + both replay venues + cTrader adapter/cBot + EntryPlanner.StopConfirm. |
 | P3.1 Excursion recorder | **Done** | Tape-only per-trade MAE/MFE path capture, opt-in via `RecordExcursions` (default off). |
 | P3.2 Exploration mode | **Done** | One-click preset (SL=ATR×4, TP=none, governor off, RecordExcursions=true). |
-| P3.3 ExitReplayer service | **Done*** | *Validation gate was deferred and the review confirmed the fidelity bugs it would have caught (P4.5.3). Replayer output not decision-grade until P4.5.3. |
-| P3.4 Calibration tables | **Done*** | *Write path only — saved calibrations reach no run (SL/TP consumed by nothing, no Mode=Calibrated path, TF case mismatch). See P4.5.4. |
-| P3.4b Reference scales | **Done** (schema only) | Compute logic now explicitly assigned to P5.1 ingest (PLAN §9.3), not "P4". |
-| P3.5 Exit Lab UI | **Done*** | *Evaluate endpoint returns 0 cells for every real path (JSON format mismatch, P4.5.2); plateau highlighting — the anti-overfit core — absent (P4.5.7). |
-| P4 Research metrics | **Done*** | *Shipped, but the 2026-07-05 static review found the walk-forward test leg missing, scoreboard in-sample, P(pass) inputs category-errored — see P4.5. Do not use P4 outputs for decisions until P4.5 lands. |
+| P3.3 ExitReplayer service | **Done** | Validation gate tests (3) added 2026-07-07. 4 P4.5.3 fixes earlier. |
+| P3.4 Calibration tables | **Done** | Write path fixed in P4.5.4; Calibrated consumption path wired. |
+| P3.4b Reference scales | **Done** (schema only) | 14/84 cells populated; full population needs CLI invocation. |
+| P3.5 Exit Lab UI | **Done** | JSON format mismatch fixed (P4.5.2); plateau highlighting added (P4.5.7). |
+| P3.6 Proposal ledger (D10) | **DEFERRED** | Owner decision 2026-07-07: revisit after P6.1 reconcile. Full plan at `P3.6-HANDOVER.md`. |
+| P4 Research metrics | **Done** | Walk-forward test leg, scoreboard, P(pass) all fixed in P4.5. |
 | P4.5 Close P3/P4 review gaps | **Done** | All 7 sub-phases + cTrader test triage + carry-forward cleanup. |
 | P5 Data + triage (owner-driven) | **Done** | P5.1–P5.4 delivered; 3 reports produced. |
-| P6 Oracle backstop | **Done** | B4 fixed (NetMQPoller race), P6.2 per-bar spread (cBot→adapter→shards), P6.3 reconcile-health endpoint fix + dashboard chip. |
-| P7 FTMO ops | **Done** | P7.1 intraday DD guard (engine-level CloseRequested), P7.2 weekend flatten + news placeholder, P7.3 phase tracker page + API. |
+| P6 Oracle backstop | **Done** | F5 fix (kernel limit orders), P6.2 per-bar spread, P6.3 reconcile-health, compare-both UI toggle. |
+| P7 FTMO ops | **Done** | P7.1 DD guard tests (6), P7.2 weekend flatten tests (5) added 2026-07-07. |
+| F5 Kernel limit orders → cTrader | **Done** | Entry threaded through kernel; isLimit from request.Type; all 9 strategies → LimitOffset config. |
+| P1.5.4 MISSING_DATA verdict | **Done** | BarEvaluator checks RequiredTimeframes against barSnapshot. |
 
 ---
 

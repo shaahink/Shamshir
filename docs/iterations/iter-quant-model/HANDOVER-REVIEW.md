@@ -395,7 +395,51 @@ CompareBothRequest, ReferenceScalePopulator, DataQualityValidator, etc.
 - The "done" labels in PROGRESS.md for P3, P4, P6.1, and P7 overstate completion relative to PLAN.md gates
 - 1,313 lines of uncommitted changes — the entire P5/P6/P7 delivery was never committed to git
 
+**What was fixed post-review (2026-07-07):**
+
+### F5: Kernel-path limit orders → cTrader (lines 459-474 → now correct)
+- Added `OrderEntryOptions? Entry` to `OrderProposed` and `SubmitOrder` event records
+- Threaded `intent.Entry` through `BarEvaluator` → `Kernel` → `EffectExecutor` → `CTraderBrokerAdapter`
+- Changed `isLimit` derivation in cTrader adapter from `entryOpts?.Method` to `request.Type == OrderType.Limit` (matching replay adapters)
+- Impact: only `mean-reversion` (the 1 LimitOffset strategy) changes behavior at cTrader; 8 Market strategies were unaffected — **but see below: all 8 were switched to LimitOffset**
+- Tests: `Kernel_PreservesEntry_ThroughSubmitOrderEffect` (Simulation) + `LimitOrder_WithoutEntryOnIntent_StillProducesLimitFrame` (Unit)
+- Files: 6 changed (`EngineEvent.cs`, `EngineEffects.cs`, `BarEvaluator.cs`, `Kernel.cs`, `EffectExecutor.cs`, `CTraderBrokerAdapter.cs`)
+
+### All strategies → LimitOffset
+- Changed all 8 Market-entry strategies to `LimitOffset` in `config/strategies/*.json`
+- New defaults: `limitOffsetPips: 3.0`, `limitOffsetAtrFraction: 0.15`, `limitOrderExpiryBars: 12`
+- `config/compare-both/` files should be re-examined — they use `venue: "tape"` but now all strategies produce Limit orders, which behave differently from Market in tape venue
+- Config linter: passes (all raw-pip fields have normalized companions)
+
+### P1.5.4: MISSING_DATA verdict
+- Added check in `BarEvaluator.EvaluateAsync`: after `RequiredBarCount`, checks that all `RequiredTimeframes` have bars in `barSnapshot`
+- Missing TF → verdict with `Reason: "MISSING_DATA: TF {tf} not available"`
+
+### P7: Evaluator tests (11 new)
+- `KernelDailyDdGuardEvaluatorTests` (6): above/below floor, zero max-loss, no positions, DailyStart base
+- `KernelWeekendFlattenEvaluatorTests` (5): Friday→Saturday, weekday skip, opt-out, closed positions, Sunday→Sunday
+
+### P3.3: ExitReplayer validation gate (3 new)
+- `ValidationGate_FullTrailingAfterBE_RoundTrip` — BE arms then trail; verifies Breakeven precedence
+- `ValidationGate_ComplexPath_SLHitWithBEArmed` — multi-bar path with BE offset
+- `ValidationGate_ShortWithSpread_TPHit` — spread-adjusted TP on short side (R=1.93, not 2.0 — correct)
+
+### Compare-both UI
+- Added `compareBoth?: boolean` to Angular `StartRunRequest` interface
+- Added "Compare vs cTrader" checkbox in new-backtest form (visible only when venue=tape)
+- Persists in saved setups (localStorage)
+- Backend already wired — `RunsController.Start` reads `CompareBoth` and sets `CustomParams["Compare"]`
+
+### P3.6/D10 handover
+- `docs/iterations/iter-quant-model/P3.6-HANDOVER.md` — complete blueprint for the next agent
+- Covers: spec, existing infrastructure, new types needed, recording points, entry-tactic compute, counterfactual paths, design decisions
+
+**Updated gates:** Unit 508/0/6 (+4), Simulation 139/0/0 (+11), build 0, config lint OK.
+
 **Bottom Line:** The quant model has a shape. The engine is correct (golden 127/0). The measurement
-machine (excursion recorder, exit lab, scoreboard, walk-forward) works after P4.5 fixes. But the
+machine (excursion recorder, exit lab, scoreboard, walk-forward) works after P4.5 fixes. F5 (limit
+orders in cTrader) is now correct. All gaps from §5 of the original review except P3.6/D10 and the
+blocked items (P6.1 compare-both, ReferenceScales, M15 triage, P7 news) are resolved. P3.6/D10 has
+a complete handover document for the next agent. But the
 model has not been validated against the oracle (cTrader), the entry-tactic dimension (D10) is
 unimplemented, and the triage rankings need longer windows before they're decision-grade.

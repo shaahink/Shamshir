@@ -250,6 +250,8 @@ export interface StartRunRequest {
   recordExcursions?: boolean;
   // P3.2: one-click exploration preset — SL=ATR×4, TP=none, add-ons OFF, governor OFF.
   explorationMode?: boolean;
+  /** P6: run tape + cTrader side-by-side with same config for reconciliation. Tape-only (venue must be 'tape'). */
+  compareBoth?: boolean;
 }
 
 export interface RiskProfile {
