@@ -260,6 +260,8 @@ export interface StartRunRequest {
   explorationMode?: boolean;
   /** P6: run tape + cTrader side-by-side with same config for reconciliation. Tape-only (venue must be 'tape'). */
   compareBoth?: boolean;
+  /** P5.1 (F15): client-generated idempotency key to prevent duplicate runs from double-submit. */
+  idempotencyKey?: string;
 }
 
 export interface RiskProfile {

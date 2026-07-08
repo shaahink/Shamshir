@@ -183,6 +183,10 @@ public sealed class RunsController : ControllerBase
         if (req.CompareBoth)
             cfg.CustomParams["Compare"] = "both";
 
+        // P5.1 (F15): server-side idempotency guard against double-submit.
+        if (!string.IsNullOrWhiteSpace(req.IdempotencyKey))
+            cfg.CustomParams["IdempotencyKey"] = req.IdempotencyKey.Trim();
+
         var runId = await _command.StartAsync(cfg, ct);
         var state = _orchestrator.GetState(runId);
         _logger.LogInformation("Run started. RunId={RunId}", runId);

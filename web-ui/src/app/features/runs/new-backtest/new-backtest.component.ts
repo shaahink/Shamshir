@@ -340,9 +340,9 @@ interface CoverageInfo {
 
             <!-- Start button -->
             <div class="space-y-1.5">
-              <button (click)="start()" [disabled]="!canStart()"
+              <button (click)="start()" [disabled]="!canStart() || starting()"
                 class="w-full rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40">
-                {{ loading() ? 'Starting...' : 'Start Backtest (' + enabledCount() + ' rows)' }}
+                {{ starting() ? 'Starting...' : 'Start Backtest (' + enabledCount() + ' rows)' }}
               </button>
               @if (startDisabledReason(); as reason) {
                 <p class="text-xs text-gray-500 text-center">{{ reason }}</p>
@@ -415,6 +415,7 @@ export class NewBacktestComponent implements OnInit {
   ]);
   loading = this.store.isLoading;
   error = this.store.error;
+  starting = signal(false);
 
   inventory = signal<InventoryItem[]>([]);
 
@@ -632,17 +633,19 @@ export class NewBacktestComponent implements OnInit {
   }
 
   async start(): Promise<void> {
+    if (this.starting()) return;
+    this.starting.set(true);
     const enabled = this.rows().filter((r) => r.enabled);
     if (enabled.length === 0) {
       this.error.set('Select at least one strategy, symbol and timeframe.');
-      return;
+      this.starting.set(false); return;
     }
-    if (!this.startDate() || !this.endDate()) { this.error.set('Select start and end dates.'); return; }
-    if (new Date(this.startDate()) >= new Date(this.endDate())) { this.error.set('Start date must be before end date.'); return; }
-    if (!this.balance || this.balance <= 0) { this.error.set('Balance must be greater than 0.'); return; }
+    if (!this.startDate() || !this.endDate()) { this.error.set('Select start and end dates.'); this.starting.set(false); return; }
+    if (new Date(this.startDate()) >= new Date(this.endDate())) { this.error.set('Start date must be before end date.'); this.starting.set(false); return; }
+    if (!this.balance || this.balance <= 0) { this.error.set('Balance must be greater than 0.'); this.starting.set(false); return; }
     if (this.venue === 'tape' && this.missingCoverage().length > 0) {
       this.error.set('Data coverage missing for: ' + this.missingCoverage().join(', '));
-      return;
+      this.starting.set(false); return;
     }
     this.error.set(null);
 
@@ -677,6 +680,7 @@ export class NewBacktestComponent implements OnInit {
       recordExcursions: this.recordExcursions ? true : undefined,
       explorationMode: this.explorationMode ? true : undefined,
       compareBoth: this.compareBoth ? true : undefined,
+      idempotencyKey: crypto.randomUUID(),
     };
     this.saveSetup();
     try {
@@ -687,6 +691,8 @@ export class NewBacktestComponent implements OnInit {
       const missing = (err?.missing as any[])?.map((m: any) => `${m.symbol}/${m.timeframe}: ${m.reason}`).join('; ');
       this.error.set(err?.error || (e as any)?.message || 'Failed to start backtest');
       if (missing) this.error.update(m => m + ' (' + missing + ')');
+    } finally {
+      this.starting.set(false);
     }
   }
 

@@ -32,6 +32,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private readonly IRunDataCache? _runDataCache;
     private readonly IMemoryCache? _memoryCache;
     private readonly ConcurrentDictionary<string, BacktestRunState> _runs = new();
+    private readonly ConcurrentDictionary<string, string> _idempotencyKeys = new();
 
     private const string RunsListCacheKey = "runs:all";
 
@@ -351,7 +352,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     public async Task<string> StartAsync(BacktestConfig cfg, CancellationToken ct)
     {
+        var idemKey = cfg.CustomParams.GetValueOrDefault("IdempotencyKey");
+        if (!string.IsNullOrWhiteSpace(idemKey) && _idempotencyKeys.TryGetValue(idemKey, out var existingRunId))
+        {
+            _logger.LogInformation("Idempotency key {Key} already used for run {RunId} — returning existing", idemKey, existingRunId);
+            return existingRunId;
+        }
+
         var state = Start(cfg);
+        if (!string.IsNullOrWhiteSpace(idemKey))
+            _idempotencyKeys.TryAdd(idemKey, state.RunId);
         await Task.CompletedTask;
         return state.RunId;
     }

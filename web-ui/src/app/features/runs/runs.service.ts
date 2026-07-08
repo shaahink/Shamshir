@@ -54,6 +54,10 @@ export class RunsApiService {
       stripAddOns: req.stripAddOns ?? false,
       speed: req.speed ?? 10,
       honestFills: req.honestFills ?? true,
+      recordExcursions: req.recordExcursions ?? false,
+      explorationMode: req.explorationMode ?? false,
+      compareBoth: req.compareBoth ?? false,
+      idempotencyKey: req.idempotencyKey ?? '',
     };
     return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }

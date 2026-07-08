@@ -56,6 +56,9 @@ public sealed record StartRunRequest
     // P6.1: compare-both mode — runs the identical config through both tape and cTrader venues
     // sequentially, tagging both with the same ComparePairId for reconciliation.
     public bool CompareBoth { get; init; }
+
+    // P5.1 (F15): client-generated idempotency key to prevent duplicate runs from double-submit.
+    public string? IdempotencyKey { get; init; }
 }
 
 public sealed record RunRowRequest
