@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 19:38 UTC · branch `iter/parity-pipeline` · HEAD `8fadd58`_
+_Updated 2026-07-08 19:53 UTC · branch `iter/parity-pipeline` · HEAD `87f5a5c`_
 
 **Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P5 — UI truth + Angular refactor · attempts used 0 · working ▸ P5.1
@@ -9,24 +9,24 @@ _Updated 2026-07-08 19:38 UTC · branch `iter/parity-pipeline` · HEAD `8fadd58`
 
 ## Latest activity (live)
 
-_Session #18 (Deliver) · running 15m · last output 3s ago · $0.0794_
+_Session #18 (Deliver) · running 30m · last output 0s ago · $0.1588_
 
 **Thinking:**
-> Golden: byte-identical (no diff). BuildInfo.g.cs and build-info.ts are pre-existing dirty files (shouldn't be committed). Let me commit only the actual changes: - TRACKER.md - BacktestOrchestrator.cs - RunProgress.cs - run-hub.service.ts - run-monitor.component.ts  BuildInfo files should NOT be comm…
-> P5.1a committed (8fadd58). Now let me move to P5.1b (F15 start button pending state + idempotency key).  For F15: - Client-side: Add a local `starting` signal in new-backtest.component.ts, set synchronously on click - Server-side: Add idempotencyKey to StartRunRequest, check for duplicates  Let me r…
-> Now let me implement F15. I need to read the new-backtest component and the runs.store to understand the flow.
+> The migration timestamp is `20260708194903`, not `20260708204902`. Let me fix the `__EFMigrationsHistory` row.  Actually, it's simpler to just let EF handle the migration properly. But the problem is that I manually added the column before the migration could run. The migration would try to add the …
+> Good, column dropped and bad migration entry removed. Now let EF auto-migrate properly.
+> Driven smoke passed — 11/11. The app started, auto-migrated M45, and a test run completed. Let me now verify the migration was applied correctly.
 
 **Recent actions:**
-- `20:38:02` » bash git diff --stat -- "**/*golden*.json" 2>&1
-- `20:38:02` » bash git diff --stat 2>&1
-- `20:38:09` · Good. Golden byte-identical. Let me commit P5.1a.
-- `20:38:10` » bash git add src/TradingEngine.Web/Services/BacktestOrchestrator.cs src/TradingEngine.Web/Services/RunProgress.cs web-ui/src/app/core/signalr/run-hub.service.ts…
-- `20:38:21` » bash git commit -m "feat(P5.1a): F13 equity truth — nullable equity in progress envelopes, no 0-anchor  F13 fix per PLAN 88: - Server: RunProgress.Equity change…
-- `20:38:32` » todowrite 4 todos
-- `20:38:41` » read web-ui\src\app\features\runs\new-backtest\new-backtest.component.ts
-- `20:38:42` » read web-ui\src\app\features\runs\runs.store.ts
-- `20:38:42` · Now F15: start button pending state. Let me read the key files.
-- `20:38:42` » read web-ui\src\app\features\runs\runs.service.ts
+- `20:52:43` » bash git diff --stat -- "**/*golden*.json" 2>&1
+- `20:52:47` » bash node .claude/skills/run-shamshir/driver.mjs 2>&1 | Select-Object -Last 5
+- `20:52:58` » bash node .claude/skills/run-shamshir/driver.mjs 2>&1 | Select-Object -Last 15
+- `20:53:08` » bash node .claude/skills/run-shamshir/driver.mjs 2>&1 | Select-Object -First 20
+- `20:53:13` » read {"filePath":"C:\\Code\\Shamshir\\src\\TradingEngine.Infrastructure\\Persistence\\Migrations\\20260708204902_M45_ComparePairId.cs"}
+- `20:53:18` » glob
+- `20:53:27` » bash c:\adb\sqlite3.exe "src\TradingEngine.Web\data\trading.db" "DELETE FROM __EFMigrationsHistory WHERE MigrationId = '20260708204902_M45_ComparePairId'; ALTER…
+- `20:53:39` » bash node .claude/skills/run-shamshir/driver.mjs 2>&1 | Select-Object -Last 5
+- `20:53:45` · Driven smoke 11/11. Verify migration applied:
+- `20:53:45` » bash c:\adb\sqlite3.exe "src\TradingEngine.Web\data\trading.db" "SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId DESC LIMIT 3;" 2>&1
 
 ## Stage progress
 
