@@ -232,21 +232,29 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** P4.1 `9aa9b87`
-**Session (s16, P4):** Delivered **P4.1 — Lab golden paths** (F11 + F12):
-- F11: Exploration funnel — completed exploration run banner on run-report linking to Exit Lab pre-filtered;
-  ExitLab empty-state explains RecordExcursions knob; new-backtest supports ?preset=exploration query param.
-- F12: MAE/MFE units doctrine — MaeR/MfeR nullable columns on TradeResults (M44 migration), MaeMfeNormalizer
-  computed from entry/stop prices + symbol pip size (EURUSD/XAUUSD/BTC/USDJPY table-driven tests 6/6), 
-  write-through in SqliteTradeRepository, backfill endpoint POST /api/system/backfill-mae-mfe (idempotent).
-- P3.6 Entry lab: DEFERRED (blocked on P2.2 owner-pending cTrader creds — D97).
+**Branch:** `iter/parity-pipeline` — **HEAD:** P5.1c `09fc807`
+**Session (s18, P5):** Delivered **P5.1a-c — UI truth** (F13, F14, F15, F16) + status chips:
+- F13: RunProgress.Equity changed to nullable decimal?. BuildProgress sends null when no equity snapshot
+  observed (HasEquityObservation flag). Client RunProgressEnvelope.equity typed number|null, monitor
+  equity signal starts at null, chart filters null points → no 0-anchor, auto-scale via fitContent().
+- F14: Timeline section now wrapped with "Simulation Timeline" header, visually distinct from progress bar.
+- F15: Client starting() signal sets true synchronously on click (before async), button disabled during.
+  Server-side idempotency key via StartRunRequest.IdempotencyKey + _idempotencyKeys ConcurrentDictionary.
+- F16: ComparePairId column added (M45 migration). Exposed parentRunId + comparePairId in API responses.
+  Run list groups compare-both children indented under parents. Status chips: completed (green), failed
+  (red), completed-with-warnings/cancelled/queued (amber), running (neutral).
+- Monitor completion banner now fires for completed-with-warnings too.
 
-**Gates GREEN:** build 0err/5warn; Unit 630/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical.
+**Gates GREEN:** build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical;
+  driven smoke 11/11 passed each commit.
 
-**Next step:** P5.1 UI truth (F13-F16) + Angular refactor (see PLAN §8).
+**Next step:** P5.1d Angular refactor remainder (signals migration for new-backtest class fields, run state
+  store consolidation, global error toast). Then P6 wild list per PLAN §9.
 
-**Open traps:** (1) F11 driven smoke NOT run (run-shamshir driver not exercised this session — app not started
-per R6). (2) F12 backfill endpoint NOT run against live DB rows (no trade rows with MaeR=NULL to verify).
-(3) EntityAuditableTests still red on ExitCalibrationEntity (pre-existing). (4) BuildInfo.g.cs + build-info.ts
-dirty each build (leave). (5) tsc 2 pre-existing errors (P5).
+**Open traps:** (1) New-backtest class fields (venue, speed, balance, etc.) still plain fields — need signal
+  conversion with explicit (ngModelChange) per PLAN refactor list. (2) runs.store.ts still minimal — progress
+  envelope processing not consolidated (each monitor derives independently). (3) No global error toast yet
+  — error.interceptor.ts only console.errors. (4) EntityAuditableTests still red on ExitCalibrationEntity
+  (pre-existing). (5) BuildInfo.g.cs + build-info.ts dirty each build (leave). (6) tsc 2 pre-existing errors.
+  (7) P4.1 traps (F11 smoke not run, F12 backfill not run) still owner-pending.
 

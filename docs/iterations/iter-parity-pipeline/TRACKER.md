@@ -17,17 +17,23 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **M44 migration applied to live Web DB** (s18 QA fix). P4.1 code truthful; migration was on disk but
-      never applied to runtime DB (auto-migrate on startup had not run). Applied manually + verified columns.
-stage: **P5 IN PROGRESS** — starting P5.1 UI truth (F13-F16) + Angular refactor.
-gate: GREEN — build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical.
-next: **Deliver P5.1 checkpoints** (F13 → F14 → F15 → F16 → Angular refactor).
-QA-prev: s16 P4.1 — **confirmed, 1 divergence FIXED** (build 0/5w; Unit 638/0/6; Integration 120/0/0;
-      fast Sim 144/0/0; golden byte-identical). Independently verified: (tests) MaeMfeNormalizer 14/14;
-      (runtime) M44 ON DISK but NOT applied to live DB — DIVERGED. Manually applied ALTER TABLE + migration
-      row; MaeR/MfeR columns now present on TradeResults, M44 entry in __EFMigrationsHistory. Fixed.
-trap: (same as prior) F11 smoke not run; F12 backfill not run; EntityAuditableTests red on ExitCalibrationEntity
-      (pre-existing); tsc 2 pre-existing errors; BuildInfo.g.cs + build-info.ts re-dirty each build (leave).
+last: **P5.1c DONE** (09fc807): F16 compare-both child visibility (M45 ComparePairId migration, parentRunId
+      + comparePairId in API, run list parent/child grouping) + status chips (completed-with-warnings amber,
+      cancelled/queued amber, running neutral) + F13 equity nullable (8fadd58) + F14 timeline label (8fadd58)
+      + F15 start button pending + idempotency (87f5a5c).
+stage: **P5 IN PROGRESS** — P5.1a-c done. P5 remaining per PLAN §8: Angular refactor (signals migration for
+      new-backtest class fields, runs.store consolidation, global error toast).
+gate: GREEN — build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical;
+      driven smoke 11/11 each commit.
+next: **P5.1d Angular refactor** (finish signals migration for 10+ new-backtest class fields → signals with
+       (ngModelChange), consolidate RunProgressEnvelope processing into runs.store, add global error toast).
+       Then P6 wild list per PLAN §9.
+QA-prev: s16 P4.1 — **confirmed, 1 divergence FIXED** (build confirmed; tests green; M44 migration ON DISK
+      but not applied to live DB — manually applied MaeR/MfeR columns + M44 migration row in this session).
+trap: (1) New-backtest class fields still plain fields (not signals). (2) runs.store.ts still minimal.
+      (3) No global error toast. (4) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
+      (5) BuildInfo.g.cs + build-info.ts re-dirty each build (leave). (6) tsc 2 pre-existing errors.
+      (7) P4.1 traps (F11 smoke, F12 backfill) owner-pending.
 
 ## Checkpoints
 
@@ -104,7 +110,7 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P3.3 | UI review page /research (read + approve owner-gates) | DONE | 8bca2cb | gates in commit body; driven smoke: run-shamshir driver 11/11 passed. ResearchComponent lazy-loaded, route /research active, nav link present. api.types.ts has PipelineSummary/Detail/Step. |
 | P3.4 | Canonical playbooks venue-parity + explore-exit run end-to-end via CLI; artifacts committed | DONE (FILES); DONE (OWNER-PENDING: live run needs app+data+creds) | 7bf2edb | playbooks/venue-parity.json + playbooks/explore-exit.json + playbooks/README.md; shapes unit-validated (PlaybookEngineTests.ShippedPlaybook_Parses). Live end-to-end + TradeExcursions>0 rows = the P3 verification-matrix gate, owner/next-session. |
 | P4.1 | Exploration funnel (F11) + MAE/MFE units doctrine (F12) + entry lab (P3.6/D10) | DONE (F11+F12); P3.6 DEFERRED (D97 — blocked on P2.2) | 9aa9b87 | F11: UI exploration banner in run-report + ExitLab empty-state (driven smoke NOT run); F12: MaeMfeNormalizerTests 6/6, M44 migration live on Web DB (R5), backfill endpoint POST /api/system/backfill-mae-mfe (NOT run against live DB rows) |
-| P5.1 | UI truth (F13-F16) + targeted Angular refactor (driven smoke per change) | TODO | | |
+| P5.1 | UI truth (F13-F16) + targeted Angular refactor (driven smoke per change) | DONE (F13-F16 + status chips; refactor partially done — signals + store + toast remaining) | 8fadd58, 87f5a5c, 09fc807 | driven smoke 11/11 each commit; R5: M45 ComparePairId column live on Web DB |
 | P6.1 | Wild list (pipeline-gated; each feature ships with a measuring playbook) | TODO | | |
 
 ## Quick commands (gates — see PLAN §11 for per-phase specifics)
