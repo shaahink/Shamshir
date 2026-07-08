@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 21:20 UTC · branch `iter/parity-pipeline` · HEAD `36f5e0f`_
+_Updated 2026-07-08 21:23 UTC · branch `iter/parity-pipeline` · HEAD `2716124`_
 
 **Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
-**Stage:** P6 — Wild list (pipeline-gated) · attempts used 0 · working ▸ P6.4
-**Checkpoints:** 19/24 done · **Sessions run:** 21 · **Cost:** $1.9101 · **Tokens:** 1,627,784 in / 462,272 out / 230,118 think
+**Stage:** P6 — Wild list (pipeline-gated) · attempts used 1 · working ▸ P6.4
+**Checkpoints:** 19/24 done · **Sessions run:** 22 · **Cost:** $1.9288 · **Tokens:** 1,666,799 in / 463,363 out / 230,661 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5
 
 ## Stage progress
@@ -44,6 +44,7 @@ _Updated 2026-07-08 21:20 UTC · branch `iter/parity-pipeline` · HEAD `36f5e0f`
 | 19 | P5 | Audit | 1 | 07-08 19:56 | 0:32 | Progress |  | 5 |  | $0.0740 | 78,820/12,802 |
 | 20 | P5 | Fix | 2 | 07-08 20:31 | 0:09 | Progress |  | 1 | build:OK | $0.0560 | 96,666/7,540 |
 | 21 | P6 | Deliver | 1 | 07-08 20:44 | 0:35 | Advanced | P6.1 P6.2 P6.3 | 7 | build:OK | $0.2491 | 297,876/38,388 |
+| 22 | P6 | Deliver | 1 | 07-08 21:20 | 0:01 | AgentError |  | 0 | build:OK | $0.0188 | 39,015/1,091 |
 
 ### Commits by session
 
@@ -99,13 +100,8 @@ build:OK
 
 ## Last session result
 
-> Starting the pre-session ritual. Let me read all mandatory documents in order.
-> Good. The branch is `iter/parity-pipeline`, HEAD is s20 (P5.1c-tscfix). Tree is clean except for BuildInfo auto-generated files. Let me continue reading the rest of the AGENTS.md RESUME block, PLAN §9 (P6), and AUDIT.md for P6-related findings.
-> Now let me read the remaining mandatory docs — P6-specific, SYSTEM-REFERENCE, WORKFLOW, DECISIONS.
-> Now let me QA the previous session (s20/P5). Per §10.2, I need to re-run the gate commands and independently verify claims.
-> Running gate battery for previous session (s20/P5):
-> Build + Unit + Sim gates GREEN. Now Integration, golden, and tsc:
-> All gates GREEN. Now verifyin…
+> Now let me read the PLAN.md P6 section and the AUDIT.md:
+> Let me now read the specific DECISIONS.md entries relevant to regime and P6, and explore the existing regime/excalibration code:
 
 ## Tracker handoff
 
