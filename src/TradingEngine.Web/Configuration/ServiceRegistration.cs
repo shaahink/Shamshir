@@ -58,8 +58,9 @@ public static class ServiceRegistration
 
     private static IServiceCollection AddPersistence(this IServiceCollection services, IConfiguration config)
     {
-        var dbPath = config.GetValue<string>("Persistence:DbPath")
-            ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));
+        // F10 (P1.1): one DB path, resolved from the repo root (cwd-independent) and shared with the
+        // Host CLI + backtest orchestrator via DbPathResolver — no more "two databases" split.
+        var dbPath = DbPathResolver.ResolveTradingDbPath(config.GetValue<string>("Persistence:DbPath"));
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
         var cs = $"Data Source={dbPath}";
 
@@ -94,8 +95,8 @@ public static class ServiceRegistration
 
         // iter-marketdata-tape P1: canonical market-data store in its OWN SQLite file, so long-lived shared
         // history and churny per-run data never share a write lock or lifecycle (PLAN §5 / D1).
-        var mdPath = config.GetValue<string>("MarketData:DbPath")
-            ?? Path.Combine(Path.GetDirectoryName(dbPath)!, "marketdata.db");
+        var mdPath = DbPathResolver.ResolveMarketDataDbPath(
+            config.GetValue<string>("MarketData:DbPath"), dbPath);
         var mdCs = $"Data Source={mdPath}";
         services.AddDbContextFactory<MarketDataDbContext>((sp, o) =>
         {

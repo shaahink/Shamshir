@@ -1231,12 +1231,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         var (dataPort, commandPort) = AllocatePorts();
 
-        var dbPath = _configuration.GetValue<string>("Persistence:DbPath")
-            ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                "..", "..", "..", "..", "..", "data", "trading.db"));
+        var dbPath = DbPathResolver.ResolveTradingDbPath(_configuration.GetValue<string>("Persistence:DbPath"));
 
-        var solutionRoot = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var solutionRoot = DbPathResolver.FindRepoRoot();
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct,
             new CancellationTokenSource(TimeSpan.FromMinutes(30)).Token);
