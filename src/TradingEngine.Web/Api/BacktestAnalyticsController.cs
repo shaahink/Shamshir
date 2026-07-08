@@ -89,6 +89,10 @@ public class BacktestAnalyticsController : ControllerBase
         var venue = await _reconcile.BuildEngineLedgerAsync(right, HttpContext.RequestAborted);
         var report = LedgerReconciler.Compare(engine, venue);
 
+        // P0.4 (F2): per-run entry-latency (proposal→fill) so the reconcile quantifies the venue lag.
+        var leftLatency = await _reconcile.BuildEntryLatencyAsync(left, HttpContext.RequestAborted);
+        var rightLatency = await _reconcile.BuildEntryLatencyAsync(right, HttpContext.RequestAborted);
+
         return Ok(new
         {
             match = report.IsMatch,
@@ -102,9 +106,29 @@ public class BacktestAnalyticsController : ControllerBase
                 venueValue = d.VenueValue,
                 absDiff = d.AbsDiff,
             }),
+            leftLatency = ProjectLatency(engine.Source, leftLatency),
+            rightLatency = ProjectLatency(venue.Source, rightLatency),
             text = report.ToText(),
         });
     }
+
+    private static object ProjectLatency(string source, EntryLatencyReport r) => new
+    {
+        source,
+        matchedTrades = r.MatchedTrades,
+        unmatchedFills = r.UnmatchedFills,
+        delaySeconds = new { r.DelaySeconds.Median, r.DelaySeconds.Mean, r.DelaySeconds.Min, r.DelaySeconds.Max },
+        delayBars = new { r.DelayBars.Median, r.DelayBars.Mean, r.DelayBars.Min, r.DelayBars.Max },
+        trades = r.Trades.Select(t => new
+        {
+            orderId = t.OrderId,
+            proposedAtUtc = t.ProposedAtUtc,
+            filledAtUtc = t.FilledAtUtc,
+            entryDelaySeconds = t.DelaySeconds,
+            entryDelayBars = t.DelayBars,
+            decisionTimeframe = t.DecisionTimeframe.ToString(),
+        }),
+    };
 
     [HttpGet("{runId}/daily-pnl")]
     public async Task<IActionResult> GetDailyPnL(string runId)

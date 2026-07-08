@@ -111,6 +111,49 @@ the hood**.
 
 **Status:** Pre-registered, not yet confirmed. Awaiting owner's V4 compare-both run.
 
+## P0.4 — Measured entry-latency (F2), 2026-07-08 — measure-first per Q4
+
+**Status:** MEASURED (credential-free, from the kept audit DB) + instrumented into the reconcile endpoint.
+The real paired-run confirmation on the post-P0 build is OWNER-PENDING (needs cTrader creds), but the
+number below is the gate output and it did **not** need a new run — the audited runs already hold it.
+
+**Instrumentation:** `GET /api/backtest/analytics/reconcile?left&right` now returns `leftLatency` /
+`rightLatency`, each `{ matchedTrades, unmatchedFills, delaySeconds{median,mean,min,max},
+delayBars{median,mean,min,max}, trades[] }`. Per-trade latency = `TradeResult.OpenedAtUtc` (fill) −
+journalled `OrderProposed.OccurredAtUtc` (proposal, bar-open convention), joined on `OrderId`.
+`delayBars` is in decision-timeframe units. Pure math: `EntryLatencyAnalyzer` (Infrastructure). No cBot
+or execution change (Q4).
+
+**Measured (audit DB `src/TradingEngine.Web/data/trading.db`, joined proposal→fill on OrderId):**
+
+| Pair (H1) | Tape run | Tape delay | cTrader run | cTrader delay | Venue gap |
+|---|---|---|---|---|---|
+| EURUSD Mar (3/3 both legs) | `2cdba11a` | **3660 s = 1.017 H1 bars** | `44175d3e` | **7200 s = 2.000 H1 bars** | **3540 s ≈ 1 H1 bar** |
+| EURUSD May | `2c9551d1` | ≈3660 s | `817af3f5` | ≈7200 s | ≈3540 s |
+| XAUUSD | `020fd4eb` | ≈3660 s | `81729685` | ≈7200 s | ≈3540 s |
+
+(sqlite `julianday` prints 3659/7199 for some rows — floating-point rounding of the same 3660/7200; the
+exact `DateTime` tick math in the analyzer returns 3660/7200. May/XAU join 1:1 only where OrderIds align
+— a few older-run trades have no matching proposal and surface as `unmatchedFills`, itself F3-consistent.)
+
+**Interpretation (the F2 gate):**
+- **Tape delay ≈ 1 M1 bar.** 3660 s = the H1 decision bar itself (3600 s, proposal bar-open → bar close)
+  **+ 60 s = exactly 1 M1 bar** — the HonestFills next-M1-open after the decision bar close. This is the
+  gate's "tape delay ≈ 1 M1 bar".
+- **cTrader fills one full decision bar later than tape.** 7200 s = the decision bar (3600 s) **+ 3600 s
+  = one full H1 bar**. The venue entry-latency gap is **3540 s ≈ one H1 decision bar** — exactly AUDIT F2
+  ("cTrader entries fill one full decision bar later than tape").
+
+**Decision (Q4):** the lag is a **constant one-decision-bar** offset (not variable, not >1 bar), so per
+Q4 the follow-up (M1-cadence command drain in the cBot) is deferred — it is a real fidelity gap but a
+predictable, correctable one, and correcting it is out of P0's measure-only scope. Reconcile now carries
+the number on every run so any drift from "constant 1 bar" is immediately visible.
+
+**Repro (credential-free):** `dotnet test tests/TradingEngine.Tests.Integration --filter
+"FullyQualifiedName~EntryLatency"` seeds the exact March-pair timestamps (tape 06:00→07:01, cTrader
+06:00→08:00, incl. the cTrader trailing-'Z' quirk) into real SQLite and asserts tape=3660 s/1.017 bars,
+cTrader=7200 s/2.0 bars, gap=3540 s. `EntryLatencyAnalyzerTests` pins the pure math.
+
 ## V4 run findings template (P6.5)
 
 After each compare-both reconcile session, fill in this table and record new F-ids below it:
