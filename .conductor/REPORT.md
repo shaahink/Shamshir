@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 20:11 UTC · branch `iter/parity-pipeline` · HEAD `a789307`_
+_Updated 2026-07-08 20:26 UTC · branch `iter/parity-pipeline` · HEAD `46ba5ab`_
 
 **Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P5 — UI truth + Angular refactor · attempts used 0
@@ -9,24 +9,24 @@ _Updated 2026-07-08 20:11 UTC · branch `iter/parity-pipeline` · HEAD `a789307`
 
 ## Latest activity (live)
 
-_Session #19 (Audit) · running 15m · last output 49s ago · $0.0492_
+_Session #19 (Audit) · running 30m · last output 0s ago · $0.0602_
 
 **Thinking:**
-> No test matches the "Fast" filter. Let me check what tests are in the simulation test project.
-> The simulation tests are listed as 4 tests. Let me check if filtering or some other cause made the original run timeout. Let me try running the simulation tests now with a longer timeout. Actually, from the AGENTS.md, it says "fast Sim 144/0/0" — there should be 144 fast simulation tests. But the `-…
-> There are many tests in the simulation project. The 144 fast simulation tests from the AGENTS.md are the ones without `RequiresCTrader` attribute. The full suite might have cTrader E2E tests that require credentials.  The full simulation test suite ran and timed out at 5 minutes. Let me now try runn…
+> Golden is byte-identical. All 3 golden determinism tests pass.  Now let me commit the fixes. Let me check the diff first.
+> The diff looks clean. Let me now commit these audit fixes with a clear message. The changes are all in one file (BacktestOrchestrator.cs).  Let me verify git status first.
+> The `BuildInfo.g.cs` and `build-info.ts` are auto-generated build artifacts that change on every build. I should NOT commit those. Let me only commit the BacktestOrchestrator.cs file.
 
 **Recent actions:**
-- `21:02:02` · **B4: Decision — defer.** The TypeScript null guards on `dailyDdPct`/`maxDdPct`/`distanceToDailyLimit` are defensive. The C# sends non-nullable `0m` defaults, a…
-- `21:02:18` » bash npx tsc --noEmit 2>&1 | Select-Object -First 30
-- `21:03:01` » bash dotnet build --nologo 2>&1 | Select-Object -Last 20
-- `21:03:10` · TypeScript errors are pre-existing (spec files, not P5 changes). .NET build: 0 errors. Now running the gate battery.
-- `21:03:55` » bash dotnet test tests/TradingEngine.Tests.Unit --nologo --verbosity quiet 2>&1 | Select-Object -Last 5
-- `21:04:24` » bash dotnet test tests/TradingEngine.Tests.Integration --nologo --verbosity quiet 2>&1 | Select-Object -Last 5
-- `21:09:30` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --verbosity quiet 2>&1 | Select-Object -Last 5
-- `21:09:48` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --verbosity normal --filter "FullyQualifiedName~Fast" 2>&1 | Select-Object -Last 20
-- `21:10:28` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --list-tests 2>&1 | Select-Object -First 20
-- `21:10:49` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --list-tests 2>&1
+- `21:18:27` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --filter "FullyQualifiedName~KernelBacktestLoop|FullyQualifiedName~KernelEvaluator|FullyQualified…
+- `21:21:42` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --filter "FullyQualifiedName~Scenarios|FullyQualifiedName~Risk|FullyQualifiedName~PositionManagem…
+- `21:25:14` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --filter "FullyQualifiedName~Scenarios|FullyQualifiedName~Risk|FullyQualifiedName~PositionManagem…
+- `21:25:28` » todowrite 3 todos
+- `21:25:28` · The 2 failures (`NetMQBridgeTest`, `PipelineE2ETests.EurUsd_H1_3Days`) are pre-existing infrastructure-dependent tests (cTrader/NetMQ credentials). Not related …
+- `21:26:20` » bash dotnet test tests/TradingEngine.Tests.Simulation --nologo --filter "GoldenReplay_MatchesBaseline|KernelFullRun_MatchesGolden|Journal_Determinism_ByteIdenti…
+- `21:26:28` · Golden byte-identical: 3/3 golden determinism tests pass. Now let me commit the fixes.
+- `21:26:28` » bash git diff src/TradingEngine.Web/Services/BacktestOrchestrator.cs
+- `21:26:35` » bash git status --short
+- `21:26:45` » bash git add src/TradingEngine.Web/Services/BacktestOrchestrator.cs; git commit -m "audit(P5): fix idempotency race + completed-with-warnings progress  B1 (CRIT…
 
 ## Stage progress
 
