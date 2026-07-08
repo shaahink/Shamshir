@@ -1,19 +1,18 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 16:10 UTC · branch `iter/parity-pipeline` · HEAD `7c661b0`_
+_Updated 2026-07-08 16:12 UTC · branch `iter/parity-pipeline` · HEAD `cb25ad0`_
 
 **Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P1 — Config & DB truth · attempts used 0
 **Checkpoints:** 8/17 done · **Sessions run:** 9 · **Cost:** $0.5856 · **Tokens:** 144,218 in / 198,405 out / 104,850 think
-**Confirmed phases:** P0
-**Pending:** full-battery phase gate for P1
+**Confirmed phases:** P0, P1
 
 ## Stage progress
 
 | Stage | Title | Done | State |
 |---|---|---|---|
 | P0 | Parity truth repair (the spine) | 6/6 | confirmed ✓ |
-| P1 | Config & DB truth | 2/2 | gating… |
+| P1 | Config & DB truth | 2/2 | confirmed ✓ |
 | P2 | Lifecycle robustness + headline gate | 0/2 | todo |
 | P3 | Research pipeline (ResearchCli + playbooks) | 0/4 | todo |
 | P4 | Lab golden paths | 0/1 | todo |
@@ -86,7 +85,7 @@ _Updated 2026-07-08 16:10 UTC · branch `iter/parity-pipeline` · HEAD `7c661b0`
 
 ## Last gate run
 
-build:OK
+build:OK · unit:OK · sim-fast:OK
 
 ## Last session result
 
