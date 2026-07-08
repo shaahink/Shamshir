@@ -17,11 +17,12 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s30 P6.7 entry-quality decomposition** — EntryDiagnosis OLS domain + API + CLI verb + playbook
-stage: **P6 IN PROGRESS** — P6.1-P6.7 delivered; P6.8 pyramiding policy remains TODO.
-gate: GREEN — build 0err/5warn; Unit 701/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden 48/48 byte-identical
-next: **P6.8 pyramiding policy** (PLAN §9 #9)
+last: **s31 P6.8 pyramiding policy** — PyramidDiagnosis domain (12 tests) + API + CLI + playbook
+stage: **P6 COMPLETE** — all P6.1-P6.8 delivered.
+gate: GREEN — build 0err/5warn; Unit 714/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden 61/61; ShippedPlaybook_Parses 10/10
+next: P6 wild list complete. Next per owner: P3.5 triage-sweep playbook (trap #3)
+  or P7 beyond wild list.
 trap: (1) Session labels not wired into TradeExcursions.
   (2) SpreadVolNoTradeFilter no strategy config wiring.
   (3) Playbook 3 (triage-sweep.json) not created.
@@ -35,6 +36,12 @@ trap: (1) Session labels not wired into TradeExcursions.
 Status ∈ TODO · IN PROGRESS · DONE · BLOCKED. Evidence = an artifact path produced by a run this
 phase (a code path is not evidence). Scope changes get a `> scope change:` line under the row.
 
+> QA-previous (s31 QA of s30 P6.7): **confirmed.** Full gate battery re-run verbatim:
+> build 0err/5warn, Unit 701/0/6, Integration 120/0/0, fast Sim 144/0/0,
+> golden 61/61. Independently verified 2 claims: (tests) EntryDiagnosisTests
+> 11/11; (runtime/R5) playbooks/entry-quality.json exists, ShippedPlaybook_Parses
+> 9/9. No divergence — proceed to P6.8.
+>
 > QA-previous (s30 QA of s29 P6.6): **confirmed.** All gates re-run verbatim:
 > build 0err/5warn, Unit 689/0/6, Integration 120/0/0, fast Sim 144/0/0,
 > golden 48/48 byte-identical (no git diff). Independently verified 2 claims:
@@ -127,7 +134,7 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P6.5 | Wild list: block-bootstrap tapes | DONE (OWNER-PENDING — needs live app up to exercise endpoint end-to-end) | 23bed7c | playbooks/block-bootstrap.json; BlockBootstrapperTests 9/9 (Unit); ShippedPlaybook_Parses 5/5 |
 | P6.6 | Wild list: meta-allocator | DONE (OWNER-PENDING — live playbook run needs app+data) | 5f3c001 | playbooks/meta-allocator.json; MetaAllocatorTests 12/12 (Unit); R5: playbook parses per ShippedPlaybook_Parses 8/8 |
 | P6.7 | Wild list: entry-quality decomposition | DONE | 061068c | playbooks/entry-quality.json; EntryDiagnosisTests 11/11 (Unit); ShippedPlaybook_Parses 9/9; EntryQualityController API endpoint |
-| P6.8 | Wild list: pyramiding policy | TODO | | |
+| P6.8 | Wild list: pyramiding policy | DONE | (pending commit) | playbooks/pyramid-policy.json; PyramidDiagnosisTests 12/12 (Unit); ShippedPlaybook_Parses 10/10 |
 
 ## Quick commands (gates — see PLAN §11 for per-phase specifics)
 

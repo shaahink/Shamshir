@@ -41,6 +41,8 @@ try
             return await PipelineApproveAsync(cli, baseUrl, timeout, approve: false);
         case "entry-quality":
             return await EntryQualityAsync(cli, baseUrl, timeout);
+        case "pyramid-eval":
+            return await PyramidEvalAsync(cli, baseUrl, timeout);
         default:
             PrintUsage();
             Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "unknown-verb")).Render());
@@ -490,6 +492,88 @@ static async Task<int> EntryQualityAsync(CliArgs cli, string baseUrl, TimeSpan t
     return 0;
 }
 
+static async Task<int> PyramidEvalAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var runId = cli.Positionals.ElementAtOrDefault(2);
+    if (string.IsNullOrWhiteSpace(runId))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-runId")).Render());
+        return 2;
+    }
+
+    var strategyId = cli.Option("strategy");
+    var minTrades = cli.Option("min-trades", 10);
+    var addLevelsStr = cli.Option("add-levels");
+
+    var body = new System.Text.Json.Nodes.JsonObject
+    {
+        ["runId"] = runId,
+        ["minTrades"] = minTrades,
+    };
+    if (!string.IsNullOrEmpty(strategyId))
+        body["strategyId"] = strategyId;
+    if (!string.IsNullOrEmpty(addLevelsStr))
+    {
+        var arr = new System.Text.Json.Nodes.JsonArray();
+        foreach (var s in addLevelsStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                arr.Add(v);
+        }
+        if (arr.Count > 0) body["addLevels"] = arr;
+    }
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.PostAsync("api/exit-lab/pyramid-eval", body.ToJsonString(), CancellationToken.None);
+
+    if (cli.Flag("json"))
+        Console.WriteLine(json);
+
+    if (json is null)
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "no-response")).Render());
+        return 1;
+    }
+
+    using var doc = System.Text.Json.JsonDocument.Parse(json);
+    var root = doc.RootElement;
+
+    if (root.TryGetProperty("error", out var err))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", err.GetString() ?? "unknown")).Render());
+        return 1;
+    }
+
+    var totalTrades = root.TryGetProperty("totalTrades", out var tt) ? tt.GetInt32() : 0;
+    var levels = root.TryGetProperty("levels", out var lvls) ? lvls : default;
+    var levelCount = levels.ValueKind == System.Text.Json.JsonValueKind.Array ? levels.GetArrayLength() : 0;
+
+    var fields = new List<VerdictField>
+    {
+        VerdictField.Of("runId", runId),
+        VerdictField.Of("totalTrades", totalTrades),
+        VerdictField.Of("levels", levelCount),
+    };
+
+    if (levels.ValueKind == System.Text.Json.JsonValueKind.Array)
+    {
+        foreach (var level in levels.EnumerateArray())
+        {
+            var addAtR = level.GetProperty("addAtR").GetDouble();
+            var avgImprovement = level.GetProperty("avgImprovement").GetDouble();
+            var triggerRate = level.GetProperty("triggerRate").GetDouble();
+            if (triggerRate > 0.1)
+            {
+                var dir = avgImprovement > 0 ? "+" : "";
+                fields.Add(VerdictField.Of($"addAt{addAtR}R", $"{dir}{avgImprovement:F3} improvement, {triggerRate:P0} trigger"));
+            }
+        }
+    }
+
+    Console.WriteLine(Verdict.Passing(fields.ToArray()).Render());
+    return totalTrades > 0 ? 0 : 1;
+}
+
 static List<string> SplitCsv(string? csv) =>
     string.IsNullOrWhiteSpace(csv)
         ? []
@@ -519,6 +603,7 @@ static void PrintUsage()
           research pipeline approve <id>
           research pipeline reject  <id>
           research entry-quality <runId> [--strategy <id>] [--min-trades 10] [--json]
+          research pyramid-eval  <runId> [--strategy <id>] [--min-trades 10] [--add-levels 0.5,1.0,1.5] [--json]
         Global: [--base-url https://localhost:7108] (or env SHAMSHIR_BASE_URL)
         Every command prints a final `VERDICT: PASS|FAIL …` line; exit code mirrors it.
         """);

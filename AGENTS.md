@@ -232,23 +232,21 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** 061068c (s30, P6.7 entry-quality decomposition)
-**Session (s30, P6.7):** Delivered entry-quality decomposition: EntryDiagnosis OLS domain
-  (AtrPercentile, EmaDistanceAtr, SqueezeAge, Session dummies → RMultiple),
-  11 unit tests, EntryQualityController API endpoint, ResearchCli
-  `entry-quality` verb + playbook step + canonical playbook JSON.
-  Live run is OWNER-PENDING (needs app+data with TradeResults).
-**Gates GREEN:** build 0err/5warn; Unit 701/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden 48/48 byte-identical.
-**Next step:** P6.8 pyramiding policy (PLAN §9 #9).
+**Branch:** `iter/parity-pipeline` — **HEAD:** (s31, P6.8 pyramiding policy)
+**Session (s31, P6.8):** Delivered pyramiding policy: PyramidDiagnosis domain
+  (walks excursion paths, simulates adds at R-levels, computes combined R-multiples),
+  12 unit tests, ExitLabController pyramid-eval endpoint, ResearchCli
+  `pyramid-eval` verb + playbook step + canonical playbook JSON.
+  P6 WILD LIST COMPLETE (P6.1-P6.8).
+**Gates GREEN:** build 0err/5warn; Unit 714/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden 61/61 byte-identical; ShippedPlaybook_Parses 10/10.
+**Next step:** Owner direction — P3.5 triage-sweep playbook (open trap #3) or P7.
 **Open traps:** (1) Session labels not wired into TradeExcursions.
   (2) SpreadVolNoTradeFilter no strategy config wiring.
   (3) Playbook 3 (triage-sweep.json) not created.
-  (4) BlockBootstrapper writes synthetic bars to real MarketDataShard.
+  (4) BlockBootstrapper writes bars to real MarketDataShard.
   (5) BlockBootstrapController uses DateTime.UtcNow.
   (6) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-  (7) Any session touching web-ui/src/*.ts MUST run `npm run build`
-  before committing — angular staleness guard will fail dotnet build
-  otherwise.
-  (8) QA-previous (s29): confirmed — all gates held, no divergence.
+  (7) Any session touching web-ui/src/*.ts MUST run `npm run build`.
+  (8) QA-previous (s31): confirmed — all gates held, no divergence.
 

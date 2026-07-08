@@ -1,4 +1,5 @@
 using TradingEngine.Domain;
+using TradingEngine.Domain.Experiments;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
 using TradingEngine.Risk.Compliance;
@@ -296,6 +297,135 @@ public sealed class ExitLabController : ControllerBase
         };
 
         return _passEstimator.Estimate(input).ProbabilityOfPass;
+    }
+
+    /// <summary>
+    /// P6.8 — evaluate pyramiding (structured adds at R-levels) against recorded excursion paths.
+    /// POST /api/exit-lab/pyramid-eval { runId, strategyId?, minTrades, addLevels? }
+    /// Walks each trade's excursion path, simulates an add-entry at each add-at-R threshold,
+    /// and returns per-level aggregate stats: trigger rate, improvement, breakeven rate.
+    /// </summary>
+    [HttpPost("pyramid-eval")]
+    public async Task<IActionResult> PyramidEval(PyramidEvalRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.RunId))
+            return BadRequest(new { error = "runId is required." });
+
+        var addLevels = req.AddLevels ?? PyramidDiagnosis.DefaultAddLevels;
+        if (addLevels.Length == 0)
+            return BadRequest(new { error = "addLevels must not be empty." });
+
+        // Load trades for the run
+        var tradesQuery = _db.Trades.AsNoTracking()
+            .Where(t => t.RunId == req.RunId);
+        if (!string.IsNullOrEmpty(req.StrategyId))
+            tradesQuery = tradesQuery.Where(t => t.StrategyId == req.StrategyId);
+
+        var trades = await tradesQuery
+            .OrderBy(t => t.OpenedAtUtc)
+            .ToListAsync(ct);
+
+        if (trades.Count < req.MinTrades)
+        {
+            return Ok(new PyramidEvalResponse
+            {
+                TotalTrades = trades.Count,
+                Levels = [],
+            });
+        }
+
+        // Load excursion paths
+        var inputs = new List<(TradeExcursionInput trade, double riskPips)>();
+        var skipped = 0;
+        foreach (var trade in trades)
+        {
+            var pathJson = await _excursions.GetAsync(req.RunId, trade.PositionId, ct);
+            if (pathJson is null) { skipped++; continue; }
+
+            if (trade.InitialStopLoss is not > 0) { skipped++; continue; }
+            if (!_symbols.TryGet(new Symbol(trade.Symbol), out var si)) { skipped++; continue; }
+
+            IReadOnlyList<ExcursionPoint> points;
+            try { points = ExcursionPathCodec.Parse(pathJson); }
+            catch { skipped++; continue; }
+            if (points.Count == 0) { skipped++; continue; }
+
+            var direction = trade.Direction == "Short" ? TradeDirection.Short : TradeDirection.Long;
+            var entryPrice = trade.EntryPrice;
+            var stopPrice = trade.InitialStopLoss!.Value;
+            var riskPips = Math.Abs((double)(entryPrice - stopPrice) / (double)si.PipSize);
+
+            if (riskPips <= 0) { skipped++; continue; }
+
+            inputs.Add((new TradeExcursionInput
+            {
+                Direction = direction,
+                EntryPrice = entryPrice,
+                InitialStopLoss = new Price(stopPrice),
+                PipSize = si.PipSize,
+                SpreadPips = (double)si.TypicalSpread / (double)si.PipSize,
+                Path = points,
+            }, riskPips));
+        }
+
+        if (inputs.Count < req.MinTrades)
+        {
+            return Ok(new PyramidEvalResponse
+            {
+                TotalTrades = trades.Count,
+                Skipped = skipped,
+                Levels = [],
+            });
+        }
+
+        // Run pyramid diagnosis for each add level
+        var levels = new List<PyramidLevelResponse>();
+        foreach (var addLevel in addLevels)
+        {
+            var outcomes = new List<PyramidOutcome>();
+            foreach (var (input, riskPips) in inputs)
+            {
+                var path = input.Path
+                    .Select(p => new PyramidPathPoint(p.MinutesSinceEntry, p.HiPips, p.LoPips))
+                    .ToList();
+
+                var trial = new PyramidTrial
+                {
+                    AddAtR = addLevel,
+                    RiskPips = riskPips,
+                    TpMultiple = null, // use end-of-data exits; real TP is modelled by the path itself
+                    Direction = input.Direction,
+                };
+
+                var outcome = PyramidDiagnosis.Evaluate(trial, path);
+                outcomes.Add(outcome);
+            }
+
+            var summary = PyramidDiagnosis.Summarize(addLevel, outcomes);
+            levels.Add(new PyramidLevelResponse
+            {
+                AddAtR = summary.AddAtR,
+                TotalTrades = summary.TotalTrades,
+                Triggered = summary.Triggered,
+                TriggerRate = Math.Round(summary.TriggerRate, 4),
+                Improved = summary.Improved,
+                ImprovedRate = Math.Round(summary.ImprovedRate, 4),
+                Breakeven = summary.Breakeven,
+                BreakevenRate = Math.Round(summary.BreakevenRate, 4),
+                Worsened = summary.Worsened,
+                WorsenedRate = Math.Round(summary.WorsenedRate, 4),
+                AvgBaseR = Math.Round(summary.AvgBaseR, 4),
+                AvgPyramidR = Math.Round(summary.AvgPyramidR, 4),
+                AvgImprovement = Math.Round(summary.AvgImprovement, 4),
+            });
+        }
+
+        return Ok(new PyramidEvalResponse
+        {
+            TotalTrades = trades.Count,
+            Skipped = skipped,
+            Levels = levels,
+        });
     }
 
 }

@@ -45,6 +45,7 @@ public sealed class HttpStepRunner : IStepRunner
             StepKinds.BlockBootstrap => await BlockBootstrapAsync(step, context, ct),
             StepKinds.MetaAllocate => await MetaAllocateAsync(step, context, ct),
             StepKinds.EntryQuality => await EntryQualityAsync(step, ct),
+            StepKinds.PyramidEval => await PyramidEvalAsync(step, ct),
             StepKinds.Report => await Report(step, context),
             _ => StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "unknown-step")).Render()),
         };
@@ -514,6 +515,77 @@ public sealed class HttpStepRunner : IStepRunner
             : Verdict.Passing(fields.ToArray()).Render(); // always "pass" — this is diagnostic, not a gate
 
         return StepOutcome.Pass(verdict);
+    }
+
+    private async Task<StepOutcome> PyramidEvalAsync(PlaybookStep step, CancellationToken ct)
+    {
+        var runId = Str(step, "runId");
+        if (string.IsNullOrEmpty(runId))
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "pyramid-eval requires runId param")).Render());
+
+        var strategyId = Str(step, "strategyId") ?? "";
+        var minTrades = Int(step, "minTrades", 10);
+
+        var body = new JsonObject
+        {
+            ["runId"] = runId,
+            ["minTrades"] = minTrades,
+        };
+        if (!string.IsNullOrEmpty(strategyId))
+            body["strategyId"] = strategyId;
+
+        var addLevelsArr = step.Params.TryGetPropertyValue("addLevels", out var alNode) && alNode is JsonArray alArr
+            ? alArr
+            : null;
+        if (addLevelsArr is not null)
+            body["addLevels"] = addLevelsArr;
+
+        var json = await _client.PostAsync("api/exit-lab/pyramid-eval", body.ToJsonString(), ct);
+        if (json is null)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-pyramid-eval-response")).Render());
+
+        JsonNode? root;
+        try { root = JsonNode.Parse(json); }
+        catch (JsonException ex)
+        {
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "pyramid-eval-parse"), VerdictField.Of("detail", ex.Message)).Render());
+        }
+
+        if (root is not JsonObject obj)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "invalid-pyramid-eval-response")).Render());
+
+        if (obj["error"] is JsonNode errNode)
+        {
+            return StepOutcome.Fail(Verdict.Failing(
+                VerdictField.Of("error", errNode.GetValue<string>() ?? "unknown"),
+                VerdictField.Of("totalTrades", obj["totalTrades"]?.GetValue<int>() ?? 0)).Render());
+        }
+
+        var totalTrades = obj["totalTrades"]?.GetValue<int>() ?? 0;
+        var levels = obj["levels"] as JsonArray;
+        var levelCount = levels?.Count ?? 0;
+
+        var fields = new List<VerdictField>
+        {
+            VerdictField.Of("runId", runId),
+            VerdictField.Of("totalTrades", totalTrades),
+        };
+
+        if (levels is not null)
+        {
+            foreach (var level in levels)
+            {
+                if (level is not JsonObject lObj) continue;
+                var addAtR = lObj["addAtR"]?.GetValue<double>() ?? 0;
+                var avgImprovement = lObj["avgImprovement"]?.GetValue<double>() ?? 0;
+                var triggerRate = lObj["triggerRate"]?.GetValue<double>() ?? 0;
+                if (triggerRate > 0.1)
+                    fields.Add(VerdictField.Of($"addAt{addAtR:F1}R", $"{avgImprovement:+0.##;-0.##} improvement, {triggerRate:P0} trigger"));
+            }
+        }
+
+        var verdict = Verdict.Passing(fields.ToArray()).Render();
+        return totalTrades > 0 ? StepOutcome.Pass(verdict) : StepOutcome.Fail(verdict);
     }
 
     private async Task<StepOutcome> Report(PlaybookStep step, PipelineContext context)

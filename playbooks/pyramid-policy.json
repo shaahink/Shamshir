@@ -1,0 +1,13 @@
+{
+  "name": "pyramid-policy",
+  "description": "P6.8 canonical pyramiding diagnosis: walks each trade's excursion path and simulates structured add-entries at configurable R-levels (add at +1R, move stop to entry). Measures per-level trigger rate, average improvement, and breakeven rate — pure diagnosis, no engine changes. Run after any backtest that produced ≥10 trades with excursion paths to see whether pyramiding would help the strategy.",
+  "steps": [
+    {
+      "kind": "pyramid-eval",
+      "runId": "",
+      "minTrades": 10,
+      "addLevels": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+    },
+    { "kind": "report" }
+  ]
+}

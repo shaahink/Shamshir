@@ -60,3 +60,38 @@ public sealed record SaveCalibrationRequest
     public DateTime? OosStartUtc { get; init; }
     public DateTime? OosEndUtc { get; init; }
 }
+
+/// <summary>P6.8 — request to evaluate pyramiding (add-at-R) against excursion paths for a run.</summary>
+public sealed record PyramidEvalRequest
+{
+    public required string RunId { get; init; }
+    public string? StrategyId { get; init; }
+    public int MinTrades { get; init; } = 10;
+    public double[]? AddLevels { get; init; }
+}
+
+/// <summary>P6.8 — one level's aggregate pyramiding stats.</summary>
+public sealed record PyramidLevelResponse
+{
+    public required double AddAtR { get; init; }
+    public required int TotalTrades { get; init; }
+    public required int Triggered { get; init; }
+    public required double TriggerRate { get; init; }
+    public required int Improved { get; init; }
+    public required double ImprovedRate { get; init; }
+    public required int Breakeven { get; init; }
+    public required double BreakevenRate { get; init; }
+    public required int Worsened { get; init; }
+    public required double WorsenedRate { get; init; }
+    public required double AvgBaseR { get; init; }
+    public required double AvgPyramidR { get; init; }
+    public required double AvgImprovement { get; init; }
+}
+
+/// <summary>P6.8 — response for pyramid evaluation.</summary>
+public sealed record PyramidEvalResponse
+{
+    public required int TotalTrades { get; init; }
+    public int Skipped { get; init; }
+    public required List<PyramidLevelResponse> Levels { get; init; }
+}
