@@ -1,11 +1,31 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 06:47 UTC · branch `iter/parity-pipeline` · HEAD `0362f0c`_
+_Updated 2026-07-08 07:02 UTC · branch `iter/parity-pipeline` · HEAD `f0bd1ba`_
 
-**Status:** Idle
+**Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0
-**Checkpoints:** 6/17 done · **Sessions run:** 5 · **Cost:** $0.3977 · **Tokens:** 135,534 in / 125,734 out / 67,467 think
-**Pending:** auto-fix audit for P0
+**Checkpoints:** 6/17 done · **Sessions run:** 6 · **Cost:** $0.3977 · **Tokens:** 135,534 in / 125,734 out / 67,467 think
+
+## Latest activity (live)
+
+_Session #6 (Audit) · running 15m · last output 9s ago · $0.0247_
+
+**Thinking:**
+> Wait, I accidentally deleted the registry initialization line when I made that edit. I need to revert and carefully preserve that variable declaration.
+> In the second test, the OrderFilled event has no CloseReason in its JSON, so HasCloseReason is false, but there's still a PublishTradeClosed effect. The SeedCloseFillOnly adds one close-fill, making JournalCloseFills=1. The expected count from PublishTradeClosed is 1, persisted is 0, and backfilled …
+> Running the full test suite now to make sure everything still works—unit tests, simulation, integration, and golden tests.
+
+**Recent actions:**
+- `08:00:46` · Iremoved the `var reg` line. Let me restore it and add the close-fill-only helper:
+- `08:00:46` » edit tests\TradingEngine.Tests.Integration\Runs\TradePersistenceBarrierTests.cs
+- `08:00:54` » edit {"filePath":"C:\\Code\\Shamshir\\tests\\TradingEngine.Tests.Integration\\Runs\\TradePersistenceBarrierTests.cs","newString":"    public void Dispose()…
+- `08:00:54` · Now add the two F6-R tests before `Dispose`:
+- `08:01:18` » edit tests\TradingEngine.Tests.Integration\Runs\TradePersistenceBarrierTests.cs
+- `08:01:35` · Now let me build and run the affected tests.
+- `08:02:03` » bash dotnet build TradingEngine.slnx -c Debug 2>&1 | Select-Object -Last 5
+- `08:02:15` » bash dotnet test tests/TradingEngine.Tests.Integration --no-build -c Debug --filter "FullyQualifiedName~TradePersistenceBarrier" 2>&1 | Select-Object -Last 12
+- `08:02:25` · Barrier tests 5/5 (3 original + 2 new). Now the full gate battery:
+- `08:02:37` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build -c Debug 2>&1 | Select-Object -Last 3
 
 ## Stage progress
 
@@ -28,6 +48,7 @@ _Updated 2026-07-08 06:47 UTC · branch `iter/parity-pipeline` · HEAD `0362f0c`
 | 3 | P0 | Deliver | 1 | 07-08 04:09 | 1:25 | Advanced | P0.2 | 8 | build:OK | $0.1109 | 4,619/32,558 |
 | 4 | P0 | Deliver | 1 | 07-08 05:34 | 0:43 | Advanced | P0.3 | 4 | build:OK | $0.0716 | 2,815/25,730 |
 | 5 | P0 | Deliver | 1 | 07-08 06:18 | 0:28 | Advanced | P0.4 | 3 | build:OK | $0.0495 | 2,084/24,785 |
+| 6 | P0 | Audit | 1 | 07-08 06:47 | … | running |  | 0 |  |  |  |
 
 ### Commits by session
 
