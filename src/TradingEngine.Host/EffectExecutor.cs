@@ -66,7 +66,8 @@ public sealed class EffectExecutor : IEffectExecutor
                 // Limit (both carry a resting trigger price on LimitPrice).
                 var intent = new TradeIntent(submit.Symbol, submit.Direction, submit.OrderType,
                     submit.LimitPrice, submit.StopLoss, submit.TakeProfit,
-                    submit.StrategyId, "standard", "", _clock.UtcNow);
+                    submit.StrategyId, "standard", "", _clock.UtcNow)
+                { Entry = submit.Entry };
                 var orderReq = new OrderRequest(intent, submit.Lots, submit.Symbol, submit.Direction,
                     submit.OrderType, submit.LimitPrice,
                     // Submit under the kernel's order id (= PositionId) so the venue fill/close + the

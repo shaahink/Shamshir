@@ -252,6 +252,35 @@ public sealed class KernelEvaluatorEquivalenceTests
     }
 
     [Fact]
+    public void Kernel_PreservesEntry_ThroughSubmitOrderEffect()
+    {
+        var kernel = new Kernel(BuildConfig());
+        var state = InitialState() with { Account = new AccountView(10_000m, 10_000m, 0m) };
+        var simTime = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var entry = new OrderEntryOptions
+        {
+            Method = OrderEntryMethod.LimitOffset,
+            LimitOffsetPips = 3.5,
+            LimitOrderExpiryBars = 7,
+            MaxSlippagePips = 1.5,
+        };
+        var proposal = new OrderProposed(
+            new Guid("44444444-4444-4444-4444-444444444444"), Eurusd, TradeDirection.Long, OrderType.Limit,
+            new Price(1.1050m), new Price(1.0920m), new Price(1.1100m), "trend-breakout", 1.0970m, 50m, 10m, simTime,
+            Entry: entry);
+
+        var decision = kernel.Decide(state, proposal);
+        var submit = decision.Effects.OfType<SubmitOrder>().Should().ContainSingle().Subject;
+        submit.OrderType.Should().Be(OrderType.Limit);
+        submit.Entry.Should().NotBeNull("the proposal's Entry must survive the kernel round-trip");
+        submit.Entry!.Method.Should().Be(OrderEntryMethod.LimitOffset);
+        submit.Entry!.LimitOffsetPips.Should().Be(3.5);
+        submit.Entry!.LimitOrderExpiryBars.Should().Be(7);
+        submit.Entry!.MaxSlippagePips.Should().Be(1.5);
+    }
+
+    [Fact]
     public void Kernel_AppliesTrailingStopMove_UpdatesStateAndEmitsModifyEffect()
     {
         // K4 gap-3: a StopLossModifyRequested (the trailing/breakeven decision, computed outside the kernel)

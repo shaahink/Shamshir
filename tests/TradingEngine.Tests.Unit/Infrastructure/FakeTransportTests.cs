@@ -323,4 +323,35 @@ public sealed class FakeTransportTests
 
         await adapter.DisconnectAsync(CancellationToken.None);
     }
+
+    [Fact]
+    public async Task LimitOrder_WithoutEntryOnIntent_StillProducesLimitFrame()
+    {
+        var transport = new FakeMessageTransport();
+        var adapter = new CTraderBrokerAdapter(transport, Substitute.For<ILogger<CTraderBrokerAdapter>>());
+
+        await adapter.ConnectAsync(CancellationToken.None);
+        await transport.RouterWriter.WriteAsync((new byte[] { 1, 2, 3 }, """{"type":"hello"}"""));
+        await Task.Delay(100);
+
+        var intent = new TradeIntent(Symbol.Parse("EURUSD"), TradeDirection.Long, OrderType.Limit,
+            new Price(1.0850m), new Price(1.0800m), new Price(1.0950m),
+            "trend-breakout", "standard", "limit-no-entry", DateTime.UtcNow)
+        {
+            Entry = null,
+        };
+        var orderReq = new OrderRequest(intent, 0.1m, intent.Symbol, intent.Direction, OrderType.Limit, intent.LimitPrice);
+
+        await adapter.SubmitOrderAsync(orderReq, CancellationToken.None);
+        await adapter.CompleteBarAsync(1, CancellationToken.None);
+
+        var (_, json) = transport.SentMessages[1];
+        using var doc = JsonDocument.Parse(json);
+        var cmd = doc.RootElement.GetProperty("commands")[0];
+        cmd.GetProperty("orderType").GetString().Should().Be("Limit",
+            "isLimit must derive from request.Type==Limit, not entryOpts?.Method (which is null here)");
+        cmd.GetProperty("limitPrice").GetDouble().Should().Be(1.0850);
+
+        await adapter.DisconnectAsync(CancellationToken.None);
+    }
 }

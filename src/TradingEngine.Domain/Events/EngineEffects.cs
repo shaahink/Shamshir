@@ -4,7 +4,7 @@ public abstract record EngineEffect;
 
 // OrderType (P2.7): carries the proposal's order type (Market/Limit/Stop) through to the venue. Defaults
 // to Market so every pre-existing direct-construct call site (tests, legacy paths) is source-compatible.
-public record SubmitOrder(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price? LimitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, OrderType OrderType = OrderType.Market) : EngineEffect;
+public record SubmitOrder(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price? LimitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, OrderType OrderType = OrderType.Market, OrderEntryOptions? Entry = null) : EngineEffect;
 
 // TakeProfit (iter-36 K4 gap-3): carries the position's current TP so a trailing modify preserves it on
 // the venue (the simulated venue clears TP if null is passed). The reducer sets it from the position.

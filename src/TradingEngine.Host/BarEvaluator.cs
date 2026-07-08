@@ -119,6 +119,14 @@ public sealed class BarEvaluator(
                 continue;
             }
 
+            var missingTf = strategy.RequiredTimeframes.FirstOrDefault(reqTf => !barSnapshot.ContainsKey(reqTf));
+            if (missingTf != default)
+            {
+                verdicts.Add(new StrategyVerdict(strategy.Id, HadEnoughBars: false, SignalFired: false,
+                    Direction: null, Reason: $"MISSING_DATA: TF {missingTf} not available", Indicators: null));
+                continue;
+            }
+
             var context = new MarketContext(symbol, closeTick, barSnapshot, strategyIndicators, simTime, strategySeries);
             var intent = strategy.Evaluate(context);
 
@@ -217,7 +225,8 @@ public sealed class BarEvaluator(
                 intent.Symbol, intent.Direction, intent.OrderType,
                 intent.LimitPrice, intent.StopLoss, intent.TakeProfit, intent.StrategyId,
                 entryPrice.Value, slPips, pipValuePerLot, simTime, external, resolvedProfile,
-                EntryReason: intent.Reason, EntryRegime: regimeLabel, EntryTimeframe: strategy.EntryTimeframe);
+                EntryReason: intent.Reason, EntryRegime: regimeLabel, EntryTimeframe: strategy.EntryTimeframe,
+                Entry: intent.Entry);
 
             proposals.Add(proposal);
             verdicts.Add(new StrategyVerdict(strategy.Id, HadEnoughBars: true, SignalFired: true,

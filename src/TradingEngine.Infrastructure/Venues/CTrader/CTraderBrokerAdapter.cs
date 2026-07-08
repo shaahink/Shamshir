@@ -457,21 +457,15 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         _logger.LogInformation("CTRADER|SUBMIT_ORDER|id={Id}|symbol={Symbol}|dir={Dir}|lots={Lots}|connected={Connected}",
             clientOrderId, request.Symbol, request.Direction, request.Lots, connected);
         var entryOpts = request.Intent.Entry;
-        // NOTE (found while implementing P2.7, deliberately NOT changed here): entryOpts is always null on
-        // the kernel path (EffectExecutor.SubmitOrder rebuilds a bare TradeIntent with no Entry attached),
-        // so isLimit below is always false there regardless of request.Type — every kernel-path order has
-        // ALWAYS gone out to cTrader as "Market", even a domain Limit order. Confirmed by re-deriving
-        // orderType from request.Type directly (matching both replay venues) and watching two real
-        // cTrader-CLI E2E tests (EurUsd_H1_3Days_ProducesTrades, EurUsd_H1_ThreeMonth_GeneratesAtLeastOneTrade)
-        // drop from producing trades to zero — flipping every strategy's LimitOffset-configured signal from
-        // an always-fills Market order to a real resting Limit order (2-pip offset, ~3-bar expiry) that,
-        // via the real cTrader-cli replay, essentially never fills. That is a genuine, previously-latent
-        // cTrader-integration gap (a Limit order submitted through the kernel path has apparently never
-        // actually rested at cTrader) — real, but out of scope for "add Stop orders"; flagging it here
-        // instead of silently fixing it mid-phase. isLimit is kept exactly as it was; only Stop (a brand
-        // new order type with no existing callers) is added, so there is zero behavior change for any
-        // strategy shipped today.
-        var isLimit = entryOpts?.Method == OrderEntryMethod.LimitOffset;
+        // F5 fix (iter-quant-model P6): isLimit is now derived from request.Type, matching both replay
+        // adapters. Previously derived from entryOpts?.Method which was always null on the kernel path
+        // because EffectExecutor.SubmitOrder rebuilt a bare TradeIntent with no Entry attached. That gap
+        // is now closed — Entry threads through OrderProposed → SubmitOrder → TradeIntent, so entryOpts
+        // is populated. When request.Type==Limit, cTrader receives a genuine resting Limit order rather
+        // than a Market order. This is the correct behavior but means cTrader backtests with default
+        // LimitOffset params (2-pip offset, 3-bar expiry) may produce fewer fills than before — the
+        // strategy config controls fill rate via LimitOffsetPips and LimitOrderExpiryBars.
+        var isLimit = request.Type == OrderType.Limit;
         var isStop = request.Type == OrderType.Stop;
         var orderTypeStr = isStop ? "Stop" : isLimit ? "Limit" : "Market";
         var isResting = isLimit || isStop;
