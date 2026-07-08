@@ -40,7 +40,7 @@ public sealed class HttpStepRunner : IStepRunner
             StepKinds.WalkForward => await WalkForwardAsync(step, ct),
             StepKinds.OwnerGate => OwnerGate(step),
             StepKinds.ApplyCalibration => await ApplyCalibrationAsync(step, ct),
-            StepKinds.Report => Report(step, context),
+            StepKinds.Report => await Report(step, context),
             _ => StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "unknown-step")).Render()),
         };
     }
@@ -176,7 +176,13 @@ public sealed class HttpStepRunner : IStepRunner
     private async Task<StepOutcome> ApplyCalibrationAsync(PlaybookStep step, CancellationToken ct)
     {
         var json = await _client.PostAsync("api/exit-lab/calibrations", step.Params.ToJsonString(), ct);
-        return StepOutcome.Pass(Verdict.Passing(VerdictField.Of("applied", "true")).Render(), null);
+        var saved = ParseBool(json, "saved");
+        if (!saved)
+        {
+            var error = ParseString(json, "error") ?? "unknown";
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", error)).Render());
+        }
+        return StepOutcome.Pass(Verdict.Passing(VerdictField.Of("saved", "true")).Render(), null);
     }
 
     private static StepOutcome OwnerGate(PlaybookStep step)
@@ -187,18 +193,38 @@ public sealed class HttpStepRunner : IStepRunner
             VerdictField.Of("reason", reason)).Render());
     }
 
-    private static StepOutcome Report(PlaybookStep step, PipelineContext context)
+    private async Task<StepOutcome> Report(PlaybookStep step, PipelineContext context)
     {
-        // A report step summarizes the context's accumulated values — a pure, always-passing step whose
-        // artifact is written by the executor's persistence (the CLI's report verb renders markdown).
+        // A report step summarizes the context's accumulated values into a markdown file written to the
+        // artifact dir. The report itself is always-passing (it's narrative, not a gate).
+        var now = DateTime.UtcNow;
+        var lines = new List<string>
+        {
+            $"# Pipeline Report — {context.PipelineId}",
+            $"**Generated:** {now:yyyy-MM-dd HH:mm:ss} UTC",
+            "",
+            "## Accumulated Context",
+            "",
+            "| Key | Value |",
+            "|-----|-------|",
+        };
+        foreach (var kv in context.Values)
+        {
+            lines.Add($"| `{EscapeMd(kv.Key)}` | `{EscapeMd(kv.Value)}` |");
+        }
+        var content = string.Join("\n", lines);
+        var artifact = await WriteArtifactAsync(context, "report.md", content, CancellationToken.None);
         var fields = context.Values.Select(kv => VerdictField.Of(kv.Key, kv.Value)).ToArray();
-        return StepOutcome.Pass(Verdict.Passing(fields).Render());
+        return StepOutcome.Pass(Verdict.Passing(fields).Render(), artifact);
     }
 
-    private async Task<string?> WriteArtifactAsync(PipelineContext context, string fileName, string content, CancellationToken ct)
+    private static string EscapeMd(string s) => s.Replace("|", "\\|").Replace("`", "\\`");
+
+    private static async Task<string?> WriteArtifactAsync(PipelineContext context, string fileName, string content, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(context.ArtifactDir))
         {
+            Console.Error.WriteLine($"WARN: pipeline {context.PipelineId}: artifact dir is null — skipping {fileName}");
             return null;
         }
         Directory.CreateDirectory(context.ArtifactDir);
@@ -244,6 +270,21 @@ public sealed class HttpStepRunner : IStepRunner
             return [.. arr.Where(n => n is not null).Select(n => n!.GetValue<string>())];
         }
         return [];
+    }
+
+    private static bool ParseBool(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty(key, out var el)
+            && el.ValueKind == System.Text.Json.JsonValueKind.True;
+    }
+
+    private static string? ParseString(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty(key, out var el)
+            && el.ValueKind == System.Text.Json.JsonValueKind.String
+            ? el.GetString() : null;
     }
 
     private static List<string> SplitCsv(string? csv) =>

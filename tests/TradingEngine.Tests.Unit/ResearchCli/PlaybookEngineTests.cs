@@ -191,6 +191,42 @@ public sealed class PlaybookEngineTests
         return dir ?? throw new InvalidOperationException("Could not locate repo root (playbooks) from test output dir.");
     }
 
+    // ---- artifact dir auto-creation ----
+
+    [Fact]
+    public async Task Executor_AutoCreatesArtifactDir_WhenNoneGiven()
+    {
+        var pb = Pb(("report", false));
+        var runner = new FakeRunner { Default = StepOutcome.Pass("VERDICT: PASS") };
+        var store = new FakeStore();
+        var result = await new PlaybookExecutor(runner, store).RunAsync(pb, "{}", null, default);
+
+        result.Kind.Should().Be(PipelineResultKind.Completed);
+        runner.LastContext.Should().NotBeNull();
+        runner.LastContext!.ArtifactDir.Should().NotBeNull();
+        runner.LastContext!.ArtifactDir.Should().Contain("research-artifacts");
+        Directory.Exists(runner.LastContext!.ArtifactDir).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Executor_UsesUserSuppliedArtifactDir_WhenGiven()
+    {
+        var pb = Pb(("report", false));
+        var runner = new FakeRunner { Default = StepOutcome.Pass("VERDICT: PASS") };
+        var store = new FakeStore();
+        var tmp = Path.Combine(Path.GetTempPath(), "shamshir-audit-" + Path.GetRandomFileName());
+        try
+        {
+            var result = await new PlaybookExecutor(runner, store).RunAsync(pb, "{}", tmp, default);
+            result.Kind.Should().Be(PipelineResultKind.Completed);
+            runner.LastContext!.ArtifactDir.Should().Be(tmp);
+        }
+        finally
+        {
+            if (Directory.Exists(tmp)) Directory.Delete(tmp, recursive: true);
+        }
+    }
+
     // ---- helpers / fakes ----
 
     private static JsonObject Obj(string json) => (JsonObject)JsonNode.Parse(json)!;
@@ -212,10 +248,12 @@ public sealed class PlaybookEngineTests
         public Dictionary<int, StepOutcome> ByIndex { get; } = new();
         public Exception? Throw { get; init; }
         public int CallCount { get; private set; }
+        public PipelineContext? LastContext { get; private set; }
 
         public Task<StepOutcome> RunAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
         {
             CallCount++;
+            LastContext = context;
             if (Throw is not null) throw Throw;
             return Task.FromResult(ByIndex.TryGetValue(step.Index, out var o) ? o : Default);
         }

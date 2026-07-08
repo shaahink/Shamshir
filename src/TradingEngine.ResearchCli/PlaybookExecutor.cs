@@ -29,6 +29,8 @@ public sealed class PlaybookExecutor
     public async Task<PipelineResult> RunAsync(Playbook playbook, string playbookJson, string? artifactDir, CancellationToken ct)
     {
         var record = await _store.CreateAsync(playbook, playbookJson, artifactDir, ct);
+        // Auto-create a default artifact dir so steps always have a place to write files.
+        artifactDir ??= DefaultArtifactDir(record.Id);
         return await ExecuteAsync(playbook, record, artifactDir, resume: false, ct);
     }
 
@@ -36,6 +38,7 @@ public sealed class PlaybookExecutor
     public async Task<PipelineResult> ResumeAsync(Playbook playbook, Guid pipelineId, string? artifactDir, CancellationToken ct)
     {
         var record = await _store.GetAsync(pipelineId, ct);
+        artifactDir ??= DefaultArtifactDir(pipelineId);
         return await ExecuteAsync(playbook, record, artifactDir, resume: true, ct);
     }
 
@@ -117,6 +120,13 @@ public sealed class PlaybookExecutor
             }
         }
         return playbook.Steps.Count;
+    }
+
+    private static string DefaultArtifactDir(Guid pipelineId)
+    {
+        var dir = Path.Combine(AppContext.BaseDirectory, "research-artifacts", pipelineId.ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
     }
 }
 
