@@ -21,6 +21,8 @@ public sealed record TradeSummaryResponse
     public double RMultiple { get; init; }
     public double MaxAdverseExcursion { get; init; }
     public double MaxFavorableExcursion { get; init; }
+    public double? MaeR { get; init; }
+    public double? MfeR { get; init; }
     public required string ExitReason { get; init; }
     public required string StrategyId { get; init; }
     public double DurationSeconds { get; init; }

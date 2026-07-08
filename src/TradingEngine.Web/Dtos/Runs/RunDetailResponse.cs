@@ -42,4 +42,10 @@ public sealed record RunDetailResponse
     public double BarsPerSec { get; init; }
     public int TotalBars { get; init; }
     public string? ExitResolution { get; init; }
+
+    // P4.1 (F11): whether this run used the one-click exploration preset.
+    public bool ExplorationMode { get; init; }
+
+    // P4.1 (F11): whether excursion paths were recorded for this run.
+    public bool RecordExcursions { get; init; }
 }

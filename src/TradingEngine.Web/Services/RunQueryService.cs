@@ -196,6 +196,8 @@ public sealed class RunQueryService : IRunQueryService
             ExitResolution = state.ExitResolution,
             EffectiveConfigJson = state.EffectiveConfigJson,
             RunPlanJson = state.RunPlanJson ?? "[]",
+            ExplorationMode = state.ExplorationMode,
+            RecordExcursions = state.RecordExcursions,
         };
     }
 
@@ -218,6 +220,7 @@ public sealed class RunQueryService : IRunQueryService
                     SwapAmount = t.Swap.Amount, NetPnLAmount = t.NetPnL.Amount,
                     PnLPips = t.PnLPips.Value, RMultiple = t.RMultiple,
                     MaxAdverseExcursion = t.MaxAdverseExcursion.Value, MaxFavorableExcursion = t.MaxFavorableExcursion.Value,
+                    MaeR = t.MaeR, MfeR = t.MfeR,
                     ExitReason = t.ExitReason, StrategyId = t.StrategyId,
                     DurationSeconds = t.DurationSeconds, EntryType = t.OrderEntryMethod,
                     EntryReason = t.EntryReason, EntryRegime = t.EntryRegime,
@@ -252,6 +255,8 @@ public sealed class RunQueryService : IRunQueryService
                 RMultiple = t.RMultiple,
                 MaxAdverseExcursion = t.MaxAdverseExcursion,
                 MaxFavorableExcursion = t.MaxFavorableExcursion,
+                MaeR = t.MaeR,
+                MfeR = t.MfeR,
                 ExitReason = t.ExitReason,
                 StrategyId = t.StrategyId,
                 DurationSeconds = t.DurationSeconds,

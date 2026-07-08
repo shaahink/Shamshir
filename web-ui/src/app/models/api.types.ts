@@ -62,6 +62,10 @@ export interface RunDetail {
   barsPerSec: number;
   totalBars: number;
   exitResolution?: string | null;
+  // P4.1 (F11): whether this run used the exploration preset.
+  explorationMode?: boolean;
+  // P4.1 (F11): whether excursion paths were recorded.
+  recordExcursions?: boolean;
 }
 
 export interface TradeListResponse {

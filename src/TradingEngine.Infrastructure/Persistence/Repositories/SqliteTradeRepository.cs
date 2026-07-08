@@ -1,9 +1,25 @@
+using TradingEngine.Services.Helpers;
+
 namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
-public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepository
+public sealed class SqliteTradeRepository(TradingDbContext db, ISymbolInfoRegistry? symbolRegistry = null) : ITradeRepository
 {
     public async Task SaveAsync(TradeResult trade, string runId, CancellationToken ct)
     {
+        double? maeR = null;
+        double? mfeR = null;
+
+        if (symbolRegistry is not null && symbolRegistry.TryGet(trade.Symbol, out var symInfo))
+        {
+            var stopPrice = (trade.InitialStopLoss ?? trade.StopLoss).Value;
+            (maeR, mfeR) = MaeMfeNormalizer.Normalize(
+                trade.MaxAdverseExcursion.Value,
+                trade.MaxFavorableExcursion.Value,
+                trade.EntryPrice.Value,
+                stopPrice,
+                symInfo);
+        }
+
         var entity = new TradeResultEntity
         {
             Id = trade.Id,
@@ -30,6 +46,8 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             RMultiple = trade.RMultiple,
             MaxAdverseExcursion = trade.MaxAdverseExcursion.Value,
             MaxFavorableExcursion = trade.MaxFavorableExcursion.Value,
+            MaeR = maeR,
+            MfeR = mfeR,
             ExitReason = trade.ExitReason,
             StrategyId = trade.StrategyId,
             RiskProfileId = trade.RiskProfileId,
@@ -95,6 +113,8 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             OrderEntryMethod: e.OrderEntryMethod,
             OrderId: e.OrderId,
             Timeframe: e.EntryTimeframe,
-            InitialStopLoss: e.InitialStopLoss.HasValue ? new Price(e.InitialStopLoss.Value) : null);
+            InitialStopLoss: e.InitialStopLoss.HasValue ? new Price(e.InitialStopLoss.Value) : null,
+            MaeR: e.MaeR,
+            MfeR: e.MfeR);
     }
 }

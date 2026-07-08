@@ -253,6 +253,84 @@ public sealed class SystemController : ControllerBase
         });
     }
 
+    // P4.1 (F12): one-off, idempotent backfill for TradeResults that are missing MaeR/MfeR
+    // (historical trades persisted before the M44 migration). Computes R-normalized excursions from
+    // existing pip-based excursions + symbol pip size. Safe to re-run — only touches rows where
+    // MaeR IS NULL. Takes a file-copy backup of the live db first.
+    [HttpPost("backfill-mae-mfe")]
+    public async Task<IActionResult> BackfillMaeMfe(CancellationToken ct)
+    {
+        string? backupPath = null;
+        try
+        {
+            backupPath = BackupDatabaseFile();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Backfill: DB backup copy failed, continuing without one");
+        }
+
+        ISymbolInfoRegistry? registry = null;
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            registry = scope.ServiceProvider.GetService<ISymbolInfoRegistry>();
+        }
+
+        if (registry is null)
+            return StatusCode(500, new { error = "ISymbolInfoRegistry not registered — cannot resolve pip sizes for backfill." });
+
+        var candidates = await _db.Trades
+            .Where(t => t.MaeR == null)
+            .ToListAsync(ct);
+
+        var updated = 0;
+        var skippedNoSymbol = 0;
+        var skippedZeroStop = 0;
+
+        foreach (var batch in candidates.Chunk(500))
+        {
+            foreach (var trade in batch)
+            {
+                Symbol sym;
+                try { sym = Symbol.Parse(trade.Symbol); } catch { skippedNoSymbol++; continue; }
+                if (!registry.TryGet(sym, out var symInfo))
+                {
+                    skippedNoSymbol++;
+                    continue;
+                }
+
+                var stopPrice = trade.InitialStopLoss ?? trade.StopLoss;
+                if (stopPrice == 0 || trade.EntryPrice == 0)
+                {
+                    skippedZeroStop++;
+                    continue;
+                }
+
+                var (maeR, mfeR) = MaeMfeNormalizer.Normalize(
+                    trade.MaxAdverseExcursion,
+                    trade.MaxFavorableExcursion,
+                    trade.EntryPrice,
+                    stopPrice,
+                    symInfo);
+
+                trade.MaeR = maeR;
+                trade.MfeR = mfeR;
+                updated++;
+            }
+
+            await _db.SaveChangesAsync(ct);
+        }
+
+        return Ok(new
+        {
+            backupPath,
+            totalCandidates = candidates.Count,
+            updated,
+            skippedNoSymbol,
+            skippedZeroStop,
+        });
+    }
+
     private string? BackupDatabaseFile()
     {
         var dataSource = (_db.Database.GetDbConnection() as SqliteConnection)?.DataSource;

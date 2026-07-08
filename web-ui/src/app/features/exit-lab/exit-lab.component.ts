@@ -1,17 +1,34 @@
-import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import type { ExitLabEvaluateRequest, ExitLabEvaluateResponse, ExitLabCellResponse, SaveCalibrationRequest } from '../../models/api.types';
 
 @Component({
   selector: 'app-exit-lab',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   template: `
     <div class="space-y-6">
       <h1 class="text-xl font-semibold">Exit Lab</h1>
       <p class="text-xs text-gray-500">Calibrate exit rules (SL/TP/BE/Trail) from recorded MAE/MFE paths.</p>
+
+      <!-- P4.1 (F11): empty-state when no excursions are available -->
+      @if (emptyReason()) {
+        <div class="rounded-lg border border-amber-800 bg-amber-900/20 p-4 text-xs">
+          <p class="text-amber-300 font-medium mb-1">{{ emptyReason() }}</p>
+          <p class="text-gray-400">
+            The Exit Lab replays excursion paths recorded during a backtest. To generate them,
+            enable <code class="text-amber-300">RecordExcursions</code> in the backtest form, or use the
+            <a routerLink="/runs/new" [queryParams]="{ preset: 'exploration' }"
+               class="text-emerald-400 hover:underline">Exploration Mode preset</a>
+            (SL=ATR×4, no TP, no add-ons). Then run the
+            <a routerLink="/research" class="text-emerald-400 hover:underline">explore-exit playbook</a>
+            to go from data to calibrated exits.
+          </p>
+        </div>
+      }
 
       <!-- Controls -->
       <div class="grid grid-cols-2 gap-3 rounded-lg border border-gray-800 bg-gray-900/50 p-4 md:grid-cols-4">
@@ -96,8 +113,9 @@ import type { ExitLabEvaluateRequest, ExitLabEvaluateResponse, ExitLabCellRespon
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ExitLabComponent {
+export class ExitLabComponent implements OnInit {
   private http = inject(HttpClient);
+  private route = inject(ActivatedRoute);
 
   runIds = '';
   positionIds = '';
@@ -105,6 +123,7 @@ export class ExitLabComponent {
   loading = signal(false);
   result = signal<ExitLabEvaluateResponse | null>(null);
   error = signal<string | null>(null);
+  emptyReason = signal<string | null>(null);
   selectedCell = signal<ExitLabCellResponse | null>(null);
 
   calStrategyId = '';
@@ -112,8 +131,18 @@ export class ExitLabComponent {
   calTf = 'H1';
   calDataset = 'default';
 
+  ngOnInit(): void {
+    this.route.queryParams.subscribe(params => {
+      const ids = params['runIds'] as string;
+      if (ids && !this.runIds) {
+        this.runIds = ids;
+      }
+    });
+  }
+
   async evaluate(): Promise<void> {
     this.error.set(null);
+    this.emptyReason.set(null);
     this.loading.set(true);
     try {
       const req: ExitLabEvaluateRequest = {
@@ -123,6 +152,9 @@ export class ExitLabComponent {
       };
       const r = await firstValueFrom(this.http.post<ExitLabEvaluateResponse>('/api/exit-lab/evaluate', req));
       this.result.set(r);
+      if (r.totalTrades === 0 && req.runIds.length > 0) {
+        this.emptyReason.set('No excursion paths found for the selected run(s). RecordExcursions must be enabled in the backtest to record per-bar MAE/MFE paths.');
+      }
     } catch (e: any) {
       this.error.set(e?.message ?? 'Evaluation failed');
     } finally {

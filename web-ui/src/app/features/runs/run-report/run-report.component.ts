@@ -87,6 +87,16 @@ type JournalRow = JournalEntry & { outcome?: string | null };
             </div>
           </div>
 
+          <!-- P4.1 (F11): exploration funnel banner -->
+          @if (d.explorationMode && (d.status === 'completed' || d.status === 'completed-with-warnings')) {
+            <div class="rounded-lg border border-purple-800 bg-purple-900/20 p-3 text-xs">
+              <span class="text-purple-300 font-medium">Exploration complete</span>
+              <span class="text-gray-400"> — this run used the ATR×4 SL, no TP, no add-ons preset.</span>
+              <a [routerLink]="['/exit-lab']" [queryParams]="{ runIds: d.runId }"
+                 class="ml-2 text-emerald-400 hover:underline font-medium">Open Exit Lab (pre-filtered)</a>
+            </div>
+          }
+
           <!-- Tab bar -->
           <nav class="flex gap-1 border-b border-gray-800 pb-2">
             @for (t of reportTabs; track t.id) {

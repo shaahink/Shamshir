@@ -561,6 +561,11 @@ export class NewBacktestComponent implements OnInit {
         }
       } catch { /* */ }
     }
+
+    const preset = this.route.snapshot.queryParamMap.get('preset');
+    if (preset === 'exploration' && !this.explorationMode) {
+      this.applyExplorationPreset();
+    }
   }
 
   private toggle(setSig: WritableSignal<Set<string>>, v: string): void {
