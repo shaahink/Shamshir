@@ -1,12 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 15:55 UTC · branch `iter/parity-pipeline` · HEAD `b4ca47c`_
+_Updated 2026-07-08 16:10 UTC · branch `iter/parity-pipeline` · HEAD `7c661b0`_
 
 **Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P1 — Config & DB truth · attempts used 0
-**Checkpoints:** 8/17 done · **Sessions run:** 8 · **Cost:** $0.5651 · **Tokens:** 143,065 in / 189,395 out / 100,247 think
+**Checkpoints:** 8/17 done · **Sessions run:** 9 · **Cost:** $0.5856 · **Tokens:** 144,218 in / 198,405 out / 104,850 think
 **Confirmed phases:** P0
-**Pending:** auto-fix audit for P1
+**Pending:** full-battery phase gate for P1
 
 ## Stage progress
 
@@ -32,15 +32,10 @@ _Updated 2026-07-08 15:55 UTC · branch `iter/parity-pipeline` · HEAD `b4ca47c`
 | 6 | P0 | Audit | 1 | 07-08 06:47 | 0:23 | Progress |  | 3 |  | $0.0417 | 2,295/18,583 |
 | 7 | P1 | Deliver | 1 | 07-08 14:02 | 0:15 | Progress |  | 1 | build:OK | $0.0160 | 873/3,880 |
 | 8 | P1 | Deliver | 2 | 07-08 14:18 | 1:36 | Advanced | P1.1 P1.2 | 5 | build:OK | $0.1096 | 4,363/41,198 |
+| 9 | P1 | Audit | 1 | 07-08 15:55 | 0:14 | Progress |  | 2 |  | $0.0205 | 1,153/9,010 |
 
 ### Commits by session
 
-- **s1 (P0 Deliver)** — 5 commit(s):
-  - b5e06d4 docs(P0.0): tracker + AGENTS RESUME handoff — P0.0 done, next P0.1
-  - 9686242 feat(ui): compare-both toggle + signal migration; revert 8 JSONs to Market (Q1)
-  - b57d913 chore(conductor): s1 P0 working ▸P0.0 @ 03:32
-  - bf74d4b test(P7,P3.3): DD-guard/weekend-flatten/replayer validation tests
-  - 9570ad6 fix(F5): thread OrderEntryOptions through kernel; isLimit from request.Type
 - **s2 (P0 Deliver)** — 8 commit(s):
   - c89f17a chore(conductor): s2 P0 working ▸P0.1 @ 05:07
   - c55d4a2 docs(P0.1): tracker + AGENTS RESUME handoff — P0.1/P0.5 done, next P0.2
@@ -80,10 +75,14 @@ _Updated 2026-07-08 15:55 UTC · branch `iter/parity-pipeline` · HEAD `b4ca47c`
   - 679adcb feat(P1.2,F9,F7): config propagation + drift — JSON edits reach the runtime DB
   - dfadcfc docs: add conductor-DEBT.md (P0 audit followups) + update read-order
   - 9454878 feat(P1.1,F10): one database — repo-root DbPathResolver + Host fail-loud + compute-reference-scales
+- **s9 (P1 Audit)** — 2 commit(s):
+  - 7c661b0 docs(P1): honest phase handover — audit verdict + solid/weak/deferred/risks
+  - 795807f audit(P1): harden config/DB truth — unify repo-root in lint-config + cover uncovered sync branches
 
 ## Phase handovers (audit)
 
 - `.conductor/handovers/P0.md`
+- `.conductor/handovers/P1.md`
 
 ## Last gate run
 
@@ -91,12 +90,7 @@ build:OK
 
 ## Last session result
 
-> I'll start with the pre-session ritual. Let me read the mandatory files in order.
-> The RESUME block is stale (references s5/P0.4, but git shows s6 P0 and s7 P1 already happened). Let me read the TRACKER for the real current state.
-> Let me check the uncommitted TRACKER.md diff (s7 may have left something) and read the PLAN P1 section + AUDIT findings.
-> s7 (P1 attempt 1) delivered no P1 source work — only a benign TRACKER doc reword + BuildInfo re-dirty. P1.1 is untouched. Let me read the PLAN P1 section and AUDIT findings.
-> Now let me read the verification matrix and AUDIT findings F7/F9/F10.
-> Now I understand the P1 scope. Let me establish the gate baseline (build) while exploring the P1-rel…
+> SESSION-RESULT: P1 (Config & DB truth) passes audit — the phase is genuinely solid for everything provable credential-free, with no gate/golden/truth weakened (ratchet held). I statically reviewed the full `31a08d2..HEAD` diff (DbPathResolver, MigrationGuard, ConfigSyncService, seeder, M42, entities, orchestrator, controllers) and verified the claims in the RUNTIME store per R5 rather than source files: exactly one `trading.db` (F10 unification real), `__EFMigrationsHistory` head = M42, all 9 strategies + 4 risk profiles carry `SeededHash`, `OrderEntryJson` is `Method:0` ×8 / `Method:1` ×1 exactly per owner Q1, the file SHA‑256 independently equals the DB `SeededHash` for `trend-breakout`+`s…
 
 ## Tracker handoff
 
