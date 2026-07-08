@@ -1,12 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 19:14 UTC · branch `iter/parity-pipeline` · HEAD `a5bcce9`_
+_Updated 2026-07-08 19:22 UTC · branch `iter/parity-pipeline` · HEAD `00f42df`_
 
 **Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P4 — Lab golden paths · attempts used 0
-**Checkpoints:** 15/17 done · **Sessions run:** 16 · **Cost:** $1.2366 · **Tokens:** 792,811 in / 361,519 out / 164,103 think
+**Checkpoints:** 15/17 done · **Sessions run:** 17 · **Cost:** $1.2824 · **Tokens:** 842,819 in / 373,867 out / 171,108 think
 **Confirmed phases:** P0, P1, P2, P3
-**Pending:** auto-fix audit for P4
+**Pending:** full-battery phase gate for P4
 
 ## Stage progress
 
@@ -40,15 +40,10 @@ _Updated 2026-07-08 19:14 UTC · branch `iter/parity-pipeline` · HEAD `a5bcce9`
 | 14 | P3 | Fix | 2 | 07-08 18:13 | 0:14 | Advanced | P3.3 | 2 | build:OK | $0.1204 | 203,515/13,269 |
 | 15 | P3 | Audit | 1 | 07-08 18:30 | 0:14 | Progress |  | 2 |  | $0.0740 | 79,867/15,468 |
 | 16 | P4 | Deliver | 1 | 07-08 18:46 | 0:27 | Advanced | P4.1 | 3 | build:OK | $0.1892 | 229,115/27,015 |
+| 17 | P4 | Audit | 1 | 07-08 19:14 | 0:07 | Progress |  | 2 |  | $0.0458 | 50,008/12,348 |
 
 ### Commits by session
 
-- **s8 (P1 Deliver)** — 5 commit(s):
-  - b4ca47c chore(conductor): s8 P1 working ▸P1.1 @ 16:48
-  - 342810a docs(P1): tracker + AGENTS RESUME — P1 COMPLETE (P1.1 f364102, P1.2 d36f491); QA of s7 = no-op confirmed; next P2.1
-  - 679adcb feat(P1.2,F9,F7): config propagation + drift — JSON edits reach the runtime DB
-  - dfadcfc docs: add conductor-DEBT.md (P0 audit followups) + update read-order
-  - 9454878 feat(P1.1,F10): one database — repo-root DbPathResolver + Host fail-loud + compute-reference-scales
 - **s9 (P1 Audit)** — 2 commit(s):
   - 7c661b0 docs(P1): honest phase handover — audit verdict + solid/weak/deferred/risks
   - 795807f audit(P1): harden config/DB truth — unify repo-root in lint-config + cover uncovered sync branches
@@ -82,6 +77,9 @@ _Updated 2026-07-08 19:14 UTC · branch `iter/parity-pipeline` · HEAD `a5bcce9`
   - a5bcce9 docs(P4.1): session s16 bookkeeping — P4.1 DONE, gates green, RESUME updated
   - 9aa9b87 feat(P4.1): exploration funnel (F11) + MAE/MFE units doctrine (F12)
   - 8a98142 chore(conductor): s16 P4 working ▸P4.1 @ 20:01
+- **s17 (P4 Audit)** — 2 commit(s):
+  - 00f42df docs(P4): honest phase handover — audit findings, fixes, weaknesses, follow-ups
+  - c3d67aa fix(P4): audit hardening — edge-case guards + type sync
 
 ## Phase handovers (audit)
 
@@ -89,6 +87,7 @@ _Updated 2026-07-08 19:14 UTC · branch `iter/parity-pipeline` · HEAD `a5bcce9`
 - `.conductor/handovers/P1.md`
 - `.conductor/handovers/P2.md`
 - `.conductor/handovers/P3.md`
+- `.conductor/handovers/P4.md`
 
 ## Last gate run
 
@@ -96,20 +95,7 @@ build:OK
 
 ## Last session result
 
-> Now let me read the remaining required documents:
-> Now let me QA the previous session. Running gates and reading additional docs in parallel:
-> Gates confirmed. Let me now search for existing ExitLab, exploration, and MAE/MFE code to plan P4.1:
-> Now let me read key components for the exploration funnel:
-> Now I have a comprehensive understanding. Here is my **SESSION PLAN**:
-> 
-> ```
-> SESSION PLAN:
-> - Checkpoints to deliver:
->   1. F11: Exploration funnel — banner on completed exploration run report + Exit Lab empty-state
->   2. F12: MAE/MFE units doctrine — R-normalized columns, table-driven tests, backfill endpoint
->   3. P3.6 Entry lab: DEFERRED (blocked on P2.2 owner-pending cTrader creds)
-> 
-> - Files to…
+> SESSION-RESULT: **Audit PASS with hardening.** Reviewed the full P4 diff (22 files, 1812 insertions) spanning exploration funnel (F11), MAE/MFE doctrine (F12), M44 migration, backfill endpoint, and Angular wiring. Found 3 gaps: MaeMfeNormalizer lacked NaN/Infinity/zero-price guards (silent incorrect results), SqliteTradeRepository.SaveAsync lacked the zero-price gate that BackfillMaeMfe has, and TypeScript types were out of sync with backend DTOs. Fixed all three root causes, added 8 edge-case tests (638→646 unit), and verified gates green (build 0/5w, Unit 646/0/6, Integration 120/0/0, Sim 144/0/0, golden byte-identical). Committed `c3d67aa` (fixes+tests) and `00f42df` (handover) to `iter/p…
 
 ## Tracker handoff
 
