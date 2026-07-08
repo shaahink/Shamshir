@@ -16,32 +16,36 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P0.0 DONE** — tree landed in 3 deliberate commits: (a) 9570ad6 fix(F5) kernel Entry thread +
-      isLimit-from-request.Type +2 tests; (b) bf74d4b test(P7,P3.3) 14 tests; (c) 9686242 feat(ui)
-      compare-both toggle + Q1 revert (8 JSONs→Market) + iteration docs. (conductor b57d913 interleaved.)
-stage: **P0 IN PROGRESS** — P0.0 complete; P0.1 (¼-sizing F1) is next and NOT started.
-gate: GREEN — build 0 err/5 warn (pre-existing net6.0 cBot); Unit 508/0/6; fast Sim 139/0/0;
-      golden 61/61 byte-identical; R5 DB verify Method=Market (evidence file, see P0.0 row).
-next: **P0.1** — instrument OrderSubmitted DetailJson with sizing inputs (Kernel.DecideProposed),
-      write VenueSizingParityTests (FakeTransport, NO creds), prove ×0.25 mechanism, fix, then a
-      SEPARATE golden REBASELINE commit (DetailJson WILL move — do not fold into the fix commit).
-trap: tsc has 2 PRE-EXISTING spec/e2e errors (runs.service.spec.ts, ui-smoke.spec.ts) — not P0.0,
-      flagged for P5. cTrader E2E slow/flaky → gate with fast Sim filter. P2.2 is an OWNER-GATE.
-      BuildInfo.g.cs (cBot) regenerates every build → will re-dirty; it is committed generated metadata.
+last: **P0.1 + P0.5 DONE** — a6aa08c fix(P0.1,F1): backtest sizes off CONFIG balance (not venue hello);
+      EngineRunner.ResolveInitialBalance (pure); sizing DetailJson (R7); VenueSizingParityTests
+      [Category=VenueParity] 5/5 incl. ×0.25 repro + equal-lots-after-fix. QA-previous(P0.0): confirmed.
+stage: **P0 IN PROGRESS** — P0.0/P0.1/P0.5 done; P0.2 (run-status truth F5) is next, NOT started.
+gate: GREEN — build 0 err/5 warn; Unit 508/0/6; fast Sim 144/0/0 (was 139; +5 VenueParity);
+      golden 61/61 byte-identical (NO rebaseline — see evidence §5); Integration 101/0/0.
+next: **P0.2** — separate engine-result from transport-teardown (Q5 `completed-with-warnings`); reproduce
+      the NetMQPoller disposal race (poller/queue Dispose ordering), one repro before + clean after (R3).
+      See PLAN §3 P0.2 + AUDIT F5. NOTE P0.1 golden did NOT move (forecast was wrong) — no rebaseline.
+trap: real paired cTrader mini-run for P0.1 is OWNER-PENDING (needs creds). tsc 2 PRE-EXISTING errors
+      (P5). BuildInfo.g.cs regenerates every build → re-dirties (committed generated metadata). P2.2 OWNER-GATE.
 
 ## Checkpoints
 
 Status ∈ TODO · IN PROGRESS · DONE · BLOCKED. Evidence = an artifact path produced by a run this
 phase (a code path is not evidence). Scope changes get a `> scope change:` line under the row.
 
+> QA-previous (s2 QA of P0.0): **confirmed**. Re-ran the full P0.0 gate battery verbatim — build
+> 0err/5warn, Unit 508/0/6, fast Sim 139/0/0, golden 61/61. Independently verified 2 claims: (runtime/R5)
+> `sqlite3 …Web/data/trading.db` StrategyConfigs = Method:0 ×8 + Method:1 mean-reversion (matches JSON —
+> F9 no longer diverges); (tests) golden 61/61 byte-identical re-run. No divergence; no fix needed.
+
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
 | P0.0 | Land the working tree (revert 8 JSONs to Market; 3 deliberate commits, gates pasted) | DONE | 9570ad6, bf74d4b, 9686242 | gates in commit bodies; R5: docs/iterations/iter-parity-pipeline/evidence/P0.0-runtime-strategyconfigs.md |
-| P0.1 | ¼-sizing bug (F1): VenueSizingParityTests green + equal lots in a paired mini-run DB | TODO | | |
+| P0.1 | ¼-sizing bug (F1): VenueSizingParityTests green + equal lots in a paired mini-run DB | DONE (OWNER-PENDING: paired DB run needs creds) | a6aa08c | docs/iterations/iter-parity-pipeline/evidence/P0.1-sizing-parity.md; VenueSizingParityTests 5/5 (Category=VenueParity) |
 | P0.2 | Run-status truth (F5): real ctrader run ends completed; fault→completed-with-warnings | TODO | | |
 | P0.3 | Trade persistence barrier (F6): BTC-scenario test; count mismatch surfaces + backfill | TODO | | |
 | P0.4 | Entry-latency instrumentation (F2): entryDelayBars in reconcile output | TODO | | |
-| P0.5 | Venue-parity test tier (R8): Category=VenueParity wired into the standard gate filter | TODO | | |
+| P0.5 | Venue-parity test tier (R8): Category=VenueParity wired into the standard gate filter | DONE | a6aa08c | fast-Sim filter 139→144 (5 VenueParity tests ride the standard gate); evidence P0.1 §6 |
 | P1.1 | One database (F10): Host CLI verbs run against the Web DB; 84/84 ReferenceScales rows | TODO | | |
 | P1.2 | Config propagation + drift (F9,F7): JSON edit reflected in journal; UI edit survives restart | TODO | | |
 | P2.1 | Run state machine + tests (F8): cancel/watchdog/orphan-kill transitions green | TODO | | |

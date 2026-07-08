@@ -232,26 +232,27 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` · **HEAD after this session:** `9686242` (+ conductor bookkeeping commits).
-**Session (s1, P0):** P0.0 DONE — landed the working tree in 3 deliberate commits (R4, no mega-batch):
-`9570ad6` fix(F5) kernel Entry threading + isLimit-from-request.Type + 2 tests; `bf74d4b` test(P7,P3.3)
-14 evaluator/replayer tests; `9686242` feat(ui) compare-both toggle + Q1 revert (8 JSONs→Market, kept
-companion fields) + iteration docs. No previous session to QA (P0.0 was first).
+**Branch:** `iter/parity-pipeline` · **HEAD after this session:** `a6aa08c` (+ conductor bookkeeping).
+**Session (s2, P0):** QA of P0.0 = **confirmed** (gates re-run + 2 independent claims: R5 DB Method=Market,
+golden 61/61). Then landed **P0.1 + P0.5** in one commit `a6aa08c`: fixed the ¼-sizing bug (F1) —
+backtest now sizes off the CONFIG balance, never the cTrader hello (`EngineRunner.ResolveInitialBalance`,
+pure + tested); cfg.Balance plumbed via EngineHostOptions→EngineRunContext→EngineRunner. Sizing DetailJson
+now journaled (R7). New `VenueSizingParityTests` [Category=VenueParity] 5/5, NO creds: ×0.25 repro +
+equal-lots-after-fix. P0.5 = the VenueParity tier rides the standard gate filter (Sim 139→144).
 
-**Gates GREEN (commands):** `dotnet build TradingEngine.slnx -c Debug` → 0 err/5 warn (pre-existing
-net6.0 cBot NuGet); `dotnet test tests/TradingEngine.Tests.Unit --no-build` → 508/0/6;
-`dotnet test tests/TradingEngine.Tests.Simulation --no-build --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ&Category!=CtraderContract"`
-→ 139/0/0; golden filter → 61/61 byte-identical. R5: `sqlite3 src/TradingEngine.Web/data/trading.db`
-StrategyConfigs = Method:0 (Market) ×8, Method:1 (Limit) mean-reversion — JSON now matches runtime.
+**Gates GREEN (commands):** `dotnet build TradingEngine.slnx -c Debug` → 0 err/5 warn; Unit `--no-build`
+→ 508/0/6; fast Sim filter `RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ&Category!=CtraderContract`
+→ 144/0/0; golden `FullyQualifiedName~Golden` → 61/61 byte-identical; Integration → 101/0/0.
 
-**Next step:** **P0.1 (¼-sizing F1)** — enrich `OrderSubmitted` DetailJson with sizing inputs in
-`Kernel.DecideProposed` (R7); write `VenueSizingParityTests` (FakeTransport, tape vs cTrader, same bars
-⇒ equal Lots/RiskAmount — NO cTrader creds); prove the ×0.25 mechanism (hypothesis 1: hello balance 25k
-adopted over config 100k), fix, then a **SEPARATE golden REBASELINE commit** (DetailJson WILL move — do
-not fold into the fix). See PLAN §3 P0.1 + AUDIT F1.
+**Next step:** **P0.2 (run-status truth, F5)** — separate engine-result from transport-teardown: if a
+BacktestResult with stats exists, a teardown exception downgrades to `completed-with-warnings` (Q5) with a
+new WarningsJson; `failed` only when no result. THEN reproduce the NetMQPoller disposal race (poller/queue
+Dispose ordering — the committed B4 fix did NOT work); one observed repro before + one clean run after (R3).
+See PLAN §3 P0.2 + AUDIT F5.
 
-**Open traps:** (1) `npx tsc --noEmit` has 2 PRE-EXISTING spec/e2e errors (`runs.service.spec.ts:47`,
-`ui-smoke.spec.ts:59`) — unrelated to P0.0, app-scope compiles clean; fix in P5. (2) `BuildInfo.g.cs`
-(cBot) regenerates on every build → re-dirties; it's committed generated metadata (don't fight it).
-(3) `.conductor/` is orchestrator-managed (own `.gitignore`), intentionally untracked. (4) golden rule
-says "63/63" fixtures; the test-level count is 61 — different metric, left as-is. (5) P2.2 is an OWNER-GATE.
+**Open traps:** (1) **P0.1 golden did NOT move** — RESUME/PLAN forecast a rebaseline; it was WRONG. The
+committed golden-snapshot.json captures only (PhaseBefore,Event,GuardResult,Reason) from the OLD oracle,
+never DetailJson. Do not do a phantom rebaseline. (2) P0.1 real paired cTrader mini-run is OWNER-PENDING
+(needs creds) — mechanism proven credential-free; owner confirms equal DB lots. (3) `npx tsc --noEmit` has
+2 PRE-EXISTING spec/e2e errors (P5). (4) `BuildInfo.g.cs` (cBot) regenerates every build → re-dirties
+(committed generated metadata). (5) `.conductor/` is orchestrator-managed, untracked. (6) P2.2 OWNER-GATE.
