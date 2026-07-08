@@ -232,29 +232,19 @@ changes needed.
 
 ## RESUME (iter-parity-pipeline — replace this whole block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** P5.1c `09fc807`
-**Session (s18, P5):** Delivered **P5.1a-c — UI truth** (F13, F14, F15, F16) + status chips:
-- F13: RunProgress.Equity changed to nullable decimal?. BuildProgress sends null when no equity snapshot
-  observed (HasEquityObservation flag). Client RunProgressEnvelope.equity typed number|null, monitor
-  equity signal starts at null, chart filters null points → no 0-anchor, auto-scale via fitContent().
-- F14: Timeline section now wrapped with "Simulation Timeline" header, visually distinct from progress bar.
-- F15: Client starting() signal sets true synchronously on click (before async), button disabled during.
-  Server-side idempotency key via StartRunRequest.IdempotencyKey + _idempotencyKeys ConcurrentDictionary.
-- F16: ComparePairId column added (M45 migration). Exposed parentRunId + comparePairId in API responses.
-  Run list groups compare-both children indented under parents. Status chips: completed (green), failed
-  (red), completed-with-warnings/cancelled/queued (amber), running (neutral).
-- Monitor completion banner now fires for completed-with-warnings too.
-
-**Gates GREEN:** build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical;
-  driven smoke 11/11 passed each commit.
-
-**Next step:** P5.1d Angular refactor remainder (signals migration for new-backtest class fields, run state
-  store consolidation, global error toast). Then P6 wild list per PLAN §9.
-
-**Open traps:** (1) New-backtest class fields (venue, speed, balance, etc.) still plain fields — need signal
-  conversion with explicit (ngModelChange) per PLAN refactor list. (2) runs.store.ts still minimal — progress
-  envelope processing not consolidated (each monitor derives independently). (3) No global error toast yet
-  — error.interceptor.ts only console.errors. (4) EntityAuditableTests still red on ExitCalibrationEntity
-  (pre-existing). (5) BuildInfo.g.cs + build-info.ts dirty each build (leave). (6) tsc 2 pre-existing errors.
-  (7) P4.1 traps (F11 smoke not run, F12 backfill not run) still owner-pending.
+**Branch:** `iter/parity-pipeline` — **HEAD:** P5.1c-tscfix (s20, pending commit)
+**Session (s20, P5):** Fixed 2 tsc errors that made the `web-tsc` gate RED after P5.1a-c:
+- **TS2561** (runs.service.spec.ts:47): test mock used `symbol`/`period` (singular) but StartRunRequest
+  requires `symbols`/`periods` (arrays). Root cause: the API types were updated (P5.1a-c introduced
+  multi-symbol support) but the test mock wasn't updated with the new field names.
+- **TS2554** (ui-smoke.spec.ts:59): `toBeGreaterThanOrEqual(5, 'message')` — Playwright's `expect` for
+  plain numbers doesn't accept a second message argument (unlike Jest). Removed the message string.
+**Gates GREEN:** build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden
+  byte-identical; tsc 0 errors.
+**Next step:** P5.1d Angular refactor remainder (signals migration for new-backtest class fields, run
+  state store consolidation, global error toast). Then P6 wild list per PLAN §9.
+**Open traps:** (1) New-backtest class fields still plain fields. (2) runs.store.ts still minimal.
+  (3) No global error toast. (4) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
+  (5) BuildInfo.g.cs + build-info.ts dirty each build (leave). (6) P4.1 traps (F11 smoke, F12
+  backfill) owner-pending.
 

@@ -44,8 +44,8 @@ describe('RunsApiService', () => {
   it('should start a run', async () => {
     const mockResponse = { runId: 'xyz', status: 'started' };
     const promise = service.startRun({
-      symbol: 'EURUSD', period: 'h1', start: '2024-01-01', end: '2024-01-31',
-      balance: 100000, commissionPerMillion: 30, spreadPips: 1,
+      symbols: ['EURUSD'], periods: ['h1'], start: '2024-01-01', end: '2024-01-31',
+      balance: 100000, commissionPerMillion: 30, spreadPips: 1, strategyIds: [],
     });
     const req = httpMock.expectOne('/api/runs');
     expect(req.request.method).toBe('POST');

@@ -17,23 +17,22 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P5.1c DONE** (09fc807): F16 compare-both child visibility (M45 ComparePairId migration, parentRunId
-      + comparePairId in API, run list parent/child grouping) + status chips (completed-with-warnings amber,
-      cancelled/queued amber, running neutral) + F13 equity nullable (8fadd58) + F14 timeline label (8fadd58)
-      + F15 start button pending + idempotency (87f5a5c).
-stage: **P5 IN PROGRESS** — P5.1a-c done. P5 remaining per PLAN §8: Angular refactor (signals migration for
-      new-backtest class fields, runs.store consolidation, global error toast).
+last: **P5.1c DONE** (09fc807) + **P5.1c-tsofix DONE** (s20): fixed 2 tsc errors from P5.1a-c —
+      runs.service.spec.ts used singular `symbol`/`period` instead of `symbols`/`periods` arrays matching
+      StartRunRequest; ui-smoke.spec.ts passed a 2nd arg to Playwright's toBeGreaterThanOrEqual which doesn't
+      accept a message param.
+stage: **P5 IN PROGRESS** — P5.1a-c + tsc fix done. P5 remaining per PLAN §8: Angular refactor (signals
+      migration for new-backtest class fields, runs.store consolidation, global error toast).
 gate: GREEN — build 0err/5warn; Unit 638/0/6; Integration 120/0/0; fast Sim 144/0/0; golden byte-identical;
-      driven smoke 11/11 each commit.
+      tsc clean (0 errors); driven smoke NOT RUN this session (web-ui tests didn't touch UI rendering paths).
 next: **P5.1d Angular refactor** (finish signals migration for 10+ new-backtest class fields → signals with
        (ngModelChange), consolidate RunProgressEnvelope processing into runs.store, add global error toast).
        Then P6 wild list per PLAN §9.
-QA-prev: s16 P4.1 — **confirmed, 1 divergence FIXED** (build confirmed; tests green; M44 migration ON DISK
-      but not applied to live DB — manually applied MaeR/MfeR columns + M44 migration row in this session).
+QA-prev: s16 P4.1 — confirmed (build + tests green; M44 manually applied).
 trap: (1) New-backtest class fields still plain fields (not signals). (2) runs.store.ts still minimal.
       (3) No global error toast. (4) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-      (5) BuildInfo.g.cs + build-info.ts re-dirty each build (leave). (6) tsc 2 pre-existing errors.
-      (7) P4.1 traps (F11 smoke, F12 backfill) owner-pending.
+      (5) BuildInfo.g.cs + build-info.ts re-dirty each build (leave). (6) P4.1 traps (F11 smoke, F12
+      backfill) owner-pending.
 
 ## Checkpoints
 

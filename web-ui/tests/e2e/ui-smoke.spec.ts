@@ -56,7 +56,7 @@ test.describe('Run Report — structure checks (always pass)', () => {
   test('stat tiles show KPI data', async ({ page }) => {
     await expect(page.locator('app-run-report app-stat-tile').first()).toBeVisible({ timeout: TIMEOUT });
     const tiles = await page.locator('app-run-report app-stat-tile').count();
-    expect(tiles).toBeGreaterThanOrEqual(5, 'should have at least 5 KPI stat tiles');
+    expect(tiles).toBeGreaterThanOrEqual(5);
   });
 
   test('reconciliation badges render', async ({ page }) => {
