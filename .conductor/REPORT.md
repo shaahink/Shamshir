@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-08 04:39 UTC · branch `iter/parity-pipeline` · HEAD `3a4e4b6`_
+_Updated 2026-07-08 04:54 UTC · branch `iter/parity-pipeline` · HEAD `6533c7e`_
 
 **Status:** Running
 **Stage:** P0 — Parity truth repair (the spine) · attempts used 0 · working ▸ P0.2
@@ -8,24 +8,24 @@ _Updated 2026-07-08 04:39 UTC · branch `iter/parity-pipeline` · HEAD `3a4e4b6`
 
 ## Latest activity (live)
 
-_Session #3 (Deliver) · running 30m · last output 82s ago · $0.0272_
+_Session #3 (Deliver) · running 45m · last output 89s ago · $0.0483_
 
 **Thinking:**
-> I'm analyzing the root cause of the F5 issue. The status logic derives from `CompletedAtUtc` and `ErrorMessage`: if `CompletedAtUtc` is default it shows "running", otherwise if `ErrorMessage` is non-null it shows "failed", else "completed". So the problem is that `ErrorMessage` being populated trigg…
-> I need to turn off the global NuGet audit setting that's causing warnings to be treated as errors in the repro project.
-> So the issue is clear now: `DisconnectAsync` gets called twice through different code paths, and since `NetMQPoller.Stop()` throws `ObjectDisposedException` when the poller's already been disposed, the second call fails with that exact F5 error message. The method isn't idempotent, so I need to add …
+> I'm creating a `RunStatus` static class in the Domain layer to centralize the status derivation logic, which will solve the problem of status being calculated in multiple places. The resolver will take inputs like completion timestamp, error messages, warnings, and result indicators to determine the…
+> I need to add ConfigSetId back in.
+> Let me double-check the original SaveAsync mapping to make sure I got the order right.
 
 **Recent actions:**
-- `05:31:38` » grep DisconnectAsync|\.Dispose\(\)|StopAsync
-- `05:31:39` » read src\TradingEngine.Web\Api\BacktestAnalyticsController.cs
-- `05:31:39` · I now have a thorough understanding of the F5 mechanism. Let me confirm a few final details: PortHelper, where the adapter's DisconnectAsync gets double-invoked…
-- `05:35:31` · I now have a complete understanding of the F5 mechanism. Let me verify my root-cause hypothesis with a quick repro before finalizing the plan.  **F5 root cause …
-- `05:35:36` » bash $src = @' using System; using NetMQ; using NetMQ.Sockets; class P {   static void Main() {     var sub = new SubscriberSocket();     sub.Connect("tcp://127…
-- `05:35:49` · The repo's NuGet audit is global. Let me disable it for this throwaway repro.
-- `05:35:54` » bash $dir = "C:\Users\shahi\AppData\Local\Temp\opencode\pollerrepro" $csproj = @' <Project Sdk="Microsoft.NET.Sdk">   <PropertyGroup><OutputType>Exe</OutputType…
-- `05:37:46` » read src\TradingEngine.Infrastructure\Persistence\TradingDbContext.cs
-- `05:37:47` » read src\TradingEngine.Web\Configuration\MiddlewarePipeline.cs
-- `05:37:47` · Root cause **confirmed**: `NetMQPoller.Stop()` on a disposed poller throws `ObjectDisposedException: 'NetMQPoller'` — the exact F5 error string. The transport's…
+- `05:50:31` » edit src\TradingEngine.Infrastructure\Persistence\Entities\BacktestRunEntity.cs
+- `05:52:00` » edit src\TradingEngine.Infrastructure\Persistence\TradingDbContext.cs
+- `05:52:13` · Now the BacktestRunSummary record. I'll add `WarningsJson` as an optional param at the end (before the profiling defaults to avoid breaking positional callers..…
+- `05:52:13` » edit src\TradingEngine.Domain\Interfaces\IBacktestRunRepository.cs
+- `05:52:25` » edit src\TradingEngine.Infrastructure\Persistence\Repositories\SqliteBacktestRunRepository.cs
+- `05:52:25` · Now the repository: persist WarningsJson on Save/Update and include it in the reconciled summary read.
+- `05:52:36` » edit src\TradingEngine.Infrastructure\Persistence\Repositories\SqliteBacktestRunRepository.cs
+- `05:52:36` · That edit removed ConfigSetId. Let me fix it.
+- `05:52:49` » read src\TradingEngine.Infrastructure\Persistence\Repositories\SqliteBacktestRunRepository.cs
+- `05:52:49` · Let me re-read the SaveAsync mapping to confirm it's intact.
 
 ## Stage progress
 
