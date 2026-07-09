@@ -238,9 +238,9 @@ changes needed.
 
 ## RESUME (P7 Cleanup — overwrite this block each session)
 
-**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822, s46).
+**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822, s46). P7.3 **DONE** (s47).
 **Branch:** `iter/parity-pipeline`
-**P7.3 — Traps 3+1+2 (CURRENT):** triage-sweep playbook, session labels, SpreadVolNoTradeFilter wiring. ~45 min.
+**P7.4 — Traps 4+5+6 + P5.1 (CURRENT):** BlockBootstrapper fixes + EntityAuditableTests + RunQueryService status dedup. ~40 min.
   cTrader credentials verified (see docs/agents/ctrader-quickstart.md).
 
 ### Session Plan
@@ -249,8 +249,8 @@ changes needed.
 |---|------|--------|:--------:|--------|
 | 1 | P4.1 live verification — exploration funnel + backfill | ~30m | No | **DONE** (c830098) |
 | 2 | Prove cTrader works — HTTP backtest + quickstart doc | ~40m | ✅ | **DONE** (60dfc7b, qa: 22d5822) |
-| 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No | **IN PROGRESS** |
-| 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No | TODO |
+| 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No | **DONE** (s47) |
+| 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No | **TODO** |
 | 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ | TODO |
 | 6 | F6-R economics recovery — Option A | ~40m | No | TODO |
 | 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No | TODO |

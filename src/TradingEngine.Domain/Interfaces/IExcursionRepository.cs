@@ -5,7 +5,7 @@ namespace TradingEngine.Domain;
 /// it, since a path is a few hundred bytes of compact JSON, not a queryable trade field.</summary>
 public interface IExcursionRepository
 {
-    Task SaveAsync(string runId, Guid positionId, string pathJson, CancellationToken ct);
+    Task SaveAsync(string runId, Guid positionId, string pathJson, string? sessionLabel, CancellationToken ct);
     Task<string?> GetAsync(string runId, Guid positionId, CancellationToken ct);
 
     /// <summary>P4.5.7: fetch all excursion paths for a run (replace the hand-typed GUID-pair flow).</summary>

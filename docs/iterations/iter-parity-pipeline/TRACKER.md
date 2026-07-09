@@ -17,14 +17,16 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P7.2 finalized (s46)** — verified run 77e37dee in DB (ExitCode=0 TotalTrades=1 NetProfit=312.31);
-  quickstart doc committed; gates green (build 0err, Unit 715/0/6, Int 120/0/0, Sim-fast 144/0/0, golden clean).
-stage: **P7 Cleanup + Verification — 5 sessions remaining.**
-gate: GREEN — build 0err/5warn; Unit 715/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden byte-identical.
-next: **Session 3 — Traps 3+1+2 (P7.3)**: triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring.
+last: **P7.3 delivered (s47)** — triage-sweep playbook created + parses (11/11);
+  SessionLabel column on TradeExcursions (M47) with end-to-end wiring through
+  TradePersistenceHandler; EntryFilterOptions domain type + full config plumbing
+  (entity/store/loader/seeder) + TrendBreakout wired as proof; all gates green.
+stage: **P7 Cleanup + Verification — 4 sessions remaining.**
+gate: GREEN — build 0err/5warn; Unit 716/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden byte-identical; ShippedPlaybook_Parses 11/11.
+next: **Session 4 — Traps 4+5+6 + P5.1** (BlockBootstrapper fixes + status dedup).
 trap: (1) BuildInfo.g.cs + build-info.ts dirty each build. (2) Any session touching
-  web-ui/src/*.ts MUST run `npm run build`. (3) cTrader creds accessible (see ctrader-quickstart.md).
+  web-ui/src/*.ts MUST run `npm run build`. (3) cTrader creds accessible.
 
 ## Checkpoints
 
@@ -139,7 +141,7 @@ All 7 OWNER-PENDING markers (P0.1-P0.4, P1.2, P3.4, P6.5-P6.6) resolved by P7.
 | P6.8 | Wild list: pyramiding policy | DONE | a2ab895 | playbooks/pyramid-policy.json; PyramidDiagnosisTests 12/12 (Unit); ShippedPlaybook_Parses 10/10 |
 | P7.1 | P4.1 live verification — exploration funnel + backfill (FIXED: persistence gap — M46 migration) | DONE | c830098 | `evidence/p7-s1-live-verification.md` (explorationMode+RecordExcursions persist; backfill 84/84 MaeR/MfeR populated; avg 0.783/1.079) |
 | P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | DONE | 60dfc7b (QA: 22d5822) | `docs/agents/ctrader-quickstart.md`; DB: run 77e37dee ExitCode=0 TotalTrades=1; QA s45: `evidence/p7-s2-qa/qa-verdict.md` |
-| P7.3 | Traps 3+1+2 — triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring | TODO | — | `evidence/p7-s3-traps.md` |
+| P7.3 | Traps 3+1+2 — triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring | DONE | — | `evidence/p7-s3-traps/p7-s3-verdict.md` |
 | P7.4 | Traps 4+5+6 + P5.1 status dedup — BlockBootstrapper fixes + EntityAuditableTests + RunQueryService | TODO | — | `evidence/p7-s4-fixes.md` |
 | P7.5 | P2.2 headline gate — compare-both run with cTrader + committed verdict | TODO | — | `docs/audit/RECONCILE-FINDINGS.md §P2.2` |
 | P7.6 | F6-R economics recovery — Option A: PublishTradeClosed from reconcile-close | TODO | — | `evidence/p7-s6-f6r.md` |

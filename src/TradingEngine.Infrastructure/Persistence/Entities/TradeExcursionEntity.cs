@@ -9,4 +9,5 @@ public sealed class TradeExcursionEntity : IAuditableEntity
     public string RunId { get; set; } = "";
     public Guid PositionId { get; set; }
     public string PathJson { get; set; } = "";
+    public string? SessionLabel { get; set; }
 }

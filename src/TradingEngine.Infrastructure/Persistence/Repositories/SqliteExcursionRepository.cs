@@ -2,7 +2,7 @@ namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
 public sealed class SqliteExcursionRepository(TradingDbContext db) : IExcursionRepository
 {
-    public async Task SaveAsync(string runId, Guid positionId, string pathJson, CancellationToken ct)
+    public async Task SaveAsync(string runId, Guid positionId, string pathJson, string? sessionLabel, CancellationToken ct)
     {
         db.TradeExcursions.Add(new TradeExcursionEntity
         {
@@ -10,6 +10,7 @@ public sealed class SqliteExcursionRepository(TradingDbContext db) : IExcursionR
             RunId = runId,
             PositionId = positionId,
             PathJson = pathJson,
+            SessionLabel = sessionLabel,
         });
         await db.SaveChangesAsync(ct);
     }

@@ -92,6 +92,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.Property(x => x.OrderEntryJson).HasColumnType("TEXT");
             e.Property(x => x.RegimeFilterJson).HasColumnType("TEXT");
             e.Property(x => x.ReentryJson).HasColumnType("TEXT");
+            e.Property(x => x.EntryFilterJson).HasColumnType("TEXT");
             e.Property(x => x.Version).HasColumnType("INTEGER").IsRequired();
             e.Property(x => x.UpdatedAtUtc).HasColumnType("TEXT");
         });

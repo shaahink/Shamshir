@@ -96,7 +96,7 @@ public sealed class TradeRepositoryTests : IDisposable
         var positionId = Guid.NewGuid();
         const string pathJson = """[{"t":0,"hi":8.0,"lo":-4.0},{"t":60,"hi":-27.0,"lo":-52.0}]""";
 
-        await repo.SaveAsync("run-1", positionId, pathJson, CancellationToken.None);
+        await repo.SaveAsync("run-1", positionId, pathJson, null, CancellationToken.None);
 
         var retrieved = await repo.GetAsync("run-1", positionId, CancellationToken.None);
         retrieved.Should().Be(pathJson);

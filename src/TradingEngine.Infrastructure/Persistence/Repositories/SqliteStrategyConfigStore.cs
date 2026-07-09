@@ -43,6 +43,7 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db, IMemoryCache?
             existing.OrderEntryJson = SerializeOptional(entry.OrderEntry);
             existing.RegimeFilterJson = SerializeOptional(entry.RegimeFilter);
             existing.ReentryJson = SerializeOptional(entry.Reentry);
+            existing.EntryFilterJson = SerializeOptional(entry.EntryFilter);
             existing.Thesis = entry.Thesis;
             existing.ExpectedTradesPerWeek = entry.ExpectedTradesPerWeek;
             existing.ExpectedHoldBars = entry.ExpectedHoldBars;
@@ -76,6 +77,7 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db, IMemoryCache?
             OrderEntryJson = SerializeOptional(entry.OrderEntry),
             RegimeFilterJson = SerializeOptional(entry.RegimeFilter),
             ReentryJson = SerializeOptional(entry.Reentry),
+            EntryFilterJson = SerializeOptional(entry.EntryFilter),
             Thesis = entry.Thesis,
             ExpectedTradesPerWeek = entry.ExpectedTradesPerWeek,
             ExpectedHoldBars = entry.ExpectedHoldBars,
@@ -98,6 +100,7 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db, IMemoryCache?
             OrderEntry = DeserializeOptional<OrderEntryOptions>(entity.OrderEntryJson),
             PositionManagement = DeserializeOptional<PositionManagementOptions>(entity.PositionManagementJson),
             Reentry = DeserializeOptional<ReentryOptions>(entity.ReentryJson),
+            EntryFilter = DeserializeOptional<EntryFilterOptions>(entity.EntryFilterJson),
             Thesis = entity.Thesis,
             ExpectedTradesPerWeek = entity.ExpectedTradesPerWeek,
             ExpectedHoldBars = entity.ExpectedHoldBars,

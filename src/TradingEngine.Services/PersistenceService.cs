@@ -21,13 +21,13 @@ public sealed class PersistenceService(
         }
     }
 
-    public async Task SaveExcursionAsync(string runId, Guid positionId, string pathJson, CancellationToken ct)
+    public async Task SaveExcursionAsync(string runId, Guid positionId, string pathJson, string? sessionLabel, CancellationToken ct)
     {
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var repo = scope.ServiceProvider.GetRequiredService<IExcursionRepository>();
-            await repo.SaveAsync(runId, positionId, pathJson, ct);
+            await repo.SaveAsync(runId, positionId, pathJson, sessionLabel, ct);
         }
         catch (Exception ex)
         {

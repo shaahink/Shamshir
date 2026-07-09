@@ -180,6 +180,7 @@ public sealed class PlaybookEngineTests
     [InlineData("meta-allocator.json")]
     [InlineData("entry-quality.json")]
     [InlineData("pyramid-policy.json")]
+    [InlineData("triage-sweep.json")]
     public void ShippedPlaybook_Parses_AndHasKnownStepKinds(string file)
     {
         var path = Path.Combine(RepoRoot(), "playbooks", file);

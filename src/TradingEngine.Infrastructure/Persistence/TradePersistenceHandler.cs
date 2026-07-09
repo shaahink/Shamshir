@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Services;
 
 namespace TradingEngine.Infrastructure.Persistence;
 
@@ -45,8 +46,9 @@ public sealed class TradePersistenceHandler : IEventHandler<TradeClosed>, IAsync
                 // record a path for (RecordExcursions off, or a venue that doesn't support it).
                 if (excursionPathJson is not null)
                 {
-                    await _persistence.SaveExcursionAsync(runId, trade.PositionId, excursionPathJson, ct);
-                    _logger.LogDebug("EXCURSION_SAVED|{PositionId}|RunId={RunId}", trade.PositionId, runId);
+                    var sessionLabel = SessionDetector.Detect(trade.OpenedAtUtc);
+                    await _persistence.SaveExcursionAsync(runId, trade.PositionId, excursionPathJson, sessionLabel, ct);
+                    _logger.LogDebug("EXCURSION_SAVED|{PositionId}|RunId={RunId}|Session={SessionLabel}", trade.PositionId, runId, sessionLabel);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

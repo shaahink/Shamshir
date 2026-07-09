@@ -99,6 +99,7 @@ public sealed class ConfigLoader
                 OrderEntry = ParseOptional<OrderEntryOptions>(root, "orderEntry"),
                 PositionManagement = ParseOptional<PositionManagementOptions>(root, "positionManagement"),
                 Reentry = ParseOptional<ReentryOptions>(root, "reentry"),
+                EntryFilter = ParseOptional<EntryFilterOptions>(root, "entryFilter"),
             });
         }
         return results;

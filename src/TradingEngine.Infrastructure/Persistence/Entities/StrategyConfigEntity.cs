@@ -11,6 +11,7 @@ public sealed class StrategyConfigEntity : IAuditableEntity
     public string? OrderEntryJson { get; set; }
     public string? RegimeFilterJson { get; set; }
     public string? ReentryJson { get; set; }
+    public string? EntryFilterJson { get; set; }
 
     // P2.5: falsifiable-hypothesis metadata — forces every strategy to state its claim, used by P4's
     // frequency reality check (needed trades vs actual OOS trades/30 days).

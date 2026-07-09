@@ -107,6 +107,7 @@ public sealed class StrategyConfigSeeder
             OrderEntry = ParseFromJson<OrderEntryOptions>(root, "orderEntry", jsonOpts),
             PositionManagement = ParseFromJson<PositionManagementOptions>(root, "positionManagement", jsonOpts),
             Reentry = ParseFromJson<ReentryOptions>(root, "reentry", jsonOpts),
+            EntryFilter = ParseFromJson<EntryFilterOptions>(root, "entryFilter", jsonOpts),
             Thesis = root.TryGetProperty("thesis", out var th) ? th.GetString() : null,
             ExpectedTradesPerWeek = root.TryGetProperty("expectedTradesPerWeek", out var etpw) ? etpw.GetInt32() : null,
             ExpectedHoldBars = root.TryGetProperty("expectedHoldBars", out var ehb) ? ehb.GetInt32() : null,

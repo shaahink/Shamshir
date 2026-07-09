@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TradingEngine.Services.SLTPCalculation;
+using TradingEngine.Services.Strategy.Filters;
 
 namespace TradingEngine.Strategies.TrendBreakout;
 
@@ -11,6 +12,7 @@ public sealed class TrendBreakoutStrategy : IStrategy
     private readonly TrendBreakoutConfig _config;
     private readonly ILogger<TrendBreakoutStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
+    private readonly IReadOnlyList<IEntryFilter> _entryFilters;
     private int? _lastSignalDirection;
     private int _cooldownRemaining;
     private int _winStreak;
@@ -39,11 +41,13 @@ public sealed class TrendBreakoutStrategy : IStrategy
     public TrendBreakoutStrategy(
         TrendBreakoutConfig config,
         ISymbolInfoRegistry symbolRegistry,
-        ILogger<TrendBreakoutStrategy> logger)
+        ILogger<TrendBreakoutStrategy> logger,
+        IReadOnlyList<IEntryFilter>? entryFilters = null)
     {
         _config = config;
         _symbolRegistry = symbolRegistry;
         _logger = logger;
+        _entryFilters = entryFilters ?? [];
     }
 
     public TradeIntent? Evaluate(MarketContext context)
@@ -59,6 +63,15 @@ public sealed class TrendBreakoutStrategy : IStrategy
 
             var latestBar = bars[^1];
             var p = _config.Parameters;
+
+            foreach (var filter in _entryFilters)
+            {
+                if (!filter.Allows(context))
+                {
+                    _logger.LogTrace("SKIP|{Id}|EntryFilterBlocked|filter={FilterType}", Id, filter.GetType().Name);
+                    return null;
+                }
+            }
 
             var atr = context.IndicatorValues.GetValueOrDefault($"ATR_{p.AtrPeriod}");
             var ema = context.IndicatorValues.GetValueOrDefault($"EMA_{p.MaPeriod}");
@@ -168,12 +181,26 @@ public sealed class TrendBreakoutStrategy : IStrategy
             RegimeFilter = entry.RegimeFilter ?? new(),
             OrderEntry = entry.OrderEntry ?? new(),
             PositionManagement = entry.PositionManagement ?? new(),
+            EntryFilter = entry.EntryFilter,
             Parameters = StrategyFactoryHelper.DeserializeParams<TrendBreakoutParameters>(entry.Parameters),
             EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
             Symbol = entry.Symbol,
         };
+
+        var entryFilters = new List<IEntryFilter>();
+        if (entry.EntryFilter is { Enabled: true })
+        {
+            var reg = sp.GetRequiredService<ISymbolInfoRegistry>();
+            entryFilters.Add(new SpreadVolNoTradeFilter(
+                entry.EntryFilter.MaxSpreadPips,
+                entry.EntryFilter.MaxAtrPips,
+                entry.EntryFilter.AtrIndicatorKey,
+                reg));
+        }
+
         return new TrendBreakoutStrategy(config,
             sp.GetRequiredService<ISymbolInfoRegistry>(),
-            sp.GetRequiredService<ILogger<TrendBreakoutStrategy>>());
+            sp.GetRequiredService<ILogger<TrendBreakoutStrategy>>(),
+            entryFilters);
     }
 }
