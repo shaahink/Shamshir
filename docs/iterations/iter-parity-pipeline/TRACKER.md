@@ -17,15 +17,16 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s54 P7.7** — cTrader test audit: classified all 19 RequiresCTrader tests (14 active + 5 retired).
-  12 KEEP (transport/connection/recon/data-acq), 1 MERGE INTO (UsingRunAsync→#2),
-  1 REPLACEABLE (HappyPath→tape char). QA of s53/P7.6 confirmed (barrier 6/6, all gates green).
+last: **s55 P7.8** — Final audit: rated all P0-P6 phases against PLAN.md.
+  Verdict: PASS-WITH-FINDINGS (17 CONFORMS + 2 CONFORMS-WITH-FINDINGS, zero DEVIATES).
+  Shallow-impl scan: 6 areas audited, zero stubs. 7-item bugfix queue written.
+  F17 (tape zero-trade CRITICAL) + F18 (compare-both) still open from P7.5.
   Gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0,
   Sim-fast 144/0/0, golden clean.
-stage: **P7 Cleanup + Verification — P7.1-P7.7 DONE.**
-gate: PASS — all 6 gates green.
-next: **P7.8 — Final audit** (rate all phases against PLAN.md + bugfix queue).
-trap: BuildInfo.g.cs dirty. F17+F18 still open (from P7.5). Conductor state.json STALE.
+stage: **P7 Cleanup + Verification — COMPLETE (P7.1-P7.8 ALL DONE).**
+gate: PASS — all 6 gates green. Final audit: `docs/qa-reports/FINAL-AUDIT.md`.
+next: **Resolve F17 (tape zero-trade regression)**, then F18 (compare-both flow).
+trap: BuildInfo.g.cs dirty. Conductor state.json STALE.
 
 ## Checkpoints
 
@@ -155,7 +156,7 @@ All 7 OWNER-PENDING markers (P0.1-P0.4, P1.2, P3.4, P6.5-P6.6) resolved by P7.
 | P7.5 | P2.2 headline gate — compare-both run with cTrader + committed verdict | DONE | 30aaca8 | `docs/audit/RECONCILE-FINDINGS.md §P2.2` (filled); `evidence/p7-s5-headline-gate/p7-s5-verdict.md`; cTrader runs d5de5628 + 994a3b91 in DB; new F-ids F17+F18 |
 | P7.6 | F6-R economics recovery — Option A: reconstruct PublishTradeClosed from paired OrderFilled open+close+proposal | DONE | bcdfc31 | `evidence/p7-s6-f6r/p7-s6-verdict.md` |
 | P7.7 | cTrader test audit — classify RequiresCTrader tests replaceable by tape | DONE | 8b7dafe | `docs/audit/ctrader-test-audit.md`; evidence: `docs/iterations/iter-parity-pipeline/evidence/p7-s7-ctrader-audit/` |
-| P7.8 | Final audit — rate all phases against PLAN.md + bugfix queue | TODO | — | `docs/qa-reports/FINAL-AUDIT.md` |
+| P7.8 | Final audit — rate all phases against PLAN.md + bugfix queue | DONE | (pending) | `docs/qa-reports/FINAL-AUDIT.md` |
 
 ## Quick commands (gates — see PLAN §11 for per-phase specifics)
 
