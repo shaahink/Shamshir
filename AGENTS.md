@@ -238,9 +238,10 @@ changes needed.
 
 ## RESUME (P7 Cleanup — overwrite this block each session)
 
-**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822). P7.3 **DONE** (5cdd085; QA s50; re-verified s51 c2fd280). P7.4 **DONE** (0579561, evidence: evidence/p7-s4-fixes/p7-s4-verdict.md). P7.5 **DONE** (commit pending; evidence: evidence/p7-s5-headline-gate/p7-s5-verdict.md).
+**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822). P7.3 **DONE** (5cdd085; QA s50; re-verified s51 c2fd280). P7.4 **DONE** (0579561, evidence: evidence/p7-s4-fixes/p7-s4-verdict.md). P7.5 **DONE** (30aaca8; evidence: evidence/p7-s5-headline-gate/p7-s5-verdict.md). P7.6 **DONE** (commit pending; evidence: evidence/p7-s6-f6r/p7-s6-verdict.md).
 **Branch:** `iter/parity-pipeline`
-**P7.6 — F6-R economics recovery (CURRENT):** Emit PublishTradeClosed from reconcile-close path. ~40 min. No cTrader credentials needed. NOTE: F17 (tape zero-trade regression) blocks full P2.2 gate; F18 (compare-both regression) blocks compare-both flow. Both logged in RECONCILE-FINDINGS.md §P2.2. Conductor state.json is STALE — needs advance to P7.6.
+**P7.7 — cTrader test audit (CURRENT):** Classify RequiresCTrader tests replaceable by tape. ~30 min. No cTrader credentials needed.
+NOTE: F17 (tape zero-trade regression) + F18 (compare-both regression) still open from P7.5.
 
 ### Session Plan
 
@@ -251,7 +252,7 @@ changes needed.
 | 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No | **DONE** (5cdd085) |
 | 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No | **DONE** (s50) |
 | 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ | **DONE** (s52; PASS-WITH-FINDINGS; F17+F18 discovered) |
-| 6 | F6-R economics recovery — Option A | ~40m | No | TODO |
+| 6 | F6-R economics recovery — Option A | ~40m | No | **DONE** (commit pending) |
 | 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No | TODO |
 | 8 | Final audit — rate all phases against PLAN.md + bugfix queue | ~45m | No | TODO |
 

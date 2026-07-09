@@ -17,16 +17,15 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s52 P7.5** — P2.2 headline gate executed. Gates re-run: build 0err/5warn,
-  Unit 716/0/6, Integration 120/0/0, Sim-fast 144/0/0, golden clean.
-  Compare-both flow has F18 regression (cTrader child not spawned).
-  Independent paired runs: cTrader d5de5628 (May 1-8, 8 trades, completed-with-warnings),
-  tape 7479593e (May 1-8, 0 trades). Verdict: PASS-WITH-FINDINGS (5/7 green).
-  New: F17 (tape venue zero-trade regression), F18 (compare-both regression).
-stage: **P7 Cleanup + Verification — P7.1-P7.5 DONE.**
-gate: PASS-WITH-FINDINGS — 5/7 gates green; F1 BLOCKED, F6 N/A.
-next: **P7.6 — F6-R economics recovery** (Option A: PublishTradeClosed from reconcile-close).
-trap: BuildInfo.g.cs dirty. Conductor state.json is STALE (P7.3 active → needs advance to P7.6).
+last: **s53 P7.6** — F6-R economics recovery (Option A) landed.
+  Barrier now reconstructs PublishTradeClosed from paired OrderFilled open+close+proposal
+  journal entries; unreconstructable close fills remain JournalCloseFills.
+  Gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0 (+1 test),
+  Sim-fast 144/0/0, golden clean. Barrier tests 6/6.
+stage: **P7 Cleanup + Verification — P7.1-P7.6 DONE.**
+gate: PASS — all 6 gates green.
+next: **P7.7 — cTrader test audit** (classify RequiresCTrader tests).
+trap: BuildInfo.g.cs dirty. F17+F18 still open (from P7.5). Conductor state.json STALE.
 
 ## Checkpoints
 
@@ -154,7 +153,7 @@ All 7 OWNER-PENDING markers (P0.1-P0.4, P1.2, P3.4, P6.5-P6.6) resolved by P7.
 | P7.3 | Traps 3+1+2 — triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring | DONE | 5cdd085 | `evidence/p7-s3-traps/p7-s3-verdict.md`; QA s51: `evidence/p7-s3-traps/p7-s3-qa-s51.md` — CONFIRMED |
 | P7.4 | Traps 4+5+6 + P5.1 status dedup — BlockBootstrapper fixes + EntityAuditableTests + RunQueryService | DONE | 0579561 | `evidence/p7-s4-fixes/p7-s4-verdict.md` |
 | P7.5 | P2.2 headline gate — compare-both run with cTrader + committed verdict | DONE | 30aaca8 | `docs/audit/RECONCILE-FINDINGS.md §P2.2` (filled); `evidence/p7-s5-headline-gate/p7-s5-verdict.md`; cTrader runs d5de5628 + 994a3b91 in DB; new F-ids F17+F18 |
-| P7.6 | F6-R economics recovery — Option A: PublishTradeClosed from reconcile-close | TODO | — | `evidence/p7-s6-f6r.md` |
+| P7.6 | F6-R economics recovery — Option A: reconstruct PublishTradeClosed from paired OrderFilled open+close+proposal | DONE | — | `evidence/p7-s6-f6r/p7-s6-verdict.md` |
 | P7.7 | cTrader test audit — classify RequiresCTrader tests replaceable by tape | TODO | — | `docs/audit/ctrader-test-audit.md` |
 | P7.8 | Final audit — rate all phases against PLAN.md + bugfix queue | TODO | — | `docs/qa-reports/FINAL-AUDIT.md` |
 

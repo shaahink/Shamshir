@@ -1736,15 +1736,24 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 return;
             }
 
-            // F6-R: the venue closed positions (journalled close fills) but a crashed teardown lost the
-            // close→TradeResult path AND left no PublishTradeClosed effects to backfill from — nothing was
-            // persisted and nothing is economically reconstructable here. Surface it honestly instead of a
-            // silent TotalTrades=0; economics recovery via open/close-fill pairing is a deferred follow-up.
+            // F6-R (P7.6): the barrier now attempts to reconstruct PublishTradeClosed from paired
+            // OrderFilled open+close events + proposals. JournalCloseFills counts only the close
+            // fills that COULD NOT be reconstructed (missing open fill or proposal in the journal).
+            // When ALL were unreconstructable (Persisted+Backfilled==0 && JournalCloseFills>0), the
+            // Unreconstructable flag is true. Partial recovery is also surfaced below.
             if (recon.Unreconstructable)
             {
                 AddTeardownWarning(runId, $"TRADES_UNRECONSTRUCTABLE:{recon.JournalCloseFills}",
-                    $"journal has {recon.JournalCloseFills} venue close-fill(s) but 0 PublishTradeClosed effects and 0 persisted trades — trades lost to a crashed teardown and cannot be reconstructed from the journal (F6-R)");
+                    $"{recon.JournalCloseFills} venue close-fill(s) could not be reconstructed: missing open-fill or proposal data in the journal");
                 return;
+            }
+
+            // Partial recovery: some close fills were reconstructed (Persisted+Backfilled>0) but others
+            // could not be paired. Surface the gap.
+            if (recon.JournalCloseFills > 0)
+            {
+                AddTeardownWarning(runId, $"TRADES_PARTIALLY_UNRECONSTRUCTABLE:{recon.JournalCloseFills}",
+                    $"{recon.JournalCloseFills} close-fill(s) could not be paired with open-fill + proposal data; economics not recovered for those");
             }
 
             if (recon.HasLoss)
