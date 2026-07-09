@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 04:49 UTC · branch `iter/parity-pipeline` · HEAD `4d9d355`_
+_Updated 2026-07-09 04:56 UTC · branch `iter/parity-pipeline` · HEAD `b6cfe03`_
 
 **Status:** Idle
-**Stage:** P7.3 — Traps 3+1+2 — triage-sweep playbook + wiring · attempts used 0
-**Checkpoints:** 28/32 done · **Sessions run:** 50 · **Cost:** $4.1148 · **Tokens:** 4,982,282 in / 750,309 out / 419,421 think
+**Stage:** P7.3 — Traps 3+1+2 — triage-sweep playbook + wiring · attempts used 1
+**Checkpoints:** 28/32 done · **Sessions run:** 51 · **Cost:** $4.1867 · **Tokens:** 5,113,390 in / 755,561 out / 426,301 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 **⚠ Skipped stages (need human review):** P7.1, P7.2
 
@@ -25,7 +25,6 @@ _Updated 2026-07-09 04:49 UTC · branch `iter/parity-pipeline` · HEAD `4d9d355`
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 21 | P6 | Deliver | 1 | 07-08 20:44 | 0:35 | Advanced | P6.1 P6.2 P6.3 | 7 | build:OK | $0.2491 | 297,876/38,388 |
 | 22 | P6 | Deliver | 1 | 07-08 21:20 | 0:01 | AgentError |  | 0 | build:OK | $0.0188 | 39,015/1,091 |
 | 23 | P6 | Fix | 2 | 07-08 21:23 | 0:00 | AgentError |  | 0 | build:OK |  |  |
 | 24 | P6 | Fix | 3 | 07-08 21:25 | 0:00 | AgentError |  | 0 | build:OK |  |  |
@@ -55,12 +54,10 @@ _Updated 2026-07-09 04:49 UTC · branch `iter/parity-pipeline` · HEAD `4d9d355`
 | 48 | P7.2 | Deliver | 1 | 07-09 04:12 | 0:04 | Progress |  | 1 | build:OK | $0.0420 | 72,676/4,709 |
 | 49 | P7.2 | Deliver | 2 | 07-09 04:17 | 0:03 | Progress |  | 1 | build:OK | $0.0605 | 118,201/2,430 |
 | 50 | P7.3 | Deliver | 1 | 07-09 04:22 | 0:26 | Advanced | P7.4 | 2 | build:OK | $0.2179 | 386,810/18,657 |
+| 51 | P7.3 | Deliver | 1 | 07-09 04:49 | 0:05 | Progress |  | 2 | build:OK | $0.0720 | 131,108/5,252 |
 
 ### Commits by session
 
-- **s43 (P7.2 Resume)** — 2 commit(s):
-  - a2a9b23 chore(p7.2): fix tracker commit hash to match pushed commit
-  - 60dfc7b feat(p7.2): cTrader backtest verified — quickstart doc
 - **s44 (P7.2 Deliver)** — 1 commit(s):
   - e430b24 qa(p7.2): session #44 QA — confirm P7.2 DONE, fix quickstart SQL, update baseline
 - **s45 (P7.2 Deliver)** — 2 commit(s):
@@ -78,6 +75,9 @@ _Updated 2026-07-09 04:49 UTC · branch `iter/parity-pipeline` · HEAD `4d9d355`
 - **s50 (P7.3 Deliver)** — 2 commit(s):
   - 4d9d355 chore(p7.4): stamp commit hash in tracker row
   - 0579561 feat(p7.4): traps 4+5+6 + P5.1 status dedup
+- **s51 (P7.3 Deliver)** — 2 commit(s):
+  - b6cfe03 chore(p7.3): update RESUME — s51 re-verification done, P7.5 remains CURRENT
+  - c2fd280 qa(p7.3): session #51 QA — confirm P7.3 DONE, all 6 claims independently verified
 
 ## Phase handovers (audit)
 
@@ -95,19 +95,19 @@ build:OK
 
 ## Last session result
 
-> SESSION-RESULT: P7.4 landed (0579561) — all 4 items delivered: BootstrapMarketDataStore decorator keeps synthetic tapes in-memory (trap 4), DateTime.UtcNow already fixed in controller (trap 5), all 5 entities now implement IAuditableEntity with M48-M50 migrations (trap 6), RunQueryService.GetRunsAsync uses centralized RunStatusResolver (P5.1). Gates green: build 0err/5warn, Unit 716/0/6, Integration 120/0/0, Sim-fast 144/0/0, golden clean, Architecture EntityAuditableTests 1/1. Pre-existing EnginePurityTests failure (EngineReducer DateTime param) is not in gate battery. Next session: P7.5 — P2.2 headline gate (compare-both run with cTrader + committed reconcile verdict).
+> SESSION-RESULT: P7.3 independently verified — all 6 claims confirmed (triage-sweep.json parses via ShippedPlaybook_Parses 11/11, SessionLabel column on TradeExcursions+handler wiring at TradePersistenceHandler:49, EntryFilterJson column on StrategyConfigs+TrendBreakoutStrategy:67 filter loop, M47 migration head, commit 5cdd085 intact). Gates green: build 0err/5warn, Unit 716/0/6, Integration 120/0/0, Sim-fast 144/0/0, golden clean. P7.3 has zero incomplete checkpoints — all three deliverables (playbook, session labels wiring, EntryFilter wiring) are code-complete and DB-schema-complete. P7.1-P7.4 all DONE. Conductor state.json is stale (shows P7.1-P7.2 SKIPPED, P7.3 active) — it needs manual…
 
 ## Tracker handoff
 
 ```
-last: **s50 P7.4 deliver** — gates re-run: build 0err/5warn, Unit 716/0/6,
-  Integration 120/0/0, Sim-fast 144/0/0, golden clean. EntityAuditableTests
-  passes. QA-previous (P7.3): CONFIRMED — all 6 gate claims independently
-  verified; M47 SessionLabel+EntryFilterJson columns live in DB.
-stage: **P7 Cleanup + Verification — 3 sessions remain.**
-gate: GREEN — all standard gates passed. Architecture: 1 engine-purity
-  pre-existing failure (EngineReducer.ReconcileToVenue DateTime param),
-  not in gate battery.
+last: **s51 P7.3 QA** — independent re-verification. Gates re-run: build 0err/5warn,
+  Unit 716/0/6, Integration 120/0/0, Sim-fast 144/0/0, golden clean.
+  All 6 P7.3 claims independently confirmed: triage-sweep.json parse,
+  SessionLabel column+handler wiring, EntryFilterJson column+strategy wiring.
+  P7.3 has zero incomplete checkpoints.
+stage: **P7 Cleanup + Verification — P7.1-P7.4 all DONE.**
+gate: GREEN — all standard gates passed.
 next: **P7.5 — P2.2 headline gate** (compare-both run with cTrader + verdict).
-trap: BuildInfo.g.cs + build-info.ts dirty each build. cTrader creds accessible.
+trap: BuildInfo.g.cs dirty each build. Conductor state.json is STALE
+  (shows P7.1-P7.2 SKIPPED, P7.3 active — needs manual advance to P7.5).
 ```
