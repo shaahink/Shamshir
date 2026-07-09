@@ -266,5 +266,5 @@ Get-Content .conductor/REPORT.md 2>$null
 
 **Full workflow:** `docs/workflows/shamshir-post-p6-workflow.md`
 **Tracker:** `docs/iterations/iter-parity-pipeline/TRACKER.md`
-**Baseline:** Unit 714/0/6 · Integration 120/0/0 · Sim-fast 144/0/0 · Golden 61/61
+**Baseline:** Unit 715/0/6 · Integration 120/0/0 · Sim-fast 144/0/0 · Golden 61/61
 

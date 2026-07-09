@@ -43,7 +43,7 @@ The DB already has a proven cTrader run. Query it directly:
 
 ```powershell
 c:\adb\sqlite3.exe src/TradingEngine.Web/data/trading.db ^
-  "SELECT RunId, Venue, ExitCode, TotalTrades FROM BacktestRuns WHERE ExitCode=0 AND Venue='ctrader' LIMIT 3;"
+  "SELECT RunId, Venue, ExitCode, TotalTrades FROM BacktestRuns WHERE RunId='77e37dee';"
 ```
 
 Confirmed run: `77e37dee` — ExitCode=0, TotalTrades=1, EURUSD Long, NetPnL=312.31.
