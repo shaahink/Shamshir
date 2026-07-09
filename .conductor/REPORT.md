@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir iter-land-fix run report
 
-_Updated 2026-07-09 18:46 UTC · branch `iter/parity-pipeline` · HEAD `7e597de`_
+_Updated 2026-07-09 19:15 UTC · branch `iter/parity-pipeline` · HEAD `f51b802`_
 
-**Status:** NeedsHuman — stage A1 used all 2 attempts without completing — inspect and `conductor resume` (or `conductor skip`)
-**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 2 · working ▸ A1
-**Checkpoints:** 0/6 done · **Sessions run:** 2 · **Cost:** $0.3229 · **Tokens:** 461,171 in / 23,819 out / 29,636 think
+**Status:** Idle
+**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 3 · working ▸ A1
+**Checkpoints:** 0/6 done · **Sessions run:** 3 · **Cost:** $0.4039 · **Tokens:** 549,103 in / 35,110 out / 46,480 think
 
 ## Stage progress
 
@@ -71,6 +71,7 @@ _Updated 2026-07-09 18:46 UTC · branch `iter/parity-pipeline` · HEAD `7e597de`
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 1 | A1 | Deliver | 1 | 07-09 16:43 | 0:26 | Stalled |  | 0 |  | $0.0882 | 103,734/10,177 |
 | 2 | A1 | Resume | 2r1 | 07-09 17:09 | 0:18 | Progress |  | 2 | build:OK · unit:OK · sim-fast:OK | $0.2346 | 357,437/13,642 |
+| 3 | A1 | Deliver | 3 | 07-09 18:46 | 0:28 | Stalled |  | 0 |  | $0.0810 | 87,932/11,291 |
 
 ## Timeline
 
@@ -86,6 +87,8 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 07-09 18:29:02  ▪ gate sim-fast pass [session]  (20.0s)
 07-09 18:29:03  • session #2 A1 → Progress · 2 commit(s)  (19m43s)
 07-09 18:29:03  ■ needs human — stage A1 used all 2 attempts without completing — inspect and `conductor resume` (or `conductor skip`)
+07-09 19:46:17  ◆ run resumed · Shamshir iter-land-fix
+07-09 19:46:31  • session #3 A1 Deliver started (attempt 3/6)
 ```
 
 ## Health
@@ -93,7 +96,7 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 _Execution-health signals, folded from the event log (`.conductor/events.jsonl`)._
 
 ```
-sessions 2 · retries 1 (50 %) · overall Ok
+sessions 3 · retries 2 (67 %) · overall Ok
 ✓ no health concerns detected
 ```
 
@@ -103,8 +106,8 @@ _Live git snapshot (branch, working tree, sync vs upstream)._
 
 ```
 branch: iter/parity-pipeline
-working tree: M docs/iterations/iter-land-fix/TRACKER.md, M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, ?? conductor.plan.json
-vs upstream: 2 ahead
+working tree: M docs/iterations/iter-land-fix/TRACKER.md, M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, M src/TradingEngine.Host/BarEvaluator.cs, ?? conductor.plan.json
+vs upstream: 3 ahead
 ```
 
 ### Commits by session
@@ -123,13 +126,13 @@ vs upstream: 2 ahead
 - `.conductor/handovers/P5.md`
 - `.conductor/handovers/P6.md`
 
-## Last gate run
-
-build:OK · unit:OK · sim-fast:OK
-
 ## Last session result
 
-> SESSION-RESULT: A1 session 1 landed the C# default revert (`OrderEntryOptions.Method` LimitOffset→Market) and startup diagnostic log (all 9 strategies confirmed Market via logs at startup). Gates all green (build 0err/5warn, Unit 716/0/6, Integration 121/0/0, Sim-fast 144/0/0, golden clean). BUT F17 is NOT resolved — live tape backtest (7-day EURUSD H1, all strategies) still produces 0 Journal entries and 0 TradeResults despite processing 145 bars with in-memory fills detected during execution. Root cause is kernel event persistence (kPump produces events that never reach the DB), not the config default. Old working tape runs (July 7) had explicit RunPlanJson entries; new runs (July 9) use e…
+> Now let me run the pre-session gate battery and read additional required docs in parallel.
+> Good - the DB is consistent (8 of 9 strategies use Market, mean-reversion intentionally uses LimitOffset). But all recent tape runs show TotalTrades=0 despite 145 bars. The default revert is correct. Let me now trace the kernel event persistence pipeline.
+> Let me check the journal entries for recent tape runs and read the critical kernel files.
+> Clear pattern: working runs have explicit `RunPlanJson` entries; broken runs have `RunPlanJson=[]` and 0 journal entries. This confirms the orchestrator's analysis. Let me trace how `RunPlanJson` gets built and how strategies are registered.
+> Let me take a pra…
 
 ## Tracker handoff
 
