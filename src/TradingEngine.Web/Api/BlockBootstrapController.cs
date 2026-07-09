@@ -12,16 +12,19 @@ public sealed class BlockBootstrapController : ControllerBase
 {
     private readonly IMarketDataStore? _marketDataStore;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IEngineClock _clock;
     private readonly ILogger<BlockBootstrapController> _logger;
 
     public BlockBootstrapController(
-        IMarketDataStore? marketDataStore = null,
-        IServiceScopeFactory? scopeFactory = null,
-        ILogger<BlockBootstrapController>? logger = null)
+        IMarketDataStore? marketDataStore,
+        IServiceScopeFactory scopeFactory,
+        IEngineClock clock,
+        ILogger<BlockBootstrapController> logger)
     {
         _marketDataStore = marketDataStore;
-        _scopeFactory = scopeFactory!;
-        _logger = logger!;
+        _scopeFactory = scopeFactory;
+        _clock = clock;
+        _logger = logger;
     }
 
     [HttpPost]
@@ -40,8 +43,8 @@ public sealed class BlockBootstrapController : ControllerBase
             return BadRequest(new { error = $"Unknown timeframe: {req.Timeframe}" });
 
         var symbol = Symbol.Parse(req.Symbol);
-        var from = req.From ?? DateTime.UtcNow.AddYears(-1);
-        var to = req.To ?? DateTime.UtcNow;
+        var from = req.From ?? _clock.UtcNow.AddYears(-1);
+        var to = req.To ?? _clock.UtcNow;
         var tapeCount = Math.Clamp(req.N, 1, 200);
         var blockSize = ParseBlockSize(req.BlockSize ?? "week");
         var seed = req.Seed ?? Environment.TickCount;
@@ -53,8 +56,8 @@ public sealed class BlockBootstrapController : ControllerBase
             return Ok(new { error = "No bars available for the requested range.", runIds = Array.Empty<string>() });
 
         var runIds = new List<string>(tapeCount);
-        var syntheticStart = tapes[0].Count > 0 ? tapes[0][0].OpenTimeUtc : DateTime.UtcNow;
-        var syntheticEnd = tapes[0].Count > 0 ? tapes[0][^1].OpenTimeUtc : DateTime.UtcNow;
+        var syntheticStart = tapes[0].Count > 0 ? tapes[0][0].OpenTimeUtc : _clock.UtcNow;
+        var syntheticEnd = tapes[0].Count > 0 ? tapes[0][^1].OpenTimeUtc : _clock.UtcNow;
 
         for (var i = 0; i < tapes.Count; i++)
         {

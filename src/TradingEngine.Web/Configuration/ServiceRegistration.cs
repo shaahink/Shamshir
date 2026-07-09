@@ -142,6 +142,9 @@ public static class ServiceRegistration
 
     private static IServiceCollection AddAppServices(this IServiceCollection services)
     {
+        // Open trap #5: the Web orchestrator hosts have no broker clock — register a plain
+        // SystemClock so controllers never call DateTime.UtcNow directly.
+        services.AddSingleton<IEngineClock, SystemClock>();
         services.AddScoped<IRunQueryService, RunQueryService>();
         services.AddScoped<IBarQueryService, BarQueryService>();
 

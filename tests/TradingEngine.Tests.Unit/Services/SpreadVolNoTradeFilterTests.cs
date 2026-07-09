@@ -74,4 +74,13 @@ public class SpreadVolNoTradeFilterTests
         var filter = MakeFilter(2.0m, 0m);
         filter.Allows(MakeCtx(0.0001m, 15.0)).Should().BeTrue();
     }
+
+    [Fact]
+    public void Allows_FailOpen_WhenRegistryThrows()
+    {
+        var reg = Substitute.For<ISymbolInfoRegistry>();
+        reg.Get(Arg.Any<Symbol>()).Returns(_ => throw new InvalidOperationException("no such symbol"));
+        var filter = new SpreadVolNoTradeFilter(1.0m, 0m, "ATR14", reg);
+        filter.Allows(MakeCtx(0.0001m)).Should().BeTrue("filter is fail-open on error");
+    }
 }

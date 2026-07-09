@@ -570,8 +570,14 @@ static async Task<int> PyramidEvalAsync(CliArgs cli, string baseUrl, TimeSpan ti
         }
     }
 
+    if (totalTrades == 0)
+    {
+        Console.WriteLine(Verdict.Failing(fields.ToArray()).Render());
+        return 1;
+    }
+
     Console.WriteLine(Verdict.Passing(fields.ToArray()).Render());
-    return totalTrades > 0 ? 0 : 1;
+    return 0;
 }
 
 static List<string> SplitCsv(string? csv) =>

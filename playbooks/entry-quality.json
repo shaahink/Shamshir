@@ -3,8 +3,24 @@
   "description": "P6.7 canonical entry-quality decomposition: regresses OOS trade R (RMultiple) on observable-at-entry features (ATR percentile, EMA distance in ATR, squeeze age, session). Not for prediction — for diagnosis: reveals WHICH conditions your entries pay in, feeding filter design by evidence. Run after any backtest that produced ≥10 trades to see what drives entry quality.",
   "steps": [
     {
+      "kind": "start-run",
+      "as": "diagRun",
+      "venue": "tape",
+      "symbols": ["EURUSD"],
+      "periods": ["H1"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-04-01T00:00:00Z",
+      "balance": 100000,
+      "explore": false
+    },
+    {
+      "kind": "await-run",
+      "runId": "diagRun",
+      "timeout": 3600
+    },
+    {
       "kind": "entry-quality",
-      "runId": "",
+      "runId": "diagRun",
       "minTrades": 10
     },
     { "kind": "report" }

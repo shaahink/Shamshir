@@ -33,27 +33,27 @@
     },
     {
       "kind": "exitlab-eval",
-      "runIds": ["exploreRun"],
+      "runIds": ["$exploreRun"],
       "positionIds": [],
       "referenceAtrPips": 20.0
     },
     {
       "kind": "exitlab-eval",
-      "runIds": ["exploreRun"],
+      "runIds": ["$exploreRun"],
       "positionIds": [],
       "referenceAtrPips": 20.0,
       "regime": "London-NY"
     },
     {
       "kind": "exitlab-eval",
-      "runIds": ["exploreRun"],
+      "runIds": ["$exploreRun"],
       "positionIds": [],
       "referenceAtrPips": 20.0,
       "regime": "London"
     },
     {
       "kind": "exitlab-eval",
-      "runIds": ["exploreRun"],
+      "runIds": ["$exploreRun"],
       "positionIds": [],
       "referenceAtrPips": 20.0,
       "regime": "Asian"

@@ -18,13 +18,15 @@ public sealed class ExitLabController : ControllerBase
     private readonly IExcursionRepository _excursions;
     private readonly ISymbolInfoRegistry _symbols;
     private readonly IPassProbabilityEstimator _passEstimator;
+    private readonly IEngineClock _clock;
 
-    public ExitLabController(TradingDbContext db, IExcursionRepository excursions, ISymbolInfoRegistry symbols, IPassProbabilityEstimator passEstimator)
+    public ExitLabController(TradingDbContext db, IExcursionRepository excursions, ISymbolInfoRegistry symbols, IPassProbabilityEstimator passEstimator, IEngineClock clock)
     {
         _db = db;
         _excursions = excursions;
         _symbols = symbols;
         _passEstimator = passEstimator;
+        _clock = clock;
     }
 
     /// <summary>Evaluate a grid of exit rules against excursion paths of selected trades.</summary>
@@ -178,6 +180,8 @@ public sealed class ExitLabController : ControllerBase
             _db.ExitCalibrations.RemoveRange(existing);
         }
 
+        var now = _clock.UtcNow;
+
         _db.ExitCalibrations.Add(new ExitCalibrationEntity
         {
             Id = Guid.NewGuid(),
@@ -197,9 +201,9 @@ public sealed class ExitLabController : ControllerBase
             IsEndUtc = req.IsEndUtc,
             OosStartUtc = req.OosStartUtc,
             OosEndUtc = req.OosEndUtc,
-            FittedAtUtc = DateTime.UtcNow,
-            CreatedAtUtc = DateTime.UtcNow,
-            UpdatedAtUtc = DateTime.UtcNow,
+            FittedAtUtc = now,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
         });
 
         await _db.SaveChangesAsync(ct);

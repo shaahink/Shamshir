@@ -38,14 +38,14 @@ public sealed class HttpStepRunner : IStepRunner
             StepKinds.AwaitRun => await AwaitRunAsync(step, context, ct),
             StepKinds.AssertGates => await AssertGatesAsync(step, context, ct),
             StepKinds.Reconcile => await ReconcileAsync(step, context, ct),
-            StepKinds.ExitLabEval => await ExitLabAsync(step, ct),
-            StepKinds.WalkForward => await WalkForwardAsync(step, ct),
+            StepKinds.ExitLabEval => await ExitLabAsync(step, context, ct),
+            StepKinds.WalkForward => await WalkForwardAsync(step, context, ct),
             StepKinds.OwnerGate => OwnerGate(step),
-            StepKinds.ApplyCalibration => await ApplyCalibrationAsync(step, ct),
+            StepKinds.ApplyCalibration => await ApplyCalibrationAsync(step, context, ct),
             StepKinds.BlockBootstrap => await BlockBootstrapAsync(step, context, ct),
             StepKinds.MetaAllocate => await MetaAllocateAsync(step, context, ct),
-            StepKinds.EntryQuality => await EntryQualityAsync(step, ct),
-            StepKinds.PyramidEval => await PyramidEvalAsync(step, ct),
+            StepKinds.EntryQuality => await EntryQualityAsync(step, context, ct),
+            StepKinds.PyramidEval => await PyramidEvalAsync(step, context, ct),
             StepKinds.Report => await Report(step, context),
             _ => StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "unknown-step")).Render()),
         };
@@ -185,9 +185,10 @@ public sealed class HttpStepRunner : IStepRunner
             artifact);
     }
 
-    private async Task<StepOutcome> ExitLabAsync(PlaybookStep step, CancellationToken ct)
+    private async Task<StepOutcome> ExitLabAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
     {
-        var json = await _client.PostAsync("api/exit-lab/evaluate", step.Params.ToJsonString(), ct);
+        var resolvedParams = ResolveParams(step.Params, context);
+        var json = await _client.PostAsync("api/exit-lab/evaluate", resolvedParams.ToJsonString(), ct);
         var (trades, cells) = ExitLabResult.ParseSummary(json);
         var v = cells > 0
             ? Verdict.Passing(VerdictField.Of("trades", trades), VerdictField.Of("cells", cells))
@@ -195,18 +196,20 @@ public sealed class HttpStepRunner : IStepRunner
         return cells > 0 ? StepOutcome.Pass(v.Render()) : StepOutcome.Fail(v.Render());
     }
 
-    private async Task<StepOutcome> WalkForwardAsync(PlaybookStep step, CancellationToken ct)
+    private async Task<StepOutcome> WalkForwardAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
     {
-        var json = await _client.PostAsync("api/walk-forward/start", step.Params.ToJsonString(), ct);
+        var resolvedParams = ResolveParams(step.Params, context);
+        var json = await _client.PostAsync("api/walk-forward/start", resolvedParams.ToJsonString(), ct);
         var jobId = ExitLabResult.ParseJobId(json);
         return string.IsNullOrWhiteSpace(jobId)
             ? StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-jobId")).Render())
             : StepOutcome.Pass(Verdict.Passing(VerdictField.Of("jobId", jobId)).Render());
     }
 
-    private async Task<StepOutcome> ApplyCalibrationAsync(PlaybookStep step, CancellationToken ct)
+    private async Task<StepOutcome> ApplyCalibrationAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
     {
-        var json = await _client.PostAsync("api/exit-lab/calibrations", step.Params.ToJsonString(), ct);
+        var resolvedParams = ResolveParams(step.Params, context);
+        var json = await _client.PostAsync("api/exit-lab/calibrations", resolvedParams.ToJsonString(), ct);
         var saved = ParseBool(json, "saved");
         if (!saved)
         {
@@ -439,9 +442,9 @@ public sealed class HttpStepRunner : IStepRunner
         return hasRecommendations ? StepOutcome.Pass(verdict) : StepOutcome.Fail(verdict);
     }
 
-    private async Task<StepOutcome> EntryQualityAsync(PlaybookStep step, CancellationToken ct)
+    private async Task<StepOutcome> EntryQualityAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
     {
-        var runId = Str(step, "runId");
+        var runId = ResolveRef(step, context, "runId");
         if (string.IsNullOrEmpty(runId))
             return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "entry-quality requires runId param")).Render());
 
@@ -517,9 +520,9 @@ public sealed class HttpStepRunner : IStepRunner
         return StepOutcome.Pass(verdict);
     }
 
-    private async Task<StepOutcome> PyramidEvalAsync(PlaybookStep step, CancellationToken ct)
+    private async Task<StepOutcome> PyramidEvalAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
     {
-        var runId = Str(step, "runId");
+        var runId = ResolveRef(step, context, "runId");
         if (string.IsNullOrEmpty(runId))
             return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "pyramid-eval requires runId param")).Render());
 
@@ -585,7 +588,7 @@ public sealed class HttpStepRunner : IStepRunner
         }
 
         var verdict = Verdict.Passing(fields.ToArray()).Render();
-        return totalTrades > 0 ? StepOutcome.Pass(verdict) : StepOutcome.Fail(verdict);
+        return totalTrades > 0 ? StepOutcome.Pass(verdict) : StepOutcome.Fail(Verdict.Failing(fields.ToArray()).Render());
     }
 
     private async Task<StepOutcome> Report(PlaybookStep step, PipelineContext context)
@@ -629,6 +632,48 @@ public sealed class HttpStepRunner : IStepRunner
     }
 
     private static string? ResolveRunId(PlaybookStep step, PipelineContext context) => ResolveRef(step, context, "runId");
+
+    /// <summary>
+    /// Walk every node in <paramref name="params"/> and replace <c>"$key"</c> string values
+    /// with the corresponding entry from <paramref name="context"/>.Values. Array elements that
+    /// are <c>"$key"</c> strings are also resolved. Returns a new <see cref="JsonObject"/> so
+    /// the original step params are never mutated (resume hash stability).
+    /// </summary>
+    private static JsonObject ResolveParams(JsonObject prms, PipelineContext context)
+    {
+        var resolved = new JsonObject();
+        foreach (var kv in prms)
+        {
+            resolved[kv.Key] = ResolveNode(kv.Value, context);
+        }
+        return resolved;
+    }
+
+    private static JsonNode? ResolveNode(JsonNode? node, PipelineContext context)
+    {
+        if (node is JsonValue val && val.TryGetValue<string>(out var s) && s is { Length: > 1 } && s[0] == '$')
+        {
+            var key = s[1..];
+            return context.Values.TryGetValue(key, out var v) ? JsonValue.Create(v) : node;
+        }
+
+        if (node is JsonArray arr)
+        {
+            var resolvedArr = new JsonArray();
+            foreach (var el in arr)
+            {
+                resolvedArr.Add(ResolveNode(el, context));
+            }
+            return resolvedArr;
+        }
+
+        if (node is JsonObject obj)
+        {
+            return ResolveParams(obj, context);
+        }
+
+        return node?.DeepClone();
+    }
 
     // A reference either names a context key (e.g. "runId" set by a start-run step) or is a literal id.
     private static string? ResolveRef(PlaybookStep step, PipelineContext context, string paramName)

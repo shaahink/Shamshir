@@ -21,6 +21,17 @@
       "explore": false
     },
     {
+      "kind": "start-run",
+      "as": "filteredRun",
+      "venue": "tape",
+      "symbols": ["EURUSD"],
+      "periods": ["H1"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-04-01T00:00:00Z",
+      "balance": 100000,
+      "explore": false
+    },
+    {
       "kind": "await-run",
       "runId": "baselineRun",
       "timeout": 3600
