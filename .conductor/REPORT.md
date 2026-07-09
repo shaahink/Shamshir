@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir iter-land-fix run report
 
-_Updated 2026-07-09 17:09 UTC · branch `iter/parity-pipeline` · HEAD `c5f986a`_
+_Updated 2026-07-09 17:29 UTC · branch `iter/parity-pipeline` · HEAD `f1c08dc`_
 
 **Status:** Idle
-**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 1 · working ▸ A1
-**Checkpoints:** 0/6 done · **Sessions run:** 1 · **Cost:** $0.0882 · **Tokens:** 103,734 in / 10,177 out / 13,722 think
+**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 2 · working ▸ A1
+**Checkpoints:** 0/6 done · **Sessions run:** 2 · **Cost:** $0.3229 · **Tokens:** 461,171 in / 23,819 out / 29,636 think
 
 ## Stage progress
 
@@ -21,7 +21,7 @@ _Updated 2026-07-09 17:09 UTC · branch `iter/parity-pipeline` · HEAD `c5f986a`
 
 | # | Title | Status | Commit |
 |---|---|---|---|
-| A1 | Fix F17 — tape/replay zero-trade regression | ⬜ TODO |  |
+| A1 | Fix F17 — tape/replay zero-trade regression | 🔄 IN PROGRESS | [``f0855e`](https://github.com/shaahink/Shamshir/commit/`f0855ed`) |
 
 </details>
 
@@ -70,6 +70,7 @@ _Updated 2026-07-09 17:09 UTC · branch `iter/parity-pipeline` · HEAD `c5f986a`
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 1 | A1 | Deliver | 1 | 07-09 16:43 | 0:26 | Stalled |  | 0 |  | $0.0882 | 103,734/10,177 |
+| 2 | A1 | Resume | 2r1 | 07-09 17:09 | 0:18 | Progress |  | 2 | build:OK · unit:OK · sim-fast:OK | $0.2346 | 357,437/13,642 |
 
 ## Timeline
 
@@ -78,6 +79,11 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 ```
 07-09 17:43:16  ◆ run started · Shamshir iter-land-fix
 07-09 17:43:16  • session #1 A1 Deliver started (attempt 1/2)
+07-09 18:09:20  • session #1 A1 → Stalled  (26m04s)
+07-09 18:09:20  • session #2 A1 Resume started (attempt 2/2)
+07-09 18:29:02  ▪ gate build pass [session]  (36.6s)
+07-09 18:29:02  ▪ gate unit pass [session]  (13.8s)
+07-09 18:29:02  ▪ gate sim-fast pass [session]  (20.0s)
 ```
 
 ## Health
@@ -85,7 +91,7 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 _Execution-health signals, folded from the event log (`.conductor/events.jsonl`)._
 
 ```
-sessions 1 · retries 0 (0 %) · overall Ok
+sessions 2 · retries 1 (50 %) · overall Ok
 ✓ no health concerns detected
 ```
 
@@ -95,9 +101,15 @@ _Live git snapshot (branch, working tree, sync vs upstream)._
 
 ```
 branch: iter/parity-pipeline
-working tree: M AGENTS.md, M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, M web-ui/src/app/core/build-info.ts, ?? conductor.plan.json, ?? docs/iterations/iter-land-fix/
+working tree: M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, ?? conductor.plan.json
 vs upstream: up to date
 ```
+
+### Commits by session
+
+- **s2 (A1 Resume)** — 2 commit(s):
+  - [`f1c08dc`](https://github.com/shaahink/Shamshir/commit/f1c08dc) chore(tracker): A1 commit hash f0855ed — IN PROGRESS
+  - [`f0855ed`](https://github.com/shaahink/Shamshir/commit/f0855ed) fix(F17): revert OrderEntryOptions default to Market; add startup method diagnostic
 
 ## Phase handovers (audit)
 
@@ -109,20 +121,22 @@ vs upstream: up to date
 - `.conductor/handovers/P5.md`
 - `.conductor/handovers/P6.md`
 
+## Last gate run
+
+build:OK · unit:OK · sim-fast:OK
+
 ## Last session result
 
-> Gate battery: **build 0err/5warn · Unit 716/0/6 · Sim-fast 144/0/0 · golden clean**. All green. Confirmed F17 root cause: `OrderEntryOptions.cs:5` default is `LimitOffset` per plan.
-> 
-> Now proceeding to **Stage A1 — Diagnose**. Query DB + read key source files:
-> The DB actually has `OrderEntryJson` populated with `Method:0` (Market) for 8/9 strategies. The `json_extract` was case-sensitive (needs `'$.Method'`). The root cause analysis in PLAN may be partially incomplete — let me verify F17 exists with a live tape backtest.
-> DB shows all 9 strategies have correct `OrderEntryJson` (8 Market, 1 LimitOffset). The `json_extract` needs PascalCase `'$.Method'`. Now let me verify F17 empirically by ru…
+> SESSION-RESULT: A1 session 1 landed the C# default revert (`OrderEntryOptions.Method` LimitOffset→Market) and startup diagnostic log (all 9 strategies confirmed Market via logs at startup). Gates all green (build 0err/5warn, Unit 716/0/6, Integration 121/0/0, Sim-fast 144/0/0, golden clean). BUT F17 is NOT resolved — live tape backtest (7-day EURUSD H1, all strategies) still produces 0 Journal entries and 0 TradeResults despite processing 145 bars with in-memory fills detected during execution. Root cause is kernel event persistence (kPump produces events that never reach the DB), not the config default. Old working tape runs (July 7) had explicit RunPlanJson entries; new runs (July 9) use e…
 
 ## Tracker handoff
 
 ```
-last: (none) — fresh iteration. Baseline gates all green.
-stage: **A1 — Fix F17 (tape zero-trade) NOT STARTED**.
+last: A1 session 1 — C# default + diagnostic log done. F17 NOT resolved (0 trades persist).
+root: OrderEntryOptions default reverted to Market + startup diagnostic confirms all strategies Market.
+BUT tape runs still produce 0 Journal entries + 0 TradeResults (kernel events not persisted).
+progress counter shows fills during run but DB stays empty — persistence layer gap, not config.
 gate: build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean.
-next: verify F17 bug exists → create failing test → fix → gate TotalTrades > 0.
-trap: kill all dotnet before building; cTrader creds in appsettings.Development.json.
+next: trace kernel event flow (BarEvaluator → Kernel → journal/trade persistence). Compare working old runs (2cdba11a, RunPlanJson with explicit strategies) vs broken new runs (empty RunPlanJson).
+trap: kill all dotnet before building; old runs used explicit RunPlanJson entries; new runs use empty RunPlanJson causing legacy path — possible StrategyRegistry binding difference.
 ```
