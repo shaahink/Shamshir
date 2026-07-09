@@ -17,15 +17,16 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s56 QA-only** — Conductor launched stale session (target P7.3 already DONE).
-  QA of s55/P7.8: 6/7 VERIFIED, 1 partial (commit says 17 CONFORMS; doc has 15+2 CWF=17 total — cosmetic).
+last: **s57 stale-launch confirm** — Conductor re-launched P7.3 (attempt 2/2) but P7.3 has been
+  DONE since s47 (5cdd085). All three deliverables verified fresh: triage-sweep.json parses,
+  SessionLabel TEXT on TradeExcursions in DB, EntryFilterJson wired through strategy→config→store.
+  P7.2 queued instructions all already satisfied: run 77e37dee ExitCode=0, quickstart doc exists.
   All gates re-run: build 0err/5warn, Unit 716/0/6, Integration 121/0/0,
-  Sim-fast 144/0/0, golden clean. P7.3 DB cols (SessionLabel+EntryFilterJson) present.
-  cTrader run 77e37dee: ExitCode=0, TotalTrades=1 — confirmed in DB.
+  Sim-fast 144/0/0, golden clean. P7.3 evidence: `evidence/p7-s3-traps/p7-s3-s57-confirm.md`.
 stage: **P7 Cleanup + Verification — COMPLETE (8/8 sessions). ALL P7.1-P7.8 DONE.**
 gate: PASS — all 6 gates green.
-next: **Conductor should advance to post-P7 phase** (state.json needs manual update).
-  Bugfix queue: F17 (tape zero-trade CRITICAL), F18 (compare-both), 5 more in FINAL-AUDIT.md.
+next: **Conductor state.json needs manual advance past P7.** Bugfix queue: F17 (tape
+  zero-trade CRITICAL), F18 (compare-both), 5 more in FINAL-AUDIT.md.
 
 ## Checkpoints
 
