@@ -1,84 +1,103 @@
-﻿# Conductor — Shamshir-Cleanup run report
+﻿# Conductor — Shamshir iter-land-fix run report
 
-_Updated 2026-07-09 06:32 UTC · branch `iter/parity-pipeline` · HEAD `4934128`_
+_Updated 2026-07-09 17:09 UTC · branch `iter/parity-pipeline` · HEAD `c5f986a`_
 
-**Status:** NeedsHuman — stage P7.3 used all 2 attempts without completing — inspect and `conductor resume` (or `conductor skip`) · advisor: Conductor state.json is stale (P7.3 re-launched after already DONE since s47); all P7.1-P7.8 are actually complete; manual advance past P7 needed before any further stages can be consumed
-**Stage:** P7.3 — Traps 3+1+2 — triage-sweep playbook + wiring · attempts used 2
-**Checkpoints:** 32/32 done · **Sessions run:** 57 · **Cost:** $4.8256 · **Tokens:** 6,108,057 in / 830,868 out / 500,084 think
-**Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
-**⚠ Skipped stages (need human review):** P7.1, P7.2
+**Status:** Idle
+**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 1 · working ▸ A1
+**Checkpoints:** 0/6 done · **Sessions run:** 1 · **Cost:** $0.0882 · **Tokens:** 103,734 in / 10,177 out / 13,722 think
 
 ## Stage progress
 
-| Stage | Title | Done | State |
+| Stage | Title | Progress | State |
 |---|---|---|---|
-| P7.1 | P4.1 live verification — exploration funnel + backfill | 0/0 | SKIPPED ⚠ |
-| P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | 0/0 | SKIPPED ⚠ |
-| P7.3 | Traps 3+1+2 — triage-sweep playbook + wiring | 0/0 | **← active** |
-| P7.4 | Traps 4+5+6 + P5.1 status dedup | 0/0 | todo |
-| P7.5 | P2.2 headline gate — compare-both run with cTrader | 0/0 | todo |
-| P7.6 | F6-R economics recovery — Option A | 0/0 | todo |
-| P7.7 | cTrader test audit — replaceable-with-tape analysis | 0/0 | todo |
-| P7.8 | Final audit — rate all phases against PLAN.md | 0/0 | todo |
+| A1 | Fix F17 — tape/replay zero-trade regression | ░░░░░░░░░░ 0/1 | **← active** |
+| A2 | Fix F18 + rerun P2.2 headline gate | ░░░░░░░░░░ 0/1 | todo |
+| B1 | Pipeline completion + UI gaps + P6 playbook validation | ░░░░░░░░░░ 0/1 | todo |
+| C1 | P3.6 Entry-Tactic Lab — data model + recording hooks | ░░░░░░░░░░ 0/1 | todo |
+| C2 | P3.6 Entry-Tactic Lab — counterfactuals + API + Angular UI | ░░░░░░░░░░ 0/1 | todo |
+| D1 | Final audit + fidelity gaps | ░░░░░░░░░░ 0/1 | todo |
+
+<details><summary>A1 — Fix F17 — tape/replay zero-trade regression (0/1)</summary>
+
+| # | Title | Status | Commit |
+|---|---|---|---|
+| A1 | Fix F17 — tape/replay zero-trade regression | ⬜ TODO |  |
+
+</details>
+
+<details><summary>A2 — Fix F18 + rerun P2.2 headline gate (0/1)</summary>
+
+| # | Title | Status | Commit |
+|---|---|---|---|
+| A2 | Fix F18 + rerun P2.2 headline gate | ⬜ TODO |  |
+
+</details>
+
+<details><summary>B1 — Pipeline completion + UI gaps + P6 playbook validation (0/1)</summary>
+
+| # | Title | Status | Commit |
+|---|---|---|---|
+| B1 | Pipeline completion + UI gaps + P6 playbook validation | ⬜ TODO |  |
+
+</details>
+
+<details><summary>C1 — P3.6 Entry-Tactic Lab — data model + recording hooks (0/1)</summary>
+
+| # | Title | Status | Commit |
+|---|---|---|---|
+| C1 | P3.6 data model + recording hooks | ⬜ TODO |  |
+
+</details>
+
+<details><summary>C2 — P3.6 Entry-Tactic Lab — counterfactuals + API + Angular UI (0/1)</summary>
+
+| # | Title | Status | Commit |
+|---|---|---|---|
+| C2 | P3.6 counterfactuals + API + Angular UI | ⬜ TODO |  |
+
+</details>
+
+<details><summary>D1 — Final audit + fidelity gaps (0/1)</summary>
+
+| # | Title | Status | Commit |
+|---|---|---|---|
+| D1 | Final audit + fidelity gaps | ⬜ TODO |  |
+
+</details>
 
 ## Sessions
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 28 | P6 | Fix | 3 | 07-08 22:44 | 0:05 | Progress |  | 2 | build:OK | $0.0427 | 72,553/5,483 |
-| 29 | P6 | Deliver | 4 | 07-08 22:50 | 0:17 | Advanced | P6.6 | 2 | build:OK | $0.1689 | 279,442/20,530 |
-| 30 | P6 | Deliver | 1 | 07-08 23:08 | 0:28 | Advanced | P6.7 | 3 | build:OK | $0.2726 | 394,325/45,075 |
-| 31 | P6 | Deliver | 1 | 07-08 23:38 | 0:18 | Advanced | P6.8 | 2 | build:OK | $0.1536 | 211,196/31,287 |
-| 32 | P6 | Audit | 1 | 07-08 23:58 | 0:26 | Progress |  | 2 |  | $0.1125 | 111,047/22,035 |
-| 33 | P7.1 | Deliver | 1 | 07-09 00:31 | 0:17 | Stalled |  | 0 |  | $0.0319 | 55,480/3,929 |
-| 34 | P7.1 | Resume | 2r1 | 07-09 00:49 | 0:19 | Advanced | P7.1 | 1 | build:OK | $0.0951 | 101,380/16,761 |
-| 35 | P7.1 | Deliver | 1 | 07-09 01:10 | 0:15 | Stalled |  | 0 |  | $0.0184 | 28,705/2,596 |
-| 36 | P7.1 | Resume | 2r1 | 07-09 01:25 | 0:12 | Stalled |  | 0 |  | $0.0019 | 1,398/525 |
-| 37 | P7.2 | Deliver | 1 | 07-09 01:39 | 0:26 | Stalled |  | 0 |  | $0.0543 | 92,595/6,296 |
-| 38 | P7.2 | Resume | 2r1 | 07-09 02:05 | 0:12 | Interrupted |  | 0 |  | $0.0293 | 62,438/877 |
-| 39 | P7.2 | Resume | 2r2 | 07-09 02:18 | 0:01 | Interrupted |  | 0 |  |  |  |
-| 40 | P7.2 | Deliver | 1 | 07-09 03:07 | 1:02 | Interrupted |  | 0 |  |  |  |
-| 41 | P7.2 | Deliver | 1 | 07-09 03:10 | 0:03 | Interrupted |  | 0 |  |  |  |
-| 42 | P7.2 | Resume | 1r1 | 07-09 03:14 | 0:12 | Stalled |  | 0 |  | $0.0129 | 28,175/156 |
-| 43 | P7.2 | Resume | 2r2 | 07-09 03:26 | 0:05 | Advanced | P7.2 | 2 | build:OK | $0.0481 | 78,931/7,161 |
-| 44 | P7.2 | Deliver | 1 | 07-09 03:33 | 0:04 | Progress |  | 1 | build:OK | $0.0403 | 68,639/4,517 |
-| 45 | P7.2 | Deliver | 2 | 07-09 03:38 | 0:05 | Progress |  | 2 | build:OK | $0.0483 | 75,499/7,860 |
-| 46 | P7.2 | Deliver | 2 | 07-09 03:45 | 0:03 | Progress |  | 1 | build:OK | $0.0326 | 60,133/2,931 |
-| 47 | P7.2 | Deliver | 2 | 07-09 03:50 | 0:21 | Advanced | P7.3 | 2 | build:OK | $0.1263 | 170,752/20,432 |
-| 48 | P7.2 | Deliver | 1 | 07-09 04:12 | 0:04 | Progress |  | 1 | build:OK | $0.0420 | 72,676/4,709 |
-| 49 | P7.2 | Deliver | 2 | 07-09 04:17 | 0:03 | Progress |  | 1 | build:OK | $0.0605 | 118,201/2,430 |
-| 50 | P7.3 | Deliver | 1 | 07-09 04:22 | 0:26 | Advanced | P7.4 | 2 | build:OK | $0.2179 | 386,810/18,657 |
-| 51 | P7.3 | Deliver | 1 | 07-09 04:49 | 0:05 | Progress |  | 2 | build:OK | $0.0720 | 131,108/5,252 |
-| 52 | P7.3 | Deliver | 2 | 07-09 04:56 | 0:31 | Advanced | P7.5 | 2 | build:OK | $0.1555 | 196,682/21,796 |
-| 53 | P7.3 | Deliver | 1 | 07-09 05:29 | 0:23 | Advanced | P7.6 | 2 | build:OK | $0.2168 | 336,845/22,508 |
-| 54 | P7.3 | Deliver | 1 | 07-09 05:53 | 0:09 | Advanced | P7.7 | 1 | build:OK | $0.0963 | 161,183/10,257 |
-| 55 | P7.3 | Deliver | 1 | 07-09 06:04 | 0:10 | Advanced | P7.8 | 2 | build:OK | $0.1019 | 196,547/10,976 |
-| 56 | P7.3 | Deliver | 1 | 07-09 06:16 | 0:08 | Progress |  | 1 | build:OK | $0.0278 | 38,260/4,192 |
-| 57 | P7.3 | Deliver | 2 | 07-09 06:25 | 0:05 | Progress |  | 1 | build:OK | $0.0407 | 65,150/5,578 |
+| 1 | A1 | Deliver | 1 | 07-09 16:43 | 0:26 | Stalled |  | 0 |  | $0.0882 | 103,734/10,177 |
 
-### Commits by session
+## Timeline
 
-- **s50 (P7.3 Deliver)** — 2 commit(s):
-  - 4d9d355 chore(p7.4): stamp commit hash in tracker row
-  - 0579561 feat(p7.4): traps 4+5+6 + P5.1 status dedup
-- **s51 (P7.3 Deliver)** — 2 commit(s):
-  - b6cfe03 chore(p7.3): update RESUME — s51 re-verification done, P7.5 remains CURRENT
-  - c2fd280 qa(p7.3): session #51 QA — confirm P7.3 DONE, all 6 claims independently verified
-- **s52 (P7.3 Deliver)** — 2 commit(s):
-  - 3b85f03 chore(p7.5): stamp commit hash in tracker row
-  - 30aaca8 feat(p7.5): P2.2 headline gate — compare-both + reconcile verdict (PASS-WITH-FINDINGS)
-- **s53 (P7.3 Deliver)** — 2 commit(s):
-  - 4a05a5a chore(p7.6): stamp commit hash in tracker row
-  - bcdfc31 feat(p7.6): F6-R economics recovery — reconstruct PublishTradeClosed from paired journal entries. Barrier CollectAsync now pairs orphan close fills with open fills + proposals. 6/6 barrier tests, gates green.
-- **s54 (P7.3 Deliver)** — 1 commit(s):
-  - edb60c9 feat(p7.7): cTrader test audit — classify 19 RequiresCTrader tests (12 KEEP, 1 MERGE INTO, 1 REPLACEABLE, 5 RETIRED). All gates green. QA of s53/P7.6 confirmed.
-- **s55 (P7.3 Deliver)** — 2 commit(s):
-  - 150aca3 chore(p7.8): stamp commit hash in tracker row
-  - 68ffce6 feat(p7.8): final audit — rate all P0-P6 phases against PLAN.md. 17 CONFORMS + 2 CONFORMS-WITH-FINDINGS, zero DEVIATES. Shallow-impl scan: 6 areas audited, zero stubs. 7-item bugfix queue. Gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0, Sim-fast 144/0/0, golden clean. Includes final P7.7 cTrader audit evidence file (untracked from s54).
-- **s56 (P7.3 Deliver)** — 1 commit(s):
-  - 88a0470 qa(p7): s56 QA of P7.8 final audit + note conductor state.json STALE
-- **s57 (P7.3 Deliver)** — 1 commit(s):
-  - a0a0c25 chore(p7.3): s57 stale-launch confirmation — P7.3 already DONE since s47 (5cdd085). All 3 deliverables independently verified: triage-sweep.json, SessionLabel DB column, EntryFilterJson wiring. P7.2 queued instructions all satisfied. Gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0, Sim-fast 144/0/0, golden clean. Conductor state.json stale — needs manual advance past P7.
+_Transitions with duration, from the event log (`.conductor/events.jsonl`)._
+
+```
+07-09 17:43:16  ◆ run started · Shamshir iter-land-fix
+07-09 17:43:16  • session #1 A1 Deliver started (attempt 1/2)
+```
+
+## Health
+
+_Execution-health signals, folded from the event log (`.conductor/events.jsonl`)._
+
+```
+sessions 1 · retries 0 (0 %) · overall Ok
+✓ no health concerns detected
+```
+
+## Repo
+
+_Live git snapshot (branch, working tree, sync vs upstream)._
+
+```
+branch: iter/parity-pipeline
+working tree: M AGENTS.md, M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, M web-ui/src/app/core/build-info.ts, ?? conductor.plan.json, ?? docs/iterations/iter-land-fix/
+vs upstream: up to date
+```
 
 ## Phase handovers (audit)
 
@@ -90,25 +109,20 @@ _Updated 2026-07-09 06:32 UTC · branch `iter/parity-pipeline` · HEAD `4934128`
 - `.conductor/handovers/P5.md`
 - `.conductor/handovers/P6.md`
 
-## Last gate run
-
-build:OK
-
 ## Last session result
 
-> SESSION-RESULT: P7.3 stale-launch confirmation (commit a0a0c25). P7.3 was already DONE since s47 (5cdd085) — all three deliverables independently verified: `playbooks/triage-sweep.json` (104 lines, parses), `SessionLabel` TEXT column on TradeExcursions in DB (wired through TradePersistenceHandler:49 + SqliteExcursionRepository:13), and `EntryFilterJson` wired through StrategyConfigEntity→SqliteStrategyConfigStore→TrendBreakoutStrategy:190-197. P7.2 queued instructions all already satisfied: run 77e37dee confirmed ExitCode=0/TotalTrades=1, `docs/agents/ctrader-quickstart.md` exists. All gates green (build 0err/5warn, Unit 716/0/6, Integration 121/0/0, Sim-fast 144/0/0, golden clean). Conducto…
+> Gate battery: **build 0err/5warn · Unit 716/0/6 · Sim-fast 144/0/0 · golden clean**. All green. Confirmed F17 root cause: `OrderEntryOptions.cs:5` default is `LimitOffset` per plan.
+> 
+> Now proceeding to **Stage A1 — Diagnose**. Query DB + read key source files:
+> The DB actually has `OrderEntryJson` populated with `Method:0` (Market) for 8/9 strategies. The `json_extract` was case-sensitive (needs `'$.Method'`). The root cause analysis in PLAN may be partially incomplete — let me verify F17 exists with a live tape backtest.
+> DB shows all 9 strategies have correct `OrderEntryJson` (8 Market, 1 LimitOffset). The `json_extract` needs PascalCase `'$.Method'`. Now let me verify F17 empirically by ru…
 
 ## Tracker handoff
 
 ```
-last: **s57 stale-launch confirm** — Conductor re-launched P7.3 (attempt 2/2) but P7.3 has been
-  DONE since s47 (5cdd085). All three deliverables verified fresh: triage-sweep.json parses,
-  SessionLabel TEXT on TradeExcursions in DB, EntryFilterJson wired through strategy→config→store.
-  P7.2 queued instructions all already satisfied: run 77e37dee ExitCode=0, quickstart doc exists.
-  All gates re-run: build 0err/5warn, Unit 716/0/6, Integration 121/0/0,
-  Sim-fast 144/0/0, golden clean. P7.3 evidence: `evidence/p7-s3-traps/p7-s3-s57-confirm.md`.
-stage: **P7 Cleanup + Verification — COMPLETE (8/8 sessions). ALL P7.1-P7.8 DONE.**
-gate: PASS — all 6 gates green.
-next: **Conductor state.json needs manual advance past P7.** Bugfix queue: F17 (tape
-  zero-trade CRITICAL), F18 (compare-both), 5 more in FINAL-AUDIT.md.
+last: (none) — fresh iteration. Baseline gates all green.
+stage: **A1 — Fix F17 (tape zero-trade) NOT STARTED**.
+gate: build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean.
+next: verify F17 bug exists → create failing test → fix → gate TotalTrades > 0.
+trap: kill all dotnet before building; cTrader creds in appsettings.Development.json.
 ```
