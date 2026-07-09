@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 05:29 UTC · branch `iter/parity-pipeline` · HEAD `3b85f03`_
+_Updated 2026-07-09 05:53 UTC · branch `iter/parity-pipeline` · HEAD `4a05a5a`_
 
 **Status:** Idle
 **Stage:** P7.3 — Traps 3+1+2 — triage-sweep playbook + wiring · attempts used 0
-**Checkpoints:** 29/32 done · **Sessions run:** 52 · **Cost:** $4.3422 · **Tokens:** 5,310,072 in / 777,357 out / 447,448 think
+**Checkpoints:** 30/32 done · **Sessions run:** 53 · **Cost:** $4.5590 · **Tokens:** 5,646,917 in / 799,865 out / 477,072 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 **⚠ Skipped stages (need human review):** P7.1, P7.2
 
@@ -25,7 +25,6 @@ _Updated 2026-07-09 05:29 UTC · branch `iter/parity-pipeline` · HEAD `3b85f03`
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 23 | P6 | Fix | 2 | 07-08 21:23 | 0:00 | AgentError |  | 0 | build:OK |  |  |
 | 24 | P6 | Fix | 3 | 07-08 21:25 | 0:00 | AgentError |  | 0 | build:OK |  |  |
 | 25 | P6 | Fix | 4 | 07-08 21:26 | 0:20 | GatesRed | P6.4 | 3 | build:FAIL | $0.1286 | 184,512/17,798 |
 | 26 | P6 | Fix | 3 | 07-08 21:48 | 0:31 | Progress |  | 5 | build:OK | $0.1876 | 252,592/21,235 |
@@ -55,12 +54,10 @@ _Updated 2026-07-09 05:29 UTC · branch `iter/parity-pipeline` · HEAD `3b85f03`
 | 50 | P7.3 | Deliver | 1 | 07-09 04:22 | 0:26 | Advanced | P7.4 | 2 | build:OK | $0.2179 | 386,810/18,657 |
 | 51 | P7.3 | Deliver | 1 | 07-09 04:49 | 0:05 | Progress |  | 2 | build:OK | $0.0720 | 131,108/5,252 |
 | 52 | P7.3 | Deliver | 2 | 07-09 04:56 | 0:31 | Advanced | P7.5 | 2 | build:OK | $0.1555 | 196,682/21,796 |
+| 53 | P7.3 | Deliver | 1 | 07-09 05:29 | 0:23 | Advanced | P7.6 | 2 | build:OK | $0.2168 | 336,845/22,508 |
 
 ### Commits by session
 
-- **s45 (P7.2 Deliver)** — 2 commit(s):
-  - be37a27 chore(p7.2): fix QA commit hash in tracker row to 22d5822
-  - 22d5822 qa(p7.2): session #45 QA — confirm P7.2 DONE, verify run 77e37dee, update handoff to P7.3
 - **s46 (P7.2 Deliver)** — 1 commit(s):
   - 4b9cedc chore(p7.2): finalize P7.2 — verify run, advance RESUME to P7.3 (s46)
 - **s47 (P7.2 Deliver)** — 2 commit(s):
@@ -79,6 +76,9 @@ _Updated 2026-07-09 05:29 UTC · branch `iter/parity-pipeline` · HEAD `3b85f03`
 - **s52 (P7.3 Deliver)** — 2 commit(s):
   - 3b85f03 chore(p7.5): stamp commit hash in tracker row
   - 30aaca8 feat(p7.5): P2.2 headline gate — compare-both + reconcile verdict (PASS-WITH-FINDINGS)
+- **s53 (P7.3 Deliver)** — 2 commit(s):
+  - 4a05a5a chore(p7.6): stamp commit hash in tracker row
+  - bcdfc31 feat(p7.6): F6-R economics recovery — reconstruct PublishTradeClosed from paired journal entries. Barrier CollectAsync now pairs orphan close fills with open fills + proposals. 6/6 barrier tests, gates green.
 
 ## Phase handovers (audit)
 
@@ -96,19 +96,18 @@ build:OK
 
 ## Last session result
 
-> SESSION-RESULT: P7.5 delivered — P2.2 headline gate exercised with independent paired runs (ctrader d5de5628: 8 trades vs tape 7479593e: 0 trades). Verdict: PASS-WITH-FINDINGS (5/7 gates green). Two new findings: F17 (tape venue zero-trade regression — tape/replay produces 0 trades where cTrader produces 2-8) and F18 (compare-both flow regression — cTrader child run never spawned). Commit 30aaca8 with evidence at `evidence/p7-s5-headline-gate/`. All gates green: Unit 716/0/6, Integration 120/0/0, Sim-fast 144/0/0, golden clean. Next session (P7.6): F6-R economics recovery — emit PublishTradeClosed from reconcile-close path.
+> SESSION-RESULT: P7.6 landed — F6-R economics recovery (commits bcdfc31 + 4a05a5a). Barrier `CollectAsync` now reconstructs `PublishTradeClosed` by pairing orphan close fills (OrderFilled with CloseReason, no PublishTradeClosed effect) with their open fill (entry data) and OrderProposed/OrderSubmitted (strategy/direction/SL/TP). Successfully reconstructed trades backfill via the existing `TradeResultFactory` path. All gates green: build 0err/5warn, Unit 716/0/6, Integration 121/0/0 (+1 new reconstruction test), Sim-fast 144/0/0, golden clean. Open: F17 (tape zero-trade regression), F18 (compare-both regression), P7.7 (cTrader test audit), P7.8 (final audit). Next session should execute P7.7 p…
 
 ## Tracker handoff
 
 ```
-last: **s52 P7.5** — P2.2 headline gate executed. Gates re-run: build 0err/5warn,
-  Unit 716/0/6, Integration 120/0/0, Sim-fast 144/0/0, golden clean.
-  Compare-both flow has F18 regression (cTrader child not spawned).
-  Independent paired runs: cTrader d5de5628 (May 1-8, 8 trades, completed-with-warnings),
-  tape 7479593e (May 1-8, 0 trades). Verdict: PASS-WITH-FINDINGS (5/7 green).
-  New: F17 (tape venue zero-trade regression), F18 (compare-both regression).
-stage: **P7 Cleanup + Verification — P7.1-P7.5 DONE.**
-gate: PASS-WITH-FINDINGS — 5/7 gates green; F1 BLOCKED, F6 N/A.
-next: **P7.6 — F6-R economics recovery** (Option A: PublishTradeClosed from reconcile-close).
-trap: BuildInfo.g.cs dirty. Conductor state.json is STALE (P7.3 active → needs advance to P7.6).
+last: **s53 P7.6** — F6-R economics recovery (Option A) landed.
+  Barrier now reconstructs PublishTradeClosed from paired OrderFilled open+close+proposal
+  journal entries; unreconstructable close fills remain JournalCloseFills.
+  Gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0 (+1 test),
+  Sim-fast 144/0/0, golden clean. Barrier tests 6/6.
+stage: **P7 Cleanup + Verification — P7.1-P7.6 DONE.**
+gate: PASS — all 6 gates green.
+next: **P7.7 — cTrader test audit** (classify RequiresCTrader tests).
+trap: BuildInfo.g.cs dirty. F17+F18 still open (from P7.5). Conductor state.json STALE.
 ```
