@@ -238,9 +238,9 @@ changes needed.
 
 ## RESUME (P7 Cleanup — overwrite this block each session)
 
-**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822). P7.3 **DONE** (5cdd085; QA s50; re-verified s51 c2fd280). P7.4 **DONE** (0579561, evidence: evidence/p7-s4-fixes/p7-s4-verdict.md). P7.5 **DONE** (30aaca8; evidence: evidence/p7-s5-headline-gate/p7-s5-verdict.md). P7.6 **DONE** (commit pending; evidence: evidence/p7-s6-f6r/p7-s6-verdict.md).
+**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822). P7.3 **DONE** (5cdd085; QA s50; re-verified s51 c2fd280). P7.4 **DONE** (0579561, evidence: evidence/p7-s4-fixes/p7-s4-verdict.md). P7.5 **DONE** (30aaca8; evidence: evidence/p7-s5-headline-gate/p7-s5-verdict.md). P7.6 **DONE** (bcdfc31; QA-confirmed s54; evidence: evidence/p7-s6-f6r/p7-s6-verdict.md). P7.7 **DONE** (commit pending; evidence: evidence/p7-s7-ctrader-audit/).
 **Branch:** `iter/parity-pipeline`
-**P7.7 — cTrader test audit (CURRENT):** Classify RequiresCTrader tests replaceable by tape. ~30 min. No cTrader credentials needed.
+**P7.8 — Final audit (NEXT):** Rate all phases P0-P6 against PLAN.md. Check for shallow impls. Write final audit + bugfix queue. ~45 min. No cTrader creds needed.
 NOTE: F17 (tape zero-trade regression) + F18 (compare-both regression) still open from P7.5.
 
 ### Session Plan
@@ -250,11 +250,11 @@ NOTE: F17 (tape zero-trade regression) + F18 (compare-both regression) still ope
 | 1 | P4.1 live verification — exploration funnel + backfill | ~30m | No | **DONE** (c830098) |
 | 2 | Prove cTrader works — HTTP backtest + quickstart doc | ~40m | ✅ | **DONE** (60dfc7b, qa: 22d5822) |
 | 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No | **DONE** (5cdd085) |
-| 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No | **DONE** (s50) |
-| 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ | **DONE** (s52; PASS-WITH-FINDINGS; F17+F18 discovered) |
-| 6 | F6-R economics recovery — Option A | ~40m | No | **DONE** (commit pending) |
-| 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No | TODO |
-| 8 | Final audit — rate all phases against PLAN.md + bugfix queue | ~45m | No | TODO |
+| 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No | **DONE** (0579561) |
+| 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ | **DONE** (30aaca8; PASS-WITH-FINDINGS; F17+F18 discovered) |
+| 6 | F6-R economics recovery — Option A | ~40m | No | **DONE** (bcdfc31) |
+| 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No | **DONE** (commit pending) |
+| 8 | Final audit — rate all phases against PLAN.md + bugfix queue | ~45m | No | **IN PROGRESS** |
 
 ### Quick report (for future agents)
 Run these to get live status:
@@ -266,5 +266,5 @@ Get-Content .conductor/REPORT.md 2>$null
 
 **Full workflow:** `docs/workflows/shamshir-post-p6-workflow.md`
 **Tracker:** `docs/iterations/iter-parity-pipeline/TRACKER.md`
-**Baseline:** Unit 716/0/6 · Integration 120/0/0 · Sim-fast 144/0/0 · Golden 61/61
+**Baseline:** Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · Golden 61/61
 
