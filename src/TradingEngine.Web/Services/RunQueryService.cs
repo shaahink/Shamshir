@@ -78,6 +78,7 @@ public sealed class RunQueryService : IRunQueryService
             })
             .ToListAsync(ct);
 
+        await FixStaleTradeCounts(runs, ct);
         FixStuckRunStatuses(runs);
 
         _memoryCache?.Set(RunsListCacheKey, runs, RunsListCacheDuration);
@@ -489,6 +490,35 @@ public sealed class RunQueryService : IRunQueryService
         !reason.Equals("PartialClose", StringComparison.Ordinal) &&
         !reason.Equals("StillReducing", StringComparison.Ordinal) &&
         !reason.Equals("PartialCloseWhileClosing", StringComparison.Ordinal);
+
+    private async Task FixStaleTradeCounts(List<RunListResponse> runs, CancellationToken ct)
+    {
+        var zeroTradeRunIds = runs
+            .Where(r => r.TotalTrades == 0)
+            .Select(r => r.RunId)
+            .Take(200)
+            .ToHashSet();
+
+        if (zeroTradeRunIds.Count == 0) return;
+
+        var actualCounts = await _db.Trades
+            .AsNoTracking()
+            .Where(t => t.RunId != null && zeroTradeRunIds.Contains(t.RunId))
+            .GroupBy(t => t.RunId!)
+            .Select(g => new { RunId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        if (actualCounts.Count == 0) return;
+
+        var countMap = actualCounts.ToDictionary(x => x.RunId, x => x.Count);
+        for (var i = 0; i < runs.Count; i++)
+        {
+            if (runs[i].TotalTrades == 0 && countMap.TryGetValue(runs[i].RunId, out var actual) && actual > 0)
+            {
+                runs[i] = runs[i] with { TotalTrades = actual };
+            }
+        }
+    }
 
     private static readonly TimeSpan StuckThreshold = TimeSpan.FromMinutes(30);
 
