@@ -1,12 +1,11 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-09 00:24 UTC · branch `iter/parity-pipeline` · HEAD `99d5f45`_
+_Updated 2026-07-09 00:27 UTC · branch `iter/parity-pipeline` · HEAD `0a52cb1`_
 
 **Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P6 — Wild list (pipeline-gated) · attempts used 0
 **Checkpoints:** 24/24 done · **Sessions run:** 32 · **Cost:** $3.2550 · **Tokens:** 3,580,470 in / 650,472 out / 350,804 think
-**Confirmed phases:** P0, P1, P2, P3, P4, P5
-**Pending:** full-battery phase gate for P6
+**Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 
 ## Stage progress
 
@@ -18,7 +17,7 @@ _Updated 2026-07-09 00:24 UTC · branch `iter/parity-pipeline` · HEAD `99d5f45`
 | P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
 | P4 | Lab golden paths | 1/1 | confirmed ✓ |
 | P5 | UI truth + Angular refactor | 1/1 | confirmed ✓ |
-| P6 | Wild list (pipeline-gated) | 8/8 | gating… |
+| P6 | Wild list (pipeline-gated) | 8/8 | confirmed ✓ |
 
 ## Sessions
 
@@ -100,7 +99,7 @@ _Updated 2026-07-09 00:24 UTC · branch `iter/parity-pipeline` · HEAD `99d5f45`
 
 ## Last gate run
 
-build:OK
+build:OK · unit:OK · sim-fast:OK
 
 ## Last session result
 
