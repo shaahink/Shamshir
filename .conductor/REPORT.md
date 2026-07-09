@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir iter-land-fix run report
 
-_Updated 2026-07-09 17:29 UTC · branch `iter/parity-pipeline` · HEAD `ff9cdc9`_
+_Updated 2026-07-09 18:46 UTC · branch `iter/parity-pipeline` · HEAD `7e597de`_
 
 **Status:** NeedsHuman — stage A1 used all 2 attempts without completing — inspect and `conductor resume` (or `conductor skip`)
 **Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 2 · working ▸ A1
@@ -103,8 +103,8 @@ _Live git snapshot (branch, working tree, sync vs upstream)._
 
 ```
 branch: iter/parity-pipeline
-working tree: M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, ?? conductor.plan.json
-vs upstream: 1 ahead
+working tree: M docs/iterations/iter-land-fix/TRACKER.md, M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, ?? conductor.plan.json
+vs upstream: 2 ahead
 ```
 
 ### Commits by session
@@ -134,11 +134,9 @@ build:OK · unit:OK · sim-fast:OK
 ## Tracker handoff
 
 ```
-last: A1 session 1 — C# default + diagnostic log done. F17 NOT resolved (0 trades persist).
-root: OrderEntryOptions default reverted to Market + startup diagnostic confirms all strategies Market.
-BUT tape runs still produce 0 Journal entries + 0 TradeResults (kernel events not persisted).
-progress counter shows fills during run but DB stays empty — persistence layer gap, not config.
-gate: build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean.
-next: trace kernel event flow (BarEvaluator → Kernel → journal/trade persistence). Compare working old runs (2cdba11a, RunPlanJson with explicit strategies) vs broken new runs (empty RunPlanJson).
-trap: kill all dotnet before building; old runs used explicit RunPlanJson entries; new runs use empty RunPlanJson causing legacy path — possible StrategyRegistry binding difference.
+last: A1 sessions 1-2 — C# default revert (f0855ed) + diagnostic log done. Gates all green. BUT F17 NOT resolved: 0 trades persist.
+root: REAL cause is kernel event persistence — kPump produces in-memory fills that never reach DB. Config default was only 1 layer.
+evidence: Working runs (Jul 7, 2cdba11a) used explicit RunPlanJson entries → trades flow. Broken runs use empty RunPlanJson → different path.
+INVESTIGATE: 1) Query DB: SELECT COUNT(*) FROM TradeResults, JournalEntry — any existing trades? 2) Use EURUSD H1 + TrendBreakout OR RSIMeanReversion strategy 3) Trace: BarEvaluator→KernelBacktestLoop.PumpAsync→EffectExecutor→TradePersistenceHandler 4) Compare StrategyRegistry binding: empty vs explicit RunPlanJson 5) Add logging to BarEvaluator, EffectExecutor, Kernel.cs to trace event flow
+trap: Kill all dotnet before building. Web app must be dead before build.
 ```
