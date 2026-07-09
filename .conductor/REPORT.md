@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 01:39 UTC · branch `iter/parity-pipeline` · HEAD `8fc8c70`_
+_Updated 2026-07-09 02:05 UTC · branch `iter/parity-pipeline` · HEAD `5382fc3`_
 
 **Status:** Idle
-**Stage:** P7.1 — P4.1 live verification — exploration funnel + backfill · attempts used 0
-**Checkpoints:** 25/32 done · **Sessions run:** 36 · **Cost:** $3.4022 · **Tokens:** 3,767,433 in / 674,283 out / 364,945 think
+**Stage:** P7.2 — Prove cTrader works — HTTP backtest + quickstart doc · attempts used 1
+**Checkpoints:** 25/32 done · **Sessions run:** 37 · **Cost:** $3.4565 · **Tokens:** 3,860,028 in / 680,579 out / 369,576 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 **⚠ Skipped stages (need human review):** P7.1
 
@@ -13,7 +13,7 @@ _Updated 2026-07-09 01:39 UTC · branch `iter/parity-pipeline` · HEAD `8fc8c70`
 | Stage | Title | Done | State |
 |---|---|---|---|
 | P7.1 | P4.1 live verification — exploration funnel + backfill | 0/0 | SKIPPED ⚠ |
-| P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | 0/0 | todo |
+| P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | 0/0 | **← active** |
 | P7.3 | Traps 3+1+2 — triage-sweep playbook + wiring | 0/0 | todo |
 | P7.4 | Traps 4+5+6 + P5.1 status dedup | 0/0 | todo |
 | P7.5 | P2.2 headline gate — compare-both run with cTrader | 0/0 | todo |
@@ -25,7 +25,6 @@ _Updated 2026-07-09 01:39 UTC · branch `iter/parity-pipeline` · HEAD `8fc8c70`
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 7 | P1 | Deliver | 1 | 07-08 14:02 | 0:15 | Progress |  | 1 | build:OK | $0.0160 | 873/3,880 |
 | 8 | P1 | Deliver | 2 | 07-08 14:18 | 1:36 | Advanced | P1.1 P1.2 | 5 | build:OK | $0.1096 | 4,363/41,198 |
 | 9 | P1 | Audit | 1 | 07-08 15:55 | 0:14 | Progress |  | 2 |  | $0.0205 | 1,153/9,010 |
 | 10 | P2 | Deliver | 1 | 07-08 16:12 | 0:36 | Advanced | P2.1 P2.2 | 5 | build:OK | $0.0666 | 2,844/33,456 |
@@ -55,6 +54,7 @@ _Updated 2026-07-09 01:39 UTC · branch `iter/parity-pipeline` · HEAD `8fc8c70`
 | 34 | P7.1 | Resume | 2r1 | 07-09 00:49 | 0:19 | Advanced | P7.1 | 1 | build:OK | $0.0951 | 101,380/16,761 |
 | 35 | P7.1 | Deliver | 1 | 07-09 01:10 | 0:15 | Stalled |  | 0 |  | $0.0184 | 28,705/2,596 |
 | 36 | P7.1 | Resume | 2r1 | 07-09 01:25 | 0:12 | Stalled |  | 0 |  | $0.0019 | 1,398/525 |
+| 37 | P7.2 | Deliver | 1 | 07-09 01:39 | 0:26 | Stalled |  | 0 |  | $0.0543 | 92,595/6,296 |
 
 ### Commits by session
 
@@ -103,7 +103,13 @@ build:OK
 
 ## Last session result
 
-> Working tree clean. P7.1 is marked DONE from s33 but the Conductor re-assigned it — evidence needs fresh live-run artifacts (API responses, not just code/DB checks). Let me finish it properly.
+> Gate battery matches handoff: Build 0err/5warn, Unit 715/0/6, Integration 120/0/0, Sim 144/0/0, golden empty. Now QA the previous session (P7.1).
+> QA of P7.1: **confirmed**. M46 is DB head, ExplorationMode/RecordExcursions columns exist, run `99fa7698` shows ExplorationMode=1, MaeR/MfeR 84/84 @ avg 0.7833/1.0793. Gates match. No divergence. Proceeding to P7.2.
+> Credentials and CLI verified. Now building cBot and preparing to start the app.
+> App is running on `http://localhost:5134` with 17 runs in the DB. Now starting the cTrader backtest.
+> Run started: `77e37dee`. Polling for completion...
+> The API went unreachable. Let me check the app state and DB.
+> Let me verify B2 fixes are in place and…
 
 ## Tracker handoff
 
