@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 06:25 UTC · branch `iter/parity-pipeline` · HEAD `88a0470`_
+_Updated 2026-07-09 06:32 UTC · branch `iter/parity-pipeline` · HEAD `a0a0c25`_
 
 **Status:** Idle
-**Stage:** P7.3 — Traps 3+1+2 — triage-sweep playbook + wiring · attempts used 1
-**Checkpoints:** 32/32 done · **Sessions run:** 56 · **Cost:** $4.7849 · **Tokens:** 6,042,907 in / 825,290 out / 496,020 think
+**Stage:** P7.3 — Traps 3+1+2 — triage-sweep playbook + wiring · attempts used 2
+**Checkpoints:** 32/32 done · **Sessions run:** 57 · **Cost:** $4.8256 · **Tokens:** 6,108,057 in / 830,868 out / 500,084 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 **⚠ Skipped stages (need human review):** P7.1, P7.2
 
@@ -25,7 +25,6 @@ _Updated 2026-07-09 06:25 UTC · branch `iter/parity-pipeline` · HEAD `88a0470`
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 27 | P6 | Deliver | 4 | 07-08 22:21 | 0:21 | GatesRed | P6.5 | 3 | build:FAIL | $0.2596 | 408,004/23,666 |
 | 28 | P6 | Fix | 3 | 07-08 22:44 | 0:05 | Progress |  | 2 | build:OK | $0.0427 | 72,553/5,483 |
 | 29 | P6 | Deliver | 4 | 07-08 22:50 | 0:17 | Advanced | P6.6 | 2 | build:OK | $0.1689 | 279,442/20,530 |
 | 30 | P6 | Deliver | 1 | 07-08 23:08 | 0:28 | Advanced | P6.7 | 3 | build:OK | $0.2726 | 394,325/45,075 |
@@ -55,11 +54,10 @@ _Updated 2026-07-09 06:25 UTC · branch `iter/parity-pipeline` · HEAD `88a0470`
 | 54 | P7.3 | Deliver | 1 | 07-09 05:53 | 0:09 | Advanced | P7.7 | 1 | build:OK | $0.0963 | 161,183/10,257 |
 | 55 | P7.3 | Deliver | 1 | 07-09 06:04 | 0:10 | Advanced | P7.8 | 2 | build:OK | $0.1019 | 196,547/10,976 |
 | 56 | P7.3 | Deliver | 1 | 07-09 06:16 | 0:08 | Progress |  | 1 | build:OK | $0.0278 | 38,260/4,192 |
+| 57 | P7.3 | Deliver | 2 | 07-09 06:25 | 0:05 | Progress |  | 1 | build:OK | $0.0407 | 65,150/5,578 |
 
 ### Commits by session
 
-- **s49 (P7.2 Deliver)** — 1 commit(s):
-  - c595d51 chore(p7.2): session #49 final confirmation — verify run 77e37dee, quickstart doc, advance to P7.4
 - **s50 (P7.3 Deliver)** — 2 commit(s):
   - 4d9d355 chore(p7.4): stamp commit hash in tracker row
   - 0579561 feat(p7.4): traps 4+5+6 + P5.1 status dedup
@@ -79,6 +77,8 @@ _Updated 2026-07-09 06:25 UTC · branch `iter/parity-pipeline` · HEAD `88a0470`
   - 68ffce6 feat(p7.8): final audit — rate all P0-P6 phases against PLAN.md. 17 CONFORMS + 2 CONFORMS-WITH-FINDINGS, zero DEVIATES. Shallow-impl scan: 6 areas audited, zero stubs. 7-item bugfix queue. Gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0, Sim-fast 144/0/0, golden clean. Includes final P7.7 cTrader audit evidence file (untracked from s54).
 - **s56 (P7.3 Deliver)** — 1 commit(s):
   - 88a0470 qa(p7): s56 QA of P7.8 final audit + note conductor state.json STALE
+- **s57 (P7.3 Deliver)** — 1 commit(s):
+  - a0a0c25 chore(p7.3): s57 stale-launch confirmation — P7.3 already DONE since s47 (5cdd085). All 3 deliverables independently verified: triage-sweep.json, SessionLabel DB column, EntryFilterJson wiring. P7.2 queued instructions all satisfied. Gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0, Sim-fast 144/0/0, golden clean. Conductor state.json stale — needs manual advance past P7.
 
 ## Phase handovers (audit)
 
@@ -96,18 +96,19 @@ build:OK
 
 ## Last session result
 
-> SESSION-RESULT: s56 QA-only — Conductor targeted P7.3 which was already DONE. Gate battery re-run all green (build 0err/5warn, Unit 716, Integration 121, Sim-fast 144, golden clean). QA of s55/P7.8: 6/7 VERIFIED, 1 cosmetic (commit message says 17 CONFORMS but doc has 15+2 CWF=17 total). P7.3 DB artifacts (SessionLabel, EntryFilterJson) confirmed present. cTrader run 77e37dee confirmed ExitCode=0 TotalTrades=1. All P7.1-P7.8 DONE. Conductor state.json STALE — needs manual advance past P7. Bugfix queue: F17 (tape zero-trade CRITICAL), F18 (compare-both), 5 more in FINAL-AUDIT.md.
+> SESSION-RESULT: P7.3 stale-launch confirmation (commit a0a0c25). P7.3 was already DONE since s47 (5cdd085) — all three deliverables independently verified: `playbooks/triage-sweep.json` (104 lines, parses), `SessionLabel` TEXT column on TradeExcursions in DB (wired through TradePersistenceHandler:49 + SqliteExcursionRepository:13), and `EntryFilterJson` wired through StrategyConfigEntity→SqliteStrategyConfigStore→TrendBreakoutStrategy:190-197. P7.2 queued instructions all already satisfied: run 77e37dee confirmed ExitCode=0/TotalTrades=1, `docs/agents/ctrader-quickstart.md` exists. All gates green (build 0err/5warn, Unit 716/0/6, Integration 121/0/0, Sim-fast 144/0/0, golden clean). Conducto…
 
 ## Tracker handoff
 
 ```
-last: **s56 QA-only** — Conductor launched stale session (target P7.3 already DONE).
-  QA of s55/P7.8: 6/7 VERIFIED, 1 partial (commit says 17 CONFORMS; doc has 15+2 CWF=17 total — cosmetic).
+last: **s57 stale-launch confirm** — Conductor re-launched P7.3 (attempt 2/2) but P7.3 has been
+  DONE since s47 (5cdd085). All three deliverables verified fresh: triage-sweep.json parses,
+  SessionLabel TEXT on TradeExcursions in DB, EntryFilterJson wired through strategy→config→store.
+  P7.2 queued instructions all already satisfied: run 77e37dee ExitCode=0, quickstart doc exists.
   All gates re-run: build 0err/5warn, Unit 716/0/6, Integration 121/0/0,
-  Sim-fast 144/0/0, golden clean. P7.3 DB cols (SessionLabel+EntryFilterJson) present.
-  cTrader run 77e37dee: ExitCode=0, TotalTrades=1 — confirmed in DB.
+  Sim-fast 144/0/0, golden clean. P7.3 evidence: `evidence/p7-s3-traps/p7-s3-s57-confirm.md`.
 stage: **P7 Cleanup + Verification — COMPLETE (8/8 sessions). ALL P7.1-P7.8 DONE.**
 gate: PASS — all 6 gates green.
-next: **Conductor should advance to post-P7 phase** (state.json needs manual update).
-  Bugfix queue: F17 (tape zero-trade CRITICAL), F18 (compare-both), 5 more in FINAL-AUDIT.md.
+next: **Conductor state.json needs manual advance past P7.** Bugfix queue: F17 (tape
+  zero-trade CRITICAL), F18 (compare-both), 5 more in FINAL-AUDIT.md.
 ```
