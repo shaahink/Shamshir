@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir iter-land-fix run report
 
-_Updated 2026-07-09 19:15 UTC · branch `iter/parity-pipeline` · HEAD `f51b802`_
+_Updated 2026-07-09 21:54 UTC · branch `iter/parity-pipeline` · HEAD `4ccea7f`_
 
 **Status:** Idle
-**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 3 · working ▸ A1
-**Checkpoints:** 0/6 done · **Sessions run:** 3 · **Cost:** $0.4039 · **Tokens:** 549,103 in / 35,110 out / 46,480 think
+**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 4 · working ▸ A1
+**Checkpoints:** 0/6 done · **Sessions run:** 5 · **Cost:** $0.4639 · **Tokens:** 633,584 in / 43,234 out / 54,686 think
 
 ## Stage progress
 
@@ -21,7 +21,7 @@ _Updated 2026-07-09 19:15 UTC · branch `iter/parity-pipeline` · HEAD `f51b802`
 
 | # | Title | Status | Commit |
 |---|---|---|---|
-| A1 | Fix F17 — tape/replay zero-trade regression | 🔄 IN PROGRESS | [``f0855e`](https://github.com/shaahink/Shamshir/commit/`f0855ed`) |
+| A1 | Fix F17 — tape/replay zero-trade regression | 🔄 IN PROGRESS | [`f0855ed`](https://github.com/shaahink/Shamshir/commit/f0855ed) |
 
 </details>
 
@@ -72,6 +72,8 @@ _Updated 2026-07-09 19:15 UTC · branch `iter/parity-pipeline` · HEAD `f51b802`
 | 1 | A1 | Deliver | 1 | 07-09 16:43 | 0:26 | Stalled |  | 0 |  | $0.0882 | 103,734/10,177 |
 | 2 | A1 | Resume | 2r1 | 07-09 17:09 | 0:18 | Progress |  | 2 | build:OK · unit:OK · sim-fast:OK | $0.2346 | 357,437/13,642 |
 | 3 | A1 | Deliver | 3 | 07-09 18:46 | 0:28 | Stalled |  | 0 |  | $0.0810 | 87,932/11,291 |
+| 4 | A1 | Resume | 4r1 | 07-09 19:15 | 2:14 | Interrupted |  | 0 |  |  |  |
+| 5 | A1 | Resume | 4r2 | 07-09 21:39 | 0:12 | Progress |  | 1 | build:OK · unit:OK · sim-fast:OK | $0.0600 | 84,481/8,124 |
 
 ## Timeline
 
@@ -89,6 +91,13 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 07-09 18:29:03  ■ needs human — stage A1 used all 2 attempts without completing — inspect and `conductor resume` (or `conductor skip`)
 07-09 19:46:17  ◆ run resumed · Shamshir iter-land-fix
 07-09 19:46:31  • session #3 A1 Deliver started (attempt 3/6)
+07-09 20:15:14  • session #3 A1 → Stalled  (28m43s)
+07-09 20:15:14  • session #4 A1 Resume started (attempt 4/6)
+07-09 22:39:50  ◆ run resumed · Shamshir iter-land-fix
+07-09 22:39:50  • session #5 A1 Resume started (attempt 4/6)
+07-09 22:54:49  ▪ gate build pass [session]  (1m07s)
+07-09 22:54:49  ▪ gate unit pass [session]  (35.5s)
+07-09 22:54:49  ▪ gate sim-fast pass [session]  (45.7s)
 ```
 
 ## Health
@@ -96,8 +105,8 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 _Execution-health signals, folded from the event log (`.conductor/events.jsonl`)._
 
 ```
-sessions 3 · retries 2 (67 %) · overall Ok
-✓ no health concerns detected
+sessions 5 · retries 4 (80 %) · overall Warn
+⚠ [high-retry-rate] 4/5 sessions were retries (80 %)
 ```
 
 ## Repo
@@ -106,8 +115,8 @@ _Live git snapshot (branch, working tree, sync vs upstream)._
 
 ```
 branch: iter/parity-pipeline
-working tree: M docs/iterations/iter-land-fix/TRACKER.md, M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, M src/TradingEngine.Host/BarEvaluator.cs, ?? conductor.plan.json
-vs upstream: 3 ahead
+working tree: M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, ?? conductor.plan.json
+vs upstream: up to date
 ```
 
 ### Commits by session
@@ -115,6 +124,8 @@ vs upstream: 3 ahead
 - **s2 (A1 Resume)** — 2 commit(s):
   - [`f1c08dc`](https://github.com/shaahink/Shamshir/commit/f1c08dc) chore(tracker): A1 commit hash f0855ed — IN PROGRESS
   - [`f0855ed`](https://github.com/shaahink/Shamshir/commit/f0855ed) fix(F17): revert OrderEntryOptions default to Market; add startup method diagnostic
+- **s5 (A1 Resume)** — 1 commit(s):
+  - [`4ccea7f`](https://github.com/shaahink/Shamshir/commit/4ccea7f) fix(F17): add batch trade-count reconciliation to runs list endpoint
 
 ## Phase handovers (audit)
 
@@ -126,20 +137,20 @@ vs upstream: 3 ahead
 - `.conductor/handovers/P5.md`
 - `.conductor/handovers/P6.md`
 
+## Last gate run
+
+build:OK · unit:OK · sim-fast:OK
+
 ## Last session result
 
-> Now let me run the pre-session gate battery and read additional required docs in parallel.
-> Good - the DB is consistent (8 of 9 strategies use Market, mean-reversion intentionally uses LimitOffset). But all recent tape runs show TotalTrades=0 despite 145 bars. The default revert is correct. Let me now trace the kernel event persistence pipeline.
-> Let me check the journal entries for recent tape runs and read the critical kernel files.
-> Clear pattern: working runs have explicit `RunPlanJson` entries; broken runs have `RunPlanJson=[]` and 0 journal entries. This confirms the orchestrator's analysis. Let me trace how `RunPlanJson` gets built and how strategies are registered.
-> Let me take a pra…
+> SESSION-RESULT: Landed reconciliation gap fix in `RunQueryService.cs` (commit `4ccea7f`) — the runs list endpoint now batch-reconciles TotalTrades from the Trades table when the stored column is 0, matching the detail endpoint's behavior. All gates green (build 0err/5warn, Unit 716/0/6, Integration 121/0/0, Sim-fast 144/0/0, golden clean). The fix is correct defense-in-depth but does NOT resolve F17 for Jul 9 tape runs — those genuinely have 0 TradeResults entries. Next session should trace the BarEvaluator→EntryPlanner→Kernel path to understand why bar processing produces 0 trades on runs started after Jul 7, comparing working run `2cdba11a` (explicit RunPlanJson) vs broken Jul 9 runs (empt…
 
 ## Tracker handoff
 
 ```
-last: A1 sessions 1-2 — C# default revert (f0855ed) + diagnostic log done. Gates all green. BUT F17 NOT resolved: 0 trades persist.
-root: REAL cause is kernel event persistence — kPump produces in-memory fills that never reach DB. Config default was only 1 layer.
-evidence: Working runs (Jul 7, 2cdba11a) used explicit RunPlanJson entries → trades flow. Broken runs use empty RunPlanJson → different path.
-INVESTIGATE: 1) Query DB: SELECT COUNT(*) FROM TradeResults, JournalEntry — any existing trades? 2) Use EURUSD H1 + TrendBreakout OR RSIMeanReversion strategy 3) Trace: BarEvaluator→KernelBacktestLoop.PumpAsync→EffectExecutor→TradePersistenceHandler 4) Compare StrategyRegistry binding: empty vs explicit RunPlanJson 5) Add logging to BarEvaluator, EffectExecutor, Kernel.cs to trace event flow
-trap: Kill all dotnet before building. Web app must be dead before build.
+last: A1 session5 — reconciliation gap fixed (RunQueryService). Gates all green.
+fix: RunQueryService.GetRunsAsync() read _db.BacktestRuns.TotalTrades directly, bypassing ReconcileAsync(). Detail endpoint used GetByIdAsync()→ReconcileAsync(). Added FixStaleTradeCounts() batch reconciliation.
+finding: No current DB discrepancy (all TotalTrades match TradeResults). Fix is defense-in-depth. Jul 9 tape runs genuinely have 0 TradeResults — reconciliation can't fix that. The 0-trade generation on NEW runs remains uninvestigated.
+gate: build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
+path: If next session wants tape trades: trace WHY Jul 9 bar-processing produces 0 proposals/fills despite Market default (f0855ed). Check BarEvaluator→EntryPlanner→Kernel path with RunPlanJson. Compare working 2cdba11a (Jul 7, explicit RunPlan) vs broken Jul 9 runs (empty RunPlan).
 ```
