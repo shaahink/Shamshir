@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 04:22 UTC · branch `iter/parity-pipeline` · HEAD `4189a8e`_
+_Updated 2026-07-09 04:49 UTC · branch `iter/parity-pipeline` · HEAD `4d9d355`_
 
 **Status:** Idle
-**Stage:** P7.2 — Prove cTrader works — HTTP backtest + quickstart doc · attempts used 0
-**Checkpoints:** 27/32 done · **Sessions run:** 49 · **Cost:** $3.8969 · **Tokens:** 4,595,472 in / 731,652 out / 405,446 think
+**Stage:** P7.3 — Traps 3+1+2 — triage-sweep playbook + wiring · attempts used 0
+**Checkpoints:** 28/32 done · **Sessions run:** 50 · **Cost:** $4.1148 · **Tokens:** 4,982,282 in / 750,309 out / 419,421 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 **⚠ Skipped stages (need human review):** P7.1, P7.2
 
@@ -14,7 +14,7 @@ _Updated 2026-07-09 04:22 UTC · branch `iter/parity-pipeline` · HEAD `4189a8e`
 |---|---|---|---|
 | P7.1 | P4.1 live verification — exploration funnel + backfill | 0/0 | SKIPPED ⚠ |
 | P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | 0/0 | SKIPPED ⚠ |
-| P7.3 | Traps 3+1+2 — triage-sweep playbook + wiring | 0/0 | todo |
+| P7.3 | Traps 3+1+2 — triage-sweep playbook + wiring | 0/0 | **← active** |
 | P7.4 | Traps 4+5+6 + P5.1 status dedup | 0/0 | todo |
 | P7.5 | P2.2 headline gate — compare-both run with cTrader | 0/0 | todo |
 | P7.6 | F6-R economics recovery — Option A | 0/0 | todo |
@@ -25,7 +25,6 @@ _Updated 2026-07-09 04:22 UTC · branch `iter/parity-pipeline` · HEAD `4189a8e`
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 20 | P5 | Fix | 2 | 07-08 20:31 | 0:09 | Progress |  | 1 | build:OK | $0.0560 | 96,666/7,540 |
 | 21 | P6 | Deliver | 1 | 07-08 20:44 | 0:35 | Advanced | P6.1 P6.2 P6.3 | 7 | build:OK | $0.2491 | 297,876/38,388 |
 | 22 | P6 | Deliver | 1 | 07-08 21:20 | 0:01 | AgentError |  | 0 | build:OK | $0.0188 | 39,015/1,091 |
 | 23 | P6 | Fix | 2 | 07-08 21:23 | 0:00 | AgentError |  | 0 | build:OK |  |  |
@@ -55,11 +54,10 @@ _Updated 2026-07-09 04:22 UTC · branch `iter/parity-pipeline` · HEAD `4189a8e`
 | 47 | P7.2 | Deliver | 2 | 07-09 03:50 | 0:21 | Advanced | P7.3 | 2 | build:OK | $0.1263 | 170,752/20,432 |
 | 48 | P7.2 | Deliver | 1 | 07-09 04:12 | 0:04 | Progress |  | 1 | build:OK | $0.0420 | 72,676/4,709 |
 | 49 | P7.2 | Deliver | 2 | 07-09 04:17 | 0:03 | Progress |  | 1 | build:OK | $0.0605 | 118,201/2,430 |
+| 50 | P7.3 | Deliver | 1 | 07-09 04:22 | 0:26 | Advanced | P7.4 | 2 | build:OK | $0.2179 | 386,810/18,657 |
 
 ### Commits by session
 
-- **s34 (P7.1 Resume)** — 1 commit(s):
-  - c830098 feat(p7.1): P4.1 live verification — persist explorationMode + RecordExcursions through M46
 - **s43 (P7.2 Resume)** — 2 commit(s):
   - a2a9b23 chore(p7.2): fix tracker commit hash to match pushed commit
   - 60dfc7b feat(p7.2): cTrader backtest verified — quickstart doc
@@ -77,6 +75,9 @@ _Updated 2026-07-09 04:22 UTC · branch `iter/parity-pipeline` · HEAD `4189a8e`
   - 2e19417 qa(p7.2): session #48 re-verification — confirm run 77e37dee, quickstart doc, all gates green
 - **s49 (P7.2 Deliver)** — 1 commit(s):
   - c595d51 chore(p7.2): session #49 final confirmation — verify run 77e37dee, quickstart doc, advance to P7.4
+- **s50 (P7.3 Deliver)** — 2 commit(s):
+  - 4d9d355 chore(p7.4): stamp commit hash in tracker row
+  - 0579561 feat(p7.4): traps 4+5+6 + P5.1 status dedup
 
 ## Phase handovers (audit)
 
@@ -94,17 +95,19 @@ build:OK
 
 ## Last session result
 
-> SESSION-RESULT: P7.2 already delivered and verified (run 77e37dee — cTrader, ExitCode=0, TotalTrades=1 in DB; quickstart doc at `docs/agents/ctrader-quickstart.md` with full credentials, endpoint, and polling pattern). P7.3 also DONE (5cdd085). This session (s49) confirmed the existing evidence, updated the TRACKER handoff block and AGENTS.md RESUME to point to P7.4 as next. No code changes. Commit c595d51 pushed. Next session: P7.4 — Traps 4+5+6 (BlockBootstrapper, EntityAuditableTests, RunQueryService status dedup).
+> SESSION-RESULT: P7.4 landed (0579561) — all 4 items delivered: BootstrapMarketDataStore decorator keeps synthetic tapes in-memory (trap 4), DateTime.UtcNow already fixed in controller (trap 5), all 5 entities now implement IAuditableEntity with M48-M50 migrations (trap 6), RunQueryService.GetRunsAsync uses centralized RunStatusResolver (P5.1). Gates green: build 0err/5warn, Unit 716/0/6, Integration 120/0/0, Sim-fast 144/0/0, golden clean, Architecture EntityAuditableTests 1/1. Pre-existing EnginePurityTests failure (EngineReducer DateTime param) is not in gate battery. Next session: P7.5 — P2.2 headline gate (compare-both run with cTrader + committed reconcile verdict).
 
 ## Tracker handoff
 
 ```
-last: **s49 P7.2 final confirmation** — gates re-run: build 0err/5warn; DB run
-  77e37dee confirmed (ctrader, ExitCode=0, TotalTrades=1); quickstart doc verified
-  with creds (CtId=seankiaa, Account=5834367), API endpoint, polling pattern.
-stage: **P7 Cleanup + Verification — 4 sessions remain.**
-gate: GREEN — all gates passed; P7.1-P7.3 confirmed DONE.
-next: **P7.4 — Traps 4+5+6 + P5.1** (BlockBootstrapper fixes + status dedup).
-trap: (1) BuildInfo.g.cs + build-info.ts dirty each build. (2) UI changes require
-  `npm run build`. (3) cTrader creds accessible.
+last: **s50 P7.4 deliver** — gates re-run: build 0err/5warn, Unit 716/0/6,
+  Integration 120/0/0, Sim-fast 144/0/0, golden clean. EntityAuditableTests
+  passes. QA-previous (P7.3): CONFIRMED — all 6 gate claims independently
+  verified; M47 SessionLabel+EntryFilterJson columns live in DB.
+stage: **P7 Cleanup + Verification — 3 sessions remain.**
+gate: GREEN — all standard gates passed. Architecture: 1 engine-purity
+  pre-existing failure (EngineReducer.ReconcileToVenue DateTime param),
+  not in gate battery.
+next: **P7.5 — P2.2 headline gate** (compare-both run with cTrader + verdict).
+trap: BuildInfo.g.cs + build-info.ts dirty each build. cTrader creds accessible.
 ```
