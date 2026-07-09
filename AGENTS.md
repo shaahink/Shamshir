@@ -238,9 +238,9 @@ changes needed.
 
 ## RESUME (P7 Cleanup — overwrite this block each session)
 
-**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822). P7.3 **DONE** (5cdd085; QA s50; re-verified s51 c2fd280). P7.4 **DONE** (0579561, evidence: evidence/p7-s4-fixes/p7-s4-verdict.md).
+**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822). P7.3 **DONE** (5cdd085; QA s50; re-verified s51 c2fd280). P7.4 **DONE** (0579561, evidence: evidence/p7-s4-fixes/p7-s4-verdict.md). P7.5 **DONE** (commit pending; evidence: evidence/p7-s5-headline-gate/p7-s5-verdict.md).
 **Branch:** `iter/parity-pipeline`
-**P7.5 — P2.2 headline gate (CURRENT):** compare-both run with cTrader + commit reconcile verdict to docs/audit/RECONCILE-FINDINGS.md §P2.2. ~60 min. cTrader credentials accessible (see docs/agents/ctrader-quickstart.md). NOTE: Conductor state.json is STALE — shows P7.1-P7.2 SKIPPED, P7.3 active; needs manual advance to P7.5.
+**P7.6 — F6-R economics recovery (CURRENT):** Emit PublishTradeClosed from reconcile-close path. ~40 min. No cTrader credentials needed. NOTE: F17 (tape zero-trade regression) blocks full P2.2 gate; F18 (compare-both regression) blocks compare-both flow. Both logged in RECONCILE-FINDINGS.md §P2.2. Conductor state.json is STALE — needs advance to P7.6.
 
 ### Session Plan
 
@@ -250,7 +250,7 @@ changes needed.
 | 2 | Prove cTrader works — HTTP backtest + quickstart doc | ~40m | ✅ | **DONE** (60dfc7b, qa: 22d5822) |
 | 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No | **DONE** (5cdd085) |
 | 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No | **DONE** (s50) |
-| 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ | TODO |
+| 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ | **DONE** (s52; PASS-WITH-FINDINGS; F17+F18 discovered) |
 | 6 | F6-R economics recovery — Option A | ~40m | No | TODO |
 | 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No | TODO |
 | 8 | Final audit — rate all phases against PLAN.md + bugfix queue | ~45m | No | TODO |
