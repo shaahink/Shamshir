@@ -17,8 +17,8 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P7.2 QA (s45)** — confirmed: sqlite3 run 77e37dee ExitCode=0 TotalTrades=1
-  (EURUSD H1 Long 4.46 lots NetPnL=312.31); quickstart doc verified; fresh gates all green.
+last: **P7.2 finalized (s46)** — verified run 77e37dee in DB (ExitCode=0 TotalTrades=1 NetProfit=312.31);
+  quickstart doc committed; gates green (build 0err, Unit 715/0/6, Int 120/0/0, Sim-fast 144/0/0, golden clean).
 stage: **P7 Cleanup + Verification — 5 sessions remaining.**
 gate: GREEN — build 0err/5warn; Unit 715/0/6; Integration 120/0/0;
   fast Sim 144/0/0; golden byte-identical.
