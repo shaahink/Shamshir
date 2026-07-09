@@ -17,16 +17,16 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s50 P7.4 deliver** — gates re-run: build 0err/5warn, Unit 716/0/6,
-  Integration 120/0/0, Sim-fast 144/0/0, golden clean. EntityAuditableTests
-  passes. QA-previous (P7.3): CONFIRMED — all 6 gate claims independently
-  verified; M47 SessionLabel+EntryFilterJson columns live in DB.
-stage: **P7 Cleanup + Verification — 3 sessions remain.**
-gate: GREEN — all standard gates passed. Architecture: 1 engine-purity
-  pre-existing failure (EngineReducer.ReconcileToVenue DateTime param),
-  not in gate battery.
+last: **s51 P7.3 QA** — independent re-verification. Gates re-run: build 0err/5warn,
+  Unit 716/0/6, Integration 120/0/0, Sim-fast 144/0/0, golden clean.
+  All 6 P7.3 claims independently confirmed: triage-sweep.json parse,
+  SessionLabel column+handler wiring, EntryFilterJson column+strategy wiring.
+  P7.3 has zero incomplete checkpoints.
+stage: **P7 Cleanup + Verification — P7.1-P7.4 all DONE.**
+gate: GREEN — all standard gates passed.
 next: **P7.5 — P2.2 headline gate** (compare-both run with cTrader + verdict).
-trap: BuildInfo.g.cs + build-info.ts dirty each build. cTrader creds accessible.
+trap: BuildInfo.g.cs dirty each build. Conductor state.json is STALE
+  (shows P7.1-P7.2 SKIPPED, P7.3 active — needs manual advance to P7.5).
 
 ## Checkpoints
 
@@ -151,7 +151,7 @@ All 7 OWNER-PENDING markers (P0.1-P0.4, P1.2, P3.4, P6.5-P6.6) resolved by P7.
 | P6.8 | Wild list: pyramiding policy | DONE | a2ab895 | playbooks/pyramid-policy.json; PyramidDiagnosisTests 12/12 (Unit); ShippedPlaybook_Parses 10/10 |
 | P7.1 | P4.1 live verification — exploration funnel + backfill (FIXED: persistence gap — M46 migration) | DONE | c830098 | `evidence/p7-s1-live-verification.md` (explorationMode+RecordExcursions persist; backfill 84/84 MaeR/MfeR populated; avg 0.783/1.079) |
 | P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | DONE | 60dfc7b (QA: 22d5822) | `docs/agents/ctrader-quickstart.md`; DB: run 77e37dee ExitCode=0 TotalTrades=1; QA s45: `evidence/p7-s2-qa/qa-verdict.md` |
-| P7.3 | Traps 3+1+2 — triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring | DONE | 5cdd085 | `evidence/p7-s3-traps/p7-s3-verdict.md` |
+| P7.3 | Traps 3+1+2 — triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring | DONE | 5cdd085 | `evidence/p7-s3-traps/p7-s3-verdict.md`; QA s51: `evidence/p7-s3-traps/p7-s3-qa-s51.md` — CONFIRMED |
 | P7.4 | Traps 4+5+6 + P5.1 status dedup — BlockBootstrapper fixes + EntityAuditableTests + RunQueryService | DONE | 0579561 | `evidence/p7-s4-fixes/p7-s4-verdict.md` |
 | P7.5 | P2.2 headline gate — compare-both run with cTrader + committed verdict | TODO | — | `docs/audit/RECONCILE-FINDINGS.md §P2.2` |
 | P7.6 | F6-R economics recovery — Option A: PublishTradeClosed from reconcile-close | TODO | — | `evidence/p7-s6-f6r.md` |
