@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 02:05 UTC · branch `iter/parity-pipeline` · HEAD `5382fc3`_
+_Updated 2026-07-09 02:18 UTC · branch `iter/parity-pipeline` · HEAD `2978b5a`_
 
-**Status:** Idle
+**Status:** Paused
 **Stage:** P7.2 — Prove cTrader works — HTTP backtest + quickstart doc · attempts used 1
-**Checkpoints:** 25/32 done · **Sessions run:** 37 · **Cost:** $3.4565 · **Tokens:** 3,860,028 in / 680,579 out / 369,576 think
+**Checkpoints:** 25/32 done · **Sessions run:** 38 · **Cost:** $3.4858 · **Tokens:** 3,922,466 in / 681,456 out / 370,337 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 **⚠ Skipped stages (need human review):** P7.1
 
@@ -25,7 +25,6 @@ _Updated 2026-07-09 02:05 UTC · branch `iter/parity-pipeline` · HEAD `5382fc3`
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 8 | P1 | Deliver | 2 | 07-08 14:18 | 1:36 | Advanced | P1.1 P1.2 | 5 | build:OK | $0.1096 | 4,363/41,198 |
 | 9 | P1 | Audit | 1 | 07-08 15:55 | 0:14 | Progress |  | 2 |  | $0.0205 | 1,153/9,010 |
 | 10 | P2 | Deliver | 1 | 07-08 16:12 | 0:36 | Advanced | P2.1 P2.2 | 5 | build:OK | $0.0666 | 2,844/33,456 |
 | 11 | P2 | Audit | 1 | 07-08 16:49 | 0:21 | Progress |  | 4 |  | $0.0565 | 65,636/13,849 |
@@ -55,6 +54,7 @@ _Updated 2026-07-09 02:05 UTC · branch `iter/parity-pipeline` · HEAD `5382fc3`
 | 35 | P7.1 | Deliver | 1 | 07-09 01:10 | 0:15 | Stalled |  | 0 |  | $0.0184 | 28,705/2,596 |
 | 36 | P7.1 | Resume | 2r1 | 07-09 01:25 | 0:12 | Stalled |  | 0 |  | $0.0019 | 1,398/525 |
 | 37 | P7.2 | Deliver | 1 | 07-09 01:39 | 0:26 | Stalled |  | 0 |  | $0.0543 | 92,595/6,296 |
+| 38 | P7.2 | Resume | 2r1 | 07-09 02:05 | 0:12 | Interrupted |  | 0 |  | $0.0293 | 62,438/877 |
 
 ### Commits by session
 
@@ -103,13 +103,8 @@ build:OK
 
 ## Last session result
 
-> Gate battery matches handoff: Build 0err/5warn, Unit 715/0/6, Integration 120/0/0, Sim 144/0/0, golden empty. Now QA the previous session (P7.1).
-> QA of P7.1: **confirmed**. M46 is DB head, ExplorationMode/RecordExcursions columns exist, run `99fa7698` shows ExplorationMode=1, MaeR/MfeR 84/84 @ avg 0.7833/1.0793. Gates match. No divergence. Proceeding to P7.2.
-> Credentials and CLI verified. Now building cBot and preparing to start the app.
-> App is running on `http://localhost:5134` with 17 runs in the DB. Now starting the cTrader backtest.
-> Run started: `77e37dee`. Polling for completion...
-> The API went unreachable. Let me check the app state and DB.
-> Let me verify B2 fixes are in place and…
+> The cTrader run `77e37dee` completed with ExitCode=0, TotalTrades=1! Let me check the stall commit changes and restart.
+> The Conductor stall commit is benign bookkeeping. Key finding: run `77e37dee` completed with ExitCode=0, TotalTrades=1. Let me restart the app, verify via API, then finish the deliverable.
 
 ## Tracker handoff
 
