@@ -81,6 +81,13 @@ iteration's gates never caught:
 
 The working tree is UNCOMMITTED (~24 modified + 3 new files) — land it per PLAN P-0, do not batch-commit.
 
+## QA protocol (added 2026-07-09 — saves tokens on clean sessions)
+- Skip previous-session QA when the last session ended `advanced` or `progress` with all gates green.
+- Run full QA only when last session was `gatesRed`, `stalled`, `noProgress`, or `interrupted`.
+
+## Tracker update rule
+After every session, update BOTH the handoff block AND the checkpoint row in TRACKER.md. The row must show `DONE`, the commit hash, and evidence path. If only the handoff changes, Conductor re-reads the same TODO row and launches a duplicate session.
+
 ## What's next
 
 See `docs/iterations/iter-parity-pipeline/PLAN.md`. Phase order: P-0 (land tree) → P0 (parity truth:
@@ -231,24 +238,31 @@ changes needed.
 
 ## RESUME (P7 Cleanup — overwrite this block each session)
 
-**Phase:** P7 Cleanup + Verification — 8 sessions. P0-P6 all DONE.
+**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE**.
 **Branch:** `iter/parity-pipeline`
-**Session 1 — P4.1 live verification:** start app, run exploration backtest,
-  verify funnel banner in UI, call backfill endpoint, confirm MaeR/MfeR populated.
-  ~30 min. Credential-free.
+**P7.3 — Traps 3+1+2:** triage-sweep playbook, session labels, SpreadVolNoTradeFilter wiring. ~45 min.
+  cTrader credentials verified (see docs/agents/ctrader-quickstart.md).
 
 ### Session Plan
 
-| # | Item | Effort | cTrader? |
-|---|------|--------|:--------:|
-| 1 | P4.1 live verification — exploration funnel + backfill | ~30m | No |
-| 2 | Prove cTrader works — HTTP backtest + quickstart doc | ~40m | ✅ |
-| 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No |
-| 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No |
-| 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ |
-| 6 | F6-R economics recovery — Option A | ~40m | No |
-| 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No |
-| 8 | Final audit — rate all phases against PLAN.md + bugfix queue | ~45m | No |
+| # | Item | Effort | cTrader? | Status |
+|---|------|--------|:--------:|--------|
+| 1 | P4.1 live verification — exploration funnel + backfill | ~30m | No | **DONE** (c830098) |
+| 2 | Prove cTrader works — HTTP backtest + quickstart doc | ~40m | ✅ | **DONE** |
+| 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No | TODO |
+| 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No | TODO |
+| 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ | TODO |
+| 6 | F6-R economics recovery — Option A | ~40m | No | TODO |
+| 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No | TODO |
+| 8 | Final audit — rate all phases against PLAN.md + bugfix queue | ~45m | No | TODO |
+
+### Quick report (for future agents)
+Run these to get live status:
+```powershell
+Get-Content .conductor/state.json | ConvertFrom-Json | Select-Object status, currentStage, sessionCounter
+Get-Content .conductor/conductor.log -Tail 20
+Get-Content .conductor/REPORT.md 2>$null
+```
 
 **Full workflow:** `docs/workflows/shamshir-post-p6-workflow.md`
 **Tracker:** `docs/iterations/iter-parity-pipeline/TRACKER.md`
