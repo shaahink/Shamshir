@@ -152,7 +152,7 @@ All 7 OWNER-PENDING markers (P0.1-P0.4, P1.2, P3.4, P6.5-P6.6) resolved by P7.
 | P7.1 | P4.1 live verification — exploration funnel + backfill (FIXED: persistence gap — M46 migration) | DONE | c830098 | `evidence/p7-s1-live-verification.md` (explorationMode+RecordExcursions persist; backfill 84/84 MaeR/MfeR populated; avg 0.783/1.079) |
 | P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | DONE | 60dfc7b (QA: 22d5822) | `docs/agents/ctrader-quickstart.md`; DB: run 77e37dee ExitCode=0 TotalTrades=1; QA s45: `evidence/p7-s2-qa/qa-verdict.md` |
 | P7.3 | Traps 3+1+2 — triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring | DONE | 5cdd085 | `evidence/p7-s3-traps/p7-s3-verdict.md` |
-| P7.4 | Traps 4+5+6 + P5.1 status dedup — BlockBootstrapper fixes + EntityAuditableTests + RunQueryService | DONE | (pending commit) | `evidence/p7-s4-fixes/p7-s4-verdict.md` |
+| P7.4 | Traps 4+5+6 + P5.1 status dedup — BlockBootstrapper fixes + EntityAuditableTests + RunQueryService | DONE | 0579561 | `evidence/p7-s4-fixes/p7-s4-verdict.md` |
 | P7.5 | P2.2 headline gate — compare-both run with cTrader + committed verdict | TODO | — | `docs/audit/RECONCILE-FINDINGS.md §P2.2` |
 | P7.6 | F6-R economics recovery — Option A: PublishTradeClosed from reconcile-close | TODO | — | `evidence/p7-s6-f6r.md` |
 | P7.7 | cTrader test audit — classify RequiresCTrader tests replaceable by tape | TODO | — | `docs/audit/ctrader-test-audit.md` |
