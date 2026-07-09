@@ -1,8 +1,8 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 06:32 UTC · branch `iter/parity-pipeline` · HEAD `a0a0c25`_
+_Updated 2026-07-09 06:32 UTC · branch `iter/parity-pipeline` · HEAD `4934128`_
 
-**Status:** Idle
+**Status:** NeedsHuman — stage P7.3 used all 2 attempts without completing — inspect and `conductor resume` (or `conductor skip`) · advisor: Conductor state.json is stale (P7.3 re-launched after already DONE since s47); all P7.1-P7.8 are actually complete; manual advance past P7 needed before any further stages can be consumed
 **Stage:** P7.3 — Traps 3+1+2 — triage-sweep playbook + wiring · attempts used 2
 **Checkpoints:** 32/32 done · **Sessions run:** 57 · **Cost:** $4.8256 · **Tokens:** 6,108,057 in / 830,868 out / 500,084 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
