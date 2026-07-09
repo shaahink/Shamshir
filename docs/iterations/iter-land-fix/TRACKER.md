@@ -19,7 +19,7 @@ Status ∈ TODO · IN PROGRESS · DONE · BLOCKED. Evidence = artifact path unde
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
-| A1 | Fix F17 — tape/replay zero-trade regression | IN PROGRESS | TBD | a1-f17-session-1.md |
+| A1 | Fix F17 — tape/replay zero-trade regression | IN PROGRESS | `f0855ed` | a1-f17-session-1.md |
 | A2 | Fix F18 + rerun P2.2 headline gate | TODO | | |
 | B1 | Pipeline completion + UI gaps + P6 playbook validation | TODO | | |
 | C1 | P3.6 data model + recording hooks | TODO | | |
