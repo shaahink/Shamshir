@@ -238,9 +238,9 @@ changes needed.
 
 ## RESUME (P7 Cleanup — overwrite this block each session)
 
-**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822, s46; re-verified s48, s49). P7.3 **DONE** (5cdd085, s47; QA-confirmed s50). P7.4 **DONE** (s50, evidence: evidence/p7-s4-fixes/p7-s4-verdict.md).
+**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822). P7.3 **DONE** (5cdd085; QA s50; re-verified s51 c2fd280). P7.4 **DONE** (0579561, evidence: evidence/p7-s4-fixes/p7-s4-verdict.md).
 **Branch:** `iter/parity-pipeline`
-**P7.5 — P2.2 headline gate (CURRENT):** compare-both run with cTrader + commit reconcile verdict to docs/audit/RECONCILE-FINDINGS.md §P2.2. ~60 min. cTrader credentials accessible (see docs/agents/ctrader-quickstart.md).
+**P7.5 — P2.2 headline gate (CURRENT):** compare-both run with cTrader + commit reconcile verdict to docs/audit/RECONCILE-FINDINGS.md §P2.2. ~60 min. cTrader credentials accessible (see docs/agents/ctrader-quickstart.md). NOTE: Conductor state.json is STALE — shows P7.1-P7.2 SKIPPED, P7.3 active; needs manual advance to P7.5.
 
 ### Session Plan
 
