@@ -1,9 +1,9 @@
 # AGENTS.md — Session Startup Guide
 
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `iter/quant-model--p1-tf-agnostic` (active) / `develop` (authoritative, merged)
+**Branch:** `iter/parity-pipeline`
 **Created:** 2026-06-18
-**Updated:** 2026-07-07 (NEW ITERATION: iter-parity-pipeline — owner audit found critical venue-parity bugs; see RESUME block at the bottom)
+**Updated:** 2026-07-09 (P7 Cleanup + Verification phase)
 
 ---
 
@@ -11,22 +11,21 @@
 
 At the start of every session:
 
-1. **`docs/reference/SYSTEM-REFERENCE.md`** — Start with §1 (system overview) → then skim the rest
-2. **`docs/reference/CODE-MAP.md`** — Feature→file index + process walkthroughs — find where anything lives
-3. **`docs/reference/BACKTEST-ARCHITECTURE.md`** — How backtesting actually works (both venue paths)
-4. **`docs/reference/TEST-ARCHITECTURE.md`** — Test tiers, harnesses, which tests need cTrader credentials
-5. **`docs/WORKFLOW.md`** — Agent workflow rules, code standards, handover format
-6. **`DECISIONS.md`** — All resolved decisions (D1–D96)
-7. **`docs/OPEN-ISSUES.md`** — ALL remaining bugs + tasks (single source of truth, kept current)
-8. **`docs/iterations/iter-parity-pipeline/AUDIT.md`** — CURRENT ITERATION: evidence audit (findings F1–F16, retrospective R1–R10)
-9. **`docs/iterations/iter-parity-pipeline/PLAN.md`** — CURRENT ITERATION: phased plan P-0→P6 + session protocol (§10 is MANDATORY)
-10. **`docs/iterations/iter-quant-model/PROGRESS.md`** — Previous iteration handover (historical context)
-11. **`docs/audit/PROGRESS.md`** — Progress metrics, gate history, branch state
-12. **`docs/QUANT-ROADMAP.md`** — Strategy calibration & experiment methodology
-13. **For cTrader work:** load the `shamshir-ctrader` skill first — covers cBot, NetMQ, engine adapter, launch paths, cache
-14. **`docs/RESOLVED-ISSUES.md`** — Audit trail of fixed issues (reference only)
-15. **`docs/CTRADER-TEST-POLICY.md`** — cTrader test triage: which tests stay, which move to tape
-16. **`docs/audit/RECONCILE-FINDINGS.md`** — Pre-registered fidelity gaps (F1–F5) + V4 run template
+1. **`docs/iterations/iter-parity-pipeline/TRACKER.md`** — Current state + handoff block
+2. **`docs/workflows/shamshir-post-p6-workflow.md`** — THE WORKFLOW for this phase (8 sessions, protocols, rating system)
+3. **`conductor-DEBT.md`** — Open debt items
+4. **`docs/iterations/iter-parity-pipeline/PLAN.md`** — Master plan (P-0→P6 + verification matrix)
+5. **`docs/iterations/iter-parity-pipeline/AUDIT.md`** — Evidence audit (F1-F16, R1-R10)
+6. **`docs/reference/SYSTEM-REFERENCE.md`** — System overview
+7. **`docs/reference/CODE-MAP.md`** — Feature→file index
+8. **`docs/reference/BACKTEST-ARCHITECTURE.md`** — Venue backtest paths
+9. **`docs/reference/TEST-ARCHITECTURE.md`** — Test tiers + harnesses
+10. **`docs/WORKFLOW.md`** — Agent workflow rules, code standards
+11. **`DECISIONS.md`** — All resolved decisions (D1-D96)
+12. **`docs/audit/RECONCILE-FINDINGS.md`** — Fidelity gaps + run templates
+13. **`docs/CTRADER-TEST-POLICY.md`** — cTrader test triage
+
+**cTrader credentials are accessible to the agent.** The historic "needs creds" belief was from deadlock bugs (B1-B3, now fixed). Credentials: CtId=seankiaa, Account=5834367, PwdFile=ctrader.pwd. Session P7.2 proves this. See `docs/agents/ctrader-quickstart.md` after P7.2 completes.
 
 ## Build and test
 
@@ -230,23 +229,28 @@ changes needed.
 
 ---
 
-## RESUME (iter-parity-pipeline — replace this whole block each session)
+## RESUME (P7 Cleanup — overwrite this block each session)
 
-**Branch:** `iter/parity-pipeline` — **HEAD:** (s31, P6.8 pyramiding policy)
-**Session (s31, P6.8):** Delivered pyramiding policy: PyramidDiagnosis domain
-  (walks excursion paths, simulates adds at R-levels, computes combined R-multiples),
-  12 unit tests, ExitLabController pyramid-eval endpoint, ResearchCli
-  `pyramid-eval` verb + playbook step + canonical playbook JSON.
-  P6 WILD LIST COMPLETE (P6.1-P6.8).
-**Gates GREEN:** build 0err/5warn; Unit 714/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden 61/61 byte-identical; ShippedPlaybook_Parses 10/10.
-**Next step:** Owner direction — P3.5 triage-sweep playbook (open trap #3) or P7.
-**Open traps:** (1) Session labels not wired into TradeExcursions.
-  (2) SpreadVolNoTradeFilter no strategy config wiring.
-  (3) Playbook 3 (triage-sweep.json) not created.
-  (4) BlockBootstrapper writes bars to real MarketDataShard.
-  (5) BlockBootstrapController uses DateTime.UtcNow.
-  (6) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-  (7) Any session touching web-ui/src/*.ts MUST run `npm run build`.
-  (8) QA-previous (s31): confirmed — all gates held, no divergence.
+**Phase:** P7 Cleanup + Verification — 8 sessions. P0-P6 all DONE.
+**Branch:** `iter/parity-pipeline`
+**Session 1 — P4.1 live verification:** start app, run exploration backtest,
+  verify funnel banner in UI, call backfill endpoint, confirm MaeR/MfeR populated.
+  ~30 min. Credential-free.
+
+### Session Plan
+
+| # | Item | Effort | cTrader? |
+|---|------|--------|:--------:|
+| 1 | P4.1 live verification — exploration funnel + backfill | ~30m | No |
+| 2 | Prove cTrader works — HTTP backtest + quickstart doc | ~40m | ✅ |
+| 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No |
+| 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No |
+| 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ |
+| 6 | F6-R economics recovery — Option A | ~40m | No |
+| 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No |
+| 8 | Final audit — rate all phases against PLAN.md + bugfix queue | ~45m | No |
+
+**Full workflow:** `docs/workflows/shamshir-post-p6-workflow.md`
+**Tracker:** `docs/iterations/iter-parity-pipeline/TRACKER.md`
+**Baseline:** Unit 714/0/6 · Integration 120/0/0 · Sim-fast 144/0/0 · Golden 61/61
 

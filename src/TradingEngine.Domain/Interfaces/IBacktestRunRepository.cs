@@ -44,7 +44,12 @@ public sealed record BacktestRunSummary(
     // Populated => `completed-with-warnings`; ErrorMessage stays null.
     string? WarningsJson = null,
     // P5.1 (F16): shared key for compare-both pairs. Null for solo runs.
-    string? ComparePairId = null);
+    string? ComparePairId = null,
+    // P4.1 (F11): exploration mode — one-click preset (SL=ATR×4, TP=none, add-ons off).
+    // P7.1: persisted so the run-report exploration banner survives run completion.
+    bool ExplorationMode = false,
+    // P4.1 (F11): whether excursion paths were recorded for this run.
+    bool RecordExcursions = false);
 
 public interface IBacktestRunRepository
 {

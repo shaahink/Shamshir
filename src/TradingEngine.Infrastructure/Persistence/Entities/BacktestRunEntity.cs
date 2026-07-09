@@ -58,4 +58,9 @@ public sealed class BacktestRunEntity : IAuditableEntity
     public long WallElapsedMs { get; set; }
     public double BarsPerSec { get; set; }
     public int TotalBars { get; set; }
+
+    // P4.1 (F11) / P7.1: exploration mode + excursion recording flags persisted so the
+    // run-report exploration banner survives run completion.
+    public bool ExplorationMode { get; set; }
+    public bool RecordExcursions { get; set; }
 }

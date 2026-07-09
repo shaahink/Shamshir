@@ -1,111 +1,87 @@
 # Shamshir — Conductor-Discovered Debt & Followups
 
 **Generated:** 2026-07-08 by Conductor Baton cross-project audit.
-**Read order:** this file → `docs/iterations/iter-parity-pipeline/TRACKER.md` → `PLAN.md` → `AUDIT.md` → `WORKFLOW.md` → relevant handover in `.conductor/handovers/P0.md`.
+**Updated:** 2026-07-09 — reordered by P7 session.
 
-P0 (parity-truth spine) was completed with a green battery and audited. This file records the one
-deferred issue from the P0 audit, the structural followups that P1-P6 must handle, and one transient
-test flakiness note.
+**Read order:** this file → `docs/iterations/iter-parity-pipeline/TRACKER.md` → `docs/workflows/shamshir-post-p6-workflow.md`.
+
+Items ordered by P7 session. Each entry cross-refs the handover or log that identified it.
+All 11 OWNER-PENDING tracker markers are covered here — most are agent-doable (see P7.2 for cTrader proof).
 
 ---
 
-## P2.2 — OWNER-GATE: real compare-both run with creds
+## P7.5 — P2.2: Compare-both run + committed reconcile verdict 🟡 TODO
 
-**Session size:** medium (~50 min, gate-only — no code changes unless a test fails)
-**Files touched:**
-- `docs/iterations/iter-parity-pipeline/TRACKER.md` (record run + verdict)
-- `docs/audit/RECONCILE-FINDINGS.md` (update with post-P0 run data)
-- Potentially: kernel/adapter code if a gate assertion fails
+**P7 Session:** 5. **Effort:** ~60 min. **cTrader:** ✅ (proven in P7.2)
 
-**Background (from P0 handover, `.conductor/handovers/P0.md` §4-7):**
-Every P0 checkpoint is proven credential-free (FakeTransport, pure functions, kept audit DB).
-**NONE** has been confirmed on a live paired (tape vs. cTrader) run against the post-P0 build. This
-is by design — the P2.2 owner-gate is where these get exercised end-to-end. Specifically unconfirmed:
+**Background (from P0 handover §4-7, TRACKER row P2.2):**
+Every P0 checkpoint is proven credential-free. NONE has been confirmed on a live paired run against
+the post-P0 build. This is the headline gate: one real compare-both proving F1 (equal lots), F5
+(truthful status), F6 (trade persistence). The historic "needs creds" belief is outdated —
+credentials are in appsettings.Development.json and the deadlock bugs (B1-B3) are fixed.
 
-1. **F1 (¼-sizing):** equal lots in a live paired DB run. Verified pure-gate only.
-2. **F5 (run-status truth):** 3 consecutive headless cTrader runs ending `completed` with zero
-   NetMQPoller messages. Verified via transport teardown unit/integration tests only.
-3. **F6/F6-R (trade barrier):** a real BTC-scenario producing `TRADES_LOST` (persistence channel
-   loss) and/or `TRADES_UNRECONSTRUCTABLE` (crashed-teardown close-fills) + `completed-with-warnings`.
-   Verified via barrier suite + audit-DB SQL detection only.
-
-**These are NOT bugs** — they are unverified-at-scale. The tests prove the logic; the live run
-proves the integration. Do NOT attempt live runs during P1 — auto-promote through P1, P2.1, then
-run P2.2 as a dedicated gate session.
+**Files:** `docs/iterations/iter-parity-pipeline/TRACKER.md`, `docs/audit/RECONCILE-FINDINGS.md`
 
 **Gate:**
-- One live paired run against the post-P0 build with creds
-- F1: Tape + cTrader lots match (within rounding) in the paired DB
-- F5: 3 consecutive cTrader runs in a row end `completed` (zero NetMQPoller crash messages)
-- F6: At minimum the barrier firewalls a known scenario. If a BTC-scenario is live, confirm `TRADES_LOST` or `TRADES_UNRECONSTRUCTABLE` surfaces in the reconcile output
-- Evidence: `docs/audit/RECONCILE-FINDINGS.md` updated with live-run section, DB run IDs recorded
-- Golden tests: `git diff --stat -- **/*golden*.json` = empty (NO rebaseline without investigation)
-
-**Context for the agent — why this wasn't done in P0:**
-P0 was credential-free by design. The P0 auditor explicitly wrote: "Do NOT attempt live runs to 'verify' — auto-promote and continue per orchestrator policy." The audit DB is sufficient forensic evidence for the fixes; the live run is the integration gate, not a correctness gate.
-
-**Checkpoint:** per existing tracker row `P2.2`
+- One live paired run (EURUSD H1, 1 month)
+- F1: Tape + cTrader lots match (within rounding)
+- F5: 3 consecutive cTrader runs end `completed` (zero NetMQPoller crash messages)
+- F6: Barrier firewalls known scenario; `TRADES_LOST`/`TRADES_UNRECONSTRUCTABLE` surfaces if triggered
+- Evidence: `docs/audit/RECONCILE-FINDINGS.md` updated with live-run verdict
 
 ---
 
-## P3.5 — F6-R economics recovery (deferred, option b accepted)
+## P7.6 — P3.5: F6-R economics recovery (Option A) 🟡 TODO
 
-**Session size:** small (~25 min, if owner decides to pursue)
-**Files touched:**
-- `src/TradingEngine.Adapters.CTrader/CTraderBrokerAdapter.cs` (reconcile-close path)
-- `src/TradingEngine.Core/EffectExecutor.cs` / `TradeResultFactory.cs`
-- `tests/TradingEngine.Tests.Integration/TradePersistenceBarrierTests.cs`
-- `docs/iterations/iter-parity-pipeline/TRACKER.md` (update F6-R status)
+**P7 Session:** 6. **Effort:** ~40 min. **cTrader:** No (code change)
 
-**Background (from P0 audit, `.conductor/handovers/P0.md` §3-4):**
-The P0 barrier backfills trades from `PublishTradeClosed` journal effects. When cTrader crashes mid-run, some closes arrive as raw `OrderFilled` events (no `PublishTradeClosed` effect). The P0 audit hardened a **detection safety net** (option b): the barrier now counts close-fills and flags `TRADES_UNRECONSTRUCTABLE:{n}` when no effects match. This is false-positive-free against all 6 audit-DB runs.
+**Background (from P0 audit §3-4, P0 handover §4):**
+The P0 barrier backfills trades from `PublishTradeClosed` journal effects. When cTrader crashes
+mid-run, closes arrive as raw `OrderFilled` events. Option A: have the VenueManaged reconcile-close
+path emit `PublishTradeClosed` before teardown so the existing backfill recovers economics for free.
+Currently on Option B (detection-only via `TRADES_UNRECONSTRUCTABLE:{n}` flag).
 
-**Option (a) — actual recovery — was deferred to owner decision.** The recommended approach: have the `VenueManaged` reconcile-close path emit `PublishTradeClosed` into the journal before teardown, so the existing backfill recovers economics for free. This touches the cTrader adapter's reconcile-close mapping, which is kernel/adapter-adjacent (a STOP condition according to the tracker).
+**Files:** `src/TradingEngine.Adapters.CTrader/CTraderBrokerAdapter.cs` (reconcile-close path)
 
-**Current status (2026-07-08):** Owner accepted option (b) detection-only. Recovery is deferred to a later phase or indefinitely. This entry exists so a future session can pick it up if the economics loss becomes material.
-
-**Gate:**
-- If pursuing: PublishTradeClosed emitted from reconcile-close path; test proves a simulated crashed-teardown with close-fill-only events produces a backfilled trade with correct economics
-- If deferred indefinitely: document the decision date in the tracker and close this checkpoint
-- Build 0w/0e, 0 new analyzer warnings
-
-**Checkpoint:** `P3.5 — F6-R economics recovery (deferred: option b accepted)`
+**Gate:** PublishTradeClosed emitted from reconcile-close path. Test proves crashed-teardown with
+close-fill-only events produces a backfilled trade with correct economics.
 
 ---
 
-## P5.1 — RunQueryService status deduplication
+## P7.4 — P5.1: RunQueryService status deduplication 🟡 TODO
 
-**Session size:** small (~20 min)
-**Files touched:**
-- `src/TradingEngine.Web/Services/RunQueryService.cs` (inline status → shared resolver)
-- `src/TradingEngine.Core/Infrastructure/RunStatusResolver.cs` (make EF-translatable or extract)
+**P7 Session:** 4. **Effort:** ~20 min. **cTrader:** No
 
-**Background (from P0 handover, `.conductor/handovers/P0.md` §4):**
-`RunQueryService.GetRunsAsync` derives status inline via EF-translatable LINQ because it can't call `RunStatusResolver.Resolve` (a static method that isn't translatable to SQL). Every other reader uses the centralized resolver. Behaviour matches today but is a drift risk — the inline check does not treat the literal string `"null"` as empty, but the resolver does.
+**Background (from P0 handover §4):**
+`RunQueryService.GetRunsAsync` derives status inline via EF-translatable LINQ while every other
+reader uses `RunStatusResolver.Resolve`. Behaviour matches today but is a drift risk.
 
-**This is already in the tracker** under P5 ("UI truth + targeted Angular refactor"). The handover recommends folding into P5's run-store consolidation.
+**Files:** `src/TradingEngine.Web/Services/RunQueryService.cs`, `src/TradingEngine.Core/Infrastructure/RunStatusResolver.cs`
 
-**Gate:**
-- `RunQueryService` uses the same resolver as the rest of the codebase (extracted to an EF-compatible form OR computed post-query)
-- Test proves `RunStatusResolver` behaviour matches EF query output for all status variants
-- Build 0w/0e, `completed-with-warnings` test in Integration suite passes
-
-**Checkpoint:** `P5.1 — RunQueryService status deduplicated` (exact ID per P5 plan)
+**Gate:** `RunQueryService` uses the same resolver (EF-compatible or post-query). Test proves
+`RunStatusResolver` behaviour matches EF output for all status variants.
 
 ---
 
-## Px.0 — Transient Integration test flakiness monitor
+## P7.7 — cTrader test audit: replaceable-with-tape analysis 🟡 TODO
 
-**Session size:** N/A (monitoring task, not a code session)
-**Files touched:** None (investigation only if recurrence)
+**P7 Session:** 7. **Effort:** ~30 min. **cTrader:** No (review only)
 
-**Background (from P0 handover, `.conductor/handovers/P0.md` §6):**
-One transient Integration failure was observed a single time during the P0 audit (1/110), then not reproduced across two subsequent full 110/0 runs. It was NOT one of the two new F6-R tests (they use isolated in-memory SQLite). Suspected pre-existing flakiness (shared-fixture/DB timing).
+**Background (from P0 handover §6, CTRADER-TEST-POLICY.md):**
+~20+ simulation tests carry `[Trait("RequiresCTrader", "true")]`. Each takes 1-5 min and depends
+on CLI. Some test transport/connection (genuine cTrader need), others test trading logic that could
+use tape/FakeTransport. Classify each.
 
-**Action for P1/P2 sessions:**
-- When running the gate battery, always run Integration twice if the first run shows a failure
-- If the failure recurs, capture the test name via `.trx` logger BEFORE assuming green
-- If it recurs >2 times across the P1-P2 run, escalate to a real checkpoint (identify and fix or quarantine)
-- If it never recurs through P2, close as "suspected transient, not reproduced"
+**Files:** `tests/TradingEngine.Tests.Simulation/E2E/*.cs`
 
-**Not a checkpoint** — this is a monitoring note for the gate battery preamble of every P1/P2 session.
+**Gate:** `docs/audit/ctrader-test-audit.md` with full classification table + effort estimates.
+
+---
+
+## Px.0 — Transient Integration test flakiness monitor 📊
+
+**Not a P7 session item** — ongoing observation.
+
+**Background (from P0 handover §6):**
+One transient Integration failure observed once (1/110), not reproduced. If it recurs >2 times
+across this phase, escalate to a real checkpoint.

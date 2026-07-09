@@ -48,6 +48,8 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             WallElapsedMs = run.WallElapsedMs,
             BarsPerSec = run.BarsPerSec,
             TotalBars = run.TotalBars,
+            ExplorationMode = run.ExplorationMode,
+            RecordExcursions = run.RecordExcursions,
         };
         db.BacktestRuns.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -223,7 +225,8 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             e.DatasetId, e.ConfigSetId, e.Seed, e.ParentRunId,
             e.RunPlanJson, e.Venue, e.RiskProfileId, e.GovernorEnabled, e.RegimeEnabled,
             e.CommissionPerMillion, e.SpreadPips,
-            e.WallElapsedMs, e.BarsPerSec, e.TotalBars, e.WarningsJson, e.ComparePairId);
+            e.WallElapsedMs, e.BarsPerSec, e.TotalBars, e.WarningsJson, e.ComparePairId,
+            e.ExplorationMode, e.RecordExcursions);
     }
 
     public async Task DeleteAsync(string runId, CancellationToken ct)

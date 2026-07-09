@@ -17,24 +17,27 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s31 P6.8 pyramiding policy** — PyramidDiagnosis domain (12 tests) + API + CLI + playbook
-stage: **P6 COMPLETE** — all P6.1-P6.8 delivered.
-gate: GREEN — build 0err/5warn; Unit 714/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden 61/61; ShippedPlaybook_Parses 10/10
-next: P6 wild list complete. Next per owner: P3.5 triage-sweep playbook (trap #3)
-  or P7 beyond wild list.
-trap: (1) Session labels not wired into TradeExcursions.
-  (2) SpreadVolNoTradeFilter no strategy config wiring.
-  (3) Playbook 3 (triage-sweep.json) not created.
-  (4) BlockBootstrapper writes bars to real MarketDataShard.
-  (5) BlockBootstrapController uses DateTime.UtcNow.
-  (6) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-  (7) Any session touching web-ui/src/*.ts MUST run `npm run build`.
+last: **s33 P7.1 DONE** — explorationMode + RecordExcursions now persisted (M46 migration).
+  Backfill endpoint idempotent (84 trades updated); MaeR/MfeR confirmed populated (avg 0.783/1.079).
+stage: **P7 Cleanup + Verification — 7 sessions remaining.**
+gate: GREEN — build 0err/5warn; Unit 715/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden byte-identical; ShippedPlaybook_Parses 10/10
+next: **Session 2 — Prove cTrader works (P7.2)**: start app, POST venue=ctrader backtest,
+  confirm completed+Trades>0 in DB, write ctrader-quickstart.md.
+trap: (1) BuildInfo.g.cs + build-info.ts dirty each build. (2) Any session touching
+  web-ui/src/*.ts MUST run `npm run build`. (3) cTrader creds ARE accessible — see P7.2.
 
 ## Checkpoints
 
 Status ∈ TODO · IN PROGRESS · DONE · BLOCKED. Evidence = an artifact path produced by a run this
 phase (a code path is not evidence). Scope changes get a `> scope change:` line under the row.
+
+### P0-P6 — DELIVERED (all DONE)
+See original PLAN.md for full checkpoint table. Summary: 32 sessions, $3.14 total.
+Unit 714/0/6, Integration 120/0/0, Sim-fast 144/0/0, Golden 61/61.
+All 7 OWNER-PENDING markers (P0.1-P0.4, P1.2, P3.4, P6.5-P6.6) resolved by P7.
+
+### P7 — Cleanup + Verification (8 sessions)
 
 > QA-previous (s31 QA of s30 P6.7): **confirmed.** Full gate battery re-run verbatim:
 > build 0err/5warn, Unit 701/0/6, Integration 120/0/0, fast Sim 144/0/0,
@@ -134,7 +137,15 @@ phase (a code path is not evidence). Scope changes get a `> scope change:` line 
 | P6.5 | Wild list: block-bootstrap tapes | DONE (OWNER-PENDING — needs live app up to exercise endpoint end-to-end) | 23bed7c | playbooks/block-bootstrap.json; BlockBootstrapperTests 9/9 (Unit); ShippedPlaybook_Parses 5/5 |
 | P6.6 | Wild list: meta-allocator | DONE (OWNER-PENDING — live playbook run needs app+data) | 5f3c001 | playbooks/meta-allocator.json; MetaAllocatorTests 12/12 (Unit); R5: playbook parses per ShippedPlaybook_Parses 8/8 |
 | P6.7 | Wild list: entry-quality decomposition | DONE | 061068c | playbooks/entry-quality.json; EntryDiagnosisTests 11/11 (Unit); ShippedPlaybook_Parses 9/9; EntryQualityController API endpoint |
-| P6.8 | Wild list: pyramiding policy | DONE | (pending commit) | playbooks/pyramid-policy.json; PyramidDiagnosisTests 12/12 (Unit); ShippedPlaybook_Parses 10/10 |
+| P6.8 | Wild list: pyramiding policy | DONE | a2ab895 | playbooks/pyramid-policy.json; PyramidDiagnosisTests 12/12 (Unit); ShippedPlaybook_Parses 10/10 |
+| P7.1 | P4.1 live verification — exploration funnel + backfill (FIXED: persistence gap — M46 migration) | DONE | — | `evidence/p7-s1-live-verification.md` (explorationMode+RecordExcursions persist; backfill 84/84 MaeR/MfeR populated; avg 0.783/1.079) |
+| P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | TODO | — | `docs/agents/ctrader-quickstart.md` |
+| P7.3 | Traps 3+1+2 — triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring | TODO | — | `evidence/p7-s3-traps.md` |
+| P7.4 | Traps 4+5+6 + P5.1 status dedup — BlockBootstrapper fixes + EntityAuditableTests + RunQueryService | TODO | — | `evidence/p7-s4-fixes.md` |
+| P7.5 | P2.2 headline gate — compare-both run with cTrader + committed verdict | TODO | — | `docs/audit/RECONCILE-FINDINGS.md §P2.2` |
+| P7.6 | F6-R economics recovery — Option A: PublishTradeClosed from reconcile-close | TODO | — | `evidence/p7-s6-f6r.md` |
+| P7.7 | cTrader test audit — classify RequiresCTrader tests replaceable by tape | TODO | — | `docs/audit/ctrader-test-audit.md` |
+| P7.8 | Final audit — rate all phases against PLAN.md + bugfix queue | TODO | — | `docs/qa-reports/FINAL-AUDIT.md` |
 
 ## Quick commands (gates — see PLAN §11 for per-phase specifics)
 

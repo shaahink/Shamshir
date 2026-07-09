@@ -138,6 +138,8 @@ public sealed class RunQueryService : IRunQueryService
             TotalBars = r.TotalBars,
             ParentRunId = r.ParentRunId,
             ComparePairId = r.ComparePairId,
+            ExplorationMode = r.ExplorationMode,
+            RecordExcursions = r.RecordExcursions,
         };
     }
 

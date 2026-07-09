@@ -694,7 +694,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 GovernorEnabled: cfg.CustomParams.GetValueOrDefault("GovernorEnabled") != "false",
                 RegimeEnabled: cfg.CustomParams.GetValueOrDefault("DisableRegime") != "true",
                 CommissionPerMillion: cfg.CommissionPerMillion,
-                SpreadPips: cfg.SpreadPips);
+                SpreadPips: cfg.SpreadPips,
+                ExplorationMode: cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
+                RecordExcursions: cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true");
             await repo.SaveAsync(summary, CancellationToken.None);
         }
         catch (Exception ex)
@@ -731,7 +733,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 TotalBars: totalBars,
                 WarningsJson: result.WarningsJson,
                 ComparePairId: cfg.CustomParams.GetValueOrDefault("ComparePairId"),
-                ParentRunId: cfg.CustomParams.GetValueOrDefault("ParentRunId"));
+                ParentRunId: cfg.CustomParams.GetValueOrDefault("ParentRunId"),
+                ExplorationMode: cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
+                RecordExcursions: cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true");
             await repo.UpdateAsync(summary, CancellationToken.None);
             return true;
         }
