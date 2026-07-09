@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 05:53 UTC · branch `iter/parity-pipeline` · HEAD `4a05a5a`_
+_Updated 2026-07-09 06:04 UTC · branch `iter/parity-pipeline` · HEAD `edb60c9`_
 
 **Status:** Idle
 **Stage:** P7.3 — Traps 3+1+2 — triage-sweep playbook + wiring · attempts used 0
-**Checkpoints:** 30/32 done · **Sessions run:** 53 · **Cost:** $4.5590 · **Tokens:** 5,646,917 in / 799,865 out / 477,072 think
+**Checkpoints:** 31/32 done · **Sessions run:** 54 · **Cost:** $4.6553 · **Tokens:** 5,808,100 in / 810,122 out / 487,398 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 **⚠ Skipped stages (need human review):** P7.1, P7.2
 
@@ -25,7 +25,6 @@ _Updated 2026-07-09 05:53 UTC · branch `iter/parity-pipeline` · HEAD `4a05a5a`
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 24 | P6 | Fix | 3 | 07-08 21:25 | 0:00 | AgentError |  | 0 | build:OK |  |  |
 | 25 | P6 | Fix | 4 | 07-08 21:26 | 0:20 | GatesRed | P6.4 | 3 | build:FAIL | $0.1286 | 184,512/17,798 |
 | 26 | P6 | Fix | 3 | 07-08 21:48 | 0:31 | Progress |  | 5 | build:OK | $0.1876 | 252,592/21,235 |
 | 27 | P6 | Deliver | 4 | 07-08 22:21 | 0:21 | GatesRed | P6.5 | 3 | build:FAIL | $0.2596 | 408,004/23,666 |
@@ -55,11 +54,10 @@ _Updated 2026-07-09 05:53 UTC · branch `iter/parity-pipeline` · HEAD `4a05a5a`
 | 51 | P7.3 | Deliver | 1 | 07-09 04:49 | 0:05 | Progress |  | 2 | build:OK | $0.0720 | 131,108/5,252 |
 | 52 | P7.3 | Deliver | 2 | 07-09 04:56 | 0:31 | Advanced | P7.5 | 2 | build:OK | $0.1555 | 196,682/21,796 |
 | 53 | P7.3 | Deliver | 1 | 07-09 05:29 | 0:23 | Advanced | P7.6 | 2 | build:OK | $0.2168 | 336,845/22,508 |
+| 54 | P7.3 | Deliver | 1 | 07-09 05:53 | 0:09 | Advanced | P7.7 | 1 | build:OK | $0.0963 | 161,183/10,257 |
 
 ### Commits by session
 
-- **s46 (P7.2 Deliver)** — 1 commit(s):
-  - 4b9cedc chore(p7.2): finalize P7.2 — verify run, advance RESUME to P7.3 (s46)
 - **s47 (P7.2 Deliver)** — 2 commit(s):
   - 4477ca3 chore(p7.3): stamp commit hash in tracker row
   - 5cdd085 feat(p7.3): traps 3+1+2 — triage-sweep playbook + session labels + EntryFilter wiring
@@ -79,6 +77,8 @@ _Updated 2026-07-09 05:53 UTC · branch `iter/parity-pipeline` · HEAD `4a05a5a`
 - **s53 (P7.3 Deliver)** — 2 commit(s):
   - 4a05a5a chore(p7.6): stamp commit hash in tracker row
   - bcdfc31 feat(p7.6): F6-R economics recovery — reconstruct PublishTradeClosed from paired journal entries. Barrier CollectAsync now pairs orphan close fills with open fills + proposals. 6/6 barrier tests, gates green.
+- **s54 (P7.3 Deliver)** — 1 commit(s):
+  - edb60c9 feat(p7.7): cTrader test audit — classify 19 RequiresCTrader tests (12 KEEP, 1 MERGE INTO, 1 REPLACEABLE, 5 RETIRED). All gates green. QA of s53/P7.6 confirmed.
 
 ## Phase handovers (audit)
 
@@ -96,18 +96,18 @@ build:OK
 
 ## Last session result
 
-> SESSION-RESULT: P7.6 landed — F6-R economics recovery (commits bcdfc31 + 4a05a5a). Barrier `CollectAsync` now reconstructs `PublishTradeClosed` by pairing orphan close fills (OrderFilled with CloseReason, no PublishTradeClosed effect) with their open fill (entry data) and OrderProposed/OrderSubmitted (strategy/direction/SL/TP). Successfully reconstructed trades backfill via the existing `TradeResultFactory` path. All gates green: build 0err/5warn, Unit 716/0/6, Integration 121/0/0 (+1 new reconstruction test), Sim-fast 144/0/0, golden clean. Open: F17 (tape zero-trade regression), F18 (compare-both regression), P7.7 (cTrader test audit), P7.8 (final audit). Next session should execute P7.7 p…
+> SESSION-RESULT: P7.7 landed — classified all 19 RequiresCTrader tests (14 active + 5 retired): 12 KEEP (transport/connection/reconciliation/data-acquisition genuinely need real cTrader), 1 MERGE INTO (CtraderE2EHarnessSmokeTests.UsingRunAsync → PipelineE2ETests.EurUsd_H1_3Days_ProducesTrades), 1 REPLACEABLE (CtraderScenarioE2ETests.HappyPath_TradeLedgerHasIntegrity — assertions are engine domain, can move to tape char test at ~15m effort). QA of s53/P7.6 confirmed (barrier 6/6, all gates green). All gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0, Sim-fast 144/0/0, golden clean. Commit edb60c9 pushed. Conductor state.json is stale (thinks P7.3 is current; actual is P7.7 complete).…
 
 ## Tracker handoff
 
 ```
-last: **s53 P7.6** — F6-R economics recovery (Option A) landed.
-  Barrier now reconstructs PublishTradeClosed from paired OrderFilled open+close+proposal
-  journal entries; unreconstructable close fills remain JournalCloseFills.
-  Gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0 (+1 test),
-  Sim-fast 144/0/0, golden clean. Barrier tests 6/6.
-stage: **P7 Cleanup + Verification — P7.1-P7.6 DONE.**
+last: **s54 P7.7** — cTrader test audit: classified all 19 RequiresCTrader tests (14 active + 5 retired).
+  12 KEEP (transport/connection/recon/data-acq), 1 MERGE INTO (UsingRunAsync→#2),
+  1 REPLACEABLE (HappyPath→tape char). QA of s53/P7.6 confirmed (barrier 6/6, all gates green).
+  Gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0,
+  Sim-fast 144/0/0, golden clean.
+stage: **P7 Cleanup + Verification — P7.1-P7.7 DONE.**
 gate: PASS — all 6 gates green.
-next: **P7.7 — cTrader test audit** (classify RequiresCTrader tests).
+next: **P7.8 — Final audit** (rate all phases against PLAN.md + bugfix queue).
 trap: BuildInfo.g.cs dirty. F17+F18 still open (from P7.5). Conductor state.json STALE.
 ```
