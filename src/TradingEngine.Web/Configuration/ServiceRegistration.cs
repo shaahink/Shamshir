@@ -103,7 +103,8 @@ public static class ServiceRegistration
             o.UseSqlite(mdCs);
             o.AddInterceptors(sp.GetRequiredService<SqlitePragmaInterceptor>());
         });
-        services.AddSingleton<IMarketDataStore, SqliteMarketDataStore>();
+        services.AddSingleton<SqliteMarketDataStore>();
+        services.AddSingleton<IMarketDataStore>(sp => new BootstrapMarketDataStore(sp.GetRequiredService<SqliteMarketDataStore>()));
         // Create the file + schema once; WAL persists in the file header for every later connection.
         using (var mdInit = new MarketDataDbContext(
             new DbContextOptionsBuilder<MarketDataDbContext>().UseSqlite(mdCs).Options))

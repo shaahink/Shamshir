@@ -1,6 +1,6 @@
 namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class ExitCalibrationEntity
+public sealed class ExitCalibrationEntity : IAuditableEntity
 {
     public Guid Id { get; set; }
     public string StrategyId { get; set; } = "";
@@ -24,7 +24,7 @@ public sealed class ExitCalibrationEntity
     public DateTime UpdatedAtUtc { get; set; }
 }
 
-public sealed class ReferenceScaleEntity
+public sealed class ReferenceScaleEntity : IAuditableEntity
 {
     public Guid Id { get; set; }
     public string Symbol { get; set; } = "";
@@ -34,4 +34,6 @@ public sealed class ReferenceScaleEntity
     public double MedianSpreadPips { get; set; }
     public int SampleBarCount { get; set; }
     public DateTime RefreshedAtUtc { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
 }

@@ -238,10 +238,9 @@ changes needed.
 
 ## RESUME (P7 Cleanup — overwrite this block each session)
 
-**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822, s46; re-verified s48, s49). P7.3 **DONE** (5cdd085, s47).
+**Phase:** P7 Cleanup + Verification — 8 sessions. P7.1 **DONE** (c830098). P7.2 **DONE** (60dfc7b, qa: 22d5822, s46; re-verified s48, s49). P7.3 **DONE** (5cdd085, s47; QA-confirmed s50). P7.4 **DONE** (s50, evidence: evidence/p7-s4-fixes/p7-s4-verdict.md).
 **Branch:** `iter/parity-pipeline`
-**P7.4 — Traps 4+5+6 + P5.1 (CURRENT):** BlockBootstrapper fixes + EntityAuditableTests + RunQueryService status dedup. ~40 min.
-  cTrader credentials verified (see docs/agents/ctrader-quickstart.md).
+**P7.5 — P2.2 headline gate (CURRENT):** compare-both run with cTrader + commit reconcile verdict to docs/audit/RECONCILE-FINDINGS.md §P2.2. ~60 min. cTrader credentials accessible (see docs/agents/ctrader-quickstart.md).
 
 ### Session Plan
 
@@ -249,8 +248,8 @@ changes needed.
 |---|------|--------|:--------:|--------|
 | 1 | P4.1 live verification — exploration funnel + backfill | ~30m | No | **DONE** (c830098) |
 | 2 | Prove cTrader works — HTTP backtest + quickstart doc | ~40m | ✅ | **DONE** (60dfc7b, qa: 22d5822) |
-| 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No | **DONE** (s47) |
-| 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No | **TODO** |
+| 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No | **DONE** (5cdd085) |
+| 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No | **DONE** (s50) |
 | 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ | TODO |
 | 6 | F6-R economics recovery — Option A | ~40m | No | TODO |
 | 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No | TODO |
@@ -266,5 +265,5 @@ Get-Content .conductor/REPORT.md 2>$null
 
 **Full workflow:** `docs/workflows/shamshir-post-p6-workflow.md`
 **Tracker:** `docs/iterations/iter-parity-pipeline/TRACKER.md`
-**Baseline:** Unit 715/0/6 · Integration 120/0/0 · Sim-fast 144/0/0 · Golden 61/61
+**Baseline:** Unit 716/0/6 · Integration 120/0/0 · Sim-fast 144/0/0 · Golden 61/61
 

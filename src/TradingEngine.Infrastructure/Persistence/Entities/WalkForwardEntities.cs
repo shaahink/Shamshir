@@ -1,6 +1,6 @@
 namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class WalkForwardJobEntity
+public sealed class WalkForwardJobEntity : IAuditableEntity
 {
     public Guid Id { get; set; }
     public string SpecJson { get; set; } = "";
@@ -8,13 +8,14 @@ public sealed class WalkForwardJobEntity
     public int TotalWindows { get; set; }
     public int CompletedWindows { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
     public string? ErrorMessage { get; set; }
 
     public List<WalkForwardWindowResultEntity> Windows { get; set; } = [];
 }
 
-public sealed class WalkForwardWindowResultEntity
+public sealed class WalkForwardWindowResultEntity : IAuditableEntity
 {
     public Guid Id { get; set; }
     public Guid JobId { get; set; }
@@ -33,4 +34,6 @@ public sealed class WalkForwardWindowResultEntity
     public double TestWinRatePct { get; set; }
     public int TrialsCount { get; set; }
     public double? PlateauValue { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
 }

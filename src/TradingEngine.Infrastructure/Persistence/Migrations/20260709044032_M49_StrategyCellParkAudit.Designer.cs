@@ -2,17 +2,20 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TradingEngine.Infrastructure.Persistence;
 
 #nullable disable
 
-namespace TradingEngine.Infrastructure.Migrations
+namespace TradingEngine.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(TradingDbContext))]
-    partial class TradingDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260709044032_M49_StrategyCellParkAudit")]
+    partial class M49_StrategyCellParkAudit
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.9");
@@ -1244,9 +1247,6 @@ namespace TradingEngine.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Detail")
                         .HasColumnType("TEXT");
 
@@ -1259,9 +1259,6 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<string>("RunId")
                         .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Venue")
@@ -1307,9 +1304,6 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<int>("TotalWindows")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("TEXT");
-
                     b.HasKey("Id");
 
                     b.ToTable("WalkForwardJobs", (string)null);
@@ -1323,9 +1317,6 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<string>("ChosenParamsJson")
                         .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("JobId")
@@ -1375,9 +1366,6 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<int>("TrialsCount")
                         .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("TEXT");
 
                     b.Property<int>("WindowIndex")
                         .HasColumnType("INTEGER");

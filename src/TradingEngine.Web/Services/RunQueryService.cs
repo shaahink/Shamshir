@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Web.Dtos.Runs;
 
@@ -50,11 +51,10 @@ public sealed class RunQueryService : IRunQueryService
             {
                 RunId = r.RunId,
                 CreatedAtUtc = r.CreatedAtUtc,
-                Status = r.CompletedAtUtc == default ? "running"
-                    : r.ErrorMessage != null ? "failed"
-                    : (r.WarningsJson != null && r.WarningsJson != "" && r.WarningsJson != "[]" && r.WarningsJson != "{}")
-                        ? "completed-with-warnings"
-                    : "completed",
+                Status = RunStatusResolver.Resolve(
+                    isCompleted: r.CompletedAtUtc != default,
+                    errorMessage: r.ErrorMessage,
+                    warningsJson: r.WarningsJson),
                 Symbol = r.Symbol,
                 Period = r.Period,
                 Symbols = r.Symbols,
