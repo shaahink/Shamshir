@@ -1,32 +1,12 @@
 ﻿# Conductor — Shamshir-Parity run report
 
-_Updated 2026-07-09 00:13 UTC · branch `iter/parity-pipeline` · HEAD `7268801`_
+_Updated 2026-07-09 00:24 UTC · branch `iter/parity-pipeline` · HEAD `99d5f45`_
 
-**Status:** Running — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
+**Status:** Idle — agent asked for a human in the tracker handoff (HUMAN: line) — resolve, then run `conductor resume`
 **Stage:** P6 — Wild list (pipeline-gated) · attempts used 0
-**Checkpoints:** 24/24 done · **Sessions run:** 32 · **Cost:** $3.1424 · **Tokens:** 3,469,423 in / 628,437 out / 334,037 think
+**Checkpoints:** 24/24 done · **Sessions run:** 32 · **Cost:** $3.2550 · **Tokens:** 3,580,470 in / 650,472 out / 350,804 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5
-
-## Latest activity (live)
-
-_Session #32 (Audit) · running 15m · last output 145s ago · $0.0959_
-
-**Thinking:**
-> The output was truncated. Let me get the test summary specifically:
-> 715 passed, 0 failed, 6 skipped (pre-existing cTrader/FTMO skips). Now integration tests:
-> 120/120 passed. Now simulation tests:
-
-**Recent actions:**
-- `01:08:25` » edit src\TradingEngine.ResearchCli\HttpStepRunner.cs
-- `01:08:25` · I see the issue — the `ExitLabAsync` method signature wasn't updated. Let me fix it:
-- `01:08:49` » bash dotnet build --no-restore 2>&1
-- `01:09:00` » todowrite 4 todos
-- `01:09:00` · Build succeeded with 0 errors, 5 warnings (pre-existing cTrader net6.0 warnings). Now run the full gate battery:
-- `01:09:13` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build --filter "FullyQualifiedName~PlaybookEngine|FullyQualifiedName~SpreadVolNoTradeFilter|FullyQualifiedN…
-- `01:09:20` · 96/96 passed in the targeted tests. Now run the full gate battery:
-- `01:09:26` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build --verbosity normal 2>&1 | Select-Object -Last 5
-- `01:09:38` » bash dotnet test tests/TradingEngine.Tests.Unit --no-build 2>&1 | Select-String -Pattern "Total tests|Passed|Failed|Skipped"
-- `01:10:27` » bash dotnet test tests/TradingEngine.Tests.Integration --no-build 2>&1 | Select-String -Pattern "Total tests|Passed|Failed|Skipped"
+**Pending:** full-battery phase gate for P6
 
 ## Stage progress
 
@@ -73,18 +53,10 @@ _Session #32 (Audit) · running 15m · last output 145s ago · $0.0959_
 | 29 | P6 | Deliver | 4 | 07-08 22:50 | 0:17 | Advanced | P6.6 | 2 | build:OK | $0.1689 | 279,442/20,530 |
 | 30 | P6 | Deliver | 1 | 07-08 23:08 | 0:28 | Advanced | P6.7 | 3 | build:OK | $0.2726 | 394,325/45,075 |
 | 31 | P6 | Deliver | 1 | 07-08 23:38 | 0:18 | Advanced | P6.8 | 2 | build:OK | $0.1536 | 211,196/31,287 |
-| 32 | P6 | Audit | 1 | 07-08 23:58 | … | running |  | 0 |  |  |  |
+| 32 | P6 | Audit | 1 | 07-08 23:58 | 0:26 | Progress |  | 2 |  | $0.1125 | 111,047/22,035 |
 
 ### Commits by session
 
-- **s21 (P6 Deliver)** — 7 commit(s):
-  - 36f5e0f docs(s21): update TRACKER + RESUME for P6.1-P6.3 delivery
-  - e6c45aa feat(P6.3): spread/vol no-trade filter — SpreadVolNoTradeFilter + playbook
-  - f59415d chore(conductor): s21 P6 working ▸P6.1 @ 22:14
-  - 1598970 feat(P6.2): session fingerprinting — SessionDetector + playbook
-  - 2bac5d3 feat(P6.1): data-quality sentinel — ResearchCli verb + playbook step
-  - 2e6fb66 feat(P5.1d): Angular refactor — signals migration, toast service, store progress consolidation
-  - ede782b chore(conductor): s21 P6 working ▸P6.1 @ 21:59
 - **s25 (P6 Fix)** — 3 commit(s):
   - e458199 docs(s25): update TRACKER + RESUME for P6.4 delivery
   - 611d26d feat(P6.4): regime-conditioned calibration — regime filter on exitlab eval + playbook
@@ -112,6 +84,9 @@ _Session #32 (Audit) · running 15m · last output 145s ago · $0.0959_
 - **s31 (P6 Deliver)** — 2 commit(s):
   - a2ab895 feat(P6.8): pyramiding policy — diagnosis of structured adds over excursion paths
   - e32f54b chore(conductor): s31 P6 working ▸P6.8 @ 00:53
+- **s32 (P6 Audit)** — 2 commit(s):
+  - 99d5f45 audit(P6): static audit — fix DateTime.UtcNow violations, playbook bugs, context resolution gap
+  - df9f01f chore(conductor): s32 P6 working ▸P6 @ 01:13
 
 ## Phase handovers (audit)
 
@@ -121,6 +96,7 @@ _Session #32 (Audit) · running 15m · last output 145s ago · $0.0959_
 - `.conductor/handovers/P3.md`
 - `.conductor/handovers/P4.md`
 - `.conductor/handovers/P5.md`
+- `.conductor/handovers/P6.md`
 
 ## Last gate run
 
@@ -128,12 +104,7 @@ build:OK
 
 ## Last session result
 
-> Let me continue reading the rest of AGENTS.md and PLAN.md P6 section.
-> Now let me QA the previous session (s30 P6.7). I'll run the gate battery and read the relevant docs in parallel.
-> Build is green (0 errors, 5 warnings — same 5 net6.0 TFM warnings). Now running the full gate battery and searching DECISIONS.md for relevant decisions.
-> Gates match RESUME exactly. Now checking golden tests and reading the pyramiding context from the original plan.
-> Golden: 61 passed, 0 failed. All gates match. Now let me independently verify TWO claims from the previous session (P6.7) — one runtime (R5), one tests.
-> QA confirmed: EntryDiagnosisTests 11/11, playbooks/entry-quality.json exists. Now let me expl…
+> SESSION-RESULT: Audited 43 files (27 commits, +3910/-246 lines) across P6.1–P6.8. Found 13 bugs — fixed 8 high-severity ones (DateTime.UtcNow violations in 2 controllers, broken playbook missing a start-run step, verdct/exit-code contract breaks in CLI and step-runner, silent exception swallowing in SpreadVolNoTradeFilter, and a systemic `$reference` resolution gap in 5 HttpStepRunner step handlers). Created `SystemClock : IEngineClock` and registered it in Web DI to close Open Trap #5. Added 1 test. Deferred 5 low-impact issues (EntryDiagnosis math inaccuracies that are scale-invariant, N+1 DB query pattern in EntryQualityController, non-transactional save; full evidence in `.conductor/hand…
 
 ## Tracker handoff
 
