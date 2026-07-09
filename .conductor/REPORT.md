@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 03:26 UTC · branch `iter/parity-pipeline` · HEAD `877c120`_
+_Updated 2026-07-09 03:33 UTC · branch `iter/parity-pipeline` · HEAD `a2a9b23`_
 
 **Status:** Idle
-**Stage:** P7.2 — Prove cTrader works — HTTP backtest + quickstart doc · attempts used 1
-**Checkpoints:** 25/32 done · **Sessions run:** 42 · **Cost:** $3.4987 · **Tokens:** 3,950,641 in / 681,612 out / 370,781 think
+**Stage:** P7.2 — Prove cTrader works — HTTP backtest + quickstart doc · attempts used 0
+**Checkpoints:** 26/32 done · **Sessions run:** 43 · **Cost:** $3.5468 · **Tokens:** 4,029,572 in / 688,773 out / 374,464 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 **⚠ Skipped stages (need human review):** P7.1
 
@@ -25,7 +25,6 @@ _Updated 2026-07-09 03:26 UTC · branch `iter/parity-pipeline` · HEAD `877c120`
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 13 | P3 | Deliver | 1 | 07-08 18:04 | 0:07 | NoProgress |  | 0 | build:OK | $0.0374 | 63,378/4,917 |
 | 14 | P3 | Fix | 2 | 07-08 18:13 | 0:14 | Advanced | P3.3 | 2 | build:OK | $0.1204 | 203,515/13,269 |
 | 15 | P3 | Audit | 1 | 07-08 18:30 | 0:14 | Progress |  | 2 |  | $0.0740 | 79,867/15,468 |
 | 16 | P4 | Deliver | 1 | 07-08 18:46 | 0:27 | Advanced | P4.1 | 3 | build:OK | $0.1892 | 229,115/27,015 |
@@ -55,15 +54,10 @@ _Updated 2026-07-09 03:26 UTC · branch `iter/parity-pipeline` · HEAD `877c120`
 | 40 | P7.2 | Deliver | 1 | 07-09 03:07 | 1:02 | Interrupted |  | 0 |  |  |  |
 | 41 | P7.2 | Deliver | 1 | 07-09 03:10 | 0:03 | Interrupted |  | 0 |  |  |  |
 | 42 | P7.2 | Resume | 1r1 | 07-09 03:14 | 0:12 | Stalled |  | 0 |  | $0.0129 | 28,175/156 |
+| 43 | P7.2 | Resume | 2r2 | 07-09 03:26 | 0:05 | Advanced | P7.2 | 2 | build:OK | $0.0481 | 78,931/7,161 |
 
 ### Commits by session
 
-- **s26 (P6 Fix)** — 5 commit(s):
-  - 7f04409 docs(s26): update TRACKER + RESUME for build fix
-  - cbf2c75 chore(conductor): s26 P6 working ▸P6.5 @ 23:18
-  - 90e484a fix(ui): add missing toast files omitted from s21 commit 2e6fb66
-  - bee34c6 fix(build): change Angular auto-rebuild to staleness guard (.NET 10 compat)
-  - a7fc6dc chore(conductor): s26 P6 working ▸P6.5 @ 23:03
 - **s27 (P6 Deliver)** — 3 commit(s):
   - cf10399 docs(s27): update RESUME + TRACKER for P6.5 delivery
   - ea8d6b1 feat(P6.5): block-bootstrap tapes — synthetic bar generation via block resampling
@@ -86,6 +80,9 @@ _Updated 2026-07-09 03:26 UTC · branch `iter/parity-pipeline` · HEAD `877c120`
   - df9f01f chore(conductor): s32 P6 working ▸P6 @ 01:13
 - **s34 (P7.1 Resume)** — 1 commit(s):
   - c830098 feat(p7.1): P4.1 live verification — persist explorationMode + RecordExcursions through M46
+- **s43 (P7.2 Resume)** — 2 commit(s):
+  - a2a9b23 chore(p7.2): fix tracker commit hash to match pushed commit
+  - 60dfc7b feat(p7.2): cTrader backtest verified — quickstart doc
 
 ## Phase handovers (audit)
 
@@ -97,20 +94,23 @@ _Updated 2026-07-09 03:26 UTC · branch `iter/parity-pipeline` · HEAD `877c120`
 - `.conductor/handovers/P5.md`
 - `.conductor/handovers/P6.md`
 
+## Last gate run
+
+build:OK
+
 ## Last session result
 
-> Interrupted during monitoring — inject was consumed. Re-injecting and re-launching.
+> SESSION-RESULT: P7.2 landed — cTrader run 77e37dee verified via sqlite3 (ExitCode=0, TotalTrades=1, EURUSD Long 4.46 lots, NetPnL=312.31). Wrote `docs/agents/ctrader-quickstart.md` with credential paths, API endpoint, polling pattern, architecture diagram, and troubleshooting. Updated TRACKER.md handoff + P7.2 checkpoint row (DONE, 60dfc7b), AGENTS.md RESUME block to P7.3. All gates green: build 0e/5w, Unit 715/0/6, Integration 120/0/0, fast Sim 144/0/0, golden clean. Two commits pushed to `iter/parity-pipeline` (60dfc7b main + a2a9b23 hash-fix). Next session: P7.3 — Traps 3+1+2 (triage-sweep playbook, session labels, SpreadVolNoTradeFilter wiring).
 
 ## Tracker handoff
 
 ```
-last: **s33 P7.1 DONE** — explorationMode + RecordExcursions now persisted (M46 migration).
-  Backfill endpoint idempotent (84 trades updated); MaeR/MfeR confirmed populated (avg 0.783/1.079).
-stage: **P7 Cleanup + Verification — 7 sessions remaining.**
+last: **P7.2 DONE** — cTrader run 77e37dee verified (ExitCode=0, TotalTrades=1,
+  EURUSD Long 4.46 lots, NetPnL 312.31). Quickstart doc committed.
+stage: **P7 Cleanup + Verification — 6 sessions remaining.**
 gate: GREEN — build 0err/5warn; Unit 715/0/6; Integration 120/0/0;
   fast Sim 144/0/0; golden byte-identical; ShippedPlaybook_Parses 10/10
-next: **Session 2 — Prove cTrader works (P7.2)**: start app, POST venue=ctrader backtest,
-  confirm completed+Trades>0 in DB, write ctrader-quickstart.md.
+next: **Session 3 — Traps 3+1+2 (P7.3)**: triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring.
 trap: (1) BuildInfo.g.cs + build-info.ts dirty each build. (2) Any session touching
-  web-ui/src/*.ts MUST run `npm run build`. (3) cTrader creds ARE accessible — see P7.2.
+  web-ui/src/*.ts MUST run `npm run build`. (3) cTrader creds accessible (see ctrader-quickstart.md).
 ```
