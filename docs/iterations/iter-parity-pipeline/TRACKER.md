@@ -17,11 +17,11 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P7.2 QA (s44)** — confirmed: run 77e37dee ExitCode=0 TotalTrades=1;
-  quickstart doc fixed (RunId column); AGENTS baseline 714→715.
-stage: **P7 Cleanup + Verification — 6 sessions remaining.**
+last: **P7.2 QA (s45)** — confirmed: sqlite3 run 77e37dee ExitCode=0 TotalTrades=1
+  (EURUSD H1 Long 4.46 lots NetPnL=312.31); quickstart doc verified; fresh gates all green.
+stage: **P7 Cleanup + Verification — 5 sessions remaining.**
 gate: GREEN — build 0err/5warn; Unit 715/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden byte-identical; ShippedPlaybook_Parses 10/10
+  fast Sim 144/0/0; golden byte-identical.
 next: **Session 3 — Traps 3+1+2 (P7.3)**: triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring.
 trap: (1) BuildInfo.g.cs + build-info.ts dirty each build. (2) Any session touching
   web-ui/src/*.ts MUST run `npm run build`. (3) cTrader creds accessible (see ctrader-quickstart.md).
@@ -138,7 +138,7 @@ All 7 OWNER-PENDING markers (P0.1-P0.4, P1.2, P3.4, P6.5-P6.6) resolved by P7.
 | P6.7 | Wild list: entry-quality decomposition | DONE | 061068c | playbooks/entry-quality.json; EntryDiagnosisTests 11/11 (Unit); ShippedPlaybook_Parses 9/9; EntryQualityController API endpoint |
 | P6.8 | Wild list: pyramiding policy | DONE | a2ab895 | playbooks/pyramid-policy.json; PyramidDiagnosisTests 12/12 (Unit); ShippedPlaybook_Parses 10/10 |
 | P7.1 | P4.1 live verification — exploration funnel + backfill (FIXED: persistence gap — M46 migration) | DONE | c830098 | `evidence/p7-s1-live-verification.md` (explorationMode+RecordExcursions persist; backfill 84/84 MaeR/MfeR populated; avg 0.783/1.079) |
-| P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | DONE | 60dfc7b | `docs/agents/ctrader-quickstart.md`; DB: run 77e37dee ExitCode=0 TotalTrades=1 |
+| P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | DONE | 60dfc7b (QA: 4998b9f) | `docs/agents/ctrader-quickstart.md`; DB: run 77e37dee ExitCode=0 TotalTrades=1; QA s45: `evidence/p7-s2-qa/qa-verdict.md` |
 | P7.3 | Traps 3+1+2 — triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring | TODO | — | `evidence/p7-s3-traps.md` |
 | P7.4 | Traps 4+5+6 + P5.1 status dedup — BlockBootstrapper fixes + EntityAuditableTests + RunQueryService | TODO | — | `evidence/p7-s4-fixes.md` |
 | P7.5 | P2.2 headline gate — compare-both run with cTrader + committed verdict | TODO | — | `docs/audit/RECONCILE-FINDINGS.md §P2.2` |
