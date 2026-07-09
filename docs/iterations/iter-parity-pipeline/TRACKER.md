@@ -153,7 +153,7 @@ All 7 OWNER-PENDING markers (P0.1-P0.4, P1.2, P3.4, P6.5-P6.6) resolved by P7.
 | P7.3 | Traps 3+1+2 — triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring | DONE | 5cdd085 | `evidence/p7-s3-traps/p7-s3-verdict.md`; QA s51: `evidence/p7-s3-traps/p7-s3-qa-s51.md` — CONFIRMED |
 | P7.4 | Traps 4+5+6 + P5.1 status dedup — BlockBootstrapper fixes + EntityAuditableTests + RunQueryService | DONE | 0579561 | `evidence/p7-s4-fixes/p7-s4-verdict.md` |
 | P7.5 | P2.2 headline gate — compare-both run with cTrader + committed verdict | DONE | 30aaca8 | `docs/audit/RECONCILE-FINDINGS.md §P2.2` (filled); `evidence/p7-s5-headline-gate/p7-s5-verdict.md`; cTrader runs d5de5628 + 994a3b91 in DB; new F-ids F17+F18 |
-| P7.6 | F6-R economics recovery — Option A: reconstruct PublishTradeClosed from paired OrderFilled open+close+proposal | DONE | — | `evidence/p7-s6-f6r/p7-s6-verdict.md` |
+| P7.6 | F6-R economics recovery — Option A: reconstruct PublishTradeClosed from paired OrderFilled open+close+proposal | DONE | bcdfc31 | `evidence/p7-s6-f6r/p7-s6-verdict.md` |
 | P7.7 | cTrader test audit — classify RequiresCTrader tests replaceable by tape | TODO | — | `docs/audit/ctrader-test-audit.md` |
 | P7.8 | Final audit — rate all phases against PLAN.md + bugfix queue | TODO | — | `docs/qa-reports/FINAL-AUDIT.md` |
 
