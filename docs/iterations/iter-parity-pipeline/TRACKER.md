@@ -17,13 +17,11 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **P7.3 delivered (s47)** — triage-sweep playbook created + parses (11/11);
-  SessionLabel column on TradeExcursions (M47) with end-to-end wiring through
-  TradePersistenceHandler; EntryFilterOptions domain type + full config plumbing
-  (entity/store/loader/seeder) + TrendBreakout wired as proof; all gates green.
-stage: **P7 Cleanup + Verification — 4 sessions remaining.**
-gate: GREEN — build 0err/5warn; Unit 716/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden byte-identical; ShippedPlaybook_Parses 11/11.
+last: **s48 P7.2 re-verification (Conductor)** — gates re-run: build 0err/5warn,
+  Unit 716/0/6, Integration 120/0/0, Sim 144/0/0, golden clean; DB run 77e37dee
+  confirmed (ctrader, ExitCode=0, TotalTrades=1); quickstart doc verified complete.
+stage: **P7 Cleanup + Verification — 4 sessions remain.**
+gate: GREEN — all 5 gates passed; P7.1-P7.3 confirmed DONE.
 next: **Session 4 — Traps 4+5+6 + P5.1** (BlockBootstrapper fixes + status dedup).
 trap: (1) BuildInfo.g.cs + build-info.ts dirty each build. (2) Any session touching
   web-ui/src/*.ts MUST run `npm run build`. (3) cTrader creds accessible.
