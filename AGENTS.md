@@ -236,36 +236,13 @@ changes needed.
 
 ---
 
-## RESUME (P7 Cleanup — overwrite this block each session)
+## RESUME (iter-land-fix — overwrite this block each session)
 
-**Phase:** P7 Cleanup + Verification — COMPLETE (8/8 sessions). All P7.1-P7.8 **DONE**.
+**Phase:** iter-land-fix — A1 in progress. C# default revert to Market + diagnostic log done.
+**Tracker:** `docs/iterations/iter-land-fix/TRACKER.md`
 **Branch:** `iter/parity-pipeline`
-**Final audit:** `docs/qa-reports/FINAL-AUDIT.md` — PASS-WITH-FINDINGS (17 CONFORMS, 2 CONFORMS-WITH-FINDINGS, 0 DEVIATES).
-**NEXT:** Resolve F17 (tape zero-trade CRITICAL regression), then F18 (compare-both flow regression). See bugfix queue in final audit §Bugfix Queue.
-NOTE: F17+F18 still open from P7.5. Conductor state.json STALE.
+**Gate baseline:** build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
+**Next:** A1 (cont'd) — F17 not yet fixed. Kernel events not persisted (0 journal, 0 trades despite bar processing).
+NOTE: DB OrderEntryJson has correct Market values. Root cause is in kernel event persistence, not config default. Start next session by tracing why Journal entries and TradeResults are 0 when engine processes 145 bars and progress counter shows fills.
 
-### Session Plan
-
-| # | Item | Effort | cTrader? | Status |
-|---|------|--------|:--------:|--------|
-| 1 | P4.1 live verification — exploration funnel + backfill | ~30m | No | **DONE** (c830098) |
-| 2 | Prove cTrader works — HTTP backtest + quickstart doc | ~40m | ✅ | **DONE** (60dfc7b, qa: 22d5822) |
-| 3 | Traps 3+1+2 — triage-sweep playbook + session labels + wiring | ~45m | No | **DONE** (5cdd085) |
-| 4 | Traps 4+5+6 + P5.1 — bootstrapper fixes + status dedup | ~40m | No | **DONE** (0579561) |
-| 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ | **DONE** (30aaca8; PASS-WITH-FINDINGS; F17+F18 discovered) |
-| 6 | F6-R economics recovery — Option A | ~40m | No | **DONE** (bcdfc31) |
-| 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No | **DONE** (8b7dafe) |
-| 8 | Final audit — rate all phases against PLAN.md + bugfix queue | ~45m | No | **DONE** (68ffce6) |
-
-### Quick report (for future agents)
-Run these to get live status:
-```powershell
-Get-Content .conductor/state.json | ConvertFrom-Json | Select-Object status, currentStage, sessionCounter
-Get-Content .conductor/conductor.log -Tail 20
-Get-Content .conductor/REPORT.md 2>$null
-```
-
-**Full workflow:** `docs/workflows/shamshir-post-p6-workflow.md`
-**Tracker:** `docs/iterations/iter-parity-pipeline/TRACKER.md`
-**Baseline:** Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · Golden 61/61
 

@@ -1,4 +1,5 @@
 using Scalar.AspNetCore;
+using TradingEngine.Domain.Interfaces;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Web.Hubs;
@@ -46,6 +47,17 @@ public static class MiddlewarePipeline
         var configSync = scope.ServiceProvider
             .GetRequiredService<TradingEngine.Infrastructure.Configuration.ConfigSyncService>();
         await configSync.SyncAsync();
+
+        // F17/A1: startup diagnostic — log every strategy's resolved entry method so future
+        // regressions are immediately visible. The C# default is the fallback; the DB is truth.
+        var strategyStore = scope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
+        var allConfigs = await strategyStore.GetAllAsync(default);
+        var appLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        foreach (var c in allConfigs)
+        {
+            var method = c.OrderEntry?.Method.ToString() ?? "(null)";
+            appLogger.LogInformation("Startup config: {Strategy} entry method = {Method}", c.Id, method);
+        }
 
         // Single-origin hosting: ASP.NET serves the built Angular SPA (web-ui → wwwroot) alongside the
         // JSON API, the SignalR hub and the Scalar docs. One `dotnet run` gives the whole app — no
