@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 03:49 UTC · branch `iter/parity-pipeline` · HEAD `4b9cedc`_
+_Updated 2026-07-09 04:12 UTC · branch `iter/parity-pipeline` · HEAD `4477ca3`_
 
 **Status:** Idle
-**Stage:** P7.2 — Prove cTrader works — HTTP backtest + quickstart doc · attempts used 2
-**Checkpoints:** 26/32 done · **Sessions run:** 46 · **Cost:** $3.6681 · **Tokens:** 4,233,843 in / 704,081 out / 385,853 think
+**Stage:** P7.2 — Prove cTrader works — HTTP backtest + quickstart doc · attempts used 0
+**Checkpoints:** 27/32 done · **Sessions run:** 47 · **Cost:** $3.7943 · **Tokens:** 4,404,595 in / 724,513 out / 394,891 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 **⚠ Skipped stages (need human review):** P7.1
 
@@ -25,7 +25,6 @@ _Updated 2026-07-09 03:49 UTC · branch `iter/parity-pipeline` · HEAD `4b9cedc`
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 17 | P4 | Audit | 1 | 07-08 19:14 | 0:07 | Progress |  | 2 |  | $0.0458 | 50,008/12,348 |
 | 18 | P5 | Deliver | 1 | 07-08 19:23 | 0:32 | Advanced | P5.1 | 6 | build:OK | $0.2486 | 311,603/29,675 |
 | 19 | P5 | Audit | 1 | 07-08 19:56 | 0:32 | Progress |  | 5 |  | $0.0740 | 78,820/12,802 |
 | 20 | P5 | Fix | 2 | 07-08 20:31 | 0:09 | Progress |  | 1 | build:OK | $0.0560 | 96,666/7,540 |
@@ -55,13 +54,10 @@ _Updated 2026-07-09 03:49 UTC · branch `iter/parity-pipeline` · HEAD `4b9cedc`
 | 44 | P7.2 | Deliver | 1 | 07-09 03:33 | 0:04 | Progress |  | 1 | build:OK | $0.0403 | 68,639/4,517 |
 | 45 | P7.2 | Deliver | 2 | 07-09 03:38 | 0:05 | Progress |  | 2 | build:OK | $0.0483 | 75,499/7,860 |
 | 46 | P7.2 | Deliver | 2 | 07-09 03:45 | 0:03 | Progress |  | 1 | build:OK | $0.0326 | 60,133/2,931 |
+| 47 | P7.2 | Deliver | 2 | 07-09 03:50 | 0:21 | Advanced | P7.3 | 2 | build:OK | $0.1263 | 170,752/20,432 |
 
 ### Commits by session
 
-- **s30 (P6 Deliver)** — 3 commit(s):
-  - 1a4e302 chore(s30): update RESUME + TRACKER for P6.7 delivery (061068c)
-  - 061068c feat(P6.7): entry-quality decomposition — OLS diagnosis of trade-entry drivers (domain + tests + API + CLI + playbook)
-  - 449ec79 chore(conductor): s30 P6 working ▸P6.7 @ 00:23
 - **s31 (P6 Deliver)** — 2 commit(s):
   - a2ab895 feat(P6.8): pyramiding policy — diagnosis of structured adds over excursion paths
   - e32f54b chore(conductor): s31 P6 working ▸P6.8 @ 00:53
@@ -80,6 +76,9 @@ _Updated 2026-07-09 03:49 UTC · branch `iter/parity-pipeline` · HEAD `4b9cedc`
   - 22d5822 qa(p7.2): session #45 QA — confirm P7.2 DONE, verify run 77e37dee, update handoff to P7.3
 - **s46 (P7.2 Deliver)** — 1 commit(s):
   - 4b9cedc chore(p7.2): finalize P7.2 — verify run, advance RESUME to P7.3 (s46)
+- **s47 (P7.2 Deliver)** — 2 commit(s):
+  - 4477ca3 chore(p7.3): stamp commit hash in tracker row
+  - 5cdd085 feat(p7.3): traps 3+1+2 — triage-sweep playbook + session labels + EntryFilter wiring
 
 ## Phase handovers (audit)
 
@@ -97,17 +96,19 @@ build:OK
 
 ## Last session result
 
-> SESSION-RESULT: P7.2 finalized — run 77e37dee verified in DB (ExitCode=0, TotalTrades=1, EURUSD H1 NetProfit=312.31), quickstart doc `docs/agents/ctrader-quickstart.md` confirmed comprehensive with credential paths + API endpoint + polling pattern, gates all green (build 0err, Unit 715/0/6, Integration 120/0/0, Sim-fast 144/0/0, golden clean). AGENTS.md RESUME advanced to P7.3 CURRENT. Commit `4b9cedc` pushed. Next session: P7.3 — triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring.
+> SESSION-RESULT: P7.3 delivered (commit 4477ca3, pushed). All three traps done: triage-sweep playbook created and parses (11/11 ShippedPlaybook_Parses), SessionLabel wired end-to-end from TradeExcursionEntity through TradePersistenceHandler using SessionDetector.Detect(trade.OpenedAtUtc), SpreadVolNoTradeFilter fully plumbed through domain/config/entity/store/loader/seeder with TrendBreakoutStrategy as proof-of-concept. M47 migration applied. Gates all green: build 0err/5warn, Unit 716/0/6, Integration 120/0/0, Sim-fast 144/0/0, golden clean. Branch pushed, working tree clean (only BuildInfo.g.cs dirty — known artifact). Next session (P7.4): BlockBootstrapper fixes, EntityAuditableTests, RunQ…
 
 ## Tracker handoff
 
 ```
-last: **P7.2 finalized (s46)** — verified run 77e37dee in DB (ExitCode=0 TotalTrades=1 NetProfit=312.31);
-  quickstart doc committed; gates green (build 0err, Unit 715/0/6, Int 120/0/0, Sim-fast 144/0/0, golden clean).
-stage: **P7 Cleanup + Verification — 5 sessions remaining.**
-gate: GREEN — build 0err/5warn; Unit 715/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden byte-identical.
-next: **Session 3 — Traps 3+1+2 (P7.3)**: triage-sweep playbook + session labels + SpreadVolNoTradeFilter wiring.
+last: **P7.3 delivered (s47)** — triage-sweep playbook created + parses (11/11);
+  SessionLabel column on TradeExcursions (M47) with end-to-end wiring through
+  TradePersistenceHandler; EntryFilterOptions domain type + full config plumbing
+  (entity/store/loader/seeder) + TrendBreakout wired as proof; all gates green.
+stage: **P7 Cleanup + Verification — 4 sessions remaining.**
+gate: GREEN — build 0err/5warn; Unit 716/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden byte-identical; ShippedPlaybook_Parses 11/11.
+next: **Session 4 — Traps 4+5+6 + P5.1** (BlockBootstrapper fixes + status dedup).
 trap: (1) BuildInfo.g.cs + build-info.ts dirty each build. (2) Any session touching
-  web-ui/src/*.ts MUST run `npm run build`. (3) cTrader creds accessible (see ctrader-quickstart.md).
+  web-ui/src/*.ts MUST run `npm run build`. (3) cTrader creds accessible.
 ```
