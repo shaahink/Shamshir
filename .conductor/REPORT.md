@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 00:49 UTC · branch `iter/parity-pipeline` · HEAD `7b9a336`_
+_Updated 2026-07-09 01:10 UTC · branch `iter/parity-pipeline` · HEAD `c830098`_
 
 **Status:** Idle
-**Stage:** P7.1 — P4.1 live verification — exploration funnel + backfill · attempts used 1
-**Checkpoints:** 24/32 done · **Sessions run:** 33 · **Cost:** $3.2868 · **Tokens:** 3,635,950 in / 654,401 out / 353,189 think
+**Stage:** P7.1 — P4.1 live verification — exploration funnel + backfill · attempts used 0
+**Checkpoints:** 25/32 done · **Sessions run:** 34 · **Cost:** $3.3819 · **Tokens:** 3,737,330 in / 671,162 out / 361,812 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 
 ## Stage progress
@@ -24,7 +24,6 @@ _Updated 2026-07-09 00:49 UTC · branch `iter/parity-pipeline` · HEAD `7b9a336`
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 4 | P0 | Deliver | 1 | 07-08 05:34 | 0:43 | Advanced | P0.3 | 4 | build:OK | $0.0716 | 2,815/25,730 |
 | 5 | P0 | Deliver | 1 | 07-08 06:18 | 0:28 | Advanced | P0.4 | 3 | build:OK | $0.0495 | 2,084/24,785 |
 | 6 | P0 | Audit | 1 | 07-08 06:47 | 0:23 | Progress |  | 3 |  | $0.0417 | 2,295/18,583 |
 | 7 | P1 | Deliver | 1 | 07-08 14:02 | 0:15 | Progress |  | 1 | build:OK | $0.0160 | 873/3,880 |
@@ -54,13 +53,10 @@ _Updated 2026-07-09 00:49 UTC · branch `iter/parity-pipeline` · HEAD `7b9a336`
 | 31 | P6 | Deliver | 1 | 07-08 23:38 | 0:18 | Advanced | P6.8 | 2 | build:OK | $0.1536 | 211,196/31,287 |
 | 32 | P6 | Audit | 1 | 07-08 23:58 | 0:26 | Progress |  | 2 |  | $0.1125 | 111,047/22,035 |
 | 33 | P7.1 | Deliver | 1 | 07-09 00:31 | 0:17 | Stalled |  | 0 |  | $0.0319 | 55,480/3,929 |
+| 34 | P7.1 | Resume | 2r1 | 07-09 00:49 | 0:19 | Advanced | P7.1 | 1 | build:OK | $0.0951 | 101,380/16,761 |
 
 ### Commits by session
 
-- **s25 (P6 Fix)** — 3 commit(s):
-  - e458199 docs(s25): update TRACKER + RESUME for P6.4 delivery
-  - 611d26d feat(P6.4): regime-conditioned calibration — regime filter on exitlab eval + playbook
-  - b115c16 chore(conductor): s25 P6 working ▸P6.4 @ 22:41
 - **s26 (P6 Fix)** — 5 commit(s):
   - 7f04409 docs(s26): update TRACKER + RESUME for build fix
   - cbf2c75 chore(conductor): s26 P6 working ▸P6.5 @ 23:18
@@ -87,6 +83,8 @@ _Updated 2026-07-09 00:49 UTC · branch `iter/parity-pipeline` · HEAD `7b9a336`
 - **s32 (P6 Audit)** — 2 commit(s):
   - 99d5f45 audit(P6): static audit — fix DateTime.UtcNow violations, playbook bugs, context resolution gap
   - df9f01f chore(conductor): s32 P6 working ▸P6 @ 01:13
+- **s34 (P7.1 Resume)** — 1 commit(s):
+  - c830098 feat(p7.1): P4.1 live verification — persist explorationMode + RecordExcursions through M46
 
 ## Phase handovers (audit)
 
@@ -98,27 +96,24 @@ _Updated 2026-07-09 00:49 UTC · branch `iter/parity-pipeline` · HEAD `7b9a336`
 - `.conductor/handovers/P5.md`
 - `.conductor/handovers/P6.md`
 
+## Last gate run
+
+build:OK
+
 ## Last session result
 
-> Now let me read the key design/reference docs and start the gate battery in parallel:
-> Build: 0 errors, 5 pre-existing warnings. Now running the gate battery in parallel:
-> Gate battery: ALL GREEN. Unit 715/0/6, Integration 120/0/0, fast Sim 144/0/0, golden byte-identical.
-> 
-> Now let me load the run-shamshir skill and read the P4.1 design/evidence docs:
-> Good, 9aa9b87 is on the branch (ancestor of HEAD). Now let me set up the todo list and prepare for the live verification.
-> QA of session 32: **confirmed**. Gates re-run verbatim: build 0err/5warn, Unit 715/0/6, Integration 120/0/0, fast Sim 144/0/0, golden byte-identical. ShippedPlaybook_Parses 10/10 confirmed. The handoff block says "714" but …
+> SESSION-RESULT: P7.1 landed with a real fix — the exploration funnel banner was structurally correct but broken by a persistence gap (ExplorationMode/RecordExcursions lost on run completion). M46 migration adds both columns to BacktestRuns; the repo, orchestrator, and query service are all wired. Live verification confirmed ExplorationMode=True persists through completion, backfill endpoint is idempotent (84/84 trades backfilled, avg MaeR=0.783/MfeR=1.079). All gates green: build 0err/5warn, Unit 715/0/6, Integration 120/0/0, fast Sim 144/0/0, golden byte-identical. Working tree clean, branch pushed (c830098). Next session P7.2 should prove cTrader works end-to-end — creds are accessible, de…
 
 ## Tracker handoff
 
 ```
-last: **P6 COMPLETE** — all P6.1-P6.8 delivered (sessions 27-31). P6 audit gating.
-stage: **P7 Cleanup + Verification — 8 sessions**. Resolves all OWNER-PENDING items,
-  fixes traps, proves cTrader works, runs final audit.
-gate: GREEN — build 0err/5warn; Unit 714/0/6; Integration 120/0/0;
-  fast Sim 144/0/0; golden 61/61; ShippedPlaybook_Parses 10/10
-next: **Session 1 — P4.1 live verification**: start app, run exploration backtest,
-  verify funnel banner, run backfill endpoint. ~30 min, no cTrader needed.
-trap: (1) The "needs cTrader creds" belief is cargo-culted — creds exist in appsettings.
-       Session 2 busts this myth. (2) BuildInfo.g.cs + build-info.ts dirty each build.
-       (3) Any session touching web-ui/src/*.ts MUST run `npm run build`.
+last: **s33 P7.1 DONE** — explorationMode + RecordExcursions now persisted (M46 migration).
+  Backfill endpoint idempotent (84 trades updated); MaeR/MfeR confirmed populated (avg 0.783/1.079).
+stage: **P7 Cleanup + Verification — 7 sessions remaining.**
+gate: GREEN — build 0err/5warn; Unit 715/0/6; Integration 120/0/0;
+  fast Sim 144/0/0; golden byte-identical; ShippedPlaybook_Parses 10/10
+next: **Session 2 — Prove cTrader works (P7.2)**: start app, POST venue=ctrader backtest,
+  confirm completed+Trades>0 in DB, write ctrader-quickstart.md.
+trap: (1) BuildInfo.g.cs + build-info.ts dirty each build. (2) Any session touching
+  web-ui/src/*.ts MUST run `npm run build`. (3) cTrader creds ARE accessible — see P7.2.
 ```
