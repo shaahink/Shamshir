@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir iter-land-fix run report
 
-_Updated 2026-07-09 22:29 UTC · branch `iter/parity-pipeline` · HEAD `695d4e0`_
+_Updated 2026-07-09 22:50 UTC · branch `iter/parity-pipeline` · HEAD `6fa06cb`_
 
 **Status:** Idle
-**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 5 · working ▸ A1
-**Checkpoints:** 0/6 done · **Sessions run:** 6 · **Cost:** $0.5035 · **Tokens:** 684,516 in / 50,933 out / 59,649 think
+**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 6 · working ▸ A1
+**Checkpoints:** 0/6 done · **Sessions run:** 7 · **Cost:** $0.5324 · **Tokens:** 741,547 in / 52,602 out / 60,317 think
 
 ## Stage progress
 
@@ -75,6 +75,7 @@ _Updated 2026-07-09 22:29 UTC · branch `iter/parity-pipeline` · HEAD `695d4e0`
 | 4 | A1 | Resume | 4r1 | 07-09 19:15 | 2:14 | Interrupted |  | 0 |  |  |  |
 | 5 | A1 | Resume | 4r2 | 07-09 21:39 | 0:12 | Progress |  | 1 | build:OK · unit:OK · sim-fast:OK | $0.0600 | 84,481/8,124 |
 | 6 | A1 | Deliver | 5 | 07-09 21:54 | 0:35 | Stalled |  | 0 |  | $0.0396 | 50,932/7,699 |
+| 7 | A1 | Resume | 6r1 | 07-09 22:29 | 0:20 | Stalled |  | 0 |  | $0.0289 | 57,031/1,669 |
 
 ## Timeline
 
@@ -101,6 +102,8 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 07-09 22:54:49  ▪ gate sim-fast pass [session]  (45.7s)
 07-09 22:54:50  • session #5 A1 → Progress · 1 commit(s)  (14m59s)
 07-09 22:54:50  • session #6 A1 Deliver started (attempt 5/6)
+07-09 23:29:52  • session #6 A1 → Stalled  (35m02s)
+07-09 23:29:52  • session #7 A1 Resume started (attempt 6/6)
 ```
 
 ## Health
@@ -108,8 +111,8 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 _Execution-health signals, folded from the event log (`.conductor/events.jsonl`)._
 
 ```
-sessions 6 · retries 5 (83 %) · overall Warn
-⚠ [high-retry-rate] 5/6 sessions were retries (83 %)
+sessions 7 · retries 6 (86 %) · overall Warn
+⚠ [high-retry-rate] 6/7 sessions were retries (86 %)
 ```
 
 ## Repo
@@ -119,7 +122,7 @@ _Live git snapshot (branch, working tree, sync vs upstream)._
 ```
 branch: iter/parity-pipeline
 working tree: M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, M src/TradingEngine.Web/Services/BacktestOrchestrator.cs, ?? conductor.plan.json
-vs upstream: 1 ahead
+vs upstream: 2 ahead
 ```
 
 ### Commits by session
@@ -146,12 +149,10 @@ build:OK · unit:OK · sim-fast:OK
 
 ## Last session result
 
-> Let me start the pre-session ritual. First, the gate battery and the remaining required reading.
-> Running unit tests and sim-fast tests in parallel (build already passed above with 0err/5warn).
-> Gates green. Now QA: let me investigate the DB state and the actual code to understand the UI vs Detail query gap.
-> Key findings: All 9 strategies have **NULL/empty** `OrderEntryJson` in DB, and all recent tape runs show `TotalTrades=0` despite the Market C# default. Let me trace deeper - compare working vs broken runs.
-> Clear pattern: all working tape runs are from Jul 7, all broken from Jul 9. Let me trace the code to understand the issue.
-> Excellent diagnosis. The root cause is a **DB path mismatc…
+> Good, my DB path fix is still in place. Let me verify it, build, run gates, then run the live verification.
+> Fix looks correct. Let me build and run gates.
+> Unit (716/0/6) and Sim-fast (144/0/0) are green. One integration test timed out. Let me check which one.
+> All gates green. Now verify with a live tape backtest.
 
 ## Tracker handoff
 
