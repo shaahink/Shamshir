@@ -1,17 +1,18 @@
 ﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 01:38 UTC · branch `iter/parity-pipeline` · HEAD `cbee0e1`_
+_Updated 2026-07-09 01:39 UTC · branch `iter/parity-pipeline` · HEAD `8fc8c70`_
 
 **Status:** Idle
-**Stage:** P7.1 — P4.1 live verification — exploration funnel + backfill · attempts used 2
+**Stage:** P7.1 — P4.1 live verification — exploration funnel + backfill · attempts used 0
 **Checkpoints:** 25/32 done · **Sessions run:** 36 · **Cost:** $3.4022 · **Tokens:** 3,767,433 in / 674,283 out / 364,945 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
+**⚠ Skipped stages (need human review):** P7.1
 
 ## Stage progress
 
 | Stage | Title | Done | State |
 |---|---|---|---|
-| P7.1 | P4.1 live verification — exploration funnel + backfill | 0/0 | **← active** |
+| P7.1 | P4.1 live verification — exploration funnel + backfill | 0/0 | SKIPPED ⚠ |
 | P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | 0/0 | todo |
 | P7.3 | Traps 3+1+2 — triage-sweep playbook + wiring | 0/0 | todo |
 | P7.4 | Traps 4+5+6 + P5.1 status dedup | 0/0 | todo |
