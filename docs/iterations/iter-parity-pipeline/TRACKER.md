@@ -17,16 +17,15 @@ Convention: one subphase = one commit, gate output pasted in the body (PLAN §10
 > tree"; P0.1–P0.5 = the parity-truth spine. Stages are P0…P6.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: **s55 P7.8** — Final audit: rated all P0-P6 phases against PLAN.md.
-  Verdict: PASS-WITH-FINDINGS (17 CONFORMS + 2 CONFORMS-WITH-FINDINGS, zero DEVIATES).
-  Shallow-impl scan: 6 areas audited, zero stubs. 7-item bugfix queue written.
-  F17 (tape zero-trade CRITICAL) + F18 (compare-both) still open from P7.5.
-  Gates: build 0err/5warn, Unit 716/0/6, Integration 121/0/0,
-  Sim-fast 144/0/0, golden clean.
-stage: **P7 Cleanup + Verification — COMPLETE (P7.1-P7.8 ALL DONE).**
-gate: PASS — all 6 gates green. Final audit: `docs/qa-reports/FINAL-AUDIT.md`.
-next: **Resolve F17 (tape zero-trade regression)**, then F18 (compare-both flow).
-trap: BuildInfo.g.cs dirty. Conductor state.json STALE.
+last: **s56 QA-only** — Conductor launched stale session (target P7.3 already DONE).
+  QA of s55/P7.8: 6/7 VERIFIED, 1 partial (commit says 17 CONFORMS; doc has 15+2 CWF=17 total — cosmetic).
+  All gates re-run: build 0err/5warn, Unit 716/0/6, Integration 121/0/0,
+  Sim-fast 144/0/0, golden clean. P7.3 DB cols (SessionLabel+EntryFilterJson) present.
+  cTrader run 77e37dee: ExitCode=0, TotalTrades=1 — confirmed in DB.
+stage: **P7 Cleanup + Verification — COMPLETE (8/8 sessions). ALL P7.1-P7.8 DONE.**
+gate: PASS — all 6 gates green.
+next: **Conductor should advance to post-P7 phase** (state.json needs manual update).
+  Bugfix queue: F17 (tape zero-trade CRITICAL), F18 (compare-both), 5 more in FINAL-AUDIT.md.
 
 ## Checkpoints
 
@@ -121,6 +120,17 @@ All 7 OWNER-PENDING markers (P0.1-P0.4, P1.2, P3.4, P6.5-P6.6) resolved by P7.
 > source wiring: TradePersistenceHandler SessionDetector.Detect call at
 > line 49, TrendBreakoutStrategy _entryFilters guard at line 71.
 > No divergence — proceed to P7.4.
+>
+> QA-previous (s56 QA of s55 P7.8): **confirmed (minor cosmetic finding).** Full gate battery
+> re-run verbatim: build 0err/5warn, Unit 716/0/6, Integration 121/0/0, fast Sim
+> 144/0/0, golden clean. Independently verified 7 claims: (evidence) FINAL-AUDIT.md 409 lines,
+> rates all P0-P6 phases against PLAN.md §11 with taxonomy; (content) 15 CONFORMS + 2 CWF + 0
+> DEVIATES appears correct in document table (commit message overstates CONFORMS as 17 — minor
+> copy error, no impact on verdict); (shallow-impl) 6 areas audited, zero stubs; (bugfix) 7-item
+> queue with effort estimates; (commit) 68ffce6 exists with feat(p7.8) prefix; (P7.3 double-check)
+> P7.3 DB columns SessionLabel+EntryFilterJson present, playbook sources verified; (P7.2 confirm)
+> cTrader run 77e37dee ExitCode=0 TotalTrades=1 in DB. No divergence; no fix needed. All P7 work
+> is DONE — Conductor state.json is STALE.
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
