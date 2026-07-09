@@ -1,29 +1,29 @@
-﻿# Conductor — Shamshir-Parity run report
+﻿# Conductor — Shamshir-Cleanup run report
 
-_Updated 2026-07-09 00:27 UTC · branch `iter/parity-pipeline` · HEAD `c4bf4c5`_
+_Updated 2026-07-09 00:49 UTC · branch `iter/parity-pipeline` · HEAD `7b9a336`_
 
-**Status:** Completed
-**Stage:** P6 — Wild list (pipeline-gated) · attempts used 0
-**Checkpoints:** 24/24 done · **Sessions run:** 32 · **Cost:** $3.2550 · **Tokens:** 3,580,470 in / 650,472 out / 350,804 think
+**Status:** Idle
+**Stage:** P7.1 — P4.1 live verification — exploration funnel + backfill · attempts used 1
+**Checkpoints:** 24/32 done · **Sessions run:** 33 · **Cost:** $3.2868 · **Tokens:** 3,635,950 in / 654,401 out / 353,189 think
 **Confirmed phases:** P0, P1, P2, P3, P4, P5, P6
 
 ## Stage progress
 
 | Stage | Title | Done | State |
 |---|---|---|---|
-| P0 | Parity truth repair (the spine) | 6/6 | confirmed ✓ |
-| P1 | Config & DB truth | 2/2 | confirmed ✓ |
-| P2 | Lifecycle robustness + headline gate | 2/2 | confirmed ✓ |
-| P3 | Research pipeline (ResearchCli + playbooks) | 4/4 | confirmed ✓ |
-| P4 | Lab golden paths | 1/1 | confirmed ✓ |
-| P5 | UI truth + Angular refactor | 1/1 | confirmed ✓ |
-| P6 | Wild list (pipeline-gated) | 8/8 | confirmed ✓ |
+| P7.1 | P4.1 live verification — exploration funnel + backfill | 0/0 | **← active** |
+| P7.2 | Prove cTrader works — HTTP backtest + quickstart doc | 0/0 | todo |
+| P7.3 | Traps 3+1+2 — triage-sweep playbook + wiring | 0/0 | todo |
+| P7.4 | Traps 4+5+6 + P5.1 status dedup | 0/0 | todo |
+| P7.5 | P2.2 headline gate — compare-both run with cTrader | 0/0 | todo |
+| P7.6 | F6-R economics recovery — Option A | 0/0 | todo |
+| P7.7 | cTrader test audit — replaceable-with-tape analysis | 0/0 | todo |
+| P7.8 | Final audit — rate all phases against PLAN.md | 0/0 | todo |
 
 ## Sessions
 
 | # | Stage | Kind | Att | Started (UTC) | Dur | Outcome | New DONE | Commits | Gates | Cost | Tokens |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 3 | P0 | Deliver | 1 | 07-08 04:09 | 1:25 | Advanced | P0.2 | 8 | build:OK | $0.1109 | 4,619/32,558 |
 | 4 | P0 | Deliver | 1 | 07-08 05:34 | 0:43 | Advanced | P0.3 | 4 | build:OK | $0.0716 | 2,815/25,730 |
 | 5 | P0 | Deliver | 1 | 07-08 06:18 | 0:28 | Advanced | P0.4 | 3 | build:OK | $0.0495 | 2,084/24,785 |
 | 6 | P0 | Audit | 1 | 07-08 06:47 | 0:23 | Progress |  | 3 |  | $0.0417 | 2,295/18,583 |
@@ -53,6 +53,7 @@ _Updated 2026-07-09 00:27 UTC · branch `iter/parity-pipeline` · HEAD `c4bf4c5`
 | 30 | P6 | Deliver | 1 | 07-08 23:08 | 0:28 | Advanced | P6.7 | 3 | build:OK | $0.2726 | 394,325/45,075 |
 | 31 | P6 | Deliver | 1 | 07-08 23:38 | 0:18 | Advanced | P6.8 | 2 | build:OK | $0.1536 | 211,196/31,287 |
 | 32 | P6 | Audit | 1 | 07-08 23:58 | 0:26 | Progress |  | 2 |  | $0.1125 | 111,047/22,035 |
+| 33 | P7.1 | Deliver | 1 | 07-09 00:31 | 0:17 | Stalled |  | 0 |  | $0.0319 | 55,480/3,929 |
 
 ### Commits by session
 
@@ -97,28 +98,27 @@ _Updated 2026-07-09 00:27 UTC · branch `iter/parity-pipeline` · HEAD `c4bf4c5`
 - `.conductor/handovers/P5.md`
 - `.conductor/handovers/P6.md`
 
-## Last gate run
-
-build:OK · unit:OK · sim-fast:OK
-
 ## Last session result
 
-> SESSION-RESULT: Audited 43 files (27 commits, +3910/-246 lines) across P6.1–P6.8. Found 13 bugs — fixed 8 high-severity ones (DateTime.UtcNow violations in 2 controllers, broken playbook missing a start-run step, verdct/exit-code contract breaks in CLI and step-runner, silent exception swallowing in SpreadVolNoTradeFilter, and a systemic `$reference` resolution gap in 5 HttpStepRunner step handlers). Created `SystemClock : IEngineClock` and registered it in Web DI to close Open Trap #5. Added 1 test. Deferred 5 low-impact issues (EntryDiagnosis math inaccuracies that are scale-invariant, N+1 DB query pattern in EntryQualityController, non-transactional save; full evidence in `.conductor/hand…
+> Now let me read the key design/reference docs and start the gate battery in parallel:
+> Build: 0 errors, 5 pre-existing warnings. Now running the gate battery in parallel:
+> Gate battery: ALL GREEN. Unit 715/0/6, Integration 120/0/0, fast Sim 144/0/0, golden byte-identical.
+> 
+> Now let me load the run-shamshir skill and read the P4.1 design/evidence docs:
+> Good, 9aa9b87 is on the branch (ancestor of HEAD). Now let me set up the todo list and prepare for the live verification.
+> QA of session 32: **confirmed**. Gates re-run verbatim: build 0err/5warn, Unit 715/0/6, Integration 120/0/0, fast Sim 144/0/0, golden byte-identical. ShippedPlaybook_Parses 10/10 confirmed. The handoff block says "714" but …
 
 ## Tracker handoff
 
 ```
-last: **s31 P6.8 pyramiding policy** — PyramidDiagnosis domain (12 tests) + API + CLI + playbook
-stage: **P6 COMPLETE** — all P6.1-P6.8 delivered.
+last: **P6 COMPLETE** — all P6.1-P6.8 delivered (sessions 27-31). P6 audit gating.
+stage: **P7 Cleanup + Verification — 8 sessions**. Resolves all OWNER-PENDING items,
+  fixes traps, proves cTrader works, runs final audit.
 gate: GREEN — build 0err/5warn; Unit 714/0/6; Integration 120/0/0;
   fast Sim 144/0/0; golden 61/61; ShippedPlaybook_Parses 10/10
-next: P6 wild list complete. Next per owner: P3.5 triage-sweep playbook (trap #3)
-  or P7 beyond wild list.
-trap: (1) Session labels not wired into TradeExcursions.
-  (2) SpreadVolNoTradeFilter no strategy config wiring.
-  (3) Playbook 3 (triage-sweep.json) not created.
-  (4) BlockBootstrapper writes bars to real MarketDataShard.
-  (5) BlockBootstrapController uses DateTime.UtcNow.
-  (6) EntityAuditableTests red on ExitCalibrationEntity (pre-existing).
-  (7) Any session touching web-ui/src/*.ts MUST run `npm run build`.
+next: **Session 1 — P4.1 live verification**: start app, run exploration backtest,
+  verify funnel banner, run backfill endpoint. ~30 min, no cTrader needed.
+trap: (1) The "needs cTrader creds" belief is cargo-culted — creds exist in appsettings.
+       Session 2 busts this myth. (2) BuildInfo.g.cs + build-info.ts dirty each build.
+       (3) Any session touching web-ui/src/*.ts MUST run `npm run build`.
 ```
