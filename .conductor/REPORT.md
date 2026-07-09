@@ -1,8 +1,8 @@
 ﻿# Conductor — Shamshir iter-land-fix run report
 
-_Updated 2026-07-09 22:50 UTC · branch `iter/parity-pipeline` · HEAD `6fa06cb`_
+_Updated 2026-07-09 22:50 UTC · branch `iter/parity-pipeline` · HEAD `a7b5bf5`_
 
-**Status:** Idle
+**Status:** NeedsHuman — stage A1 used all 6 attempts without completing — inspect and `conductor resume` (or `conductor skip`)
 **Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 6 · working ▸ A1
 **Checkpoints:** 0/6 done · **Sessions run:** 7 · **Cost:** $0.5324 · **Tokens:** 741,547 in / 52,602 out / 60,317 think
 
@@ -104,6 +104,8 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 07-09 22:54:50  • session #6 A1 Deliver started (attempt 5/6)
 07-09 23:29:52  • session #6 A1 → Stalled  (35m02s)
 07-09 23:29:52  • session #7 A1 Resume started (attempt 6/6)
+07-09 23:50:38  • session #7 A1 → Stalled  (20m45s)
+07-09 23:50:56  ■ needs human — stage A1 used all 6 attempts without completing — inspect and `conductor resume` (or `conductor skip`)
 ```
 
 ## Health
@@ -122,7 +124,7 @@ _Live git snapshot (branch, working tree, sync vs upstream)._
 ```
 branch: iter/parity-pipeline
 working tree: M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, M src/TradingEngine.Web/Services/BacktestOrchestrator.cs, ?? conductor.plan.json
-vs upstream: 2 ahead
+vs upstream: 3 ahead
 ```
 
 ### Commits by session
