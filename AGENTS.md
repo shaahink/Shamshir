@@ -255,7 +255,7 @@ NOTE: F17+F18 still open from P7.5. Conductor state.json STALE.
 | 5 | P2.2 headline gate — compare-both run + reconcile verdict | ~60m | ✅ | **DONE** (30aaca8; PASS-WITH-FINDINGS; F17+F18 discovered) |
 | 6 | F6-R economics recovery — Option A | ~40m | No | **DONE** (bcdfc31) |
 | 7 | cTrader test audit — replaceable-with-tape analysis | ~30m | No | **DONE** (8b7dafe) |
-| 8 | Final audit — rate all phases against PLAN.md + bugfix queue | ~45m | No | **DONE** (commit pending) |
+| 8 | Final audit — rate all phases against PLAN.md + bugfix queue | ~45m | No | **DONE** (68ffce6) |
 
 ### Quick report (for future agents)
 Run these to get live status:

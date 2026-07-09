@@ -156,7 +156,7 @@ All 7 OWNER-PENDING markers (P0.1-P0.4, P1.2, P3.4, P6.5-P6.6) resolved by P7.
 | P7.5 | P2.2 headline gate — compare-both run with cTrader + committed verdict | DONE | 30aaca8 | `docs/audit/RECONCILE-FINDINGS.md §P2.2` (filled); `evidence/p7-s5-headline-gate/p7-s5-verdict.md`; cTrader runs d5de5628 + 994a3b91 in DB; new F-ids F17+F18 |
 | P7.6 | F6-R economics recovery — Option A: reconstruct PublishTradeClosed from paired OrderFilled open+close+proposal | DONE | bcdfc31 | `evidence/p7-s6-f6r/p7-s6-verdict.md` |
 | P7.7 | cTrader test audit — classify RequiresCTrader tests replaceable by tape | DONE | 8b7dafe | `docs/audit/ctrader-test-audit.md`; evidence: `docs/iterations/iter-parity-pipeline/evidence/p7-s7-ctrader-audit/` |
-| P7.8 | Final audit — rate all phases against PLAN.md + bugfix queue | DONE | (pending) | `docs/qa-reports/FINAL-AUDIT.md` |
+| P7.8 | Final audit — rate all phases against PLAN.md + bugfix queue | DONE | 68ffce6 | `docs/qa-reports/FINAL-AUDIT.md` |
 
 ## Quick commands (gates — see PLAN §11 for per-phase specifics)
 
