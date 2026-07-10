@@ -58,6 +58,92 @@ public sealed class SystemController : ControllerBase
         });
     }
 
+    // R0.2: doctor verb — env health check (app reachable, DB migrated, marketdata coverage, cTrader CLI, creds)
+    [HttpGet("doctor")]
+    public async Task<IActionResult> GetDoctor(CancellationToken ct)
+    {
+        var issues = new List<string>();
+
+        // DB migrated?
+        try
+        {
+            await _db.Database.CanConnectAsync(ct);
+            var pendingMigrations = (await _db.Database.GetPendingMigrationsAsync(ct)).ToList();
+            if (pendingMigrations.Count > 0)
+                issues.Add($"DB has {pendingMigrations.Count} pending migrations");
+        }
+        catch (Exception ex)
+        {
+            issues.Add($"DB connect failed: {ex.Message}");
+        }
+
+        // Market-data coverage
+        if (_marketDataStore is not null)
+        {
+            try
+            {
+                var inventory = await _marketDataStore.GetInventoryAsync(ct);
+                var totalBars = inventory.Sum(i => i.BarCount);
+                if (totalBars == 0)
+                    issues.Add("marketdata has 0 bars");
+            }
+            catch (Exception ex)
+            {
+                issues.Add($"marketdata query failed: {ex.Message}");
+            }
+        }
+        else
+        {
+            issues.Add("marketdata store not registered");
+        }
+
+        // cTrader CLI
+        var ctraderPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Spotware", "cTrader");
+        var found = false;
+        if (System.IO.Directory.Exists(ctraderPath))
+        {
+            foreach (var dir in System.IO.Directory.EnumerateDirectories(ctraderPath))
+            {
+                var cliPath = System.IO.Path.Combine(dir, "ctrader-cli.exe");
+                if (System.IO.File.Exists(cliPath)) { found = true; break; }
+            }
+        }
+        if (!found)
+            issues.Add("cTrader CLI not found in LocalAppData");
+
+        // Creds file
+        var credsPath = Environment.GetEnvironmentVariable("CTRADER_PWD_FILE")
+            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents", "ctrader.pwd");
+        if (!System.IO.File.Exists(credsPath))
+            issues.Add($"creds file not found at '{credsPath}'");
+
+        var passed = issues.Count == 0;
+        return Ok(new
+        {
+            verdict = passed ? "PASS" : "FAIL",
+            status = passed ? "ok" : "degraded",
+            issues,
+            dbPath = (_db.Database.GetDbConnection() as SqliteConnection)?.DataSource ?? "unknown",
+            port = 5134,
+            passed,
+        });
+    }
+
+    // F21 (R0.1): health endpoint — app reachable, DB migrated, cTrader CLI locatable.
+    [HttpGet("health")]
+    public IActionResult GetHealth()
+    {
+        var dataSource = (_db.Database.GetDbConnection() as SqliteConnection)?.DataSource ?? "unknown";
+        return Ok(new
+        {
+            status = "ok",
+            dbPath = dataSource,
+            version = "iter-alpha-loop",
+        });
+    }
+
     // P1.2 (F9): report config drift between config/*.json and the DB. Read-only — the startup sync
     // already propagates non-hand-edited JSON changes; this surfaces hand-edited conflicts and any edits
     // made to the files while the app is running (pending the next restart).

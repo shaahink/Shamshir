@@ -516,7 +516,10 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             // BTC scenario: fills journalled, venue killed before closes settled → 0 TradeResults, reported
             // TotalTrades=0). A shortfall attaches a TRADES_LOST warning → completed-with-warnings; the
             // backfill happens first so GetTradeStatsAsync counts the restored trades.
-            if (result.Success)
+            // F19 (R0.1): scope to cTrader venue only — the barrier's journal pairing assumes cTrader's
+            // OrderFilled close-fill shape; tape/replay venues produce a different journal shape that
+            // triggers false-positive TRADES_PARTIALLY_UNRECONSTRUCTABLE warnings on perfectly healthy runs.
+            if (result.Success && string.Equals(state.Venue, "ctrader", StringComparison.OrdinalIgnoreCase))
                 await RunTradePersistenceBarrierAsync(runId, state, ct);
 
             var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
@@ -995,9 +998,30 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         // Manually register state without spawning a duplicate RunAsync —
         // Start() would fire RunAsync which would see Venue="ctrader" and run
         // RunEngineNetMqAsync again, racing with our own call below.
-        var ctraderState = new BacktestRunState { RunId = ctraderRunId, Venue = "ctrader" };
+        var ctraderState = new BacktestRunState
+        {
+            RunId = ctraderRunId,
+            Venue = "ctrader",
+            Symbol = cfg.Symbol,
+            Period = cfg.Period,
+            BarsTotal = EstimateBarCount(ctraderCfg.Start, ctraderCfg.End, ctraderCfg.Period),
+            GovernorEnabled = ctraderCfg.CustomParams.GetValueOrDefault("GovernorEnabled") != "false",
+            RegimeEnabled = ctraderCfg.CustomParams.GetValueOrDefault("DisableRegime") != "true",
+            CommissionPerMillion = (double)ctraderCfg.CommissionPerMillion,
+            SpreadPips = (double)ctraderCfg.SpreadPips,
+            InitialBalance = ctraderCfg.Balance,
+            BacktestFrom = ctraderCfg.Start,
+            BacktestTo = ctraderCfg.End,
+            RiskProfileId = ctraderCfg.CustomParams.GetValueOrDefault("RiskProfileId"),
+            StartedAt = DateTime.UtcNow,
+        };
         ctraderState.CancellationSource = new CancellationTokenSource();
         _runs[ctraderRunId] = ctraderState;
+
+        // F18 (R0.1): write a start record to DB immediately so the child run is visible from spawn
+        // moment, even if a crash prevents WriteEndRecordAsync from running later.
+        await WriteStartRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, null);
+
         EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] Compare mode — running cTrader leg {ctraderRunId}...");
 
         try
@@ -1041,7 +1065,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         finally
         {
             ctraderState.CancellationSource?.Dispose();
-            _runs.TryRemove(ctraderRunId, out _);
         }
 
         return tapeResult;

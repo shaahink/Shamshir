@@ -102,9 +102,8 @@ public sealed class CTraderListenService : IDisposable
 
     private IHost BuildEngineHost(string runId, CtraderListenConfig config)
     {
-        var dbPath = _configuration.GetValue<string>("Persistence:DbPath")
-            ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                "..", "..", "..", "..", "..", "data", "trading.db"));
+        var dbPath = DbPathResolver.ResolveTradingDbPath(
+            _configuration.GetValue<string>("Persistence:DbPath"));
         var solutionRoot = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
 

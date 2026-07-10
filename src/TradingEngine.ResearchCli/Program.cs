@@ -43,6 +43,12 @@ try
             return await EntryQualityAsync(cli, baseUrl, timeout);
         case "pyramid-eval":
             return await PyramidEvalAsync(cli, baseUrl, timeout);
+        case "score":
+            return await ScoreAsync(cli, baseUrl, timeout);
+        case "scoreboard":
+            return await ScoreboardAsync(cli, baseUrl, timeout);
+        case "doctor":
+            return await DoctorAsync(cli, baseUrl, timeout);
         default:
             PrintUsage();
             Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "unknown-verb")).Render());
@@ -590,6 +596,166 @@ static DateTime? ParseDate(string? value) =>
         System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var dt)
         ? dt : null;
 
+// R0.2: research score — compute SetupScore v1 for a completed tape run
+static async Task<int> ScoreAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var runId = cli.Positionals.ElementAtOrDefault(1);
+    if (string.IsNullOrWhiteSpace(runId))
+    {
+        Console.Error.WriteLine("score requires a run ID: research score <runId> [--experiment <id>] [--variant <label>]");
+        return 2;
+    }
+
+    var body = new System.Text.Json.Nodes.JsonObject
+    {
+        ["backtestRunId"] = runId,
+    };
+
+    var experimentId = cli.Option("experiment");
+    if (!string.IsNullOrEmpty(experimentId) && Guid.TryParse(experimentId, out var eid))
+        body["experimentId"] = eid;
+    var variantLabel = cli.Option("variant");
+    if (!string.IsNullOrEmpty(variantLabel))
+        body["variantLabel"] = variantLabel;
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.PostAsync("api/experiments/score", body.ToJsonString(), CancellationToken.None);
+
+    if (json is null)
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "no-response")).Render());
+        return 1;
+    }
+
+    using var doc = System.Text.Json.JsonDocument.Parse(json);
+    var root = doc.RootElement;
+
+    var verdict = root.GetProperty("verdict").GetString()!;
+    if (verdict == "PASS")
+    {
+        var score = root.GetProperty("score").GetDouble();
+        var version = root.GetProperty("version").GetString()!;
+        Console.WriteLine(Verdict.Passing(
+            VerdictField.Of("runId", runId),
+            VerdictField.Of("score", score),
+            VerdictField.Of("version", version)).Render());
+        return 0;
+    }
+    else
+    {
+        var reason = root.GetProperty("reason").GetString()!;
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("runId", runId), VerdictField.Of("reason", reason)).Render());
+        return 1;
+    }
+}
+
+// R0.2: research scoreboard — top N scored runs in an experiment
+static async Task<int> ScoreboardAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var experimentId = cli.Option("experiment");
+    if (string.IsNullOrWhiteSpace(experimentId) || !Guid.TryParse(experimentId, out var eid))
+    {
+        Console.Error.WriteLine("scoreboard requires --experiment <id>");
+        return 2;
+    }
+
+    var top = cli.Option("top", 20);
+    var outPath = cli.Option("out");
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.GetAsync($"api/experiments/{eid}/scoreboard?top={top}", CancellationToken.None);
+
+    if (json is null)
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "no-response")).Render());
+        return 1;
+    }
+
+    using var doc = System.Text.Json.JsonDocument.Parse(json);
+    var root = doc.RootElement;
+
+    if (root.TryGetProperty("error", out var err))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", err.GetString() ?? "unknown")).Render());
+        return 1;
+    }
+
+    var entries = root.GetProperty("top");
+    var sb = new System.Text.StringBuilder();
+    sb.AppendLine($"| # | RunId | Variant | Score | Version | Expectancy | DD% | Consistency | Trades |");
+    sb.AppendLine("|---|-------|---------|-------|---------|------------|-----|-------------|--------|");
+
+    var idx = 0;
+    foreach (var entry in entries.EnumerateArray())
+    {
+        idx++;
+        var runId = entry.GetProperty("backtestRunId").GetString() ?? "";
+        var variant = entry.GetProperty("variantLabel").GetString() ?? "";
+        var composite = entry.GetProperty("composite").GetDouble();
+        var version = entry.GetProperty("version").GetString() ?? "";
+        var expectancy = entry.TryGetProperty("expectancy", out var e) ? e.GetDouble().ToString("F1") : "-";
+        var ddPct = entry.TryGetProperty("drawdownPct", out var d) ? d.GetDouble().ToString("F2") : "-";
+        var consistency = entry.TryGetProperty("consistency", out var c) ? c.GetDouble().ToString("F1") : "-";
+        var trades = entry.TryGetProperty("trades", out var t) ? t.GetInt32() : 0;
+        sb.AppendLine($"| {idx} | {runId} | {variant} | {composite:F1} | {version} | {expectancy} | {ddPct} | {consistency} | {trades} |");
+    }
+
+    var markdown = sb.ToString();
+    Console.WriteLine(markdown);
+
+    if (!string.IsNullOrEmpty(outPath))
+        System.IO.File.WriteAllText(outPath, markdown);
+
+    var totalRuns = root.TryGetProperty("totalRuns", out var tr) ? tr.GetInt32() : 0;
+    var scoredRuns = root.TryGetProperty("scoredRuns", out var sr) ? sr.GetInt32() : 0;
+    Console.WriteLine(Verdict.Passing(
+        VerdictField.Of("experimentId", eid.ToString()),
+        VerdictField.Of("scored", scoredRuns),
+        VerdictField.Of("total", totalRuns)).Render());
+    return 0;
+}
+
+// R0.2: research doctor — env health verdict
+static async Task<int> DoctorAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.GetAsync("api/system/doctor", CancellationToken.None);
+
+    if (json is null)
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "no-response — app not reachable")).Render());
+        return 1;
+    }
+
+    using var doc = System.Text.Json.JsonDocument.Parse(json);
+    var root = doc.RootElement;
+
+    var verdict = root.GetProperty("verdict").GetString()!;
+    var fields = new List<VerdictField>
+    {
+        VerdictField.Of("status", root.GetProperty("status").GetString() ?? "unknown"),
+        VerdictField.Of("dbPath", root.GetProperty("dbPath").GetString() ?? "unknown"),
+        VerdictField.Of("port", root.TryGetProperty("port", out var p) ? p.GetInt32() : 5134),
+    };
+
+    if (root.TryGetProperty("issues", out var issues) && issues.ValueKind == System.Text.Json.JsonValueKind.Array)
+    {
+        foreach (var issue in issues.EnumerateArray())
+            fields.Add(VerdictField.Of("issue", issue.GetString() ?? ""));
+    }
+
+    if (verdict == "PASS")
+    {
+        Console.WriteLine(Verdict.Passing(fields.ToArray()).Render());
+        return 0;
+    }
+    else
+    {
+        Console.WriteLine(Verdict.Failing(fields.ToArray()).Render());
+        return 1;
+    }
+}
+
 static void PrintUsage()
 {
         Console.Error.WriteLine("""
@@ -610,6 +776,9 @@ static void PrintUsage()
           research pipeline reject  <id>
           research entry-quality <runId> [--strategy <id>] [--min-trades 10] [--json]
           research pyramid-eval  <runId> [--strategy <id>] [--min-trades 10] [--add-levels 0.5,1.0,1.5] [--json]
+          research score        <runId> [--experiment <id>] [--variant <label>]
+          research scoreboard   --experiment <id> [--top 20] [--out <path.md>]
+          research doctor
         Global: [--base-url https://localhost:7108] (or env SHAMSHIR_BASE_URL)
         Every command prints a final `VERDICT: PASS|FAIL …` line; exit code mirrors it.
         """);
