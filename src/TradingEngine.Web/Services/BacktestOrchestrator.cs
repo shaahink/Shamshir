@@ -1053,9 +1053,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var from = cfg.Start;
         var wallStart = DateTime.UtcNow;
 
-        var dbPath = _configuration.GetValue<string>("Persistence:DbPath")
-            ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                "..", "..", "..", "..", "..", "data", "trading.db"));
+        var dbPath = DbPathResolver.ResolveTradingDbPath(_configuration.GetValue<string>("Persistence:DbPath"));
 
         using var scope = _scopeFactory.CreateScope();
         var barRepo = scope.ServiceProvider.GetRequiredService<IBarRepository>();
