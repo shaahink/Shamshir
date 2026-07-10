@@ -5,11 +5,11 @@
 **Branch:** `iter/parity-pipeline` (HEAD: `877c120`)
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
-last: A1 session5 — reconciliation gap fixed (RunQueryService). Gates all green.
-fix: RunQueryService.GetRunsAsync() read _db.BacktestRuns.TotalTrades directly, bypassing ReconcileAsync(). Detail endpoint used GetByIdAsync()→ReconcileAsync(). Added FixStaleTradeCounts() batch reconciliation.
-finding: No current DB discrepancy (all TotalTrades match TradeResults). Fix is defense-in-depth. Jul 9 tape runs genuinely have 0 TradeResults — reconciliation can't fix that. The 0-trade generation on NEW runs remains uninvestigated.
-gate: build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
-path: If next session wants tape trades: trace WHY Jul 9 bar-processing produces 0 proposals/fills despite Market default (f0855ed). Check BarEvaluator→EntryPlanner→Kernel path with RunPlanJson. Compare working 2cdba11a (Jul 7, explicit RunPlan) vs broken Jul 9 runs (empty RunPlan).
+last: A1 DONE — F17 root-caused + fix VERIFIED by live run (owner session 2026-07-10). Root cause: 9454878 removed Persistence:DbPath; orchestrator inner-host fallback wrote journal/trades/equity to phantom repo-root data/trading.db while run rows went to canonical DB. Fix 9962432 verified: run 8bd9cedb = 3 trades / 272 journal / 244 equity, NetProfit byte-identical to known-good 2cdba11a. Evidence: a1-f17-verified-20260710.md.
+next: A2 (F18 compare-both + P2.2 headline gate). New findings F19–F23 recorded in the A1 evidence file — F19 (false TRADES_PARTIALLY_UNRECONSTRUCTABLE warning on healthy tape runs) and F20 (CTraderListenService stale dbPath fallback) should land with A2/B1.
+do-not: re-investigate kernel persistence / RunPlanJson-shape / list-vs-detail theories — all disproved with evidence in a1-f17-verified-20260710.md.
+⚠ port: dev Web app listens on http://localhost:5134 (NOT 5000 as quickstart says). Never `Stop-Process` all dotnet — other repos run builds/tests on this machine.
+⚠ STALL PREVENTION: never run web app / backtests as blocking foreground commands — background with output redirected to a file, poll the API, heartbeat every 3m.
 
 ## Checkpoints
 
@@ -17,7 +17,7 @@ Status ∈ TODO · IN PROGRESS · DONE · BLOCKED. Evidence = artifact path unde
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
-| A1 | Fix F17 — tape/replay zero-trade regression | IN PROGRESS | f0855ed | a1-f17-session-5.md |
+| A1 | Fix F17 — tape/replay zero-trade regression | DONE | 9962432 | a1-f17-verified-20260710.md |
 | A2 | Fix F18 + rerun P2.2 headline gate | TODO | | |
 | B1 | Pipeline completion + UI gaps + P6 playbook validation | TODO | | |
 | C1 | P3.6 data model + recording hooks | TODO | | |
