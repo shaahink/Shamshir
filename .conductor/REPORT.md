@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir iter-land-fix run report
 
-_Updated 2026-07-09 22:50 UTC · branch `iter/parity-pipeline` · HEAD `a7b5bf5`_
+_Updated 2026-07-10 01:31 UTC · branch `iter/parity-pipeline` · HEAD `9962432`_
 
-**Status:** NeedsHuman — stage A1 used all 6 attempts without completing — inspect and `conductor resume` (or `conductor skip`)
-**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 6 · working ▸ A1
-**Checkpoints:** 0/6 done · **Sessions run:** 7 · **Cost:** $0.5324 · **Tokens:** 741,547 in / 52,602 out / 60,317 think
+**Status:** Idle
+**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 1 · working ▸ A1
+**Checkpoints:** 0/6 done · **Sessions run:** 9 · **Cost:** $0.6227 · **Tokens:** 832,769 in / 64,189 out / 76,787 think
 
 ## Stage progress
 
@@ -76,6 +76,8 @@ _Updated 2026-07-09 22:50 UTC · branch `iter/parity-pipeline` · HEAD `a7b5bf5`
 | 5 | A1 | Resume | 4r2 | 07-09 21:39 | 0:12 | Progress |  | 1 | build:OK · unit:OK · sim-fast:OK | $0.0600 | 84,481/8,124 |
 | 6 | A1 | Deliver | 5 | 07-09 21:54 | 0:35 | Stalled |  | 0 |  | $0.0396 | 50,932/7,699 |
 | 7 | A1 | Resume | 6r1 | 07-09 22:29 | 0:20 | Stalled |  | 0 |  | $0.0289 | 57,031/1,669 |
+| 8 | A1 | Deliver | 1 | 07-10 01:00 | 0:00 | Interrupted |  | 0 |  |  |  |
+| 9 | A1 | Resume | 1r1 | 07-10 01:01 | 0:29 | Stalled |  | 0 |  | $0.0903 | 91,222/11,587 |
 
 ## Timeline
 
@@ -106,6 +108,8 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 07-09 23:29:52  • session #7 A1 Resume started (attempt 6/6)
 07-09 23:50:38  • session #7 A1 → Stalled  (20m45s)
 07-09 23:50:56  ■ needs human — stage A1 used all 6 attempts without completing — inspect and `conductor resume` (or `conductor skip`)
+07-10 02:01:58  ◆ run resumed · Shamshir iter-land-fix
+07-10 02:01:58  • session #9 A1 Resume started (attempt 1/6)
 ```
 
 ## Health
@@ -113,8 +117,8 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 _Execution-health signals, folded from the event log (`.conductor/events.jsonl`)._
 
 ```
-sessions 7 · retries 6 (86 %) · overall Warn
-⚠ [high-retry-rate] 6/7 sessions were retries (86 %)
+sessions 8 · retries 6 (75 %) · overall Warn
+⚠ [high-retry-rate] 6/8 sessions were retries (75 %)
 ```
 
 ## Repo
@@ -123,8 +127,8 @@ _Live git snapshot (branch, working tree, sync vs upstream)._
 
 ```
 branch: iter/parity-pipeline
-working tree: M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, M src/TradingEngine.Web/Services/BacktestOrchestrator.cs, ?? conductor.plan.json
-vs upstream: 3 ahead
+working tree: M docs/iterations/iter-land-fix/TRACKER.md, M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, ?? conductor.plan.json
+vs upstream: 5 ahead
 ```
 
 ### Commits by session
@@ -145,23 +149,25 @@ vs upstream: 3 ahead
 - `.conductor/handovers/P5.md`
 - `.conductor/handovers/P6.md`
 
-## Last gate run
-
-build:OK · unit:OK · sim-fast:OK
-
 ## Last session result
 
-> Good, my DB path fix is still in place. Let me verify it, build, run gates, then run the live verification.
-> Fix looks correct. Let me build and run gates.
-> Unit (716/0/6) and Sim-fast (144/0/0) are green. One integration test timed out. Let me check which one.
-> All gates green. Now verify with a live tape backtest.
+> The unit test suite has a failure - `FakeTransportTests.StopIntent_ProducesStopOrderFrame`. Let me check if this is related to the in-flight changes.
+> Gate battery results:
+> - Build: 0 errors, 5 pre-existing warnings
+> - Unit: 716/0/6
+> - Integration: 121/0/0
+> - Sim-fast: 144/0/0
+> - Golden: clean
+> 
+> Now let me QA the previous session's claims and investigate the actual F17 root cause. The TRACKER.md handoff says "DB PATH MISMATCH" but the stage notes from the orchestrator say "UI Run Form vs Details mismatch." Let me check both.
+> Let me check the second DbPathResolver usage and also look at how the engine processes strategy configs.
+> I found the root cause. Let me verify it's correct and apply the fi…
 
 ## Tracker handoff
 
 ```
-last: A1 session5 — reconciliation gap fixed (RunQueryService). Gates all green.
-fix: RunQueryService.GetRunsAsync() read _db.BacktestRuns.TotalTrades directly, bypassing ReconcileAsync(). Detail endpoint used GetByIdAsync()→ReconcileAsync(). Added FixStaleTradeCounts() batch reconciliation.
-finding: No current DB discrepancy (all TotalTrades match TradeResults). Fix is defense-in-depth. Jul 9 tape runs genuinely have 0 TradeResults — reconciliation can't fix that. The 0-trade generation on NEW runs remains uninvestigated.
-gate: build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
-path: If next session wants tape trades: trace WHY Jul 9 bar-processing produces 0 proposals/fills despite Market default (f0855ed). Check BarEvaluator→EntryPlanner→Kernel path with RunPlanJson. Compare working 2cdba11a (Jul 7, explicit RunPlan) vs broken Jul 9 runs (empty RunPlan).
+last: A1 sessions 1-7 exhausted all 6 attempts — restarted with fresh budget. 3 commits: f0855ed (C# default revert), 4ccea7f (RunQueryService reconciliation). All gates green every time. 0/6 checkpoints done.
+root: CORRECTED FINDING — DB PATH MISMATCH. Working runs (Jul 7, commit 2cdba11a, explicit RunPlanJson) use a different DB file path than broken runs (Jul 9, empty RunPlanJson). Working DB has trades, broken DB path is empty. NOT a persistence bug.
+path: Trace where trading.db path is set for tape runs. Compare: 2cdba11a (explicit RunPlanJson) vs current (empty RunPlanJson). Check for two separate DB files. Unify DB path or migrate data.
+⚠ STALL PREVENTION: ALL 4 stalls caused by running `dotnet run` tape backtest as a blocking foreground command — 15m no output, conductor killed session. NEVER block on long commands. Use Start-Job, Start-Process -NoNewWindow, or & with file redirection. Write-Host heartbeat every 3m. Web project outputs lots — always redirect to file.
 ```
