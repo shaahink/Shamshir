@@ -31,11 +31,13 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             WinRatePct = run.WinRatePct,
             ExitCode = run.ExitCode,
             ErrorMessage = run.ErrorMessage,
+            WarningsJson = run.WarningsJson,
             ReportJsonPath = run.ReportJsonPath,
             DatasetId = run.DatasetId,
             ConfigSetId = run.ConfigSetId,
             Seed = run.Seed,
             ParentRunId = run.ParentRunId,
+            ComparePairId = run.ComparePairId,
             RunPlanJson = run.RunPlanJson,
             Venue = run.Venue,
             RiskProfileId = run.RiskProfileId,
@@ -46,6 +48,8 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             WallElapsedMs = run.WallElapsedMs,
             BarsPerSec = run.BarsPerSec,
             TotalBars = run.TotalBars,
+            ExplorationMode = run.ExplorationMode,
+            RecordExcursions = run.RecordExcursions,
         };
         db.BacktestRuns.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -66,6 +70,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         entity.WinRatePct = run.WinRatePct;
         entity.ExitCode = run.ExitCode;
         entity.ErrorMessage = run.ErrorMessage;
+        entity.WarningsJson = run.WarningsJson;
         entity.EffectiveConfigJson = run.EffectiveConfigJson;
         entity.ReportJsonPath = run.ReportJsonPath;
         entity.WallElapsedMs = run.WallElapsedMs;
@@ -91,26 +96,6 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         var e = await db.BacktestRuns.FindAsync([runId], ct);
         if (e is null) return null;
         return await ReconcileAsync(e, ct);
-    }
-
-    public async Task<int> DeleteRunsAsync(IReadOnlyCollection<string> runIds, CancellationToken ct)
-    {
-        if (runIds.Count == 0) return 0;
-        var ids = runIds.ToHashSet();
-
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-
-        // FK-safe: delete run-scoped children first, then the run header. NEVER touch shared
-        // Datasets/ConfigSets (duplicate runs reuse them) or the separate marketdata.db.
-        await db.Trades.Where(t => t.RunId != null && ids.Contains(t.RunId)).ExecuteDeleteAsync(ct);
-        await db.JournalEntries.Where(j => ids.Contains(j.RunId)).ExecuteDeleteAsync(ct);
-        await db.EquitySnapshots.Where(s => s.RunId != null && ids.Contains(s.RunId)).ExecuteDeleteAsync(ct);
-        await db.Bars.Where(b => ids.Contains(b.RunId)).ExecuteDeleteAsync(ct);
-        await db.VenueSessions.Where(v => ids.Contains(v.RunId)).ExecuteDeleteAsync(ct);
-        var deleted = await db.BacktestRuns.Where(r => ids.Contains(r.RunId)).ExecuteDeleteAsync(ct);
-
-        await tx.CommitAsync(ct);
-        return deleted;
     }
 
     // A run interrupted after its trades were persisted but before WriteEndRecordAsync leaves the
@@ -240,7 +225,8 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             e.DatasetId, e.ConfigSetId, e.Seed, e.ParentRunId,
             e.RunPlanJson, e.Venue, e.RiskProfileId, e.GovernorEnabled, e.RegimeEnabled,
             e.CommissionPerMillion, e.SpreadPips,
-            e.WallElapsedMs, e.BarsPerSec, e.TotalBars);
+            e.WallElapsedMs, e.BarsPerSec, e.TotalBars, e.WarningsJson, e.ComparePairId,
+            e.ExplorationMode, e.RecordExcursions);
     }
 
     public async Task DeleteAsync(string runId, CancellationToken ct)
@@ -252,5 +238,23 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         await db.VenueSessions.Where(v => v.RunId == runId).ExecuteDeleteAsync(ct);
         await db.BacktestRuns.Where(r => r.RunId == runId).ExecuteDeleteAsync(ct);
         await db.SaveChangesAsync(ct);
+    }
+
+    public async Task<int> DeleteRunsAsync(IReadOnlyCollection<string> runIds, CancellationToken ct)
+    {
+        if (runIds.Count == 0) return 0;
+        var ids = runIds.ToHashSet();
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        await db.Trades.Where(t => t.RunId != null && ids.Contains(t.RunId)).ExecuteDeleteAsync(ct);
+        await db.JournalEntries.Where(j => ids.Contains(j.RunId)).ExecuteDeleteAsync(ct);
+        await db.EquitySnapshots.Where(s => s.RunId != null && ids.Contains(s.RunId)).ExecuteDeleteAsync(ct);
+        await db.Bars.Where(b => ids.Contains(b.RunId)).ExecuteDeleteAsync(ct);
+        await db.VenueSessions.Where(v => ids.Contains(v.RunId)).ExecuteDeleteAsync(ct);
+        var deleted = await db.BacktestRuns.Where(r => ids.Contains(r.RunId)).ExecuteDeleteAsync(ct);
+
+        await tx.CommitAsync(ct);
+        return deleted;
     }
 }

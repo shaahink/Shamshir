@@ -1,21 +1,11 @@
-import { Component, inject, OnInit, signal, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { TradeChartCardComponent } from '../../../shared/trade-chart-card.component';
-import type { TradeDetail } from '../../../models/api.types';
+import type { TradeDetail, TradeExcursionResponse } from '../../../models/api.types';
 import { TradesApiService } from '../trades.service';
 import { formatDuration } from '../../../shared/format.helper';
-
-function safeParse(raw: string): Record<string, unknown> | null {
-  try {
-    const v = JSON.parse(raw);
-    if (v !== null && typeof v === 'object' && !Array.isArray(v)) return v as Record<string, unknown>;
-    return null;
-  } catch { return null; }
-}
-
-interface EntrySnapshot { reason: string | null | undefined; regime: string | null | undefined; snapshot: Record<string, unknown> | null; }
 
 @Component({
   selector: 'app-trade-detail',
@@ -53,32 +43,40 @@ interface EntrySnapshot { reason: string | null | undefined; regime: string | nu
           <app-stat-tile label="Opened" [value]="t.openedAtUtc | date: 'MM-dd HH:mm'" />
           <app-stat-tile label="Closed" [value]="t.closedAtUtc | date: 'MM-dd HH:mm'" />
         </div>
-        <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
-          @if (entryNarrative(); as en) {
-            <div>
-              <h2 class="mb-1 text-sm font-medium text-gray-400">Why entered</h2>
-              <p class="text-xs text-gray-300">{{ en.reason || '—' }}</p>
-              @if (en.regime) { <p class="text-xs text-gray-500">Regime: {{ en.regime }}</p> }
-              @if (en.snapshot) {
-                <div class="mt-1 flex flex-wrap gap-1.5">
-                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">Entry {{ $any(en.snapshot).entryPrice ?? '—' }}</span>
-                  <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">SL {{ $any(en.snapshot).stopLoss ?? '—' }}</span>
-                  @if ($any(en.snapshot).takeProfit) { <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">TP {{ $any(en.snapshot).takeProfit }}</span> }
-                  @if ($any(en.snapshot).lots) { <span class="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">{{ $any(en.snapshot).lots }} lots</span> }
-                </div>
-              }
-            </div>
-          }
-          <div>
-            <h2 class="mb-1 text-sm font-medium text-gray-400">Exit: {{ t.exitReason }}</h2>
-            @if (exitNarrative(); as xn) {
-              @if ($any(xn).exitPrice) { <p class="text-xs text-gray-500">Exit at {{ $any(xn).exitPrice }}, net {{ $any(xn).netAmt?.toFixed(2) }}, R {{ $any(xn).rMultiple?.toFixed(2) }}</p> }
-            }
-          </div>
+        <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+          <h2 class="mb-1 text-sm font-medium text-gray-400">Exit: {{ t.exitReason }}</h2>
           <p class="text-xs text-gray-500">Strategy: {{ t.strategyId }}</p>
         </div>
 
         <app-trade-chart-card [tradeId]="t.id" />
+
+        @if (excursionPoints().length > 0) {
+          <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+            <h2 class="mb-2 text-sm font-medium text-gray-400">MAE/MFE Path</h2>
+            <div class="flex h-32 items-end gap-px">
+              @for (pt of excursionPoints(); track pt.t) {
+                @if (pt.hi !== 0 || pt.lo !== 0) {
+                  <div class="flex flex-1 flex-col justify-end" [title]="pt.t + 'm: hi=' + pt.hi.toFixed(1) + ' lo=' + pt.lo.toFixed(1)">
+                    <div
+                      class="w-full"
+                      [style.height]="(Math.abs(pt.hi) / range() * 100) + '%'"
+                      [style.background]="pt.hi > 0 ? '#22c55e' : '#ef4444'"
+                    ></div>
+                    <div
+                      class="w-full"
+                      [style.height]="(Math.abs(pt.lo) / range() * 100) + '%'"
+                      [style.background]="pt.lo < 0 ? '#ef4444' : '#22c55e'"
+                    ></div>
+                  </div>
+                }
+              }
+            </div>
+            <div class="mt-1 flex justify-between text-xs text-gray-500">
+              <span>&#8593; Green = favorable</span>
+              <span>Red = adverse &#8595;</span>
+            </div>
+          </div>
+        }
       } @else {
         <div class="py-12 text-center text-sm text-gray-500">Trade not found.</div>
       }
@@ -90,6 +88,8 @@ export class TradeDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(TradesApiService);
   trade = signal<TradeDetail | null>(null);
+  excursionPoints = signal<{ t: number; hi: number; lo: number }[]>([]);
+  range = signal<number>(0.01);
 
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id');
@@ -97,24 +97,31 @@ export class TradeDetailComponent implements OnInit {
     try {
       const t = await this.api.getById(id);
       this.trade.set(t);
+      // Load excursion path for MAE/MFE chart
+      this.loadExcursions(id);
     } catch {
       this.trade.set(null);
     }
   }
 
+  private async loadExcursions(id: string): Promise<void> {
+    try {
+      const r = await this.api.getExcursions(id);
+      const parsed: { t: number; hi: number; lo: number }[] = JSON.parse(r.pathJson || '[]');
+      this.excursionPoints.set(parsed);
+      if (parsed.length > 0) {
+        const max = Math.max(
+          ...parsed.map((p) => Math.abs(p.hi)),
+          ...parsed.map((p) => Math.abs(p.lo)),
+          1,
+        );
+        this.range.set(max);
+      }
+    } catch {
+      this.excursionPoints.set([]);
+    }
+  }
+
   fmtDuration = formatDuration;
-
-  entryNarrative = computed((): EntrySnapshot | null => {
-    const t = this.trade();
-    if (!t) return null;
-    const snapshot = t.entrySnapshotJson ? safeParse(t.entrySnapshotJson) : null;
-    return { reason: t.entryReason, regime: t.entryRegime, snapshot };
-  });
-
-  exitNarrative = computed(() => {
-    const t = this.trade();
-    if (!t) return null;
-    if (!t.exitDetailJson) return null;
-    return safeParse(t.exitDetailJson);
-  });
+  Math = Math;
 }

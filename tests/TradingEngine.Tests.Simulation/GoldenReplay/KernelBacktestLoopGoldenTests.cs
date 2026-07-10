@@ -77,6 +77,24 @@ public sealed class KernelBacktestLoopGoldenTests
         run.ClosedTrades[0].Result.Lots.Should().Be(golden.Trades[0].Lots);
         run.Final.Drawdown.CurrentMaxDrawdown.Should().Be(golden.FinalRisk.CurrentMaxDrawdown);
     }
+
+    // P2.4/D6 gate: proves the NEW evaluateTimeFlatten wiring end-to-end through the real kernel loop
+    // (queue -> pump -> EngineReducer.HandleCloseRequested -> CloseOpenPosition effect -> venue), not just
+    // KernelTimeFlattenEvaluator in isolation. A hook that unconditionally requests a flatten for every open
+    // position must force-close the golden fixture's position with reason "TimeFlatten", earlier than its
+    // natural SL/TP exit would have.
+    [Fact]
+    public async Task KernelLoop_TimeFlattenHook_ForceClosesOpenPosition()
+    {
+        IReadOnlyList<(Guid, string)> FlattenEveryOpenPosition(Bar bar, EngineState state) =>
+            state.Positions.Where(kv => kv.Value.Phase == PositionPhase.Open)
+                .Select(kv => (kv.Key, "TimeFlatten")).ToList();
+
+        var run = await KernelLoopHarness.RunGoldenAsync(evaluateTimeFlatten: FlattenEveryOpenPosition);
+
+        run.ClosedTrades.Should().NotBeEmpty("the time-flatten hook must force-close the open position");
+        run.ClosedTrades[0].Result.ExitReason.Should().Be("TimeFlatten");
+    }
 }
 
 /// <summary>
@@ -111,7 +129,8 @@ internal static class KernelLoopHarness
     public static async Task<Result> RunGoldenAsync(
         bool viaBrokerStream = false,
         IReadOnlyList<Bar>? bars = null,
-        ResetConfig? resetConfig = null)
+        ResetConfig? resetConfig = null,
+        Func<Bar, EngineState, IReadOnlyList<(Guid PositionId, string Reason)>>? evaluateTimeFlatten = null)
     {
         var barsList = bars ?? GoldenBarFixture.Create();
         const decimal initialBalance = 10_000m;
@@ -132,7 +151,7 @@ internal static class KernelLoopHarness
                     var slPips = ps.Direction == TradeDirection.Long
                         ? (ps.EntryPrice.Value - ps.CurrentStopLoss.Value) / EurusdInfo.PipSize
                         : (ps.CurrentStopLoss.Value - ps.EntryPrice.Value) / EurusdInfo.PipSize;
-                    open.Add(new ProjectedPosition(slPips, ps.Lots, EurusdInfo.ContractSize * EurusdInfo.PipSize));
+                    open.Add(new ProjectedPosition(ps.Symbol.Value, slPips, ps.Lots, EurusdInfo.ContractSize * EurusdInfo.PipSize));
                 }
                 return open;
             },
@@ -201,6 +220,7 @@ internal static class KernelLoopHarness
             initialBalance, runId: "kernel-loop", NullLogger.Instance,
             captureRisk: RiskSnapshots.Capture,
             realizedEquity: () => initialBalance + eventBus.OfType<TradeClosed>().Sum(tc => tc.Result.NetPnL.Amount),
+            evaluateTimeFlatten: evaluateTimeFlatten,
             resetConfig: resetConfig);
 
         var dataset = new DatasetRef("golden", "hash", ["EURUSD"], ["H1"],

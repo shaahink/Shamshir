@@ -1,0 +1,12 @@
+{
+  "name": "data-quality",
+  "description": "P6.1 canonical data-quality check: runs the server-side DataQualityValidator and gates on zero OHLC violations and zero non-weekend gaps. Run this before any research job to protect the pipeline from bad data.",
+  "steps": [
+    {
+      "kind": "data-quality"
+    },
+    {
+      "kind": "report"
+    }
+  ]
+}

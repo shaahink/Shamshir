@@ -1,0 +1,28 @@
+{
+  "name": "block-bootstrap",
+  "description": "P6.5 canonical block-bootstrap stress test: generates N synthetic tapes by block-resampling weekly bars from historical data, runs the portfolio on each tape, and reports the drawdown distribution. Block resampling preserves session structure (autocorrelation within weeks) while creating alternative market paths for stress-testing DD/pass-probability beyond a single historical draw.",
+  "steps": [
+    {
+      "kind": "ensure-data",
+      "symbols": "EURUSD",
+      "tfs": "H1",
+      "from": "2024-01-01",
+      "to": "2024-07-01"
+    },
+    {
+      "kind": "block-bootstrap",
+      "symbol": "EURUSD",
+      "tf": "H1",
+      "from": "2024-01-01T00:00:00Z",
+      "to": "2024-07-01T00:00:00Z",
+      "n": 50,
+      "blockSize": "week",
+      "balance": 100000,
+      "strategyIds": ["trend-breakout"],
+      "timeout": 3600
+    },
+    {
+      "kind": "report"
+    }
+  ]
+}

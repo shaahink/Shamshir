@@ -30,6 +30,31 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/settings/settings.component').then((m) => m.SettingsComponent),
   },
+  {
+    path: 'exit-lab',
+    loadComponent: () =>
+      import('./features/exit-lab/exit-lab.component').then((m) => m.ExitLabComponent),
+  },
+  {
+    path: 'walk-forward',
+    loadComponent: () =>
+      import('./features/walk-forward/walk-forward.component').then((m) => m.WalkForwardComponent),
+  },
+  {
+    path: 'scoreboard',
+    loadComponent: () =>
+      import('./features/scoreboard/scoreboard.component').then((m) => m.ScoreboardComponent),
+  },
+  {
+    path: 'phase-tracker',
+    loadComponent: () =>
+      import('./features/phase-tracker/phase-tracker.component').then((m) => m.PhaseTrackerComponent),
+  },
+  {
+    path: 'research',
+    loadComponent: () =>
+      import('./features/research/research.component').then((m) => m.ResearchComponent),
+  },
   { path: 'risk-profiles', redirectTo: '/risk/profiles', pathMatch: 'full' },
   { path: 'risk-profiles/:id', redirectTo: '/risk/profiles/:id' },
   { path: 'prop-firm-rules', redirectTo: '/risk/ftmo', pathMatch: 'full' },

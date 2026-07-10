@@ -11,6 +11,9 @@ public sealed record BollingerSqueezeConfig : IStrategyConfig
     public PositionManagementOptions PositionManagement { get; init; } = new();
     public ReentryOptions Reentry { get; init; } = new();
     public BollingerSqueezeParameters Parameters { get; init; } = new();
+    public Timeframe EntryTimeframe { get; init; } = Timeframe.H1;
+    public string? Symbol { get; init; }
+    public IReadOnlyList<Timeframe> RequiredTimeframes { get; init; } = [];
 }
 
 public sealed record BollingerSqueezeParameters

@@ -174,6 +174,37 @@ public sealed class PositionLifecycleTests
     }
 
     [Fact]
+    public void CreateIntended_SetsInitialStopLoss()
+    {
+        var state = CreateIntended();
+
+        state.InitialStopLoss.Should().Be(new Price(1.0821m));
+    }
+
+    [Fact]
+    public void Open_FullClose_PublishesInitialStopLoss_UnaffectedByLaterStopMove()
+    {
+        // P0.1 regression: CurrentStopLoss gets moved by breakeven/trailing while the position is Open
+        // (EngineReducer.HandleStopLossModify does `ps with { CurrentStopLoss = ... }`). The published
+        // trade-closed effect must still carry the ORIGINAL (InitialStopLoss) risk distance untouched,
+        // even though CurrentStopLoss (the final stop) has moved to breakeven.
+        var state = CreateIntended(); // initial stop 1.0821
+        state = PositionLifecycle.Apply(state, new OrderSubmitted(state.OrderId, state.Symbol, state.Direction, 0.1m, null, "test", DateTime.UtcNow)).State;
+        state = PositionLifecycle.Apply(state, new OrderFilled(state.OrderId, state.Symbol, 0.1m, new Price(1.0850m), DateTime.UtcNow)).State;
+
+        // Simulate a breakeven move: the reducer would do `ps with { CurrentStopLoss = ... }`.
+        state = state with { CurrentStopLoss = new Price(1.0850m) };
+
+        var fullClose = new OrderFilled(state.OrderId, state.Symbol, 0.1m, new Price(1.0908m), DateTime.UtcNow.AddMinutes(5));
+        var (next, effects) = PositionLifecycle.Apply(state, fullClose);
+
+        next.Phase.Should().Be(PositionPhase.Closed);
+        var trade = effects.OfType<PublishTradeClosed>().Single();
+        trade.InitialStopLoss.Should().Be(new Price(1.0821m));
+        trade.StopLoss.Should().Be(new Price(1.0850m)); // final/trailed stop still reported separately
+    }
+
+    [Fact]
     public void Open_CloseRequested_TransitionsToClosing_EmitsCloseOpenPosition()
     {
         var state = CreateIntended();

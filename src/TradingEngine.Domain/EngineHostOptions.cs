@@ -31,7 +31,16 @@ public sealed record EngineHostOptions
     public LoadedConfig? PreloadedConfig { get; init; }
     public bool DiagnosticsEnabled { get; init; }
 
+    /// <summary>
+    /// P0.1 (F1): the run's configured account balance. In backtest this is the sizing authority; the
+    /// venue-reported hello balance must never override it. 0 = not set (older callers fall back to the
+    /// venue/RiskManager balance, preserving pre-P0.1 behaviour).
+    /// </summary>
+    public decimal InitialBalance { get; init; }
+
     public IRunDataCache? RunDataCache { get; init; }
+
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? PreloadedAuxBars { get; init; }
 
     public bool SkipJournal { get; init; }
 }

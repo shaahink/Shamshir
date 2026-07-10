@@ -12,6 +12,9 @@ public sealed record MtfTrendConfig : IStrategyConfig
     public ReentryOptions Reentry { get; init; } = new();
     public MtfTrendParameters Parameters { get; init; } = new();
     public Timeframe HigherTimeframe { get; init; } = Timeframe.H4;
+    public Timeframe EntryTimeframe { get; init; } = Timeframe.H1;
+    public string? Symbol { get; init; }
+    public IReadOnlyList<Timeframe> RequiredTimeframes { get; init; } = [];
 }
 
 public sealed record MtfTrendParameters

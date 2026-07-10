@@ -56,7 +56,7 @@ public sealed class KernelAcceptanceTests
                             ? (entryPrice - slPrice) / EurusdInfo.PipSize
                             : (slPrice - entryPrice) / EurusdInfo.PipSize;
                         var pipValuePerLot = EurusdInfo.ContractSize * EurusdInfo.PipSize;
-                        open.Add(new ProjectedPosition(slPips, ps.Lots, pipValuePerLot));
+                        open.Add(new ProjectedPosition("EURUSD", slPips, ps.Lots, pipValuePerLot));
                     }
                 }
                 return open;

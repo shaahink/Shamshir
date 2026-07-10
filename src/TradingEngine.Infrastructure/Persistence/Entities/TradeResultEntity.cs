@@ -31,6 +31,9 @@ public sealed class TradeResultEntity : IAuditableEntity
     public double RMultiple { get; set; }
     public double MaxAdverseExcursion { get; set; }
     public double MaxFavorableExcursion { get; set; }
+    // P4.1 (F12): R-normalized excursions — cross-asset-class comparable.
+    public double? MaeR { get; set; }
+    public double? MfeR { get; set; }
     public string ExitReason { get; set; } = "";
     public string StrategyId { get; set; } = "";
     public string RiskProfileId { get; set; } = "";
@@ -42,4 +45,8 @@ public sealed class TradeResultEntity : IAuditableEntity
     public string? EntryRegime { get; set; }
     public string? EntrySnapshotJson { get; set; }
     public string? ExitDetailJson { get; set; }
+    public decimal? InitialStopLoss { get; set; }
+    // P4.5.6: the decision bar's timeframe — enables scoreboard to filter trades by TF
+    // (previously impossible: TradeResultEntity had no TF column, so H1+M15 trades merged).
+    public string? EntryTimeframe { get; set; }
 }

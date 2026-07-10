@@ -16,15 +16,15 @@ public sealed class SessionBreakoutStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => _config.Parameters.AtrPeriod + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats { get; private set; } = new(0, 0, 0, 0);
 
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
 
     public SessionBreakoutStrategy(SessionBreakoutConfig config, ISymbolInfoRegistry symbolRegistry, ILogger<SessionBreakoutStrategy> logger)
@@ -38,10 +38,10 @@ public sealed class SessionBreakoutStrategy : IStrategy
     {
         try
         {
-            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
+            if (bars is null || bars.Count < RequiredBarCount)
             {
-                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
@@ -50,11 +50,8 @@ public sealed class SessionBreakoutStrategy : IStrategy
 
             if (now >= p.RangeStartUtc && now < p.RangeEndUtc)
             {
-                // C8 (iter-35 B2): range = TODAY's session window only. Filter to the current session
-                // day AND the [RangeStartUtc, RangeEndUtc) time-of-day window — keying on time-of-day
-                // alone contaminated the range with every prior day's session bars in the buffer.
                 var sessionDay = context.EngineTimeUtc.Date;
-                var sessionBars = h1Bars
+                var sessionBars = bars
                     .Where(b =>
                     {
                         if (b.OpenTimeUtc.Date != sessionDay) return false;
@@ -127,6 +124,8 @@ public sealed class SessionBreakoutStrategy : IStrategy
             RegimeFilter = entry.RegimeFilter ?? new(),
             OrderEntry = entry.OrderEntry ?? new(),
             PositionManagement = entry.PositionManagement ?? new(),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
         };
         return new SessionBreakoutStrategy(config,
             sp.GetRequiredService<ISymbolInfoRegistry>(),

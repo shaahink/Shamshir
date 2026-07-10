@@ -9,7 +9,6 @@ import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { DataTableComponent, type ColumnDef } from '../../../shared/data-table.component';
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
 import { ScatterChartComponent } from '../../../shared/scatter-chart.component';
-import { HistogramChartComponent } from '../../../shared/histogram-chart.component';
 import { BadgeComponent } from '../../../shared/badge.component';
 import { TradeChartCardComponent } from '../../../shared/trade-chart-card.component';
 import { downloadBlob } from '../../../shared/download.helper';
@@ -17,15 +16,9 @@ import { formatSymbols } from '../../../shared/symbols.helper';
 import { TRADE_COLUMNS } from '../../../shared/trade-columns';
 import { DdBarChartComponent } from '../../../shared/dd-bar-chart.component';
 import { exportReport as doExportReport, type ExportStats } from '../report-export.helper';
-import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance, AddOnPack, BarNarrative } from '../../../models/api.types';
+import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance, AddOnPack, BarNarrative, PassProbabilityEstimate } from '../../../models/api.types';
 
 type JournalRow = JournalEntry & { outcome?: string | null };
-
-type Tab = 'overview' | 'trades' | 'journal' | 'risk';
-
-function safeJson(raw: string): Record<string, unknown> | null {
-  try { return JSON.parse(raw) as Record<string, unknown>; } catch { return null; }
-}
 
 @Component({
   selector: 'app-run-report',
@@ -94,6 +87,16 @@ function safeJson(raw: string): Record<string, unknown> | null {
             </div>
           </div>
 
+          <!-- P4.1 (F11): exploration funnel banner -->
+          @if (d.explorationMode && (d.status === 'completed' || d.status === 'completed-with-warnings')) {
+            <div class="rounded-lg border border-purple-800 bg-purple-900/20 p-3 text-xs">
+              <span class="text-purple-300 font-medium">Exploration complete</span>
+              <span class="text-gray-400"> — this run used the ATR×4 SL, no TP, no add-ons preset.</span>
+              <a [routerLink]="['/exit-lab']" [queryParams]="{ runIds: d.runId }"
+                 class="ml-2 text-emerald-400 hover:underline font-medium">Open Exit Lab (pre-filtered)</a>
+            </div>
+          }
+
           <!-- Tab bar -->
           <nav class="flex gap-1 border-b border-gray-800 pb-2">
             @for (t of reportTabs; track t.id) {
@@ -122,6 +125,24 @@ function safeJson(raw: string): Record<string, unknown> | null {
               <app-stat-tile label="Swap" [value]="swapDisplay()" [negative]="d.swapTotal !== 0" />
               <app-stat-tile label="Avg R" [value]="avgR().toFixed(2)" [positive]="avgR() > 0" />
             </div>
+
+            @if (passProb(); as pp) {
+              <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+                <h2 class="mb-3 text-sm font-medium text-gray-400">P(pass) Monte Carlo</h2>
+                <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <app-stat-tile label="P(pass)" [value]="(pp.probabilityOfPass * 100).toFixed(1) + '%'" [positive]="pp.probabilityOfPass >= 0.7" [negative]="pp.probabilityOfPass < 0.4" />
+                  <app-stat-tile label="Daily Breach" [value]="(pp.probabilityOfDailyBreach * 100).toFixed(1) + '%'" [negative]="pp.probabilityOfDailyBreach > 0.1" />
+                  <app-stat-tile label="Max Breach" [value]="(pp.probabilityOfMaxBreach * 100).toFixed(1) + '%'" [negative]="pp.probabilityOfMaxBreach > 0.05" />
+                  <app-stat-tile label="Projected" [value]="'$' + pp.projectedFinalEquity.toFixed(0)" />
+                </div>
+                <div class="mt-2 text-xs"
+                  [class.text-emerald-400]="pp.probabilityOfPass >= 0.7"
+                  [class.text-yellow-400]="pp.probabilityOfPass >= 0.4 && pp.probabilityOfPass < 0.7"
+                  [class.text-red-400]="pp.probabilityOfPass < 0.4">
+                  {{ pp.recommendation }}
+                </div>
+              </div>
+            }
 
             <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
               <h2 class="mb-3 text-sm font-medium text-gray-400">Profiling</h2>
@@ -329,7 +350,6 @@ function safeJson(raw: string): Record<string, unknown> | null {
           }
         </div>
 
-        <!-- Duplicate modal -->
         @if (dupOpen() && dupRunId() === d.runId) {
           <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" (click)="dupOpen.set(false)">
             <div class="w-full max-w-sm rounded-lg border border-gray-700 bg-gray-900 p-5 shadow-xl" (click)="$event.stopPropagation()">
@@ -369,63 +389,6 @@ export class RunReportComponent implements OnInit {
   private api = inject(RunsApiService);
   readonly store = inject(RunsStore);
 
-  activeTab = signal<Tab>('overview');
-
-  tabs: { id: Tab; label: string }[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'trades', label: 'Trades' },
-    { id: 'journal', label: 'Journal' },
-    { id: 'risk', label: 'Costs & Risk' },
-  ];
-
-  tabClass(id: Tab): string {
-    const active = this.activeTab() === id;
-    return 'rounded-t-md border-b-2 px-4 py-2 text-sm transition ' + (active ? 'border-emerald-500 bg-gray-800 text-white' : 'border-transparent text-gray-400 hover:text-white');
-  }
-
-  // Column chooser
-  allTradeCols: { key: string; label: string; format?: string }[] = [
-    { key: 'symbol', label: 'Sym' },
-    { key: 'direction', label: 'Dir' },
-    { key: 'entryPrice', label: 'Entry', format: 'number' },
-    { key: 'exitPrice', label: 'Exit', format: 'number' },
-    { key: 'netPnLAmount', label: 'Net', format: 'currency' },
-    { key: 'rMultiple', label: 'R', format: 'number' },
-    { key: 'pnLPips', label: 'Pips', format: 'pips' },
-    { key: 'exitReason', label: 'Exit' },
-    { key: 'strategyId', label: 'Strategy' },
-    { key: 'durationSeconds', label: 'Hold', format: 'duration' },
-    { key: 'lots', label: 'Lots', format: 'number' },
-    { key: 'stopLoss', label: 'SL', format: 'number' },
-    { key: 'takeProfit', label: 'TP', format: 'number' },
-    { key: 'grossPnLAmount', label: 'Gross', format: 'currency' },
-    { key: 'commissionAmount', label: 'Comm', format: 'currency' },
-    { key: 'swapAmount', label: 'Swap', format: 'currency' },
-    { key: 'maxAdverseExcursion', label: 'MAE', format: 'number' },
-    { key: 'maxFavorableExcursion', label: 'MFE', format: 'number' },
-    { key: 'entryType', label: 'Type' },
-    { key: 'entryReason', label: 'Why entered' },
-  ];
-
-  defaultTradeCols = ['symbol', 'direction', 'entryPrice', 'exitPrice', 'netPnLAmount', 'rMultiple', 'pnLPips', 'exitReason', 'strategyId', 'durationSeconds'];
-  shownTradeColKeys = signal<Set<string>>(new Set(this.defaultTradeCols));
-
-  visibleTradeCols = computed(() => this.allTradeCols.filter(c => this.shownTradeColKeys().has(c.key)).map(c => ({
-    key: c.key, label: c.label, format: c.format as ColumnDef['format'],
-    ...(c.key === 'netPnLAmount' || c.key === 'grossPnLAmount' ? { colorFn: (v: number) => (v >= 0 ? '#34d399' : '#f87171') } : {}),
-  } as ColumnDef)));
-
-  toggleTradeCol(key: string): void {
-    const set = new Set(this.shownTradeColKeys());
-    if (set.has(key)) set.delete(key); else set.add(key);
-    this.shownTradeColKeys.set(set);
-  }
-
-  tradeColChipClass(key: string): string {
-    const on = this.shownTradeColKeys().has(key);
-    return 'cursor-pointer rounded border px-2 py-0.5 text-xs transition ' + (on ? 'border-emerald-600 bg-emerald-900/20 text-emerald-400' : 'border-gray-700 text-gray-500 hover:text-gray-300');
-  }
-
   onTradeClick(row: Record<string, unknown>): void {
     if (row && typeof row['id'] === 'string') {
       const id = row['id'];
@@ -435,22 +398,13 @@ export class RunReportComponent implements OnInit {
 
   trades = signal<TradeSummary[]>([]);
   expandedTradeId = signal<string | null>(null);
-  expandedTradeNarrative = computed(() => {
-    const id = this.expandedTradeId();
-    if (!id) return null;
-    const tArr = this.trades();
-    if (!tArr || !Array.isArray(tArr)) return null;
-    const t = tArr.find(x => x.id === id);
-    if (!t) return null;
-    const exitDetail = t.exitDetailJson ? safeJson(t.exitDetailJson) : null;
-    return { entryReason: t.entryReason || null, entryRegime: t.entryRegime || null, exitReason: t.exitReason, exitDetail };
-  });
   journal = signal<JournalEntry[]>([]);
   barDecisions = signal<JournalEntry[]>([]);
   runBars = signal<BarNarrative[]>([]);
   breakdown = signal<StrategyPerformance[]>([]);
   equityPoints = signal<ChartPoint[]>([]);
   dailyPnl = signal<DailyPnl[]>([]);
+  passProb = signal<PassProbabilityEstimate | null>(null);
   journalKind = signal<string | null>(null);
   duplicating = signal(false);
   activeTab = signal('overview');
@@ -472,41 +426,110 @@ export class RunReportComponent implements OnInit {
     );
   }
 
-  activeBars(): BarNarrative[] { return this.runBars().filter(b => b.proposalCount > 0 || b.fillCount > 0 || b.closeCount > 0 || b.rejectionCount > 0 || b.verdicts.some(v => v.signalFired)); }
-  firedSignals(b: BarNarrative): string { return b.verdicts.filter(v => v.signalFired).map(v => v.strategyId + (v.direction ? ' ' + v.direction : '')).join(', '); }
+  // iter-redesign P5: per-bar narrative restricted to bars where SOMETHING happened (a signal fired, a
+  // proposal/fill/close, or a gate rejection) — the "why this trade / why no trade" bars worth inspecting.
+  activeBars(): BarNarrative[] {
+    return this.runBars().filter(
+      (b) =>
+        b.proposalCount > 0 ||
+        b.fillCount > 0 ||
+        b.closeCount > 0 ||
+        b.rejectionCount > 0 ||
+        b.verdicts.some((v) => v.signalFired),
+    );
+  }
 
+  firedSignals(b: BarNarrative): string {
+    return b.verdicts
+      .filter((v) => v.signalFired)
+      .map((v) => v.strategyId + (v.direction ? ' ' + v.direction : ''))
+      .join(', ');
+  }
+
+  // iter-strategy-system P2 (D5): the persisted run plan (rows), parsed from RunDetail.runPlanJson.
   runPlan = computed(() => {
     const raw = this.store.selectedRun()?.runPlanJson;
     if (!raw) return [];
-    try { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr.map((e: Record<string, unknown>) => ({ strategyId: (e['StrategyId'] ?? e['strategyId']) as string, symbol: (e['Symbol'] ?? e['symbol']) as string, timeframe: (e['Timeframe'] ?? e['timeframe']) as string, packId: (e['PackId'] ?? e['packId'] ?? null) as string | null })) : []; }
-    catch { return []; }
+    try {
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr)
+        ? arr.map((e: Record<string, unknown>) => ({
+            strategyId: (e['StrategyId'] ?? e['strategyId']) as string,
+            symbol: (e['Symbol'] ?? e['symbol']) as string,
+            timeframe: (e['Timeframe'] ?? e['timeframe']) as string,
+            packId: (e['PackId'] ?? e['packId'] ?? null) as string | null,
+          }))
+        : [];
+    } catch {
+      return [];
+    }
   });
 
-  chipClass(on: boolean): string { return 'rounded border px-2 py-0.5 text-xs ' + (on ? 'border-emerald-700 text-emerald-400' : 'border-gray-700 text-gray-500'); }
+  chipClass(on: boolean): string {
+    return 'rounded border px-2 py-0.5 text-xs ' + (on ? 'border-emerald-700 text-emerald-400' : 'border-gray-700 text-gray-500');
+  }
   private packsApi = inject(AddOnPacksApiService);
   dupRunId = signal<string | null>(null);
   dupPackId = signal('');
   dupDisableRegime = signal(false);
   packs = signal<{ id: string; name: string }[]>([]);
   dupOpen = signal(false);
-  journalKinds = ['ALL', 'OrderProposed', 'OrderSubmitted', 'OrderFilled', 'OrderPartiallyFilled', 'OrderRejected', 'OrderCancelled', 'TRAIL', 'BREAKEVEN', 'PARTIAL', 'ADDON_RESOLVED', 'BarClosed', 'EquityObserved', 'DayRolled', 'CloseRequested'];
+  journalKinds = [
+    'ALL',
+    'OrderProposed',
+    'OrderSubmitted',
+    'OrderFilled',
+    'OrderPartiallyFilled',
+    'OrderRejected',
+    'OrderCancelled',
+    'TRAIL',
+    'BREAKEVEN',
+    'PARTIAL',
+    'ADDON_RESOLVED',
+    'BarClosed',
+    'EquityObserved',
+    'DayRolled',
+    'CloseRequested',
+  ];
+  // Human-readable labels for journal kind filter buttons.
   kindLabel(k: string): string {
-    const map: Record<string, string> = { ALL: 'All', OrderProposed: 'Signal', OrderSubmitted: 'Order', OrderFilled: 'Fill', OrderPartiallyFilled: 'Fill', OrderRejected: 'Rejected', OrderCancelled: 'Cancelled', TRAIL: 'Trail', BREAKEVEN: 'Breakeven', PARTIAL: 'Partial', ADDON_RESOLVED: 'AddOn', BarClosed: 'Bar', EquityObserved: 'Equity', DayRolled: 'Roll', CloseRequested: 'Close' };
+    const map: Record<string, string> = {
+      ALL: 'All', OrderProposed: 'Signal', OrderSubmitted: 'Order',
+      OrderFilled: 'Fill', OrderPartiallyFilled: 'Fill', OrderRejected: 'Rejected',
+      OrderCancelled: 'Cancelled', TRAIL: 'Trail', BREAKEVEN: 'Breakeven',
+      PARTIAL: 'Partial', ADDON_RESOLVED: 'AddOn', BarClosed: 'Bar',
+      EquityObserved: 'Equity', DayRolled: 'Roll', CloseRequested: 'Close',
+    };
     return map[k] ?? k;
   }
 
-  journalExportUrl(runId: string): string { return this.api.journalExportUrl(runId); }
-  tradesCsvUrl(runId: string): string { return this.api.tradesCsvUrl(runId); }
+  journalExportUrl(runId: string): string {
+    return this.api.journalExportUrl(runId);
+  }
+  tradesCsvUrl(runId: string): string {
+    return this.api.tradesCsvUrl(runId);
+  }
 
+  // F1 — join an order's FILL / EXPIRY / REJECTION into its OrderProposed row by orderId, so the lifecycle
+  // reads as one line instead of several. Applied to the full journal; the kind filter runs on the result.
   displayJournal = computed<JournalRow[]>(() => {
     const byOrder = new Map<string, JournalRow>();
     const out: JournalRow[] = [];
     for (const e of this.journal()) {
       const kind = this.kindOf(e);
       const oid = this.orderIdOf(e);
-      if (oid && (kind === 'OrderFilled' || kind === 'OrderCancelled' || kind === 'OrderRejected' || kind === 'OrderPartiallyFilled')) {
+      if (
+        oid &&
+        (kind === 'OrderFilled' ||
+          kind === 'OrderCancelled' ||
+          kind === 'OrderRejected' ||
+          kind === 'OrderPartiallyFilled')
+      ) {
         const proposal = byOrder.get(oid);
-        if (proposal && !this.isCloseFill(e)) { proposal.outcome = kind; continue; }
+        if (proposal && !this.isCloseFill(e)) {
+          proposal.outcome = kind;
+          continue;
+        }
       }
       const row: JournalRow = { ...e };
       if (oid && kind === 'OrderProposed') byOrder.set(oid, row);
@@ -517,7 +540,7 @@ export class RunReportComponent implements OnInit {
 
   filteredJournal = computed(() => {
     const k = this.journalKind();
-    return k && k !== 'ALL' ? this.displayJournal().filter(e => this.kindOf(e) === k) : this.displayJournal();
+    return k && k !== 'ALL' ? this.displayJournal().filter((e) => this.kindOf(e) === k) : this.displayJournal();
   });
 
   kindOf(e: JournalEntry): string {
@@ -531,6 +554,16 @@ export class RunReportComponent implements OnInit {
       return o.OrderId ?? o.orderId ?? null;
     } catch {
       return null;
+    }
+  }
+
+  private isCloseFill(e: JournalEntry): boolean {
+    if (!e.eventJson) return false;
+    try {
+      const o = JSON.parse(e.eventJson);
+      return !!(o.closeReason ?? o.CloseReason);
+    } catch {
+      return false;
     }
   }
 
@@ -753,9 +786,74 @@ export class RunReportComponent implements OnInit {
 
   symbolsDisplay = () => formatSymbols(this.store.selectedRun() ?? { symbols: '', symbol: '' });
 
-  async openDuplicate(runId: string): Promise<void> { this.dupRunId.set(runId); this.dupPackId.set(''); this.dupDisableRegime.set(false); this.dupOpen.set(true); if (this.packs().length === 0) { try { const pks = await this.packsApi.getAll(); this.packs.set(pks.map(p => ({ id: p.id, name: p.name }))); } catch { /* */ } } }
-  async confirmDuplicate(): Promise<void> { const runId = this.dupRunId(); if (!runId || this.duplicating()) return; this.duplicating.set(true); this.dupOpen.set(false); const params = new URLSearchParams(); params.set('sourceRunId', runId); const packId = this.dupPackId(); if (packId) params.set('usePackId', packId); if (this.dupDisableRegime()) params.set('disableRegime', 'true'); this.router.navigate(['/runs/new'], { queryParams: Object.fromEntries(params) }); this.duplicating.set(false); }
-  async duplicate(runId: string): Promise<void> { if (this.duplicating()) return; this.duplicating.set(true); try { const res = await this.api.duplicateRun(runId); if (res?.runId) this.router.navigate(['/runs', res.runId, 'monitor']); } finally { this.duplicating.set(false); } }
+  async openDuplicate(runId: string): Promise<void> {
+    this.dupRunId.set(runId);
+    this.dupPackId.set('');
+    this.dupDisableRegime.set(false);
+    this.dupOpen.set(true);
+    if (this.packs().length === 0) {
+      try {
+        const pks = await this.packsApi.getAll();
+        this.packs.set(pks.map((p) => ({ id: p.id, name: p.name })));
+      } catch { /* keep empty list */ }
+    }
+  }
+
+  async confirmDuplicate(): Promise<void> {
+    const runId = this.dupRunId();
+    if (!runId || this.duplicating()) return;
+    this.duplicating.set(true);
+    this.dupOpen.set(false);
+    const params = new URLSearchParams();
+    params.set('sourceRunId', runId);
+    const packId = this.dupPackId();
+    if (packId) params.set('usePackId', packId);
+    if (this.dupDisableRegime()) params.set('disableRegime', 'true');
+    this.router.navigate(['/runs/new'], { queryParams: Object.fromEntries(params) });
+    this.duplicating.set(false);
+  }
+
+  async duplicate(runId: string): Promise<void> {
+    if (this.duplicating()) return;
+    this.duplicating.set(true);
+    try {
+      const res = await this.api.duplicateRun(runId);
+      if (res?.runId) this.router.navigate(['/runs', res.runId, 'monitor']);
+    } finally {
+      this.duplicating.set(false);
+    }
+  }
+
+  tradeColumns: ColumnDef[] = [
+    { key: 'symbol', label: 'Sym' },
+    { key: 'direction', label: 'Dir' },
+    { key: 'lots', label: 'Lots', format: 'number' },
+    { key: 'entryPrice', label: 'Entry', format: 'number' },
+    { key: 'exitPrice', label: 'Exit', format: 'number' },
+    { key: 'entryType', label: 'Type' },
+    { key: 'stopLoss', label: 'SL', format: 'number' },
+    { key: 'takeProfit', label: 'TP', format: 'number' },
+    { key: 'grossPnLAmount', label: 'Gross', format: 'currency', colorFn: (v: number) => (v >= 0 ? '#34d399' : '#f87171') },
+    { key: 'commissionAmount', label: 'Comm', format: 'currency' },
+    { key: 'swapAmount', label: 'Swap', format: 'currency' },
+    { key: 'netPnLAmount', label: 'Net', format: 'currency', colorFn: (v: number) => (v >= 0 ? '#34d399' : '#f87171') },
+    { key: 'pnLPips', label: 'Pips', format: 'pips' },
+    { key: 'rMultiple', label: 'R', format: 'number' },
+    { key: 'maxAdverseExcursion', label: 'MAE', format: 'number' },
+    { key: 'maxFavorableExcursion', label: 'MFE', format: 'number' },
+    { key: 'exitReason', label: 'Exit' },
+    { key: 'strategyId', label: 'Strategy' },
+    { key: 'durationSeconds', label: 'Hold', format: 'duration' },
+  ];
+
+  journalColumns: ColumnDef[] = [
+    { key: 'simTime', label: 'Sim Time' },
+    { key: 'kind', label: 'Kind' },
+    { key: 'outcome', label: 'Outcome' },
+    { key: 'symbol', label: 'Symbol' },
+    { key: 'strategy', label: 'Strategy' },
+    { key: 'reason', label: 'Reason' },
+  ];
 
   journalTableData = computed(() =>
     this.filteredJournal().map(e => ({
@@ -773,12 +871,51 @@ export class RunReportComponent implements OnInit {
     const runId = this.route.snapshot.paramMap.get('runId');
     if (!runId) return;
     await this.store.loadRun(runId);
-    try { this.trades.set(await this.api.getRunTrades(runId)); } catch { /* */ }
-    try { this.journal.set(await this.api.getRunJournal(runId, undefined, undefined, 200)); } catch { /* */ }
-    try { this.barDecisions.set(await this.api.getBarDecisions(runId, undefined, 500)); } catch { /* */ }
-    try { this.runBars.set(await this.api.getRunBars(runId)); } catch { /* */ }
-    try { this.breakdown.set(await this.api.getStrategyBreakdown(runId)); } catch { /* */ }
-    try { this.equityPoints.set((await this.api.getRunEquity(runId)).map((p: EquityPoint) => ({ time: new Date(p.timestampUtc).getTime(), value: p.equity, balance: p.balance }))); } catch { /* */ }
-    try { this.dailyPnl.set(await this.api.getRunDailyPnl(runId)); } catch { /* */ }
+    try {
+      this.trades.set(await this.api.getRunTrades(runId));
+    } catch {
+      /* no trades */
+    }
+    try {
+      this.journal.set(await this.api.getRunJournal(runId, undefined, undefined, 200));
+    } catch {
+      /* no journal */
+    }
+    try {
+      this.barDecisions.set(await this.api.getBarDecisions(runId, undefined, 500));
+    } catch {
+      /* no bar decisions */
+    }
+    try {
+      this.runBars.set(await this.api.getRunBars(runId));
+    } catch {
+      /* no bar narrative */
+    }
+    try {
+      this.breakdown.set(await this.api.getStrategyBreakdown(runId));
+    } catch {
+      /* no breakdown */
+    }
+    try {
+      this.equityPoints.set(
+        (await this.api.getRunEquity(runId)).map((p: EquityPoint) => ({
+          time: new Date(p.timestampUtc).getTime(),
+          value: p.equity,
+          balance: p.balance,
+        })),
+      );
+    } catch {
+      /* no equity */
+    }
+    try {
+      this.dailyPnl.set(await this.api.getRunDailyPnl(runId));
+    } catch {
+      /* no daily PnL */
+    }
+    try {
+      this.passProb.set(await this.api.getPassProbability(runId));
+    } catch {
+      /* can't compute P(pass) */
+    }
   }
 }

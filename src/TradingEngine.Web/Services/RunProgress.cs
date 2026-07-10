@@ -11,9 +11,9 @@ namespace TradingEngine.Web.Services;
 /// </summary>
 public sealed record RunProgress(
     string RunId,
-    string Status,                       // running | completed | failed
+    string Status,
 
-    DateTime? SimTimeUtc,                // THE clock that advances ("moving date to date")
+    DateTime? SimTimeUtc,
 
     int BarsProcessed,
     int BarsTotal,
@@ -22,8 +22,9 @@ public sealed record RunProgress(
 
     long WallElapsedMs,
     double BarsPerSec,
+    float Speed,
 
-    decimal Equity,
+    decimal? Equity,
     decimal Balance,
     int OpenPositions,
 

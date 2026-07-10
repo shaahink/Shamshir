@@ -1,4 +1,5 @@
 using Scalar.AspNetCore;
+using TradingEngine.Domain.Interfaces;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Web.Hubs;
@@ -40,6 +41,24 @@ public static class MiddlewarePipeline
             scope.ServiceProvider.GetRequiredService<IAddOnPackStore>(), packLogger);
         await packSeeder.SeedAsync(default);
 
+        // P1.2 (F9): after the one-time seeders, propagate any config/strategies + config/risk-profiles
+        // JSON edits into the DB (bump Version, log), unless the row was hand-edited via UI since seed —
+        // in which case it is reported as drift by GET /api/system/config-drift instead of being clobbered.
+        var configSync = scope.ServiceProvider
+            .GetRequiredService<TradingEngine.Infrastructure.Configuration.ConfigSyncService>();
+        await configSync.SyncAsync();
+
+        // F17/A1: startup diagnostic — log every strategy's resolved entry method so future
+        // regressions are immediately visible. The C# default is the fallback; the DB is truth.
+        var strategyStore = scope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
+        var allConfigs = await strategyStore.GetAllAsync(default);
+        var appLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        foreach (var c in allConfigs)
+        {
+            var method = c.OrderEntry?.Method.ToString() ?? "(null)";
+            appLogger.LogInformation("Startup config: {Strategy} entry method = {Method}", c.Id, method);
+        }
+
         // Single-origin hosting: ASP.NET serves the built Angular SPA (web-ui → wwwroot) alongside the
         // JSON API, the SignalR hub and the Scalar docs. One `dotnet run` gives the whole app — no
         // separate `ng serve`/proxy/port-4200 needed (that remains available for HMR via `npm start`).
@@ -77,6 +96,7 @@ public static class MiddlewarePipeline
         app.UseRouting();
         app.MapControllers();
         app.MapHub<RunHub>("/hubs/run");
+        app.MapHub<WalkForwardHub>("/hubs/walk-forward");
 
         app.MapOpenApi();
         app.MapScalarApiReference();

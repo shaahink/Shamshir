@@ -23,6 +23,10 @@ public sealed record RunDetailResponse
     public double WinRatePct { get; init; }
     public string? ErrorMessage { get; init; }
     public int ExitCode { get; init; }
+
+    // P0.2 (F5, Q5): teardown/persistence warnings on a `completed-with-warnings` run.
+    public string? WarningsJson { get; init; }
+
     public string? EffectiveConfigJson { get; init; }
     public string? ReportJsonPath { get; init; }
 
@@ -38,4 +42,14 @@ public sealed record RunDetailResponse
     public double BarsPerSec { get; init; }
     public int TotalBars { get; init; }
     public string? ExitResolution { get; init; }
+
+    // P4.1 (F11): whether this run used the one-click exploration preset.
+    public bool ExplorationMode { get; init; }
+
+    // P4.1 (F11): whether excursion paths were recorded for this run.
+    public bool RecordExcursions { get; init; }
+
+    // P5.1 (F16): parent and compare-pair linkage for child runs and compare-both grouping.
+    public string? ParentRunId { get; init; }
+    public string? ComparePairId { get; init; }
 }

@@ -412,7 +412,7 @@ public static class EngineReducer
     /// removes the position from the live book and journals a RECONCILED_CLOSED decision for the audit
     /// trail.
     /// </summary>
-    public static EngineDecision ReconcileToVenue(EngineState state, IReadOnlySet<Guid> venueOpenIds, Price lastKnownPrice)
+    public static EngineDecision ReconcileToVenue(EngineState state, IReadOnlySet<Guid> venueOpenIds, Price lastKnownPrice, DateTime simTimeUtc)
     {
         if (state.ExitMode != ExitMode.VenueManaged)
             return new EngineDecision(state, []);
@@ -433,7 +433,7 @@ public static class EngineReducer
                 newPositions.Remove(id);
                 openCount = Math.Max(0, openCount - 1);
                 effects.Add(new RecordDecisionEvent(new DecisionRecord(
-                    RunId: "", SimTimeUtc: DateTime.UtcNow, Seq: 0,
+                    RunId: "", SimTimeUtc: simTimeUtc, Seq: 0,
                     Symbol: ps.Symbol.Value, StrategyId: null,
                     PhaseBefore: ps.Phase.ToString(), Event: "RECONCILED_CLOSED",
                     GuardResult: null, PhaseAfter: PositionPhase.Closed.ToString(),

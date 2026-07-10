@@ -2,7 +2,9 @@ namespace TradingEngine.Domain;
 
 public abstract record EngineEffect;
 
-public record SubmitOrder(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price? LimitPrice, Price StopLoss, Price? TakeProfit, string StrategyId) : EngineEffect;
+// OrderType (P2.7): carries the proposal's order type (Market/Limit/Stop) through to the venue. Defaults
+// to Market so every pre-existing direct-construct call site (tests, legacy paths) is source-compatible.
+public record SubmitOrder(Guid OrderId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price? LimitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, OrderType OrderType = OrderType.Market, OrderEntryOptions? Entry = null) : EngineEffect;
 
 // TakeProfit (iter-36 K4 gap-3): carries the position's current TP so a trailing modify preserves it on
 // the venue (the simulated venue clears TP if null is passed). The reducer sets it from the position.
@@ -33,7 +35,12 @@ public record RecordDecisionEvent(DecisionRecord Decision) : EngineEffect;
 // OrderId is the venue-facing clientOrderId (the position's originating order), carried through to the
 // persisted trade so the venue ledger (cBot report.json) joins to DB trades exactly. PositionId remains
 // the engine-internal position identity.
-public record PublishTradeClosed(Guid PositionId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price ExitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, string ExitReason, DateTime ClosedAtUtc, DateTime OpenedAtUtc, Guid OrderId = default, string? RiskProfileId = null, string OrderEntryMethod = "Market", decimal? GrossProfit = null, decimal? NetProfit = null, decimal? Commission = null, decimal? Swap = null, decimal HighWater = 0, decimal LowWater = 0, string? EntryReason = null, string? EntryRegime = null, string? EntrySnapshotJson = null) : EngineEffect;
+// InitialStopLoss (P0.1): the stop-loss price at order creation (PositionState.InitialStopLoss),
+// distinct from StopLoss above (the current/final stop at close time, possibly moved by breakeven or
+// trailing). EffectExecutor uses InitialStopLoss — never StopLoss — for the R-multiple calculation.
+// ExcursionPathJson (P3.1): the recorded MAE/MFE path (compact JSON array), carried from
+// ExecutionEvent.ExcursionPathJson -> OrderFilled.ExcursionPathJson. Null unless the venue recorded one.
+public record PublishTradeClosed(Guid PositionId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price ExitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, string ExitReason, DateTime ClosedAtUtc, DateTime OpenedAtUtc, Guid OrderId = default, string? RiskProfileId = null, string OrderEntryMethod = "Market", decimal? GrossProfit = null, decimal? NetProfit = null, decimal? Commission = null, decimal? Swap = null, decimal HighWater = 0, decimal LowWater = 0, string? EntryReason = null, string? EntryRegime = null, string? EntrySnapshotJson = null, Price InitialStopLoss = default, string? ExcursionPathJson = null) : EngineEffect;
 
 public record RegisterRisk(Guid PositionId, string StrategyId, decimal RiskAmount) : EngineEffect;
 

@@ -1,7 +1,6 @@
 namespace TradingEngine.Web.Api;
 
 using TradingEngine.Infrastructure.Reconcile;
-using TradingEngine.Risk.Compliance;
 using TradingEngine.Web.Services;
 
 /// <summary>
@@ -14,46 +13,17 @@ using TradingEngine.Web.Services;
 public class BacktestAnalyticsController : ControllerBase
 {
     private readonly TradingDbContext _db;
-    private readonly IPassProbabilityEstimator _estimator;
     private readonly IBacktestRunRepository _runRepo;
-    private readonly IStrategyConfigStore _strategyConfigStore;
-    private readonly IRiskProfileStore _riskProfileStore;
-    private readonly IPropFirmRuleSetStore _propFirmStore;
     private readonly LedgerReconcileService? _reconcile;
 
     public BacktestAnalyticsController(
         TradingDbContext db,
-        IPassProbabilityEstimator estimator,
         IBacktestRunRepository runRepo,
-        IStrategyConfigStore strategyConfigStore,
-        IRiskProfileStore riskProfileStore,
-        IPropFirmRuleSetStore propFirmStore,
         LedgerReconcileService? reconcile = null)
     {
         _db = db;
-        _estimator = estimator;
         _runRepo = runRepo;
-        _strategyConfigStore = strategyConfigStore;
-        _riskProfileStore = riskProfileStore;
-        _propFirmStore = propFirmStore;
         _reconcile = reconcile;
-    }
-
-    // iter-38 W-B4: resolve the prop-firm ruleset the engine actually runs under, mirroring
-    // EngineHostFactory.WireRiskRules (active strategy's RiskProfileId → profile's PropFirmRuleSetId →
-    // ruleset). Pass-probability was hardcoding FTMO 10/5/10 and ignoring the configured ruleset.
-    private async Task<PropFirmRuleSet?> ResolveActiveRuleSetAsync(CancellationToken ct)
-    {
-        var configs = await _strategyConfigStore.GetAllAsync(ct);
-        var activeProfileId =
-            configs.Where(c => c.Enabled).Select(c => c.RiskProfileId).FirstOrDefault()
-            ?? configs.Select(c => c.RiskProfileId).FirstOrDefault()
-            ?? "standard";
-        var profiles = await _riskProfileStore.GetAllAsync(ct);
-        var activeRuleSetId = profiles.FirstOrDefault(p => p.Id == activeProfileId)?.PropFirmRuleSetId
-            ?? "ftmo-standard";
-        var ruleSets = await _propFirmStore.GetAllAsync(ct);
-        return ruleSets.FirstOrDefault(r => r.Id == activeRuleSetId);
     }
 
     [HttpGet("runs")]
@@ -65,7 +35,10 @@ public class BacktestAnalyticsController : ControllerBase
         var result = runs.Take(50).Select(r => new
         {
             r.RunId,
-            status = r.CompletedAtUtc == default ? "running" : r.ErrorMessage == null ? "completed" : "failed",
+            status = RunStatusResolver.Resolve(
+                isCompleted: r.CompletedAtUtc != default,
+                errorMessage: r.ErrorMessage,
+                warningsJson: r.WarningsJson),
             r.NetProfit,
             r.MaxDrawdownPct,
             r.TotalTrades,
@@ -78,35 +51,18 @@ public class BacktestAnalyticsController : ControllerBase
     }
 
     [HttpGet("{runId}/pass-probability")]
-    public async Task<IActionResult> GetPassProbability(string runId)
+    public async Task<IActionResult> GetPassProbability(string runId, [FromQuery] int daysRemaining = 30)
     {
-        var trades = await _db.Trades.Where(t => t.RunId == runId).OrderBy(t => t.ClosedAtUtc).ToListAsync();
-        var dailyPnL = trades.GroupBy(t => PropFirmDayOf(t.ClosedAtUtc))
-            .Select(g => g.Sum(t => t.NetPnLAmount))
-            .Select(d => (decimal)d)
-            .ToList();
-
-        var run = await _db.BacktestRuns.FirstOrDefaultAsync(r => r.RunId == runId);
-        var initialBalance = run?.InitialBalance ?? 100_000m;
-        var currentEquity = initialBalance + dailyPnL.Sum();
-
-        // iter-38 W-B4: pull the targets/limits from the configured ruleset (FTMO-ish defaults only as a
-        // fallback when no ruleset resolves). DaysRemaining keeps the 30-day assumption — the ruleset has no
-        // total challenge-length field (MinTradingDays is a floor, not the window).
-        var ruleSet = await ResolveActiveRuleSetAsync(HttpContext.RequestAborted);
-
-        var input = new PassProbabilityInput
+        try
         {
-            CurrentEquity = currentEquity,
-            InitialBalance = initialBalance,
-            ProfitTargetPercent = ruleSet?.ProfitTargetPercent ?? 0.10,
-            MaxDailyLossPercent = ruleSet?.MaxDailyLossPercent ?? 0.05,
-            MaxTotalLossPercent = ruleSet?.MaxTotalLossPercent ?? 0.10,
-            DaysRemaining = Math.Max(1, 30 - dailyPnL.Count),
-            HistoricalDailyPnL = dailyPnL,
-            MonteCarloRuns = 10_000,
-        };
-        return Ok(_estimator.Estimate(input));
+            var svc = HttpContext.RequestServices.GetRequiredService<PassProbabilityService>();
+            var result = await svc.ComputeAsync(runId, daysRemaining, HttpContext.RequestAborted);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet("compare")]
@@ -133,6 +89,10 @@ public class BacktestAnalyticsController : ControllerBase
         var venue = await _reconcile.BuildEngineLedgerAsync(right, HttpContext.RequestAborted);
         var report = LedgerReconciler.Compare(engine, venue);
 
+        // P0.4 (F2): per-run entry-latency (proposal→fill) so the reconcile quantifies the venue lag.
+        var leftLatency = await _reconcile.BuildEntryLatencyAsync(left, HttpContext.RequestAborted);
+        var rightLatency = await _reconcile.BuildEntryLatencyAsync(right, HttpContext.RequestAborted);
+
         return Ok(new
         {
             match = report.IsMatch,
@@ -146,17 +106,38 @@ public class BacktestAnalyticsController : ControllerBase
                 venueValue = d.VenueValue,
                 absDiff = d.AbsDiff,
             }),
+            leftLatency = ProjectLatency(engine.Source, leftLatency),
+            rightLatency = ProjectLatency(venue.Source, rightLatency),
             text = report.ToText(),
         });
     }
+
+    private static object ProjectLatency(string source, EntryLatencyReport r) => new
+    {
+        source,
+        matchedTrades = r.MatchedTrades,
+        unmatchedFills = r.UnmatchedFills,
+        delaySeconds = new { r.DelaySeconds.Median, r.DelaySeconds.Mean, r.DelaySeconds.Min, r.DelaySeconds.Max },
+        delayBars = new { r.DelayBars.Median, r.DelayBars.Mean, r.DelayBars.Min, r.DelayBars.Max },
+        trades = r.Trades.Select(t => new
+        {
+            orderId = t.OrderId,
+            proposedAtUtc = t.ProposedAtUtc,
+            filledAtUtc = t.FilledAtUtc,
+            entryDelaySeconds = t.DelaySeconds,
+            entryDelayBars = t.DelayBars,
+            decisionTimeframe = t.DecisionTimeframe.ToString(),
+        }),
+    };
 
     [HttpGet("{runId}/daily-pnl")]
     public async Task<IActionResult> GetDailyPnL(string runId)
     {
         var trades = await _db.Trades.Where(t => t.RunId == runId).OrderBy(t => t.ClosedAtUtc).ToListAsync();
-        // iter-merge-plan: daily buckets follow the 22:00 UTC prop-firm roll, not calendar midnight (PLAN.md
-        // "What NOT to do"). Superseded the iter-38 W-B9/W-B10 calendar-date convention noted here previously.
-        var daily = trades.GroupBy(t => PropFirmDayOf(t.ClosedAtUtc))
+        // iter-38 W-B9/W-B10: daily buckets are UTC calendar dates — grouped off ClosedAtUtc (stored UTC;
+        // SQLite materializes the same wall-clock with Kind=Unspecified). The W-B8 converter emits 'Z' so the
+        // client localizes for display; the server-side buckets stay deterministic UTC.
+        var daily = trades.GroupBy(t => t.ClosedAtUtc.Date)
             .Select(g => new { date = g.Key.ToString("yyyy-MM-dd"), pnl = g.Sum(t => t.NetPnLAmount) })
             .ToList();
         return Ok(daily);
@@ -203,14 +184,6 @@ public class BacktestAnalyticsController : ControllerBase
             matrix.Add(row);
         }
         return Ok(new { symbols = symList, matrix });
-    }
-
-    /// <summary>22:00 UTC prop-firm reset-period date (matches RunQueryService.PropFirmDayOf /
-    /// TradingEngine.Host.ResetClock.ResetPeriodDate). Before 22:00 you're still in yesterday's period.</summary>
-    private static DateOnly PropFirmDayOf(DateTime closedAtUtc)
-    {
-        var date = DateOnly.FromDateTime(closedAtUtc);
-        return TimeOnly.FromDateTime(closedAtUtc) >= new TimeOnly(22, 0) ? date : date.AddDays(-1);
     }
 
     private static double PearsonR(List<decimal> a, List<decimal> b)

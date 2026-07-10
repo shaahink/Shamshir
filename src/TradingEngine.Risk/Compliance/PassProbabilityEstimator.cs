@@ -21,8 +21,9 @@ public sealed class PassProbabilityEstimator : IPassProbabilityEstimator
         var projectedEquities = new List<decimal>();
 
         var targetEquity = input.InitialBalance * (1m + (decimal)input.ProfitTargetPercent);
-        var dailyLossLimit = input.InitialBalance * (1m - (decimal)input.MaxDailyLossPercent);
+        var dailyLossLimit = input.InitialBalance * (decimal)input.MaxDailyLossPercent;
         var maxLossLimit = input.InitialBalance * (1m - (decimal)input.MaxTotalLossPercent);
+        var isBalanceBased = input.DailyDdBase == DailyDdBase.InitialBalance;
 
         for (int run = 0; run < input.MonteCarloRuns; run++)
         {
@@ -40,8 +41,16 @@ public sealed class PassProbabilityEstimator : IPassProbabilityEstimator
                 if (equity >= targetEquity) { reachedTarget = true; break; }
                 if (equity <= maxLossLimit) { breachedMax = true; break; }
 
-                var dailyDD = (dailyStart - equity) / dailyStart;
-                if (dailyDD >= (decimal)input.MaxDailyLossPercent) { breacheDDaily = true; break; }
+                if (isBalanceBased)
+                {
+                    var dailyLossAmount = dailyStart - equity;
+                    if (dailyLossAmount >= dailyLossLimit) { breacheDDaily = true; break; }
+                }
+                else
+                {
+                    var dailyDD = (dailyStart - equity) / dailyStart;
+                    if (dailyDD >= (decimal)input.MaxDailyLossPercent) { breacheDDaily = true; break; }
+                }
 
                 dailyStart = equity;
             }

@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using TradingEngine.Domain;
 using TradingEngine.Engine;
+using TradingEngine.Services.ExitLab;
 using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Infrastructure.Adapters;
@@ -22,7 +23,7 @@ namespace TradingEngine.Infrastructure.Adapters;
 ///
 /// F7 (documented): Fine bars in decision-TF gaps — when the fine-bar data has gaps within a
 /// decision bar (e.g., weekends, missing candles), the per-bar high/low watermarks still provide a
-/// reasonable envelope. True tick-level gap-through fidelity requires per-bar recorded spread (A3).
+/// reasonable envelope.
 /// </summary>
 public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisposable
 {
@@ -53,11 +54,35 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
     private readonly Dictionary<Guid, OpenTrade> _openTrades = new();
     private readonly Dictionary<Guid, PendingLimit> _pendingLimits = new();
+    private readonly Dictionary<Guid, PendingStop> _pendingStops = new();
+    private readonly Dictionary<Guid, PendingMarketOrder> _pendingMarketOrders = new();
+    private readonly bool _honestFills;
+    // P3.1: opt-in per-trade excursion recorder (owner's "utilize MAE/MFE automatically" ask). Keyed by
+    // orderId, one growing path per OPEN trade; taken (serialized + removed) on that trade's full close.
+    private readonly bool _recordExcursions;
+    private readonly Dictionary<Guid, List<ExcursionPoint>> _excursionPaths = new();
+
+
+    // P4.5.2: uses the shared ExcursionPoint from TradingEngine.Services.ExitLab — one definition,
+    // one codec (ExcursionPathCodec.Serialize/Parse), no format mismatch between recorder and consumer.
     private decimal _balance;
     private decimal _lastClose;
-    private readonly decimal _tickSpread;
+    private decimal? _currentSpread;
     private Task _feedTask = Task.CompletedTask;
     private CancellationTokenSource? _feedCts;
+    private volatile float _speed = 10f;
+    private readonly ManualResetEventSlim _pauseEvent = new(true);
+
+    public float Speed
+    {
+        get => _speed;
+        set
+        {
+            _speed = Math.Clamp(value, 0f, 10f);
+            if (_speed > 0f) _pauseEvent.Set();
+            else _pauseEvent.Reset();
+        }
+    }
 
     // Finer-resolution bars for exit detection, plus a monotonic cursor consumed by OnBarObserved.
     private IReadOnlyList<Bar> _exitBars = [];
@@ -75,6 +100,30 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         public required Price StopLoss { get; init; }
         public Price? TakeProfit { get; init; }
         public int BarsRemaining { get; set; }
+    }
+
+    // P2.7: a resting STOP entry order — the mirror image of PendingLimit. A buy stop fills when price
+    // rises UP THROUGH the trigger (breakout confirmation); a sell stop fills when price falls DOWN
+    // THROUGH it. Same expiry semantics as a limit (BarsRemaining from LimitOrderExpiryBars).
+    private sealed class PendingStop
+    {
+        public required TradeDirection Direction { get; init; }
+        public required decimal Lots { get; init; }
+        public required decimal StopPrice { get; init; }
+        public required Price StopLoss { get; init; }
+        public Price? TakeProfit { get; init; }
+        public int BarsRemaining { get; set; }
+    }
+
+    // P0.3 (D4): a market order queued for honest-fill timing — fills at the NEXT fine bar's open
+    // instead of the current decision bar's close (the old behavior filled optimistically at the
+    // signal bar's own close, before the bar it triggered on had even finished forming).
+    private sealed class PendingMarketOrder
+    {
+        public required TradeDirection Direction { get; init; }
+        public required decimal Lots { get; init; }
+        public required Price StopLoss { get; init; }
+        public Price? TakeProfit { get; init; }
     }
 
     public bool IsConnected { get; private set; }
@@ -102,7 +151,9 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         decimal initialBalance,
         ISymbolInfoRegistry symbolRegistry,
         Func<string, string, decimal> crossRateProvider,
-        ILogger<TapeReplayAdapter> logger)
+        ILogger<TapeReplayAdapter> logger,
+        bool honestFills = true,
+        bool recordExcursions = false)
     {
         _store = store;
         _symbol = symbol;
@@ -115,10 +166,10 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         _symbolRegistry = symbolRegistry;
         _crossRateProvider = crossRateProvider;
         _logger = logger;
+        _honestFills = honestFills;
+        _recordExcursions = recordExcursions;
         _decisionInterval = decisionTf.ToTimeSpan();
         _exitInterval = exitTf.ToTimeSpan();
-        try { _tickSpread = symbolRegistry.Get(symbol).PipSize; }
-        catch { _tickSpread = 0.0001m; }
     }
 
     public async Task ConnectAsync(CancellationToken ct)
@@ -172,9 +223,12 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             foreach (var bar in bars)
             {
                 ct.ThrowIfCancellationRequested();
+                _pauseEvent.Wait(ct);
+                var delayMs = _speed > 0f ? (int)(100f / _speed) : Timeout.Infinite;
+                if (delayMs > 0) await Task.Delay(delayMs, ct);
                 await _barChannel.Writer.WriteAsync(bar, ct);
                 await _tickChannel.Writer.WriteAsync(
-                    new Tick(bar.Symbol, bar.Close, bar.Close + _tickSpread, bar.OpenTimeUtc), ct);
+                    new Tick(bar.Symbol, bar.Close, SpreadConvention.AskPrice(bar.Close, GetSpread()), bar.OpenTimeUtc), ct);
             }
         }
         catch (OperationCanceledException) { _logger.LogDebug("TapeReplay: feed cancelled"); }
@@ -193,11 +247,15 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         if (isNewDecisionBar)
             _lastDecisionBarTime = decisionBar.OpenTimeUtc;
 
+        _currentSpread = decisionBar.Spread;
+
         if (_exitBars.Count == 0)
         {
             _lastClose = decisionBar.Close;
             BrokerTimeUtc = decisionBar.OpenTimeUtc + _decisionInterval;
             ProcessPendingLimits(decisionBar, decrementExpiry: isNewDecisionBar);
+            ProcessPendingStops(decisionBar, decrementExpiry: isNewDecisionBar);
+            RecordExcursionPoints(decisionBar);
             ProcessSlTpHits(decisionBar);
             EmitAccountUpdate(BrokerTimeUtc);
             return;
@@ -211,8 +269,12 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             _exitIndex++;
             if (fine.OpenTimeUtc < decisionBar.OpenTimeUtc) continue;
             _lastClose = fine.Close;
+            _currentSpread = fine.Spread ?? _currentSpread;
             BrokerTimeUtc = fine.OpenTimeUtc + _exitInterval;
-            ProcessPendingLimits(fine, decrementExpiry: false);
+            ProcessPendingMarketOrders(fine);
+            ProcessPendingLimits(fine, decrementExpiry: true);
+            ProcessPendingStops(fine, decrementExpiry: true);
+            RecordExcursionPoints(fine);
             ProcessSlTpHits(fine);
             var floatingEquity = _balance + ComputeFloatingPnL(fine.Close);
             if (floatingEquity < minEquity) minEquity = floatingEquity;
@@ -225,6 +287,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
     public Task DisconnectAsync(CancellationToken ct)
     {
+        FlushPendingMarketOrders();
         IsConnected = false;
         _feedCts?.Cancel();
         _barChannel.Writer.TryComplete();
@@ -257,11 +320,79 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             return Task.FromResult(orderId);
         }
 
+        // P2.7: resting STOP entry order — reuses the same LimitPrice field as the generic "resting
+        // trigger price" (OrderType tags which semantics apply).
+        if (request.Type == OrderType.Stop && request.LimitPrice is { } stop)
+        {
+            _pendingStops[orderId] = new PendingStop
+            {
+                Direction = request.Direction,
+                Lots = request.Lots,
+                StopPrice = stop.Value,
+                StopLoss = sl,
+                TakeProfit = tp,
+                BarsRemaining = request.Intent.Entry?.LimitOrderExpiryBars ?? 3,
+            };
+            return Task.FromResult(orderId);
+        }
+
+        // P0.3 (D4): when finer (M1) exit bars are available, a market order queues and fills at the
+        // NEXT fine bar's open instead of filling instantly at the current decision bar's close — the
+        // old behavior let a signal fill at the very close of the bar that produced it, before that bar
+        // (or any subsequent one) had actually happened yet. HonestFills=false preserves the old
+        // behavior for A/B comparison. Read once at construction, not branched per-bar.
+        if (_honestFills && _exitBars.Count > 0)
+        {
+            _pendingMarketOrders[orderId] = new PendingMarketOrder
+            {
+                Direction = request.Direction,
+                Lots = request.Lots,
+                StopLoss = sl,
+                TakeProfit = tp,
+            };
+            return Task.FromResult(orderId);
+        }
+
         var midPrice = _lastClose > 0 ? _lastClose : 1m;
-        var halfSpread = GetHalfSpread();
-        var fillPrice = request.Direction == TradeDirection.Long ? midPrice + halfSpread : midPrice;
+        var spread = GetSpread();
+        var fillPrice = request.Direction == TradeDirection.Long ? SpreadConvention.AskPrice(midPrice, spread) : midPrice;
         FillEntry(orderId, request.Direction, fillPrice, request.Lots, sl, tp);
         return Task.FromResult(orderId);
+    }
+
+    // P0.3: fills queued market orders at the fine bar's OPEN (± spread per side), same directional
+    // convention as every other fill path (SpreadConvention).
+    private void ProcessPendingMarketOrders(Bar fineBar)
+    {
+        if (_pendingMarketOrders.Count == 0) return;
+
+        var spread = GetSpread();
+        foreach (var (orderId, order) in _pendingMarketOrders.ToList())
+        {
+            _pendingMarketOrders.Remove(orderId);
+            var fillPrice = order.Direction == TradeDirection.Long
+                ? SpreadConvention.AskPrice(fineBar.Open, spread)
+                : fineBar.Open;
+            FillEntry(orderId, order.Direction, fillPrice, order.Lots, order.StopLoss, order.TakeProfit);
+        }
+    }
+
+    // Trap (plan P0.3): an order queued on the LAST fine bar of the run must still fill, or trade counts
+    // silently differ from the HonestFills=false baseline. Flush at disconnect using the last known close.
+    private void FlushPendingMarketOrders()
+    {
+        if (_pendingMarketOrders.Count == 0) return;
+
+        var spread = GetSpread();
+        var mid = _lastClose > 0 ? _lastClose : 1m;
+        foreach (var (orderId, order) in _pendingMarketOrders.ToList())
+        {
+            _pendingMarketOrders.Remove(orderId);
+            var fillPrice = order.Direction == TradeDirection.Long
+                ? SpreadConvention.AskPrice(mid, spread)
+                : mid;
+            FillEntry(orderId, order.Direction, fillPrice, order.Lots, order.StopLoss, order.TakeProfit);
+        }
     }
 
     private void EmitExecutionEvent(ExecutionEvent evt)
@@ -270,10 +401,14 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             _logger.LogError("TapeReplay: execution channel full — event dropped; orderId={OrderId}", evt.OrderId);
     }
 
-    private decimal GetHalfSpread()
+    // P0.2 (D3): FULL spread — bars are bid, ask = bid + spread. See SpreadConvention.
+    // P6.2: per-bar recorded spread takes precedence when available (e.g. from live-tick capture);
+    // falls back to the symbol's TypicalSpread for bars without per-bar data (all historical bars).
+    private decimal GetSpread()
     {
-        try { return _symbolRegistry.Get(_symbol).TypicalSpread / 2m; }
-        catch { return 0.00005m; }
+        if (_currentSpread is { } s) return s;
+        try { return _symbolRegistry.Get(_symbol).TypicalSpread; }
+        catch { return 0.0001m; }
     }
 
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
@@ -291,13 +426,15 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     {
         if (_pendingLimits.Count == 0) return;
 
-        var halfSpread = GetHalfSpread();
+        var spread = GetSpread();
 
         foreach (var (orderId, limit) in _pendingLimits.ToList())
         {
+            // Buy limit: fills once the ASK (bid-low + spread) reaches it. Sell limit: fills once the
+            // raw bid-high reaches it (a sell-to-open trades at bid — no spread adjustment).
             var reached = limit.Direction == TradeDirection.Long
-                ? bar.Low <= limit.LimitPrice
-                : bar.High + halfSpread >= limit.LimitPrice;
+                ? SpreadConvention.AskPrice(bar.Low, spread) <= limit.LimitPrice
+                : bar.High >= limit.LimitPrice;
 
             if (reached)
             {
@@ -318,6 +455,105 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         }
     }
 
+    // P2.7: match resting STOP entry orders against the bar that just became current — the mirror image
+    // of ProcessPendingLimits. A buy stop fills when price rises UP THROUGH the trigger (the ask side,
+    // same long-entry spread convention as a market/limit buy); a sell stop fills when price falls DOWN
+    // THROUGH it (raw bid, same short-entry convention as a market/limit sell). Gap-through: if the
+    // bar's OPEN already lies beyond the trigger (price gapped past it before this bar started), fill at
+    // the bar's OPEN instead of the trigger price — the same rule ProcessSlTpHits applies to SL
+    // gap-through (F6), reused here for stop-entry gap-through. Same expiry semantics as limits.
+    private void ProcessPendingStops(Bar bar, bool decrementExpiry = true)
+    {
+        if (_pendingStops.Count == 0) return;
+
+        var spread = GetSpread();
+
+        foreach (var (orderId, stop) in _pendingStops.ToList())
+        {
+            var reached = stop.Direction == TradeDirection.Long
+                ? SpreadConvention.AskPrice(bar.High, spread) >= stop.StopPrice
+                : bar.Low <= stop.StopPrice;
+
+            if (reached)
+            {
+                _pendingStops.Remove(orderId);
+                var fillPrice = stop.StopPrice;
+                if (stop.Direction == TradeDirection.Long)
+                {
+                    var askOpen = SpreadConvention.AskPrice(bar.Open, spread);
+                    if (askOpen >= stop.StopPrice) fillPrice = askOpen;
+                }
+                else if (bar.Open <= stop.StopPrice)
+                {
+                    fillPrice = bar.Open;
+                }
+
+                FillEntry(orderId, stop.Direction, fillPrice, stop.Lots, stop.StopLoss, stop.TakeProfit);
+                continue;
+            }
+
+            if (!decrementExpiry) continue;
+
+            stop.BarsRemaining--;
+            if (stop.BarsRemaining <= 0)
+            {
+                _pendingStops.Remove(orderId);
+                EmitExecutionEvent(new ExecutionEvent(
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
+            }
+        }
+    }
+
+    // P3.1: append (minutesSinceEntry, hiPips, loPips) for every OPEN trade against this bar's OHLC —
+    // called once per fine bar (or once per decision bar in single-resolution mode) BEFORE ProcessSlTpHits,
+    // so the closing bar's own excursion is still captured. No-op unless RecordExcursions is on.
+    private void RecordExcursionPoints(Bar bar)
+    {
+        if (!_recordExcursions || _openTrades.Count == 0) return;
+
+        decimal pipSize;
+        try { pipSize = _symbolRegistry.Get(_symbol).PipSize; }
+        catch { return; }
+        if (pipSize <= 0) return;
+
+        foreach (var (orderId, trade) in _openTrades)
+        {
+            var point = new ExcursionPoint(
+                (int)(bar.OpenTimeUtc - trade.OpenedAtUtc).TotalMinutes,
+                (double)((bar.High - trade.EntryPrice) / pipSize),
+                (double)((bar.Low - trade.EntryPrice) / pipSize));
+
+            if (!_excursionPaths.TryGetValue(orderId, out var path))
+            {
+                path = [];
+                _excursionPaths[orderId] = path;
+            }
+
+            // P4.5.7: cap excursion path at ~10k points with 2× downsample.
+            // A months-open exploration trade on M1 grows unbounded otherwise.
+            const int PathCap = 10_000;
+            if (path.Count >= PathCap)
+            {
+                // Keep every 2nd point and replace the list in-place.
+                var downsampled = new List<ExcursionPoint>(PathCap / 2);
+                for (var j = 0; j < path.Count; j += 2)
+                    downsampled.Add(path[j]);
+                path.Clear();
+                path.AddRange(downsampled);
+            }
+
+            path.Add(point);
+        }
+    }
+
+    // P4.5.2: delegates serialization to ExcursionPathCodec.Serialize — one shared format,
+    // one codec, no mismatch between recorder and consumer.
+    private string? TakeExcursionPathJson(Guid orderId)
+    {
+        if (!_excursionPaths.Remove(orderId, out var path) || path.Count == 0) return null;
+        return ExcursionPathCodec.Serialize(path);
+    }
+
     // Detect SL/TP hits against a bar's OHLC using the SAME stateless detection as the kernel/replay, so exit
     // behaviour is consistent across venues. In dual-resolution mode this runs per finer bar, so the FIRST
     // finer bar to touch a level wins — recovering intrabar SL-before-TP ordering and long-shadow fills.
@@ -325,24 +561,22 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     {
         if (_openTrades.Count == 0) return;
 
-        var halfSpread = GetHalfSpread();
+        var spread = GetSpread();
 
         foreach (var (orderId, trade) in _openTrades.ToList())
         {
-            var checkBar = bar;
-            if (trade.Direction == TradeDirection.Short)
-            {
-                checkBar = new Bar(bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
-                    bar.Open + halfSpread, bar.High + halfSpread,
-                    bar.Low + halfSpread, bar.Close + halfSpread, bar.Volume);
-            }
+            // A short's SL/TP is crossed by the ASK (it closes by buying back); shift the whole bar to
+            // the ask side for detection. A long's SL/TP is crossed by the raw bid bar (unchanged).
+            var checkBar = trade.Direction == TradeDirection.Short
+                ? SpreadConvention.AskBar(bar, spread)
+                : bar;
 
             var reason = EngineReducer.DetectSlTpExit(trade.Direction, trade.StopLoss, trade.TakeProfit, checkBar);
             if (reason is null) continue;
 
             var fillPrice = reason == "TP" && trade.TakeProfit is { } tp ? tp.Value : trade.StopLoss.Value;
             if (trade.Direction == TradeDirection.Short)
-                fillPrice += halfSpread;
+                fillPrice = SpreadConvention.AskPrice(fillPrice, spread);
 
             if (reason == "SL")
             {
@@ -364,6 +598,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 NetProfit = costs.NetProfit,
                 Symbol = _symbol,
                 CloseReason = reason,
+                ExcursionPathJson = TakeExcursionPathJson(orderId),
             });
             EmitAccountUpdate(BrokerTimeUtc);
         }
@@ -380,13 +615,12 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
     {
-        var halfSpread = GetHalfSpread();
+        var spread = GetSpread();
         var mid = _lastClose > 0 ? _lastClose : 1m;
-        // Default close: longs exit at bid (mid - halfSpread in floating PnL model), shorts at ask (mid + halfSpread).
-        // We compute half-spread-adjusted mid so the exit price aligns with the directional fill model.
+        // Long closes by selling at bid (raw); short closes by buying at ask (bid + full spread).
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
-            var exitPrice = trade.Direction == TradeDirection.Long ? mid - halfSpread : mid + halfSpread;
+            var exitPrice = trade.Direction == TradeDirection.Long ? mid : SpreadConvention.AskPrice(mid, spread);
             return CloseAtAsync(positionId, new Price(exitPrice));
         }
         return CloseAtAsync(positionId, new Price(mid));
@@ -411,6 +645,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 Swap = costs.Swap,
                 NetProfit = costs.NetProfit,
                 Symbol = _symbol,
+                ExcursionPathJson = TakeExcursionPathJson(positionId),
             });
             EmitAccountUpdate(BrokerTimeUtc);
         }
@@ -427,6 +662,11 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         var fillPrice = new Price(_lastClose > 0 ? _lastClose : 1m);
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
+            // P3.1: partial close does NOT attach an excursion path here — the position stays open and
+            // its path keeps accumulating (_excursionPaths remains keyed by positionId). The full-close
+            // paths (ProcessSlTpHits + CloseAtAsync) take the complete accumulated path. PositionLifecycle
+            // carries ExcursionPathJson on partial PublishTradeClosed (nullable — the venue never sets
+            // it here), so TradePersistenceHandler correctly skips the null.
             var partialTrade = trade with { Lots = lots };
             var costs = ComputeCosts(partialTrade, fillPrice.Value);
             _balance += costs.NetProfit;
@@ -486,12 +726,14 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         try
         {
             var symbolInfo = _symbolRegistry.Get(_symbol);
-            var halfSpread = symbolInfo.TypicalSpread / 2m;
+            var spread = symbolInfo.TypicalSpread;
             var pipValue = PipCalculator.PipValuePerLot(symbolInfo, close, _crossRateProvider);
             var total = 0m;
             foreach (var (_, t) in _openTrades)
             {
-                var effectiveClose = t.Direction == TradeDirection.Long ? close - halfSpread : close + halfSpread;
+                // P0.2 (D3): a long's exit is a sell at bid (raw close); a short's exit is a buy at ask
+                // (close + full spread).
+                var effectiveClose = t.Direction == TradeDirection.Long ? close : SpreadConvention.AskPrice(close, spread);
                 var diff = t.Direction == TradeDirection.Long ? effectiveClose - t.EntryPrice : t.EntryPrice - effectiveClose;
                 total += (diff / symbolInfo.PipSize) * pipValue * t.Lots;
             }
@@ -513,6 +755,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         _executionChannel.Writer.TryComplete();
         _openTrades.Clear();
         _pendingLimits.Clear();
+        _pendingStops.Clear();
+        _pendingMarketOrders.Clear();
         try { await _feedTask; } catch (OperationCanceledException) { }
         _feedCts?.Dispose();
     }

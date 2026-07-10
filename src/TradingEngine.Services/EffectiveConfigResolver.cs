@@ -118,6 +118,28 @@ public sealed class EffectiveConfigResolver
         // Breakeven / Trailing / Ride / PartialTp / DynamicSlTp all default to off/disabled.
     };
 
+    // P3.2: exploration preset — widest SL (ATR×4), no TP, no exit enrichments, for the owner's
+    // "utilize MAE/MFE automatically" workflow (P3.3 ExitReplayer). After stripping add-ons and
+    // overriding SL/TP, the strategy runs with nothing but its entry signal — the bare excursion
+    // path is the raw measure of entry quality that the exit lab then optimises over.
+    public static PositionManagementOptions ApplyExplorationPreset(PositionManagementOptions? input) => new()
+    {
+        StopLoss = new SlOptions
+        {
+            Method = "AtrMultiple",
+            AtrMultiple = 4.0,
+            MaxPips = input?.StopLoss?.MaxPips ?? 300,
+            MaxSlAtrMultiple = input?.StopLoss?.MaxSlAtrMultiple,
+        },
+        TakeProfit = new TpOptions
+        {
+            Method = "None",        // no TP — let the entry ride; exits handled by flatten or trail only
+            RrMultiple = 0,
+        },
+        // Breakeven / Trailing / Ride / PartialTp / DynamicSlTp default to off — exploration mode
+        // runs the entry signal bare so the P3.3 ExitReplayer can calibrate exits from the raw path.
+    };
+
     private static SlOptions MergeSl(SlOptions stored, SlOptions overrideOpts)
     {
         return new SlOptions

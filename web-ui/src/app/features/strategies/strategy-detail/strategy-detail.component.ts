@@ -109,6 +109,32 @@ import { DetailFormBase } from '../../../shared/detail-form-base';
                 }
               </select>
             </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1">Thesis (one sentence, falsifiable claim)</label
+              ><textarea
+                [(ngModel)]="edit.thesis"
+                rows="2"
+                class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none"
+              ></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1">Expected Trades/Week</label
+                ><input
+                  type="number"
+                  [(ngModel)]="edit.expectedTradesPerWeek"
+                  class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-400 mb-1">Expected Hold (bars)</label
+                ><input
+                  type="number"
+                  [(ngModel)]="edit.expectedHoldBars"
+                  class="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
 
             <div>
               <h3 class="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">Regime Filter</h3>
@@ -308,6 +334,9 @@ import { DetailFormBase } from '../../../shared/detail-form-base';
           <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
             <h2 class="text-xs font-medium uppercase tracking-wide text-gray-500">Config</h2>
             @if (data(); as d) {
+              @if (d.thesis) {
+                <p class="text-xs italic text-gray-400">"{{ d.thesis }}"</p>
+              }
               <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                 <div>
                   <span class="text-gray-500">Risk Profile:</span>
@@ -317,6 +346,18 @@ import { DetailFormBase } from '../../../shared/detail-form-base';
                   <span class="text-gray-500">Enabled:</span>
                   <span class="text-gray-300">{{ d.enabled ? 'Yes' : 'No' }}</span>
                 </div>
+                @if (d.expectedTradesPerWeek) {
+                  <div>
+                    <span class="text-gray-500">Expected Trades/Week:</span>
+                    <span class="text-gray-300">{{ d.expectedTradesPerWeek }}</span>
+                  </div>
+                }
+                @if (d.expectedHoldBars) {
+                  <div>
+                    <span class="text-gray-500">Expected Hold:</span>
+                    <span class="text-gray-300">{{ d.expectedHoldBars }} bars</span>
+                  </div>
+                }
               </div>
               @if (d.parametersJson) {
                 <div>
@@ -445,6 +486,9 @@ export class StrategyDetailComponent extends DetailFormBase implements OnInit {
     this.edit = {
       displayName: d.displayName || d.id,
       riskProfileId: d.riskProfileId || 'standard',
+      thesis: d.thesis || '',
+      expectedTradesPerWeek: d.expectedTradesPerWeek ?? null,
+      expectedHoldBars: d.expectedHoldBars ?? null,
       regimeFilter: rf,
       orderEntry: oe,
       positionManagement: {
@@ -563,6 +607,9 @@ export class StrategyDetailComponent extends DetailFormBase implements OnInit {
     const body: any = {
       displayName: this.edit.displayName,
       riskProfileId: this.edit.riskProfileId,
+      thesis: this.edit.thesis,
+      expectedTradesPerWeek: this.edit.expectedTradesPerWeek,
+      expectedHoldBars: this.edit.expectedHoldBars,
       regimeFilter: this.edit.regimeFilter,
       orderEntry: this.edit.orderEntry,
       positionManagement: this.edit.positionManagement,
@@ -584,8 +631,6 @@ export class StrategyDetailComponent extends DetailFormBase implements OnInit {
   }
 
   async duplicate(): Promise<void> {
-    const d = this.data();
-    if (!d) return;
     this.saving.set(true);
     try {
       const d = this.data();

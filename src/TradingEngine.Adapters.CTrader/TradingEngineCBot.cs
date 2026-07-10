@@ -63,7 +63,16 @@ public partial class TradingEngineCBot : Robot
     private readonly List<Bars> _subscriptions = new();
     private readonly Dictionary<long, Guid> _positionMap = new();
     private readonly HashSet<long> _commandCloses = new();
+    // key = clientOrderId. Tracks BOTH resting Limit and Stop entry orders (P2.7) — expiry/cancel logic
+    // is identical for either kind, so one dict/class covers both.
+    private readonly Dictionary<string, PendingEntryOrder> _pendingEntryOrders = new();
     private volatile bool _connected;
+
+    private sealed class PendingEntryOrder
+    {
+        public int BarsRemaining;
+        public string Symbol = "";
+    }
 
     private readonly ShamshirTradeLogger _tradeLog = new();
     private int _reportCheckpoint;
@@ -216,6 +225,8 @@ public partial class TradingEngineCBot : Robot
         var bar = bars.Last(1);
         if (bar.Open == 0 && bar.High == 0) return;
 
+        ProcessLimitExpiry(bars.SymbolName, bars.TimeFrame.ShortName);
+
         var key = (bars.SymbolName, bars.TimeFrame.ShortName, bar.OpenTime);
         if (!_publishedBars.Add(key)) { _duplicateCount++; return; }
 
@@ -236,6 +247,7 @@ public partial class TradingEngineCBot : Robot
             finally { if (ckptSw is not null) _timingCheckpointTotalMs += ckptSw.ElapsedMilliseconds; }
         }
 
+        var symInfo = Symbols.GetSymbol(bars.SymbolName);
         var barJson = Serialize("bar", new
         {
             v = 1,
@@ -248,6 +260,7 @@ public partial class TradingEngineCBot : Robot
             low = bar.Low,
             close = bar.Close,
             volume = (long)bar.TickVolume,
+            spread = (double)(symInfo?.Spread ?? 0),
             simTime = Server.TimeInUtc.ToString("o"),
             account = new { balance = Account.Balance, equity = Account.Equity }
         });
@@ -362,6 +375,7 @@ public partial class TradingEngineCBot : Robot
         var tpPrice = cmd.GetProperty("tpPrice").GetDouble();
         var orderType = cmd.TryGetProperty("orderType", out var ot) ? ot.GetString() : "Market";
         var limitPrice = cmd.TryGetProperty("limitPrice", out var lp) ? lp.GetDouble() : 0.0;
+        var expiryBars = cmd.TryGetProperty("expiryBars", out var eb) ? eb.GetInt32() : 0;
 
         Diag($"CMD_RECV|submit_order|{clientOrderId}|{symbol}|{direction}|type={orderType}|lots={lots:F4}|limit={limitPrice:F5}");
 
@@ -380,6 +394,13 @@ public partial class TradingEngineCBot : Robot
                 slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null);
 #pragma warning restore CS0618
         }
+        else if (orderType == "Stop" && limitPrice > 0)
+        {
+#pragma warning disable CS0618
+            result = PlaceStopOrder(tradeType, symbol, volumeInUnits, limitPrice, "Shamshir",
+                slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null);
+#pragma warning restore CS0618
+        }
         else
         {
             result = ExecuteMarketOrder(tradeType, symbol, volumeInUnits, "Shamshir",
@@ -389,6 +410,24 @@ public partial class TradingEngineCBot : Robot
         if (result?.IsSuccessful == true)
         {
             var pos = result.Position;
+
+            if ((orderType == "Limit" || orderType == "Stop") && expiryBars > 0 && pos is null)
+            {
+                _pendingEntryOrders[clientOrderId] = new PendingEntryOrder
+                {
+                    BarsRemaining = expiryBars,
+                    Symbol = symbol,
+                };
+                return MakeExecResult(clientOrderId, "pending_limit", 0, "Pending", limitPrice, lots, null);
+            }
+
+            if (pos is null)
+            {
+                _ordersExecuted++;
+                PublishAccount();
+                return MakeExecResult(clientOrderId, "entry_fill", 0, "Filled", 0, lots, null);
+            }
+
             _positionMap[pos.Id] = Guid.Parse(clientOrderId);
             _ordersExecuted++;
 
@@ -412,6 +451,45 @@ public partial class TradingEngineCBot : Robot
         }
 
         return MakeExecResult(clientOrderId, "entry_fill", 0, "Rejected", 0, lots, result?.Error.ToString() ?? "Null result");
+    }
+
+    private void ProcessLimitExpiry(string symbol, string timeframe)
+    {
+        if (_pendingEntryOrders.Count == 0) return;
+
+        var expired = new List<string>();
+        foreach (var (clientOrderId, entry) in _pendingEntryOrders)
+        {
+            if (!string.Equals(entry.Symbol, symbol, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            entry.BarsRemaining--;
+            if (entry.BarsRemaining <= 0)
+            {
+                expired.Add(clientOrderId);
+                Print($"CBOT|LIMIT_EXPIRED|orderId={clientOrderId}|symbol={symbol}");
+            }
+        }
+
+        foreach (var id in expired)
+        {
+            _pendingEntryOrders.Remove(id);
+            foreach (var order in PendingOrders)
+            {
+                if (!string.Equals(order.Label, id, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+#pragma warning disable CS0618
+                    CancelPendingOrder(order);
+#pragma warning restore CS0618
+                }
+                catch (Exception ex)
+                {
+                    Print($"CBOT|CANCEL_PENDING_FAIL|orderId={id}|err={ex.Message}");
+                }
+                break;
+            }
+        }
     }
 
     private object ExecuteCancelOrder(JsonElement cmd)
@@ -777,6 +855,7 @@ public partial class TradingEngineCBot : Robot
 
         var openUtc = DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc);
         // camelCase keys match MarketDataShardIo exactly (symbol/timeframe/openTimeUtc/open/high/low/close/volume).
+        var symInfo = Symbols.GetSymbol(bars.SymbolName);
         var line = JsonSerializer.Serialize(new
         {
             symbol = bars.SymbolName,
@@ -787,6 +866,7 @@ public partial class TradingEngineCBot : Robot
             low = bar.Low,
             close = bar.Close,
             volume = bar.TickVolume,
+            spread = (double)(symInfo?.Spread ?? 0),
         }, JsonOpts);
 
         GetShardWriter(bars.SymbolName, bars.TimeFrame.ShortName).WriteLine(line);

@@ -6,8 +6,8 @@ public sealed class RepeatingSignalStrategy : IStrategy
 
     public string Id => "repeating-signal";
     public string DisplayName => "Repeating Signal (test only)";
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => Config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [Config.EntryTimeframe];
     public int RequiredBarCount => 1;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => [];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
@@ -39,11 +39,12 @@ internal sealed record RepeatingSignalConfig : IStrategyConfig
     public string Id => "repeating-signal";
     public string DisplayName => "Repeating Signal";
     public bool Enabled => true;
-    public IReadOnlyList<string> Symbols => ["EURUSD"];
     public string RiskProfileId => "standard";
-    public Timeframe Timeframe => Timeframe.H1;
+    public Timeframe EntryTimeframe { get; init; } = Timeframe.H1;
+    public string? Symbol { get; init; }
+    public IReadOnlyList<Timeframe> RequiredTimeframes { get; init; } = [];
     public RegimeFilterOptions RegimeFilter => new();
-    public OrderEntryOptions OrderEntry => new();
+    public OrderEntryOptions OrderEntry => new() { Method = OrderEntryMethod.Market };
     public PositionManagementOptions PositionManagement => new();
     public ReentryOptions Reentry => new();
 }

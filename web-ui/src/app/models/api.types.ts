@@ -21,6 +21,7 @@ export interface RunSummary {
   datasetId?: string | null;
   configSetId?: string | null;
   venue?: string | null;
+  comparePairId?: string | null;
 }
 
 export interface RunDetail {
@@ -50,6 +51,7 @@ export interface RunDetail {
   parentRunId?: string | null;
   datasetId?: string | null;
   configSetId?: string | null;
+  // iter-strategy-system P2 (D5): persisted run selection.
   runPlanJson?: string;
   venue?: string | null;
   riskProfileId?: string | null;
@@ -61,6 +63,11 @@ export interface RunDetail {
   barsPerSec: number;
   totalBars: number;
   exitResolution?: string | null;
+  // P4.1 (F11): whether this run used the exploration preset.
+  explorationMode?: boolean;
+  // P4.1 (F11): whether excursion paths were recorded.
+  recordExcursions?: boolean;
+  comparePairId?: string | null;
 }
 
 export interface TradeListResponse {
@@ -88,6 +95,8 @@ export interface TradeSummary {
   rMultiple: number;
   maxAdverseExcursion: number;
   maxFavorableExcursion: number;
+  maeR?: number | null;
+  mfeR?: number | null;
   exitReason: string;
   strategyId: string;
   durationSeconds: number;
@@ -95,10 +104,6 @@ export interface TradeSummary {
   entryType?: string | null;
   stopLoss?: number;
   takeProfit?: number | null;
-  entryReason?: string | null;
-  entryRegime?: string | null;
-  entrySnapshotJson?: string | null;
-  exitDetailJson?: string | null;
 }
 
 // iter-38 A4 / W-A1 + W-D3: the trade-detail endpoint (/api/trades/{id}) returns TradeDetailResponse — a richer,
@@ -126,6 +131,8 @@ export interface TradeDetail {
   rMultiple: number;
   maxAdverseExcursion: number;
   maxFavorableExcursion: number;
+  maeR?: number | null;
+  mfeR?: number | null;
   exitReason: string;
   strategyId: string;
   durationSeconds: number;
@@ -246,6 +253,17 @@ export interface StartRunRequest {
   forceCloseOnBreachEnabled?: boolean;
   // iter-redesign P3.2: strip all add-ons (breakeven/trailing/partial/ride/dynamic) -> baseline SL/TP only.
   stripAddOns?: boolean;
+  // Tape replay playback speed: 0 = paused, 0.1–10 = multiplier. Default 10.
+  speed?: number;
+  honestFills?: boolean;
+  // P3.2: record per-trade MAE/MFE excursion paths (tape-only, opt-in).
+  recordExcursions?: boolean;
+  // P3.2: one-click exploration preset — SL=ATR×4, TP=none, add-ons OFF, governor OFF.
+  explorationMode?: boolean;
+  /** P6: run tape + cTrader side-by-side with same config for reconciliation. Tape-only (venue must be 'tape'). */
+  compareBoth?: boolean;
+  /** P5.1 (F15): client-generated idempotency key to prevent duplicate runs from double-submit. */
+  idempotencyKey?: string;
 }
 
 export interface RiskProfile {
@@ -295,8 +313,10 @@ export interface StrategySummary {
   stats: StrategyStats;
   entryRule?: string | null;
   exitFormula?: string | null;
-  riskProfileId?: string;
-  orderEntryMethod?: string;
+  // P2.5: falsifiable-hypothesis metadata.
+  thesis?: string | null;
+  expectedTradesPerWeek?: number | null;
+  expectedHoldBars?: number | null;
 }
 
 export interface StrategyStats {
@@ -321,6 +341,10 @@ export interface StrategyDetail {
   orderEntryJson: string | null;
   regimeFilterJson: string | null;
   reentryJson?: string | null;
+  // P2.5: falsifiable-hypothesis metadata.
+  thesis?: string | null;
+  expectedTradesPerWeek?: number | null;
+  expectedHoldBars?: number | null;
 }
 
 export interface BarData {
@@ -480,10 +504,11 @@ export interface SystemInfo {
   dataPaths: { tradingDb: string };
   activeRuns: number;
   runningRuns: number;
+  marketDataAvailable: boolean;
 }
 
 export interface ResetRequest {
-  scope: 'runs' | 'config' | 'all';
+  scope: 'runs' | 'config' | 'marketdata' | 'all';
   confirm: string;
 }
 
@@ -514,4 +539,111 @@ export interface NarrativeResponse {
   events: NarrativeEvent[];
   latestSeq: number;
   hasMore: boolean;
+}
+
+// P3.5 — exit-lab types
+export interface TradeExcursionResponse {
+  tradeId: string;
+  pathJson: string;
+}
+
+export interface ExitRule {
+  slAtrMultiple: number;
+  tpRrMultiple: number | null;
+  beTriggerR: number | null;
+  beOffsetPips: number | null;
+  trailAtrMultiple: number | null;
+  partialTriggerR: number | null;
+  partialCloseFraction: number | null;
+  referenceAtrPips: number;
+}
+
+export interface ExitLabCellResponse {
+  rule: ExitRule;
+  tradeCount: number;
+  winRate: number;
+  avgR: number;
+  medianR: number;
+  avgHoldBars: number;
+  maxDdContributionR: number;
+  tradeRValues: number[];
+  passProbability: number;
+  isPlateauCenter: boolean;
+}
+
+export interface ExitLabEvaluateResponse {
+  totalTrades: number;
+  totalCells: number;
+  malformedPathCount: number;
+  cells: ExitLabCellResponse[];
+  defaultSlMultiples: number[];
+  defaultTpMultiples: (number | null)[];
+  regime?: string | null;
+  regimeBreakdown?: Record<string, number> | null;
+}
+
+export interface ExitLabEvaluateRequest {
+  runIds: string[];
+  positionIds: string[];
+  referenceAtrPips: number;
+  slMultiples?: number[];
+  tpMultiples?: (number | null)[];
+  beTriggers?: (number | null)[];
+  trailMultiples?: (number | null)[];
+  regime?: string | null;
+}
+
+export interface SaveCalibrationRequest {
+  strategyId: string;
+  symbol: string;
+  entryTimeframe: string;
+  regime?: string | null;
+  rule: ExitRule;
+  datasetId: string;
+  isStartUtc: string;
+  isEndUtc: string;
+  oosStartUtc?: string | null;
+  oosEndUtc?: string | null;
+}
+
+export interface PipelineSummary {
+  id: string;
+  name: string;
+  status: string;
+  currentStepIndex: number;
+  startedAtUtc: string;
+  completedAtUtc: string | null;
+  stepCount: number;
+}
+
+export interface PipelineDetail {
+  id: string;
+  name: string;
+  status: string;
+  currentStepIndex: number;
+  playbookJson: string;
+  artifactDir: string | null;
+  startedAtUtc: string;
+  completedAtUtc: string | null;
+  steps: PipelineStep[];
+}
+
+export interface PipelineStep {
+  stepIndex: number;
+  kind: string;
+  status: string;
+  paramHash: string;
+  verdictJson: string | null;
+  artifactPath: string | null;
+  startedAtUtc: string | null;
+  completedAtUtc: string | null;
+}
+
+export interface PassProbabilityEstimate {
+  probabilityOfPass: number;
+  probabilityOfDailyBreach: number;
+  probabilityOfMaxBreach: number;
+  expectedDaysToTarget: number;
+  projectedFinalEquity: number;
+  recommendation: string;
 }

@@ -15,6 +15,7 @@ import type {
   StrategyPerformance,
   BarNarrative,
   NarrativeResponse,
+  PassProbabilityEstimate,
 } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
@@ -51,6 +52,12 @@ export class RunsApiService {
       maxDdEnabled: req.maxDdEnabled ?? true,
       forceCloseOnBreachEnabled: req.forceCloseOnBreachEnabled ?? true,
       stripAddOns: req.stripAddOns ?? false,
+      speed: req.speed ?? 10,
+      honestFills: req.honestFills ?? true,
+      recordExcursions: req.recordExcursions ?? false,
+      explorationMode: req.explorationMode ?? false,
+      compareBoth: req.compareBoth ?? false,
+      idempotencyKey: req.idempotencyKey ?? '',
     };
     return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }
@@ -59,14 +66,8 @@ export class RunsApiService {
     return firstValueFrom(this.http.delete<{ cancelled: boolean }>(`/api/runs/${runId}`));
   }
 
-  // M4.1 (E2) — multi-select delete. FK-safe cascade; refuses active runs (409).
-  deleteRuns(runIds: string[]): Promise<{ deleted: number }> {
-    return firstValueFrom(this.http.post<{ deleted: number }>('/api/runs/delete', { runIds }));
-  }
-
-  // M4.1 (E2) — keep the newest N runs, delete the rest.
-  pruneRuns(keep: number): Promise<{ deleted: number; kept: number }> {
-    return firstValueFrom(this.http.post<{ deleted: number; kept: number }>('/api/runs/prune', { keep }));
+  setSpeed(runId: string, speed: number): Promise<{ runId: string }> {
+    return firstValueFrom(this.http.patch<{ runId: string }>(`/api/runs/${runId}`, { speed }));
   }
 
   async getRunTrades(runId: string): Promise<TradeSummary[]> {
@@ -110,6 +111,10 @@ export class RunsApiService {
 
   getRunAnalytics(runId: string): Promise<RunAnalytics> {
     return firstValueFrom(this.http.get<RunAnalytics>(`/api/runs/${runId}/analytics`));
+  }
+
+  getPassProbability(runId: string, daysRemaining = 30): Promise<PassProbabilityEstimate> {
+    return firstValueFrom(this.http.get<PassProbabilityEstimate>(`/api/runs/${runId}/pass-probability?daysRemaining=${daysRemaining}`));
   }
 
   // iter-37 F2 — per-strategy decision funnel (signals fired / top no-signal reasons), off the journal.

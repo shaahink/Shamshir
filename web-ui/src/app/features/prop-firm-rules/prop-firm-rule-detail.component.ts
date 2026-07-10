@@ -22,7 +22,7 @@ import { DetailFormBase } from '../../shared/detail-form-base';
             Duplicate
           </button>
           <a
-            routerLink="/risk/ftmo"
+            routerLink="/prop-firm-rules"
             class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800"
             >All Rules</a
           >

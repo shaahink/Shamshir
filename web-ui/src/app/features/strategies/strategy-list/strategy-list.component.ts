@@ -40,6 +40,14 @@ import { StrategiesApiService } from '../strategies.service';
               </button>
             </div>
             <p class="text-xs text-gray-500 mb-1">Entry: {{ s.entryRule || '—' }} · Exit: {{ s.exitFormula || '—' }}</p>
+            @if (s.thesis) {
+              <p class="text-xs italic text-gray-500 mb-1">"{{ s.thesis }}"</p>
+            }
+            @if (s.expectedTradesPerWeek || s.expectedHoldBars) {
+              <p class="text-xs text-gray-600 mb-1">
+                Expected: ~{{ s.expectedTradesPerWeek ?? '—' }} trades/wk · ~{{ s.expectedHoldBars ?? '—' }} bar hold
+              </p>
+            }
             <p class="font-mono text-xs text-gray-600 mb-2">{{ s.id }}</p>
             @if (s.createdAtUtc) {
               <p class="text-xs text-gray-600 mb-2">Created {{ s.createdAtUtc | date: 'yyyy-MM-dd' }}</p>

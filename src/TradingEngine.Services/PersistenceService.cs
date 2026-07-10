@@ -21,6 +21,20 @@ public sealed class PersistenceService(
         }
     }
 
+    public async Task SaveExcursionAsync(string runId, Guid positionId, string pathJson, string? sessionLabel, CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IExcursionRepository>();
+            await repo.SaveAsync(runId, positionId, pathJson, sessionLabel, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save trade excursion. RunId={RunId} PositionId={PositionId}", runId, positionId);
+        }
+    }
+
     public async Task SaveEquitySnapshotAsync(EquitySnapshot snapshot, string? runId, CancellationToken ct)
     {
         try

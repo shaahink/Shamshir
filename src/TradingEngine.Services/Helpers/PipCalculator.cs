@@ -71,4 +71,16 @@ public static class PipCalculator
         if (initialRiskAmount.Amount == 0) return 0;
         return (double)(netPnL.Amount / initialRiskAmount.Amount);
     }
+
+    // P0.1: R as a price-distance ratio (reward over risk taken AT ENTRY). initialStopLoss must be the
+    // stop recorded when the order was created (PositionState.InitialStopLoss) — NEVER the current/final
+    // stop, which breakeven/trailing may have moved to near-zero risk by the time the trade closes.
+    public static double RMultiple(TradeDirection direction, Price entryPrice, Price exitPrice, Price initialStopLoss)
+    {
+        var signedMove = direction == TradeDirection.Long
+            ? exitPrice.Value - entryPrice.Value
+            : entryPrice.Value - exitPrice.Value;
+        var riskDistance = Math.Abs(entryPrice.Value - initialStopLoss.Value);
+        return riskDistance > 0 ? (double)(signedMove / riskDistance) : 0d;
+    }
 }

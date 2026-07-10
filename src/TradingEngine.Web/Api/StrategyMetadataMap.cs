@@ -29,7 +29,9 @@ public static class StrategyMetadataMap
         ["rsi-divergence"] = new(
             "RSI(14) divergence from price with trend confirmation",
             "1.5×ATR stop · TP: 2R · Market"),
-        ["bollinger-squeeze"] = new(
+        // P2.5 drive-by fix: the real [StrategyId] is "bb-squeeze" (see BollingerSqueezeStrategy.cs) —
+        // this entry never matched anything looked up by StrategiesController.
+        ["bb-squeeze"] = new(
             "Bollinger Band squeeze breakout with volume confirmation",
             "1×ATR stop · TP: 2R · Market"),
         ["mtf-trend"] = new(

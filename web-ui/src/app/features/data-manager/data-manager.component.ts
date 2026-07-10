@@ -5,8 +5,6 @@ import { FormsModule } from '@angular/forms';
 import { interval } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
-import { BadgeComponent } from '../../shared/badge.component';
-
 interface MarketDataItem {
   symbol: string;
   timeframe: string;
@@ -14,8 +12,6 @@ interface MarketDataItem {
   firstBar: string;
   lastBar: string;
   barCount: number;
-  m1Overlap?: boolean;
-  spreadPips?: number;
 }
 
 interface DownloadJobResponse {
@@ -24,15 +20,39 @@ interface DownloadJobResponse {
   tfs: string[];
   status: string;
   barsRecorded?: number;
+  linesProcessed?: number;
+  filesTotal?: number;
+  filesProcessed?: number;
   error?: string;
+  statusDetails?: string;
   createdAtUtc?: string;
   completedAtUtc?: string;
 }
 
+interface DownloadMultiResponse {
+  jobs: DownloadJobResponse[];
+}
+
+interface PendingShard {
+  fileName: string;
+  relativePath: string;
+  symbol: string;
+  timeframe: string;
+  sizeBytes: number;
+  lastModifiedUtc: string;
+}
+
+interface PendingShardsResponse {
+  shardsRoot: string;
+  files: PendingShard[];
+}
+
+type DatePreset = '30d' | '90d' | '180d' | '1y' | '2y' | '5y' | '2020';
+
 @Component({
   selector: 'app-data-manager',
   standalone: true,
-  imports: [DatePipe, FormsModule, BadgeComponent],
+  imports: [DatePipe, FormsModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">
@@ -42,58 +62,56 @@ interface DownloadJobResponse {
 
       <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
         <h2 class="mb-3 text-sm font-medium text-gray-300">Download Market Data</h2>
-        <div class="flex flex-wrap items-end gap-3">
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Symbol</label>
-            <select [(ngModel)]="dlSymbol" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
-              @for (s of dlSymbols; track s) { <option [value]="s">{{ s }}</option> }
-            </select>
+
+        <div class="mb-3">
+          <label class="block text-xs font-medium text-gray-400 mb-1">Symbols</label>
+          <div class="flex flex-wrap gap-x-3 gap-y-1">
+            @for (s of dlSymbols; track s) {
+              <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer hover:text-gray-300">
+                <input type="checkbox" [checked]="dlSelectedSymbols().includes(s)"
+                  (change)="toggleSymbol(s)" class="rounded" />
+                {{ s }}
+              </label>
+            }
           </div>
+        </div>
+
+        <div class="flex flex-wrap items-end gap-3">
           <div>
             <label class="block text-xs font-medium text-gray-400 mb-1">Timeframes</label>
             <div class="flex gap-2">
               @for (tf of allTfs; track tf.value) {
                 <label class="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
-                  <input type="checkbox" [checked]="dlTfs().includes(tf.value)" (change)="toggleTf(tf.value)" class="rounded" /> {{ tf.label }}
+                  <input type="checkbox" [checked]="dlTfs().includes(tf.value)"
+                    (change)="toggleTf(tf.value)" class="rounded" /> {{ tf.label }}
                 </label>
               }
             </div>
           </div>
           <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Range</label>
-            <div class="flex rounded-md border border-gray-700 overflow-hidden text-xs">
-              <button type="button" (click)="dlMode.set('days')"
-                [class]="dlMode() === 'days' ? 'bg-emerald-600 text-white px-3 py-1.5' : 'bg-gray-800 text-gray-400 px-3 py-1.5 hover:text-gray-200'">Last N days</button>
-              <button type="button" (click)="dlMode.set('range')"
-                [class]="dlMode() === 'range' ? 'bg-emerald-600 text-white px-3 py-1.5' : 'bg-gray-800 text-gray-400 px-3 py-1.5 hover:text-gray-200'">Date range</button>
-            </div>
+            <label class="block text-xs font-medium text-gray-400 mb-1">Period</label>
+            <select [(ngModel)]="dlPreset" (ngModelChange)="onPresetChange($event)"
+              class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
+              <option value="30d">30 days</option>
+              <option value="90d">90 days</option>
+              <option value="180d">180 days</option>
+              <option value="1y">1 year</option>
+              <option value="2y">2 years</option>
+              <option value="5y">5 years</option>
+              <option value="2020">Since 2020</option>
+            </select>
           </div>
-          @if (dlMode() === 'days') {
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1">Days</label>
-              <select [(ngModel)]="dlDays" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none">
-                <option [value]="3">3</option>
-                <option [value]="7">7</option>
-                <option [value]="30">30</option>
-                <option [value]="90">90</option>
-                <option [value]="180">180</option>
-                <option [value]="365">365</option>
-              </select>
+          <div class="flex items-end gap-2">
+            <div class="flex items-center gap-1.5 pb-1.5">
+              <input type="checkbox" id="keepShards" [(ngModel)]="keepShards" class="rounded" />
+              <label for="keepShards" class="text-xs text-gray-500 cursor-pointer"
+                title="Keep NDJSON files in data/shards/archive/ for inspection">Keep files</label>
             </div>
-          } @else {
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1">From</label>
-              <input type="date" [(ngModel)]="dlFrom" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-400 mb-1">To</label>
-              <input type="date" [(ngModel)]="dlTo" class="rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-            </div>
-          }
-          <button (click)="startDownload()" [disabled]="dlLoading()"
-            class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
-            {{ dlLoading() ? 'Starting...' : 'Download' }}
-          </button>
+            <button (click)="startDownload()" [disabled]="dlLoading() || dlSelectedSymbols().length === 0"
+              class="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
+              {{ dlLoading() ? 'Starting...' : 'Download ' + dlCountLabel() }}
+            </button>
+          </div>
         </div>
         @if (dlError()) {
           <div class="mt-2 rounded bg-red-900/20 p-2 text-xs text-red-400">{{ dlError() }}</div>
@@ -101,15 +119,19 @@ interface DownloadJobResponse {
 
         @if (activeJobs().length > 0) {
           <div class="mt-3 space-y-1">
-            <div class="text-xs text-gray-500 mb-1">Active Jobs</div>
+            <div class="text-xs text-gray-500 mb-1">
+              Active Jobs ({{ runningJobCount() }} running,
+              {{ activeJobs().length - runningJobCount() }} finished)
+            </div>
             @for (job of activeJobs(); track job.jobId) {
               <div class="flex items-center gap-2 rounded border border-gray-700 bg-gray-800/50 px-3 py-2 text-xs">
                 <span [class]="jobStatusColor(job.status)">{{ job.status }}</span>
-                <span class="text-gray-300">{{ job.symbol }} ({{ job.tfs.join(', ') }})</span>
+                <span class="text-gray-300 font-mono">{{ job.symbol }}</span>
+                <span class="text-gray-500">({{ job.tfs.join(', ') }})</span>
                 @if (job.barsRecorded) { <span class="text-gray-500">{{ job.barsRecorded }} bars</span> }
-                @if (job.error) { <span class="text-red-400 truncate">{{ job.error }}</span> }
+                @if (job.error) { <span class="text-red-400 truncate max-w-48">{{ job.error }}</span> }
                 @if (job.status === 'done' || job.status === 'failed') {
-                  <button (click)="dismissJob(job.jobId)" class="ml-auto text-gray-500 hover:text-gray-300">dismiss</button>
+                  <button (click)="dismissJob(job.jobId)" class="ml-auto text-gray-500 hover:text-gray-300">x</button>
                 }
               </div>
             }
@@ -117,46 +139,50 @@ interface DownloadJobResponse {
         }
       </div>
 
-      <!-- Import (cTrader-free): upload NDJSON or CSV history -->
-      <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
-        <h2 class="mb-1 text-sm font-medium text-gray-300">Import Market Data</h2>
-        <p class="mb-3 text-xs text-gray-500">Upload an NDJSON shard or a CSV export (columns: time, open, high, low, close, [volume, symbol, timeframe]). Bars are deduped on import — no cTrader required.</p>
-        <div class="flex flex-wrap items-end gap-3">
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">File</label>
-            <input type="file" accept=".ndjson,.csv,.json,.txt" (change)="onFileSelect($event)"
-              class="text-xs text-gray-300 file:mr-2 file:rounded file:border-0 file:bg-gray-700 file:px-3 file:py-1.5 file:text-gray-100 hover:file:bg-gray-600" />
+      @if (pendingFiles().length > 0) {
+        <div class="rounded-lg border border-amber-800 bg-amber-900/10 p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-medium text-amber-400">
+              Pending Shards ({{ pendingFiles().length }} file{{ pendingFiles().length !== 1 ? 's' : '' }},
+              {{ fmtPendingSize() }})
+            </h2>
+            <button (click)="ingestShards()" [disabled]="ingesting()"
+              class="rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50">
+              {{ ingesting() ? 'Ingesting...' : 'Ingest All' }}
+            </button>
           </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Symbol <span class="text-gray-600">(CSV w/o column)</span></label>
-            <input type="text" [(ngModel)]="impSymbol" placeholder="EURUSD"
-              class="w-28 rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
+          @if (activeIngestJob(); as job) {
+            <div class="mb-2 rounded border border-amber-700 bg-gray-800/30 p-2">
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-amber-400">Ingesting...</span>
+                <span class="text-gray-500">{{ job.statusDetails || '' }}</span>
+              </div>
+              <div class="h-1.5 rounded-full bg-gray-700">
+                <div class="h-full rounded-full bg-amber-500 transition-all duration-300"
+                  [style.width]="((job.filesProcessed ?? 0) / (job.filesTotal || 1) * 100) + '%'"></div>
+              </div>
+              <div class="flex justify-between text-xs text-gray-500 mt-1">
+                <span>{{ job.filesProcessed ?? 0 }}/{{ job.filesTotal || '?' }} files</span>
+                <span>{{ (job.barsRecorded ?? 0).toLocaleString() }} bars</span>
+              </div>
+            </div>
+          }
+          <p class="text-xs text-amber-500/70 mb-2">
+            NDJSON files in <code class="text-amber-400/80">{{ shardsRoot() || 'data/shards' }}</code>.
+            Download data from cTrader then hit Ingest All to import into marketdata.db.
+          </p>
+          <div class="mt-2 max-h-48 overflow-y-auto space-y-0.5">
+            @for (f of pendingFiles(); track f.relativePath) {
+              <div class="flex items-center gap-2 rounded bg-gray-800/30 px-2 py-1 text-xs">
+                <span class="font-mono text-gray-300">{{ f.fileName }}</span>
+                <span class="text-gray-500">{{ f.symbol }} {{ f.timeframe }}</span>
+                <span class="text-gray-600">{{ fmtSize(f.sizeBytes) }}</span>
+                <span class="ml-auto text-gray-600">{{ f.lastModifiedUtc | date:'MM-dd HH:mm' }}</span>
+              </div>
+            }
           </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Timeframe <span class="text-gray-600">(CSV w/o column)</span></label>
-            <input type="text" [(ngModel)]="impTimeframe" placeholder="H1"
-              class="w-20 rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1">Source tag</label>
-            <input type="text" [(ngModel)]="impSource" placeholder="import"
-              class="w-28 rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 focus:border-emerald-500 focus:outline-none" />
-          </div>
-          <button (click)="importFile()" [disabled]="impLoading() || !impFile"
-            class="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50">
-            {{ impLoading() ? 'Importing...' : 'Import' }}
-          </button>
         </div>
-        @if (impResult()) {
-          <div class="mt-2 rounded bg-emerald-900/20 p-2 text-xs text-emerald-400">
-            {{ impResult()!.fileName }} ({{ impResult()!.format }}) — {{ impResult()!.barsInserted.toLocaleString() }} bars inserted
-            @if (impResult()!.parseErrors > 0) { · {{ impResult()!.parseErrors }} skipped }
-          </div>
-        }
-        @if (impError()) {
-          <div class="mt-2 rounded bg-red-900/20 p-2 text-xs text-red-400">{{ impError() }}</div>
-        }
-      </div>
+      }
 
       @if (loading()) {
         <div class="py-12 text-center text-sm text-gray-500">Loading inventory...</div>
@@ -165,7 +191,7 @@ interface DownloadJobResponse {
       } @else if (inventory().length === 0) {
         <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-12 text-center">
           <p class="text-sm text-gray-400 mb-2">No market data available.</p>
-          <p class="text-xs text-gray-500">Download via cTrader (top form) or import an NDJSON/CSV file (no cTrader required).</p>
+          <p class="text-xs text-gray-500">Use the download form above or drop NDJSON shards in data/shards/.</p>
         </div>
       } @else {
         <div class="flex flex-wrap gap-2 mb-3">
@@ -227,7 +253,7 @@ interface DownloadJobResponse {
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DataManagerComponent implements OnInit, OnDestroy {
+export class DataManagerComponent implements OnInit {
   private http = inject(HttpClient);
   private destroyRef = inject(DestroyRef);
   inventory = signal<MarketDataItem[]>([]);
@@ -248,8 +274,8 @@ export class DataManagerComponent implements OnInit, OnDestroy {
 
   rowKey = (i: MarketDataItem) => `${i.symbol}|${i.timeframe}|${i.source}`;
 
-  dlSymbol = 'EURUSD';
-  dlSymbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'GBPJPY', 'XAUUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'XAGUSD'];
+  dlSymbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'GBPJPY', 'XAUUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'NZDUSD', 'EURGBP', 'EURJPY', 'XAGUSD', 'BTCUSD', 'ETHUSD', 'US30', 'NAS100'];
+  dlSelectedSymbols = signal<string[]>(['EURUSD']);
   allTfs = [
     { value: 'm1', label: 'M1' },
     { value: 'm5', label: 'M5' },
@@ -259,62 +285,72 @@ export class DataManagerComponent implements OnInit, OnDestroy {
     { value: 'd1', label: 'D1' },
   ];
   dlTfs = signal<string[]>(['h1', 'm1']);
-  dlDays = 7;
-  dlMode = signal<'days' | 'range'>('days');
-  dlFrom = '';
-  dlTo = '';
+  dlPreset: DatePreset = '1y';
   dlLoading = signal(false);
   dlError = signal<string | null>(null);
+  keepShards = false;
   activeJobs = signal<DownloadJobResponse[]>([]);
-  private completedJobIds = new Set<string>();
+  runningJobCount = computed(() => this.activeJobs().filter(j => j.status !== 'done' && j.status !== 'failed').length);
+  dlCountLabel = computed(() => {
+    const n = this.dlSelectedSymbols().length;
+    return n === 0 ? '' : n === 1 ? this.dlSelectedSymbols()[0] : `${n} symbols`;
+  });
+
+  pendingFiles = signal<PendingShard[]>([]);
+  shardsRoot = signal<string>('');
+  ingesting = computed(() => this.activeIngestJob() !== null);
+  ingestResult = signal<{ filesProcessed: number; barsIngested: number; errors: string[] } | null>(null);
+
+  activeIngestJob = computed(() => {
+    return this.activeJobs().find(j => j.status === 'ingesting' && (!j.tfs || j.tfs.length === 0)) ?? null;
+  });
 
   ngOnInit(): void {
-    const now = new Date();
-    this.dlTo = now.toISOString().slice(0, 10);
-    const from = new Date(now);
-    from.setDate(from.getDate() - 7);
-    this.dlFrom = from.toISOString().slice(0, 10);
     this.loadInventory();
-    // Poll active jobs every 2s
+    this.loadPendingShards();
     interval(2000)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.pollActiveJobs());
   }
 
-  ngOnDestroy(): void {
-    this.stopPoll();
+  toggleSymbol(s: string): void {
+    this.dlSelectedSymbols.update(
+      cur => cur.includes(s) ? cur.filter(x => x !== s) : [...cur, s]
+    );
   }
 
   toggleTf(tf: string): void {
     this.dlTfs.update(tfs => tfs.includes(tf) ? tfs.filter(t => t !== tf) : [...tfs, tf]);
   }
 
+  onPresetChange(p: DatePreset): void {
+    // all date math done server-side based on the preset string
+  }
+
   startDownload(): void {
-    if (this.dlTfs().length === 0) { this.dlError.set('Select at least one timeframe.'); return; }
-    const body: { symbol: string; tfs: string[]; days?: number; from?: string; to?: string } = {
-      symbol: this.dlSymbol,
-      tfs: this.dlTfs(),
-    };
-    if (this.dlMode() === 'range') {
-      if (!this.dlFrom || !this.dlTo) { this.dlError.set('Select a From and To date.'); return; }
-      if (new Date(this.dlFrom) >= new Date(this.dlTo)) { this.dlError.set('From date must be before To date.'); return; }
-      body.from = this.dlFrom;
-      body.to = this.dlTo;
-    } else {
-      body.days = this.dlDays;
-    }
+    const syms = this.dlSelectedSymbols();
+    if (syms.length === 0) return;
     this.dlLoading.set(true);
     this.dlError.set(null);
-    this.http.post<DownloadJobResponse>('/api/data-manager/download', {
-      symbol: this.dlSymbol,
+
+    const body: any = {
+      symbols: syms,
       tfs: this.dlTfs(),
-      days: this.dlDays,
-    }).subscribe({
+      keepShards: this.keepShards,
+    };
+
+    const days = this.presetToDays(this.dlPreset);
+    if (days !== null) {
+      body.days = days;
+    }
+
+    this.http.post<DownloadMultiResponse>('/api/data-manager/download', body).subscribe({
       next: (r) => {
         this.dlLoading.set(false);
-        this.activeJobs.update(jobs => [...jobs, r]);
-        // Start polling this job
-        this.pollJob(r.jobId);
+        if (r.jobs) {
+          this.activeJobs.update(jobs => [...jobs, ...r.jobs]);
+          for (const j of r.jobs) this.pollJob(j.jobId);
+        }
       },
       error: (err) => {
         this.dlError.set(err?.error?.error ?? err?.message ?? 'Download failed');
@@ -323,8 +359,20 @@ export class DataManagerComponent implements OnInit, OnDestroy {
     });
   }
 
+  private presetToDays(p: DatePreset): number | null {
+    switch (p) {
+      case '30d': return 30;
+      case '90d': return 90;
+      case '180d': return 180;
+      case '1y': return 365;
+      case '2y': return 730;
+      case '5y': return 1825;
+      case '2020': return -1;
+      default: return 365;
+    }
+  }
+
   dismissJob(jobId: string): void {
-    this.completedJobIds.add(jobId);
     this.activeJobs.update(jobs => jobs.filter(j => j.jobId !== jobId));
   }
 
@@ -337,10 +385,32 @@ export class DataManagerComponent implements OnInit, OnDestroy {
     }
   }
 
+  ingestShards(): void {
+    this.ingestResult.set(null);
+    this.http.post<DownloadJobResponse>('/api/data-manager/ingest-shards', {}).subscribe({
+      next: (r) => {
+        this.activeJobs.update(jobs => [...jobs, r]);
+        this.pollJob(r.jobId);
+      },
+      error: (err) => {
+        this.ingestResult.set({ filesProcessed: 0, barsIngested: 0, errors: [err?.error?.error ?? err?.message ?? 'Ingest failed'] });
+      },
+    });
+  }
+
+  fmtSize(bytes: number): string {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  fmtPendingSize(): string {
+    const total = this.pendingFiles().reduce((s, f) => s + f.sizeBytes, 0);
+    return this.fmtSize(total);
+  }
+
   private pollActiveJobs(): void {
-    const jobs = this.activeJobs();
-    if (jobs.length === 0) return;
-    for (const job of jobs) {
+    for (const job of this.activeJobs()) {
       if (job.status === 'done' || job.status === 'failed') continue;
       this.pollJob(job.jobId);
     }
@@ -350,8 +420,9 @@ export class DataManagerComponent implements OnInit, OnDestroy {
     this.http.get<DownloadJobResponse>(`/api/data-manager/jobs/${jobId}`).subscribe({
       next: (updated) => {
         this.activeJobs.update(jobs => jobs.map(j => j.jobId === jobId ? updated : j));
-        if (updated.status === 'done') {
+        if (updated.status === 'done' || updated.status === 'failed') {
           this.loadInventory();
+          this.loadPendingShards();
         }
       },
       error: () => { /* job may not exist yet */ },
@@ -396,6 +467,16 @@ export class DataManagerComponent implements OnInit, OnDestroy {
         this.error.set(err?.message ?? 'Failed to load inventory');
         this.loading.set(false);
       },
+    });
+  }
+
+  private loadPendingShards(): void {
+    this.http.get<PendingShardsResponse>('/api/data-manager/pending-shards').subscribe({
+      next: (r) => {
+        this.pendingFiles.set(r.files ?? []);
+        this.shardsRoot.set(r.shardsRoot ?? '');
+      },
+      error: () => { /* endpoint may not exist yet */ },
     });
   }
 }

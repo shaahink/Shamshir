@@ -1,3 +1,5 @@
+using TradingEngine.Domain.Interfaces;
+
 namespace TradingEngine.Host;
 
 /// <summary>
@@ -29,7 +31,9 @@ public sealed class BarEvaluator(
     IRiskProfileResolver riskProfileResolver,
     ITradingGovernor? governor,
     Microsoft.Extensions.Logging.ILogger logger,
-    IIndicatorService indicators)
+    IIndicatorService indicators,
+    IReferenceScaleLookup? referenceScales = null,
+    IExitCalibrationLookup? exitCalibrationLookup = null)
 {
     private long _orderSeq;
 
@@ -64,6 +68,9 @@ public sealed class BarEvaluator(
             while (list.Count > 500) list.RemoveAt(0);
         }
 
+        // P1.5.2: reveal any aux-TF bars (e.g. mtf-trend's H4) whose close time has arrived as of THIS
+        // decision bar's close — point-in-time, not the whole run's range — before recomputing indicators.
+        await indicatorSnapshot.AdvanceAuxBarsAsync(symbol, simTime + GetBarDuration(tf), ct);
         await indicatorSnapshot.RecomputeIndicatorsAsync(symbol, tf, ct);
 
         var halfSpread = ResolveHalfSpread(symbol);
@@ -102,6 +109,7 @@ public sealed class BarEvaluator(
             if (totalBars == 0)
                 totalBars = barSnapshot.Values.Sum(b => b.Count);
             var strategyIndicators = indicatorSnapshot.BuildStrategyIndicatorValues(symbol, strategy);
+            var strategySeries = indicatorSnapshot.BuildStrategyIndicatorSeries(symbol, strategy);
 
             if (totalBars < strategy.RequiredBarCount)
             {
@@ -111,7 +119,15 @@ public sealed class BarEvaluator(
                 continue;
             }
 
-            var context = new MarketContext(symbol, closeTick, barSnapshot, strategyIndicators, simTime);
+            var missingTf = strategy.RequiredTimeframes.FirstOrDefault(reqTf => !barSnapshot.ContainsKey(reqTf));
+            if (missingTf != default)
+            {
+                verdicts.Add(new StrategyVerdict(strategy.Id, HadEnoughBars: false, SignalFired: false,
+                    Direction: null, Reason: $"MISSING_DATA: TF {missingTf} not available", Indicators: null));
+                continue;
+            }
+
+            var context = new MarketContext(symbol, closeTick, barSnapshot, strategyIndicators, simTime, strategySeries);
             var intent = strategy.Evaluate(context);
 
             if (intent is null)
@@ -121,7 +137,7 @@ public sealed class BarEvaluator(
                 continue;
             }
 
-            intent = entryPlanner.Plan(intent, strategy.Config.OrderEntry, closeTick.Mid);
+            intent = entryPlanner.Plan(intent, strategy.Config.OrderEntry, closeTick.Mid, barModel);
 
             if (signalGate is not null)
             {
@@ -162,6 +178,24 @@ public sealed class BarEvaluator(
                         slMult = tuned.DynamicSlAtrMultiple;
                         tpRr = tuned.DynamicTpRrMultiple;
                     }
+                    else if (dyn.Mode == AddOnMode.Calibrated && exitCalibrationLookup is not null)
+                    {
+                        // P4.5.6: the DynamicSlTp Calibrated branch was missing — falls through to Custom
+                        // values (line 174), never reading the calibration table. Now reads SlAtrMultiple /
+                        // TpRrMultiple from ExitCalibrations at evaluation time, matching the bind-time
+                        // SL/TP override in StrategyRegistry (the other calibration consumption path).
+                        var cal = exitCalibrationLookup.Get(strategy.Id, symbol.Value, tf, regime.ToString());
+                        if (cal is not null)
+                        {
+                            slMult = cal.SlAtrMultiple;
+                            tpRr = cal.TpRrMultiple ?? dyn.RrMultipleTp;
+                        }
+                        else
+                        {
+                            slMult = dyn.AtrMultipleSl;
+                            tpRr = dyn.RrMultipleTp;
+                        }
+                    }
                     else
                     {
                         slMult = dyn.AtrMultipleSl;
@@ -179,7 +213,10 @@ public sealed class BarEvaluator(
 
             // K4 gap-1: resolve the strategy's profile ONCE here and carry it on the proposal so the pure
             // kernel sizes with it (not the run-constant profile). Reused for the compliance verdict below.
-            var resolvedProfile = riskProfileResolver.Resolve(intent.RiskProfileId);
+            // P2.6 (D9, units doctrine): if the profile carries a normalized MaxSlAtrMultiple, override
+            // MaxSlPips with it here — the only point where the profile, this strategy's symbol, AND its
+            // timeframe are all in scope together, so a flat cap never silently crushes gold/crypto.
+            var resolvedProfile = riskProfileResolver.Resolve(intent.RiskProfileId).ResolveMaxSlPips(tf, symbolInfo, referenceScales);
 
             var external = ComputeVerdicts(intent, state, simTime, resolvedProfile);
 
@@ -188,7 +225,8 @@ public sealed class BarEvaluator(
                 intent.Symbol, intent.Direction, intent.OrderType,
                 intent.LimitPrice, intent.StopLoss, intent.TakeProfit, intent.StrategyId,
                 entryPrice.Value, slPips, pipValuePerLot, simTime, external, resolvedProfile,
-                EntryReason: intent.Reason, EntryRegime: regimeLabel);
+                EntryReason: intent.Reason, EntryRegime: regimeLabel, EntryTimeframe: strategy.EntryTimeframe,
+                Entry: intent.Entry);
 
             proposals.Add(proposal);
             verdicts.Add(new StrategyVerdict(strategy.Id, HadEnoughBars: true, SignalFired: true,

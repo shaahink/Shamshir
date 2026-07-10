@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
@@ -30,8 +31,13 @@ namespace TradingEngine.Web.Services;
 public sealed class RunNarrativeService
 {
     private readonly TradingDbContext _db;
+    private static ILogger<RunNarrativeService>? _logger;
 
-    public RunNarrativeService(TradingDbContext db) => _db = db;
+    public RunNarrativeService(TradingDbContext db, ILogger<RunNarrativeService> logger)
+    {
+        _db = db;
+        _logger = logger;
+    }
 
     public async Task<NarrativeResponse> GetNarrativeAsync(
         string runId, long? afterSeq, string[]? kinds, string? severity, int limit = 100, CancellationToken ct = default)
@@ -199,7 +205,11 @@ public sealed class RunNarrativeService
     private static JsonElement Root(string? json)
     {
         try { return JsonDocument.Parse(string.IsNullOrEmpty(json) ? "{}" : json).RootElement.Clone(); }
-        catch { return JsonDocument.Parse("{}").RootElement.Clone(); }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to parse journal EventJson as JSON — narrative will be empty");
+            return JsonDocument.Parse("{}").RootElement.Clone();
+        }
     }
 
     private static bool TryProp(JsonElement e, string name, out JsonElement value)

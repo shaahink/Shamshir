@@ -25,26 +25,46 @@ public sealed class StrategyCharacterizationTests
     private static List<TradeIntent> Signals(IStrategy strategy, List<Bar> bars)
     {
         var signals = new List<TradeIntent>();
-        for (var i = strategy.RequiredBarCount; i < bars.Count; i++)
+        // P2.1/P2.3: ema-alignment now reads its EMA crossover history from MarketContext.IndicatorSeries
+        // instead of a single latest value — accumulate a real per-key history from bar 0, mirroring
+        // production's ring buffer (IndicatorSnapshotService fills from the engine's very first bar, not
+        // from RequiredBarCount), capped at 64 to match SeriesCapacity.
+        const int seriesCapacity = 64;
+        var history = new Dictionary<string, List<double>>();
+        for (var i = 0; i < bars.Count; i++)
         {
             var window = bars.Take(i + 1).ToList();
             var indicators = StrategyTestHelper.ComputeIndicators(window, strategy.RequiredIndicators);
-            var ctx = StrategyTestHelper.MakeContext(bars[i], "EURUSD", window, indicators);
+            foreach (var (key, value) in indicators)
+            {
+                if (!history.TryGetValue(key, out var list)) { list = []; history[key] = list; }
+                list.Add(value);
+                while (list.Count > seriesCapacity) list.RemoveAt(0);
+            }
+
+            if (i < strategy.RequiredBarCount) continue;
+
+            var series = history.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<double>)kv.Value);
+            var ctx = StrategyTestHelper.MakeContext(bars[i], "EURUSD", window, indicators, series);
             if (strategy.Evaluate(ctx) is { } intent) signals.Add(intent);
         }
         return signals;
     }
 
     [Fact]
-    public void EmaAlignment_FiresLong_OnCleanUptrend()
+    public void EmaAlignment_FiresLong_OnUptrendWithPullback()
     {
+        // P2.3/D5: ema-alignment is now a pullback-entry edge (crossover, then first touch of the fast
+        // EMA), not a state condition — a perfectly smooth trend with no pullback legitimately produces
+        // ZERO signals under the new semantics, so this needs a fixture with a genuine pullback, not
+        // StrongTrend's dead-smooth rise (still shared with MeanReversion below, unmodified).
         var s = new EmaAlignmentStrategy(
             new EmaAlignmentConfig("ema", "EMA Alignment", true, "standard", new EmaAlignmentParameters()),
             Registry(), Substitute.For<ILogger<EmaAlignmentStrategy>>());
 
-        var signals = Signals(s, StrongTrend(up: true, 260));
+        var signals = Signals(s, TrendWithPullback(up: true, 260));
 
-        signals.Should().NotBeEmpty("a clean uptrend must align the EMAs and fire at least once (not silently dead)");
+        signals.Should().NotBeEmpty("an uptrend with a genuine pullback to the fast EMA must fire at least once (not silently dead)");
         signals[0].Direction.Should().Be(TradeDirection.Long, "characterization: first signal on an uptrend is Long");
     }
 
@@ -61,6 +81,37 @@ public sealed class StrategyCharacterizationTests
                   + Signals(s, StrongTrend(up: true, 260)).Count;
 
         fired.Should().BeGreaterThan(0, "mean-reversion must fire on an oscillating / wicky regime (not silently dead)");
+    }
+
+    // A flat/ranging warmup (so fast/slow EMA start close together — a monotonic trend from bar 0 never
+    // shows a discrete crossover under this recompute-from-scratch methodology, since Skender's EMA seed
+    // already has fast>slow by the time both are first computable), then a clean uptrend whose fast EMA
+    // crosses above the slow EMA once, followed shortly by a pin-bar pullback (a deep lower wick, but the
+    // close stays on the trend side) that genuinely touches the fast EMA — the shape ema-alignment's
+    // pullback-entry edge is designed to trade.
+    private static List<Bar> TrendWithPullback(bool up, int count)
+    {
+        var bars = new List<Bar>();
+        var price = 1.1000m;
+        var step = (up ? 1 : -1) * 0.0010m;
+        var t = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var i = 0; i < count; i++)
+        {
+            var open = price;
+            var close = i < 60 ? price + (i % 2 == 0 ? 1 : -1) * 0.0002m : price + step;
+            var high = Math.Max(open, close) + 0.0003m;
+            var low = Math.Min(open, close) - 0.0003m;
+            if (i == 75)
+            {
+                // Pin-bar pullback: close stays on the trend side (confirming continuation), but the wick
+                // dips (long) or spikes (short) deep enough to genuinely touch the fast EMA.
+                if (up) low = close - 0.0100m; else high = close + 0.0100m;
+            }
+            bars.Add(new Bar(Symbol.Parse("EURUSD"), Timeframe.H1, t, open, high, low, close, 1000));
+            price = close;
+            t = t.AddHours(1);
+        }
+        return bars;
     }
 
     // A clean trend strong enough that the fast EMA sits firmly above/below the slow EMA.

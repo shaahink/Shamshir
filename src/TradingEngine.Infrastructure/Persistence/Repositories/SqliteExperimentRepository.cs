@@ -13,14 +13,7 @@ public sealed class SqliteExperimentRepository(TradingDbContext db) : IExperimen
 
     public async Task UpdateAsync(ExperimentEntity experiment, CancellationToken ct)
     {
-        // The same scoped DbContext already tracks the instance from CreateAsync, so attaching a fresh
-        // instance with the same key throws "another instance with the same key value is already being
-        // tracked". Copy scalar values onto the tracked (or freshly loaded) entity instead.
-        var existing = await db.Experiments.FindAsync([experiment.Id], ct);
-        if (existing is null)
-            db.Experiments.Add(experiment);
-        else
-            db.Entry(existing).CurrentValues.SetValues(experiment);
+        db.Experiments.Update(experiment);
         await db.SaveChangesAsync(ct);
     }
 

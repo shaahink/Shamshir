@@ -7,8 +7,8 @@ public sealed class AlwaysSignalStrategy : IStrategy
 
     public string Id => "always-signal";
     public string DisplayName => "Always Signal (test only)";
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => Config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [Config.EntryTimeframe];
     public int RequiredBarCount => 1;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => [];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
@@ -46,11 +46,12 @@ internal sealed record AlwaysSignalConfig : IStrategyConfig
     public string Id => "always-signal";
     public string DisplayName => "Always Signal";
     public bool Enabled => true;
-    public IReadOnlyList<string> Symbols => ["EURUSD"];
     public string RiskProfileId => "standard";
-    public Timeframe Timeframe => Timeframe.H1;
+    public Timeframe EntryTimeframe { get; init; } = Timeframe.H1;
+    public string? Symbol { get; init; }
+    public IReadOnlyList<Timeframe> RequiredTimeframes { get; init; } = [];
     public RegimeFilterOptions RegimeFilter => new();
-    public OrderEntryOptions OrderEntry => new();
+    public OrderEntryOptions OrderEntry => new() { Method = OrderEntryMethod.Market };
     public PositionManagementOptions PositionManagement => new();
     public ReentryOptions Reentry => new();
 }

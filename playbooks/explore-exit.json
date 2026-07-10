@@ -1,0 +1,48 @@
+{
+  "name": "explore-exit",
+  "description": "P3.4 canonical exit-research loop: an exploration run (RecordExcursions on) → validate excursions>0 → exit-lab grid → owner-gate on the plateau pick → apply calibration → verification run → report. This finally puts real rows in TradeExcursions (closes F11's data famine).",
+  "steps": [
+    {
+      "kind": "ensure-data",
+      "symbols": "EURUSD",
+      "tfs": "H1",
+      "from": "2026-01-01",
+      "to": "2026-04-01"
+    },
+    {
+      "kind": "start-run",
+      "as": "exploreRun",
+      "venue": "tape",
+      "symbols": ["EURUSD"],
+      "periods": ["H1"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-04-01T00:00:00Z",
+      "balance": 100000,
+      "explore": true
+    },
+    {
+      "kind": "await-run",
+      "runId": "exploreRun",
+      "timeout": 3600
+    },
+    {
+      "kind": "assert-gates",
+      "runId": "exploreRun",
+      "requireStatus": "completed",
+      "minTrades": 1
+    },
+    {
+      "kind": "exitlab-eval",
+      "runIds": ["exploreRun"],
+      "positionIds": [],
+      "referenceAtrPips": 20.0
+    },
+    {
+      "kind": "owner-gate",
+      "reason": "review the exit-lab plateau and approve the calibration to apply"
+    },
+    {
+      "kind": "report"
+    }
+  ]
+}

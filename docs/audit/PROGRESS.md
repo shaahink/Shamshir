@@ -1,10 +1,56 @@
 # Progress Metrics
 
-**Updated:** 2026-07-03 (session close — 7 bugs fixed + committed, branch decision resolved)
-**Branch:** `iter/tape-trust` (authoritative — see §Branch Decision)
-**Last commit:** `6931217`
-**Gates:** Unit 314/0/6 · Integration 90/0 · Golden 63/63 · build 0 errors · npm 0 errors
-**Next:** `docs/iterations/iter-merge-plan/NEXT-ITERATION.md` — prioritized remaining work
+**Updated:** 2026-07-03 (iter/data-mgmt — shards pipeline, tape speed, limit fixes)
+**Branch:** `iter/data-mgmt` (active) / `develop` (authoritative, merged)
+**Last commit:** `28219ad` (iter/data-mgmt) / `d786d3f` (develop)
+**Gates:** Unit 314/0/6 · Integration 94/0 · Golden 63/63 · build 0 · npm 0
+
+## Branch Summary
+
+| Branch | State | Notes |
+|--------|-------|-------|
+| `develop` | **Merged** `d786d3f` | Contains all iter/tape-trust work + experiments tier1 |
+| `iter/data-mgmt` | **Active** `28219ad` | Data management, tape speed, limit fixes, build race fix |
+| `iter/tape-trust` | Ancestor `1a7cc93` | Parent of iter/data-mgmt |
+| `origin/iter/merge-plan` | Stale (sibling) | All valuable fixes ported to iter/data-mgmt |
+
+## iter/data-mgmt — delivered (2026-07-03)
+
+### Data management
+- **Shards pipeline**: `data/shards/` directory, `GET pending-shards`, `POST ingest-shards`
+- **Auto-archive**: successfully ingested files move to `data/shards/archive/`
+- **Keep files checkbox**: download with `KeepShards=true` preserves NDJSON for inspection
+- **Pending files UI**: Data Manager shows unprocessed shards with Ingest All button
+- **Market data reset**: Settings page Clear Market Data button (`scope=marketdata`)
+
+### Tape speed control
+- **Speed 0-10x**: slider on new-backtest form and live run monitor
+- **Pause/resume**: `PATCH /api/runs/{id} { speed: 0 }` with `ManualResetEventSlim`
+- **Delay mechanism**: `100ms / speed` per bar in `FeedBarsAsync`
+
+### Limit order fixes
+- **P0**: Tape dual-res limit expiry fixed (`decrementExpiry: true`)
+- **Full audit**: `docs/audit/LIMIT-ORDER-AUDIT.md` covering all 4 venues
+
+### Server-side validation
+- **Tape data check**: `RunsController.Start` validates market data exists before starting tape run
+- **Coverage guidance**: new-backtest shows first/last bar dates from inventory for each symbol
+
+### Build
+- **Angular race fixed**: correct `BeforeTargets="ResolveStaticWebAssetsConfiguration"` + PS 5.1 path compat
+- **Dead config**: removed `ConnectionStrings:Trading` from appsettings.json
+
+### Angular
+- **Journal close-fill**: `isCloseFill` detection — close events now visible in journal tab
+- **trade-chart-card**: `effect()` replaces `OnChanges` + `OnDestroy` cleanup
+
+### Gaps remaining
+- C1 short-spread (2 lines, golden-sensitive)
+- D1 DB fragmentation
+- D2 Hardcoded defaults audit
+- P1 Sell-limit halfSpread alignment
+- P3 Limit-order integration tests
+- Owner-only: V2–V5, M5, cBot E2E
 
 ## Branch Decision (RESOLVED 2026-07-03)
 
@@ -41,10 +87,9 @@ prune, 15 Angular fixes, docs) manually — do NOT merge the branch.
 | Unit | `dotnet test tests/TradingEngine.Tests.Unit` | 314 pass / 0 fail / 6 skip |
 | Integration | `dotnet test tests/TradingEngine.Tests.Integration` | 90 pass / 0 fail (see note below) |
 | Golden/Determinism | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true&(FullyQualifiedName~Golden\|FullyQualifiedName~Characterization\|FullyQualifiedName~Acceptance\|FullyQualifiedName~Lifecycle\|FullyQualifiedName~Deterministic\|FullyQualifiedName~Equivalence\|FullyQualifiedName~Journal)"` | 63 pass / 0 fail |
-| cTrader E2E | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader=true&FullyQualifiedName!~NetMQBridge"` | BLOCKED — cTrader CLI not installed. Owner to run. |
-| DB Migrations | `dotnet ef database update` | Applied: InitialCreate + AddTradeNarrativeColumns |
+| cTrader E2E | `dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader=true&FullyQualifiedName!~NetMQBridge"` | BLOCKED — cTrader CLI not installed on this machine. Owner to run. |
 
-## Completed — iter-tape-trust (T0–T5)
+## iter-tape-trust — completed (T0–T5)
 
 | Phase | Items | Status |
 |-------|-------|--------|
@@ -55,10 +100,15 @@ prune, 15 Angular fixes, docs) manually — do NOT merge the branch.
 | T4 | Compare-both dispatch | ✅ |
 | T5 | Sweep runner, content-address skip, journal thinning (SkipJournal) | ✅ |
 
-### B1–B11 bugs: ✅ all fixed
-### F1–F4, F8 fidelity gaps: ✅ all fixed
+## iter-tape-trust — pending (needs cTrader)
 
----
+| Item | Blocked by |
+|------|-----------|
+| V2 owner's working set download | cTrader CLI |
+| V3 speed baseline | cTrader CLI |
+| V4 tape vs cTrader reconcile | cTrader CLI + real runs |
+| V5 engine-DB vs cTrader report | cTrader CLI + real runs |
+| cBot E2E tests | cTrader CLI (cBot rebuilt, `.algo` fresh) |
 
 ## Merged plan — implemented
 

@@ -31,9 +31,10 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
 
     private readonly Dictionary<Guid, OpenTrade> _openTrades = new();
     private readonly Dictionary<Guid, PendingLimit> _pendingLimits = new();
+    private readonly Dictionary<Guid, PendingStop> _pendingStops = new();
     private decimal _balance;
     private decimal _lastClose;
-    private readonly decimal _tickSpread;
+    private decimal? _currentSpread;
     private Task _feedTask = Task.CompletedTask;
     private CancellationTokenSource? _feedCts;
 
@@ -49,6 +50,19 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         public required TradeDirection Direction { get; init; }
         public required decimal Lots { get; init; }
         public required decimal LimitPrice { get; init; }
+        public required Price StopLoss { get; init; }
+        public Price? TakeProfit { get; init; }
+        public int BarsRemaining { get; set; }
+    }
+
+    // P2.7: a resting STOP entry order — the mirror image of PendingLimit. A buy stop fills when price
+    // rises UP THROUGH the trigger (breakout confirmation); a sell stop fills when price falls DOWN
+    // THROUGH it. Same expiry semantics as a limit (BarsRemaining from LimitOrderExpiryBars).
+    private sealed class PendingStop
+    {
+        public required TradeDirection Direction { get; init; }
+        public required decimal Lots { get; init; }
+        public required decimal StopPrice { get; init; }
         public required Price StopLoss { get; init; }
         public Price? TakeProfit { get; init; }
         public int BarsRemaining { get; set; }
@@ -89,8 +103,6 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         _symbolRegistry = symbolRegistry;
         _crossRateProvider = crossRateProvider;
         _logger = logger;
-        try { _tickSpread = symbolRegistry.Get(symbol).PipSize; }
-        catch { _tickSpread = 0.0001m; }
     }
 
     public async Task ConnectAsync(CancellationToken ct)
@@ -130,7 +142,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
                 // in SyncToBar (per-bar mark-to-market) and on each realized close.
                 await _barChannel.Writer.WriteAsync(bar, ct);
                 await _tickChannel.Writer.WriteAsync(
-                    new Tick(bar.Symbol, bar.Close, bar.Close + _tickSpread, bar.OpenTimeUtc), ct);
+                    new Tick(bar.Symbol, bar.Close, SpreadConvention.AskPrice(bar.Close, GetSpread()), bar.OpenTimeUtc), ct);
             }
 
             _logger.LogInformation("BacktestReplay: feed complete, {Count} bars sent", bars.Count);
@@ -191,9 +203,28 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
             return Task.FromResult(orderId);
         }
 
+        // P2.7: resting STOP entry order — reuses the same LimitPrice field as the generic "resting
+        // trigger price" (OrderType tags which semantics apply). Held until a later bar's range crosses
+        // the trigger, or until it expires.
+        if (request.Type == OrderType.Stop && request.LimitPrice is { } stop)
+        {
+            _pendingStops[orderId] = new PendingStop
+            {
+                Direction = request.Direction,
+                Lots = request.Lots,
+                StopPrice = stop.Value,
+                StopLoss = sl,
+                TakeProfit = tp,
+                BarsRemaining = request.Intent.Entry?.LimitOrderExpiryBars ?? 3,
+            };
+            _logger.LogDebug("BacktestReplay: stop rest {Id} at {Price:F5} dir={Dir} lots={Lots} expiry={Bars}b",
+                orderId, stop.Value, request.Direction, request.Lots, _pendingStops[orderId].BarsRemaining);
+            return Task.FromResult(orderId);
+        }
+
         var midPrice = _lastClose > 0 ? _lastClose : 1m;
-        var halfSpread = GetHalfSpread();
-        var fillPrice = new Price(request.Direction == TradeDirection.Long ? midPrice + halfSpread : midPrice);
+        var spread = GetSpread();
+        var fillPrice = new Price(request.Direction == TradeDirection.Long ? SpreadConvention.AskPrice(midPrice, spread) : midPrice);
         FillEntry(orderId, request.Direction, fillPrice.Value, request.Lots, sl, tp);
         _logger.LogDebug("BacktestReplay: instant fill {Id} at {Price:F5} dir={Dir} lots={Lots}",
             orderId, fillPrice.Value, request.Direction, request.Lots);
@@ -206,10 +237,13 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
             _logger.LogError("BacktestReplay: execution channel full — event dropped; orderId={OrderId}", evt.OrderId);
     }
 
-    private decimal GetHalfSpread()
+    // P0.2 (D3): FULL spread — bars are bid, ask = bid + spread. See SpreadConvention.
+    // P6.2: per-bar recorded spread takes precedence when available; falls back to TypicalSpread.
+    private decimal GetSpread()
     {
-        try { return _symbolRegistry.Get(_symbol).TypicalSpread / 2m; }
-        catch { return 0.00005m; }
+        if (_currentSpread is { } s) return s;
+        try { return _symbolRegistry.Get(_symbol).TypicalSpread; }
+        catch { return 0.0001m; }
     }
 
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
@@ -227,13 +261,15 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     {
         if (_pendingLimits.Count == 0) return;
 
-        var halfSpread = GetHalfSpread();
+        var spread = GetSpread();
 
         foreach (var (orderId, limit) in _pendingLimits.ToList())
         {
+            // Buy limit: fills once the ASK (bid-low + spread) reaches it. Sell limit: fills once the
+            // raw bid-high reaches it (a sell-to-open trades at bid — no spread adjustment).
             var reached = limit.Direction == TradeDirection.Long
-                ? bar.Low <= limit.LimitPrice
-                : bar.High + halfSpread >= limit.LimitPrice;
+                ? SpreadConvention.AskPrice(bar.Low, spread) <= limit.LimitPrice
+                : bar.High >= limit.LimitPrice;
 
             if (reached)
             {
@@ -280,10 +316,62 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     public void OnBarObserved(Bar bar)
     {
         _lastClose = bar.Close;
+        _currentSpread = bar.Spread;
         BrokerTimeUtc = bar.OpenTimeUtc + BarDuration(bar.Timeframe);
         ProcessPendingLimits(bar);
+        ProcessPendingStops(bar);
         ProcessSlTpHits(bar);
         EmitAccountUpdate(BrokerTimeUtc);
+    }
+
+    // P2.7: match resting STOP entry orders against the bar that just became current — the mirror image
+    // of ProcessPendingLimits. A buy stop fills when price rises UP THROUGH the trigger (the ask side,
+    // same long-entry spread convention as a market/limit buy); a sell stop fills when price falls DOWN
+    // THROUGH it (raw bid, same short-entry convention as a market/limit sell). Gap-through: if the
+    // bar's OPEN already lies beyond the trigger (price gapped past it before this bar started), fill at
+    // the bar's OPEN instead of the trigger price — the same rule ProcessSlTpHits already applies to SL
+    // gap-through, reused here for stop-entry gap-through. Same expiry semantics as limits.
+    private void ProcessPendingStops(Bar bar)
+    {
+        if (_pendingStops.Count == 0) return;
+
+        var spread = GetSpread();
+
+        foreach (var (orderId, stop) in _pendingStops.ToList())
+        {
+            var reached = stop.Direction == TradeDirection.Long
+                ? SpreadConvention.AskPrice(bar.High, spread) >= stop.StopPrice
+                : bar.Low <= stop.StopPrice;
+
+            if (reached)
+            {
+                _pendingStops.Remove(orderId);
+                var fillPrice = stop.StopPrice;
+                if (stop.Direction == TradeDirection.Long)
+                {
+                    var askOpen = SpreadConvention.AskPrice(bar.Open, spread);
+                    if (askOpen >= stop.StopPrice) fillPrice = askOpen;
+                }
+                else if (bar.Open <= stop.StopPrice)
+                {
+                    fillPrice = bar.Open;
+                }
+
+                FillEntry(orderId, stop.Direction, fillPrice, stop.Lots, stop.StopLoss, stop.TakeProfit);
+                _logger.LogDebug("BacktestReplay: stop fill {Id} at {Price:F5} dir={Dir}",
+                    orderId, fillPrice, stop.Direction);
+                continue;
+            }
+
+            stop.BarsRemaining--;
+            if (stop.BarsRemaining <= 0)
+            {
+                _pendingStops.Remove(orderId);
+                EmitExecutionEvent(new ExecutionEvent(
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
+                _logger.LogDebug("BacktestReplay: stop expired {Id} at {Price:F5}", orderId, stop.StopPrice);
+            }
+        }
     }
 
     // iter-redesign-ctrader P1.4: detect SL/TP hits against the bar's OHLC and emit reasoned close
@@ -293,17 +381,15 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     {
         if (_openTrades.Count == 0) return;
 
-        var halfSpread = GetHalfSpread();
+        var spread = GetSpread();
 
         foreach (var (orderId, trade) in _openTrades.ToList())
         {
-            var checkBar = bar;
-            if (trade.Direction == TradeDirection.Short)
-            {
-                checkBar = new Bar(bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
-                    bar.Open + halfSpread, bar.High + halfSpread,
-                    bar.Low + halfSpread, bar.Close + halfSpread, bar.Volume);
-            }
+            // A short's SL/TP is crossed by the ASK (it closes by buying back); shift the whole bar to
+            // the ask side for detection. A long's SL/TP is crossed by the raw bid bar (unchanged).
+            var checkBar = trade.Direction == TradeDirection.Short
+                ? SpreadConvention.AskBar(bar, spread)
+                : bar;
 
             var reason = EngineReducer.DetectSlTpExit(
                 trade.Direction, trade.StopLoss, trade.TakeProfit, checkBar);
@@ -315,7 +401,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
                 : trade.StopLoss.Value;
 
             if (trade.Direction == TradeDirection.Short)
-                fillPrice += halfSpread;
+                fillPrice = SpreadConvention.AskPrice(fillPrice, spread);
 
             if (reason == "SL")
             {
@@ -377,11 +463,12 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
 
     public Task ClosePositionAsync(Guid positionId, CancellationToken ct)
     {
-        var halfSpread = GetHalfSpread();
+        var spread = GetSpread();
         var mid = _lastClose > 0 ? _lastClose : 1m;
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
-            var exitPrice = trade.Direction == TradeDirection.Long ? mid - halfSpread : mid + halfSpread;
+            // Long closes by selling at bid (raw); short closes by buying at ask (bid + full spread).
+            var exitPrice = trade.Direction == TradeDirection.Long ? mid : SpreadConvention.AskPrice(mid, spread);
             return CloseAtAsync(positionId, new Price(exitPrice), ct);
         }
         return CloseAtAsync(positionId, new Price(mid), ct);
@@ -498,14 +585,14 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         try
         {
             var symbolInfo = _symbolRegistry.Get(_symbol);
-            var halfSpread = symbolInfo.TypicalSpread / 2m;
+            var spread = symbolInfo.TypicalSpread;
             var pipValue = PipCalculator.PipValuePerLot(symbolInfo, close, _crossRateProvider);
             var total = 0m;
             foreach (var (_, t) in _openTrades)
             {
-                // H16: use directional bid/ask instead of mid. For longs the exit is at bid (lower);
-                // for shorts at ask (higher). This prices floating PnL conservatively.
-                var effectiveClose = t.Direction == TradeDirection.Long ? close - halfSpread : close + halfSpread;
+                // P0.2 (D3): a long's exit is a sell at bid (raw close, no adjustment); a short's exit is
+                // a buy at ask (close + full spread).
+                var effectiveClose = t.Direction == TradeDirection.Long ? close : SpreadConvention.AskPrice(close, spread);
                 var diff = t.Direction == TradeDirection.Long ? effectiveClose - t.EntryPrice : t.EntryPrice - effectiveClose;
                 total += (diff / symbolInfo.PipSize) * pipValue * t.Lots;
             }
@@ -527,6 +614,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         _executionChannel.Writer.TryComplete();
         _openTrades.Clear();
         _pendingLimits.Clear();
+        _pendingStops.Clear();
         try { await _feedTask; } catch (OperationCanceledException) { }
         _feedCts?.Dispose();
     }

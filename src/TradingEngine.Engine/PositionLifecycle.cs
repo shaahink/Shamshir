@@ -133,7 +133,8 @@ public static class PositionLifecycle
                     HighWater: state.HighWater, LowWater: state.LowWater,
                     GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
                     Commission: evt.Commission, Swap: evt.Swap,
-                    EntryReason: state.EntryReason, EntryRegime: state.EntryRegime)
+                    EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
+                    InitialStopLoss: state.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
             };
             return (remaining, reducingEffects);
         }
@@ -151,7 +152,8 @@ public static class PositionLifecycle
                 HighWater: closed.HighWater, LowWater: closed.LowWater,
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
                 Commission: evt.Commission, Swap: evt.Swap,
-                EntryReason: state.EntryReason, EntryRegime: state.EntryRegime)
+                EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
+                InitialStopLoss: closed.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
         };
         return (closed, effects);
     }
@@ -220,7 +222,8 @@ public static class PositionLifecycle
                 HighWater: closed.HighWater, LowWater: closed.LowWater,
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
                 Commission: evt.Commission, Swap: evt.Swap,
-                EntryReason: state.EntryReason, EntryRegime: state.EntryRegime)
+                EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
+                InitialStopLoss: closed.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
         };
         return (closed, effects);
     }
@@ -255,7 +258,8 @@ public static class PositionLifecycle
                 HighWater: closed.HighWater, LowWater: closed.LowWater,
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
                 Commission: evt.Commission, Swap: evt.Swap,
-                EntryReason: state.EntryReason, EntryRegime: state.EntryRegime)
+                EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
+                InitialStopLoss: closed.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
         };
         return (closed, effects);
     }
@@ -269,7 +273,8 @@ public static class PositionLifecycle
             orderId, orderId, symbol, direction, lots,
             limitPrice ?? stopLoss, stopLoss, takeProfit,
             DateTime.MinValue, strategyId, PositionPhase.Intended,
-            OrderEntryMethod: orderType.ToString());
+            OrderEntryMethod: orderType.ToString(),
+            InitialStopLoss: stopLoss);
     }
 
     public static Price? TrailStepPips(PositionState state, decimal bid, decimal ask, Pips stepPips, SymbolInfo symbol)

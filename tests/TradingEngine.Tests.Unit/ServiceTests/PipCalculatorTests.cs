@@ -55,4 +55,59 @@ public sealed class PipCalculatorTests
         var distance = PipCalculator.Distance(new Price(1.08420m), new Price(1.08210m), EurUsd);
         distance.Value.Should().Be(21);
     }
+
+    // P0.1: R must be computed against the INITIAL stop distance (risk taken at entry), never the
+    // current/trailed stop at close time — a breakeven or trailing move must not change R.
+
+    [Fact]
+    public void RMultiple_Long_UsesInitialStopDistance()
+    {
+        var entry = new Price(1.08500m);
+        var initialStop = new Price(1.08210m); // 29 pips risk
+        var exit = new Price(1.09080m); // 58 pips reward -> exactly 2R
+
+        var r = PipCalculator.RMultiple(TradeDirection.Long, entry, exit, initialStop);
+
+        r.Should().BeApproximately(2.0, 0.001);
+    }
+
+    [Fact]
+    public void RMultiple_Short_UsesInitialStopDistance()
+    {
+        var entry = new Price(1.16285m);
+        var initialStop = new Price(1.16635m); // 35 pips risk (stop above entry for a short)
+        var exit = new Price(1.15935m); // 35 pips reward -> exactly 1R
+
+        var r = PipCalculator.RMultiple(TradeDirection.Short, entry, exit, initialStop);
+
+        r.Should().BeApproximately(1.0, 0.001);
+    }
+
+    [Fact]
+    public void RMultiple_ZeroRiskDistance_ReturnsZero_NotInfinity()
+    {
+        var entry = new Price(1.08500m);
+        var r = PipCalculator.RMultiple(TradeDirection.Long, entry, new Price(1.09000m), entry);
+        r.Should().Be(0);
+    }
+
+    [Fact]
+    public void RMultiple_IgnoresStopMovedToBreakeven_RegressionForP01()
+    {
+        // Regression for the P0.1 bug: R used to be computed against PositionState.CurrentStopLoss —
+        // the trailed/breakeven stop AT CLOSE — instead of the stop the trade actually risked at entry.
+        // A trade whose stop was moved to breakeven before hitting TP showed a corrupted R (the DB
+        // evidence: TP exits averaged R=6.997 against a configured 2.0-3.0 RR). Passing the moved stop
+        // must NOT change the result computed from the initial stop.
+        var entry = new Price(1.08500m);
+        var initialStop = new Price(1.08210m); // 29 pips risk at entry
+        var movedStopAtClose = new Price(1.08500m); // breakeven-moved stop by the time the trade closed
+        var exit = new Price(1.09080m); // 58 pips reward
+
+        var correctR = PipCalculator.RMultiple(TradeDirection.Long, entry, exit, initialStop);
+        var ifWronglyUsingMovedStop = PipCalculator.RMultiple(TradeDirection.Long, entry, exit, movedStopAtClose);
+
+        correctR.Should().BeApproximately(2.0, 0.001);
+        ifWronglyUsingMovedStop.Should().Be(0); // proves the two stops give different (wrong-vs-right) results
+    }
 }

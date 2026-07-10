@@ -61,11 +61,15 @@ public sealed class EffectExecutor : IEffectExecutor
         switch (effect)
         {
             case SubmitOrder submit:
-                var intent = new TradeIntent(submit.Symbol, submit.Direction, OrderType.Market,
+                // P2.7: OrderType now travels on the effect itself (set by the kernel from the proposal),
+                // not re-derived from LimitPrice presence — that derivation couldn't distinguish Stop from
+                // Limit (both carry a resting trigger price on LimitPrice).
+                var intent = new TradeIntent(submit.Symbol, submit.Direction, submit.OrderType,
                     submit.LimitPrice, submit.StopLoss, submit.TakeProfit,
-                    submit.StrategyId, "standard", "", _clock.UtcNow);
+                    submit.StrategyId, "standard", "", _clock.UtcNow)
+                { Entry = submit.Entry };
                 var orderReq = new OrderRequest(intent, submit.Lots, submit.Symbol, submit.Direction,
-                    submit.LimitPrice is not null ? OrderType.Limit : OrderType.Market, submit.LimitPrice,
+                    submit.OrderType, submit.LimitPrice,
                     // Submit under the kernel's order id (= PositionId) so the venue fill/close + the
                     // feedback bridge all key off ONE id — no venue-id↔kernel-id translation (K2).
                     ClientOrderId: submit.OrderId);
@@ -122,68 +126,23 @@ public sealed class EffectExecutor : IEffectExecutor
     private async Task HandlePublishTradeClosed(PublishTradeClosed effect, CancellationToken ct)
     {
         var symbolInfo = _symbolRegistry.Get(effect.Symbol);
-        var recomputedGross = PipCalculator.GrossPnL(effect.Direction, effect.EntryPrice, effect.ExitPrice,
-            effect.Lots, symbolInfo, _crossRateProvider);
 
-        // Prefer the venue-authoritative PnL (commission/swap-inclusive) when the live venue reported
-        // it; only fall back to the price-recomputed gross for the simulated venue.
-        var currency = recomputedGross.Currency;
-        var gross = effect.GrossProfit is { } g ? new Money(g, currency) : recomputedGross;
-        var commission = new Money(effect.Commission ?? 0m, currency);
-        var swap = new Money(effect.Swap ?? 0m, currency);
-        var net = effect.NetProfit is { } n ? new Money(n, currency) : gross.Subtract(commission).Subtract(swap);
+        // P0.3 (F6): trade construction extracted to TradeResultFactory so the LIVE path here and the
+        // journal-based BACKFILL path (TradePersistenceBarrier) reconstruct trades identically — a trade
+        // recovered from the journal is byte-for-byte what this live close would have written. Timeframe
+        // is the one field the journal can't carry, so the live path supplies it from the strategy.
+        var timeframe = _strategies.FirstOrDefault(s => s.Id == effect.StrategyId)?.EntryTimeframe.ToString();
+        var tradeResult = TradeResultFactory.FromClose(effect, symbolInfo, _crossRateProvider, Guid.NewGuid(), timeframe);
 
-        // Trade analytics, previously hardcoded to zero. Derived from the close geometry so they are
-        // always consistent with the prices shown next to them. R uses a pip-distance ratio (reward
-        // over initial stop distance), so the pip size cancels and no pip-value/cross-rate is needed.
-        var pipSize = symbolInfo.PipSize;
-        var entry = effect.EntryPrice.Value;
-        var exit = effect.ExitPrice.Value;
-        var isLong = effect.Direction == TradeDirection.Long;
-        var signedMove = isLong ? exit - entry : entry - exit;
-
-        var pnlPips = new Pips((double)(signedMove / pipSize));
-
-        var riskDistance = Math.Abs(entry - effect.StopLoss.Value);
-        var rMultiple = riskDistance > 0 ? (double)(signedMove / riskDistance) : 0d;
-
-        // Most-favorable / most-adverse prices over the position's life. HighWater/LowWater are the
-        // per-bar extremes carried on the effect; fold in entry & exit so a same-bar close still yields
-        // a sane (>= 0) magnitude, and ignore unset (zero) water marks.
-        var hi = Math.Max(entry, exit);
-        if (effect.HighWater > 0) hi = Math.Max(hi, effect.HighWater);
-        var lo = Math.Min(entry, exit);
-        if (effect.LowWater > 0) lo = Math.Min(lo, effect.LowWater);
-
-        var mfePips = new Pips((double)((isLong ? hi - entry : entry - lo) / pipSize));
-        var maePips = new Pips((double)((isLong ? entry - lo : hi - entry) / pipSize));
-
-        var tradeResult = new TradeResult(Guid.NewGuid(), effect.PositionId, effect.Symbol, effect.Direction,
-            effect.Lots, effect.EntryPrice, effect.ExitPrice, effect.StopLoss, effect.TakeProfit,
-            effect.OpenedAtUtc, effect.ClosedAtUtc, gross, commission, swap,
-            net, pnlPips, rMultiple, maePips, mfePips,
-            effect.ExitReason, effect.StrategyId, effect.RiskProfileId ?? "standard",
-            OrderEntryMethod: effect.OrderEntryMethod,
-            OrderId: effect.OrderId,
-            EntryReason: effect.EntryReason,
-            EntryRegime: effect.EntryRegime,
-            EntrySnapshotJson: System.Text.Json.JsonSerializer.Serialize(new
-            {
-                reason = effect.EntryReason,
-                regime = effect.EntryRegime,
-                direction = effect.Direction.ToString(),
-                entryPrice = effect.EntryPrice.Value,
-                stopLoss = effect.StopLoss.Value,
-                takeProfit = effect.TakeProfit?.Value,
-                lots = effect.Lots
-            }));
+        var gross = tradeResult.GrossPnL;
+        var net = tradeResult.NetPnL;
 
         foreach (var s in _strategies.Where(s => s.Id == effect.StrategyId))
         {
             s.OnTradeResult(tradeResult);
         }
 
-        await _eventBus.PublishAsync(new TradeClosed(tradeResult, _runId, effect.ClosedAtUtc), ct);
+        await _eventBus.PublishAsync(new TradeClosed(tradeResult, _runId, effect.ClosedAtUtc, effect.ExcursionPathJson), ct);
 
         _governor?.OnTradeClosed(tradeResult);
         _signalGate?.OnPositionClosed(effect.StrategyId, effect.Symbol.Value, effect.Direction,

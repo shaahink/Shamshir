@@ -27,14 +27,38 @@ public sealed class StrategySignalContractTests
     private static int CountSignals(IStrategy strategy, List<Bar> bars)
     {
         int signals = 0;
-        for (int i = strategy.RequiredBarCount; i < bars.Count; i++)
+        // P2.1: several strategies now read MarketContext.IndicatorSeries instead of a private "previous
+        // value" field, so this loop must accumulate a real per-key history alongside the growing window
+        // (mirroring IndicatorSnapshotService's ring buffer) or every series-based cross/flip check sees
+        // fewer than 2 points and never fires. Crucially, the history must start accumulating from bar 0,
+        // not from RequiredBarCount — production's ring buffer fills from the engine's very first bar, so
+        // by the time a strategy first gets evaluated it already has up-to-64 bars of real history (e.g. a
+        // divergence pivot pair can straddle bars well before RequiredBarCount). Capped at 64 to mirror
+        // IndicatorSnapshotService's SeriesCapacity exactly.
+        const int seriesCapacity = 64;
+        var history = new Dictionary<string, List<double>>();
+        for (int i = 0; i < bars.Count; i++)
         {
             // Recompute indicators over the growing window every bar — exactly what production does in
             // IndicatorSnapshotService.RecomputeIndicatorsAsync. A single static snapshot would freeze
             // crossover indicators (SuperTrend direction, MACD histogram, RSI) and never fire.
             var window = bars.Take(i + 1).ToList();
             var indicators = StrategyTestHelper.ComputeIndicators(window, strategy.RequiredIndicators);
-            var ctx = StrategyTestHelper.MakeContext(bars[i], "EURUSD", window, indicators);
+            foreach (var (key, value) in indicators)
+            {
+                if (!history.TryGetValue(key, out var list))
+                {
+                    list = [];
+                    history[key] = list;
+                }
+                list.Add(value);
+                while (list.Count > seriesCapacity) list.RemoveAt(0);
+            }
+
+            if (i < strategy.RequiredBarCount) continue;
+
+            var series = history.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<double>)kv.Value);
+            var ctx = StrategyTestHelper.MakeContext(bars[i], "EURUSD", window, indicators, series);
             if (strategy.Evaluate(ctx) is not null) signals++;
         }
         return signals;
@@ -58,12 +82,18 @@ public sealed class StrategySignalContractTests
             "MACD histogram must cross zero with price on the right side of its SMA at least once");
     }
 
+    // P2.2: rsi-divergence was rewritten from a tautology (fired on ANY fresh N-bar breakout, regardless
+    // of RSI) to genuine two-pivot divergence detection — a single monotonic reversal (one peak/trough)
+    // has no SECOND pivot to diverge against, so `Reversal(140, 140)` is the wrong fixture now (it tested
+    // the old broken behavior, not real divergence). A double-bottom where the second leg is a shallower,
+    // slower decline (lower price, but less momentum) is the textbook shape real RSI divergence appears on.
     [Fact]
-    public void RsiDivergence_emits_on_reversal()
+    public void RsiDivergence_emits_on_double_bottom_with_slower_second_leg()
     {
         var s = new RsiDivergenceStrategy(new RsiDivergenceConfig(),
             Registry(), Substitute.For<ILogger<RsiDivergenceStrategy>>());
-        CountSignals(s, Reversal(140, 140)).Should().BeGreaterThan(0);
+        CountSignals(s, DoubleBottomDivergence()).Should().BeGreaterThan(0,
+            "a lower price low reached via a much shallower/slower decline than the first leg is a textbook RSI divergence");
     }
 
     // MtfTrend reads only bare keys EMA_200 / RSI_14 / ATR_14 — all already proven readable by the
@@ -151,6 +181,54 @@ public sealed class StrategySignalContractTests
             price = close;
             t = t.AddHours(1);
         }
+        return bars;
+    }
+
+    // P2.2: a textbook RSI divergence shape — leg 1 is a STEEP decline (high momentum, deeply oversold
+    // RSI), a partial bounce, then leg 2 is a SHALLOW/SLOW decline that reaches a LOWER absolute price but
+    // with far less downside momentum (so RSI doesn't get nearly as oversold) — then a confirmation rally
+    // breaking back above the leg-2 pivot bar's high. Each leg ends in an explicit, exaggerated pivot bar
+    // (bigger wick) so the transition point is an unambiguous STRICT local minimum, not a tie with its
+    // neighbor (adjacent legs otherwise share the exact boundary price + wiggle, which ties under
+    // PivotFinder's strict inequality and confirms nothing).
+    private static List<Bar> DoubleBottomDivergence()
+    {
+        var bars = new List<Bar>();
+        var price = 1.1000m;
+        var t = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        void Step(decimal delta, int count, decimal wiggle = 0.0001m)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                var open = price;
+                var close = price + delta;
+                var high = Math.Max(open, close) + wiggle;
+                var low = Math.Min(open, close) - wiggle;
+                bars.Add(new Bar(Symbol.Parse("EURUSD"), Timeframe.H1, t, open, high, low, close, 1000));
+                price = close;
+                t = t.AddHours(1);
+            }
+        }
+        void PivotBar(decimal extraDip)
+        {
+            var open = price;
+            var close = price - 0.0002m;
+            var low = close - extraDip; // exaggerated wick, strictly below every neighbor
+            var high = open + 0.0001m;
+            bars.Add(new Bar(Symbol.Parse("EURUSD"), Timeframe.H1, t, open, high, low, close, 1000));
+            price = close;
+            t = t.AddHours(1);
+        }
+
+        Step(0.0000m, 30);         // flat warmup so RSI/indicators stabilize near neutral
+        Step(-0.0030m, 11);        // leg 1: steep decline (~33 pips over 11 bars) -> deeply oversold RSI
+        PivotBar(0.0015m);         // pivot 1 (explicit strict local min)
+        Step(0.0015m, 10);         // partial bounce (smaller than leg 1's decline)
+        Step(-0.0010m, 30);        // leg 2: shallow/slow decline (~30 pips over 30 bars — a third of leg
+                                   // 1's per-bar rate — but the LONGER run means a lower absolute low)
+                                   // -> RSI reads a HIGHER low despite the lower price
+        PivotBar(0.0020m);         // pivot 2 (lower than pivot 1, explicit strict local min)
+        Step(0.0040m, 6);          // confirmation rally, breaking back above the leg-2 pivot bar's high
         return bars;
     }
 

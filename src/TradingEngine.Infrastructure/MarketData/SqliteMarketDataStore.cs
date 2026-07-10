@@ -1,25 +1,41 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.Domain;
 
 namespace TradingEngine.Infrastructure.MarketData;
 
-/// <summary>
-/// SQLite-backed <see cref="IMarketDataStore"/> (iter-marketdata-tape P1). Uses an
-/// <see cref="IDbContextFactory{TContext}"/> so it is safe to call from any lifetime (singleton ingester,
-/// per-run adapter) — each operation gets a fresh short-lived context. Writes dedupe on the natural key;
-/// reads are streamed range scans (load a run's window once, never per-bar point queries — PLAN §5).
-/// </summary>
 public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext> factory) : IMarketDataStore
 {
-    private const int ChunkSize = 5_000;
+    private const int BulkBatchSize = 500;
 
-    public async Task<int> WriteBarsAsync(string source, IReadOnlyList<Bar> bars, CancellationToken ct = default)
+    private static readonly string DateTimeFormat = "yyyy-MM-dd HH:mm:ss.FFFFFFF";
+
+    public static async Task EnsureSpreadColumnAsync(MarketDataDbContext db, CancellationToken ct = default)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "ALTER TABLE MarketDataBars ADD COLUMN Spread REAL", ct);
+        }
+        catch
+        {
+            // Column already exists — EnsureCreated on a fresh DB includes it, ALTER on an
+            // existing DB adds it once. Either way, ignore "duplicate column" errors.
+        }
+    }
+
+    public async Task<int> WriteBarsAsync(string source, IReadOnlyList<Bar> bars, CancellationToken ct = default,
+        IProgress<int>? progress = null)
     {
         if (bars.Count == 0) return 0;
         await using var db = await factory.CreateDbContextAsync(ct);
 
         var inserted = 0;
+        var processed = 0;
         var now = DateTime.UtcNow;
+        var nowStr = now.ToString(DateTimeFormat, CultureInfo.InvariantCulture);
+
         foreach (var group in bars.GroupBy(b => (Symbol: b.Symbol.ToString(), Tf: b.Timeframe)))
         {
             var sym = group.Key.Symbol;
@@ -34,38 +50,44 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
                 .ToListAsync(ct);
             var seen = existing.ToHashSet();
 
-            var chunk = 0;
+            var sql = new StringBuilder(2048);
+            var batch = 0;
             foreach (var b in ordered)
             {
                 if (!seen.Add(b.OpenTimeUtc)) continue;
-                db.Bars.Add(new MarketDataBarRow
-                {
-                    Symbol = sym,
-                    Timeframe = tf,
-                    OpenTimeUtc = b.OpenTimeUtc,
-                    Open = (double)b.Open,
-                    High = (double)b.High,
-                    Low = (double)b.Low,
-                    Close = (double)b.Close,
-                    Volume = b.Volume,
-                    Source = source,
-                    Quality = 0,
-                    IngestedAtUtc = now,
-                });
-                inserted++;
-                chunk++;
 
-                if (chunk >= ChunkSize)
+                if (batch == 0)
+                    sql.Append("INSERT OR IGNORE INTO MarketDataBars (Symbol, Timeframe, OpenTimeUtc, Open, High, Low, Close, Volume, Spread, Source, Quality, IngestedAtUtc) VALUES ");
+
+                var timeStr = b.OpenTimeUtc.ToString(DateTimeFormat, CultureInfo.InvariantCulture);
+                var spreadVal = b.Spread is { } s ? s.ToString(CultureInfo.InvariantCulture) : "NULL";
+                sql.Append(CultureInfo.InvariantCulture,
+                    $"('{sym}','{tf}','{timeStr}',{b.Open},{b.High},{b.Low},{b.Close},{b.Volume},{spreadVal},'{source}',0,'{nowStr}'),");
+                processed++;
+                batch++;
+
+                if (batch >= BulkBatchSize)
                 {
-                    await db.SaveChangesAsync(ct);
-                    db.ChangeTracker.Clear();
-                    chunk = 0;
+                    sql.Length--;
+                    var affected = await db.Database.ExecuteSqlRawAsync(sql.ToString(), ct);
+                    var batchInserted = batch - (affected > 0 ? batch - affected : 0);
+                    inserted += batchInserted;
+                    sql.Clear();
+                    batch = 0;
+                    progress?.Report(processed);
                 }
+            }
+
+            if (batch > 0)
+            {
+                sql.Length--;
+                var affected = await db.Database.ExecuteSqlRawAsync(sql.ToString(), ct);
+                var batchInserted = batch - (affected > 0 ? batch - affected : 0);
+                inserted += batchInserted;
+                progress?.Report(processed);
             }
         }
 
-        if (db.ChangeTracker.HasChanges())
-            await db.SaveChangesAsync(ct);
         return inserted;
     }
 
@@ -81,7 +103,8 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
 
         return rows.Select(r => new Bar(
             symbol, tf, r.OpenTimeUtc,
-            (decimal)r.Open, (decimal)r.High, (decimal)r.Low, (decimal)r.Close, r.Volume)).ToList();
+            (decimal)r.Open, (decimal)r.High, (decimal)r.Low, (decimal)r.Close, r.Volume,
+            r.Spread is { } s ? (decimal?)s : null)).ToList();
     }
 
     public async Task<IReadOnlyList<MarketDataInventoryEntry>> GetInventoryAsync(CancellationToken ct = default)
@@ -142,8 +165,6 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
         return await q.ExecuteDeleteAsync(ct);
     }
 
-    // FX closes ~Fri 21:00 UTC → Sun 21:00 UTC. A gap that contains a Saturday is almost certainly the
-    // normal weekend close rather than a data hole; flag it so callers can filter.
     private static bool StraddlesWeekend(DateTime a, DateTime b)
     {
         for (var d = a.Date; d <= b.Date; d = d.AddDays(1))

@@ -60,13 +60,13 @@ public static class VariantScorer
             allFolds);
     }
 
-    private static double ComputePassProbability(
+    public static double ComputePassProbability(
         IReadOnlyList<TradeResult> trades,
         IReadOnlyList<EquitySnapshot> equitySnapshots,
         PropFirmRuleSet rules,
         IPassProbabilityEstimator passEstimator)
     {
-        var dailyPnL = ComputeDailyPnL(trades, equitySnapshots);
+        var dailyPnL = TradingEngine.Services.Helpers.DailyPnLComputer.Compute(trades, equitySnapshots);
         if (dailyPnL.Count == 0) return 0.0;
 
         var lastEquity = equitySnapshots.Count > 0
@@ -83,36 +83,11 @@ public static class VariantScorer
             DaysRemaining = Math.Max(1, 20 - dailyPnL.Count),
             HistoricalDailyPnL = dailyPnL,
             MonteCarloRuns = 5_000,
+            DailyDdBase = rules.DailyDdBase,
         };
 
         var estimate = passEstimator.Estimate(input);
         return estimate.ProbabilityOfPass;
-    }
-
-    private static IReadOnlyList<decimal> ComputeDailyPnL(
-        IReadOnlyList<TradeResult> trades,
-        IReadOnlyList<EquitySnapshot> equitySnapshots)
-    {
-        if (equitySnapshots.Count < 2)
-            return [];
-
-        var byDay = equitySnapshots
-            .GroupBy(e => e.TimestampUtc.Date)
-            .OrderBy(g => g.Key)
-            .ToList();
-
-        var results = new List<decimal>();
-        decimal? prevEquity = null;
-
-        foreach (var day in byDay)
-        {
-            var last = day.Last();
-            if (prevEquity.HasValue)
-                results.Add(last.Equity - prevEquity.Value);
-            prevEquity = last.Equity;
-        }
-
-        return results;
     }
 
     private static double ComputeMaxDrawdown(IReadOnlyList<EquitySnapshot> equitySnapshots)

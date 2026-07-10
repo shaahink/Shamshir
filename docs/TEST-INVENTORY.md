@@ -1,14 +1,17 @@
 # Shamshir — Test Inventory
 
-**Updated:** 2026-06-23 (iter-39)
-**Totals:** ~455 test methods across 4 projects, 120+ test classes
+**Updated:** 2026-07-05 (P4.5 cTrader test triage)
+**Totals:** ~524 test methods across 4 projects (Unit 459, Simulation ~127+skips, Integration 100, Architecture 6)
+
+**cTrader test triage (P4.5):** 5 tests retired (skipped), keep-set tagged `Category=CtraderContract`. See `docs/CTRADER-TEST-POLICY.md` for the full triage table. The gate filter for engine/research/UI work is now:
+`RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ&Category!=CtraderContract`.
 
 | Project | Test Classes | Test Methods |
 |---------|-------------|--------------|
-| `TradingEngine.Tests.Unit` | ~58 | 275 |
-| `TradingEngine.Tests.Simulation` | ~40 | 116 |
+| `TradingEngine.Tests.Unit` | ~62 | 459 |
+| `TradingEngine.Tests.Simulation` | ~38 | ~122 (5 retired) |
 | `TradingEngine.Tests.Architecture` | 2 | 5 |
-| `TradingEngine.Tests.Integration` | 18 | 59 |
+| `TradingEngine.Tests.Integration` | 18 | 100 |
 
 ---
 

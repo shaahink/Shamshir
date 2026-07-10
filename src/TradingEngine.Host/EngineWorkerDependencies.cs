@@ -43,6 +43,8 @@ public sealed record StrategyServices
     // ModifyStopLoss effects (the imperative TradingLoop.UpdateTrailingStopsAsync used it the same way).
     public required IPositionManager PositionManager { get; init; }
     public ISignalGate? SignalGate { get; init; }
+    // P3.4: calibrated exit-rule lookup for Mode=Calibrated add-on resolution.
+    public IExitCalibrationLookup? ExitCalibrationLookup { get; init; }
 }
 
 public sealed record PersistenceServices
@@ -57,5 +59,6 @@ public sealed record PersistenceServices
     public IJournalWriter? StepJournal { get; init; }
     // iter-37 K-GAP-2: scope factory used to resolve the (scoped) IEquityRepository for the on-completion
     // backtest equity flush (BufferedEquitySink → EquitySnapshots).
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? PreloadedAuxBars { get; init; }
     public Microsoft.Extensions.DependencyInjection.IServiceScopeFactory? ScopeFactory { get; init; }
 }

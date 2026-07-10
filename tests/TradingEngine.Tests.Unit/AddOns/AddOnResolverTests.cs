@@ -18,7 +18,7 @@ public sealed class AddOnResolverTests
     public void All_off_is_passthrough()
     {
         var opts = new PositionManagementOptions(); // every add-on off by default
-        var res = _resolver.ResolveAtEntry(opts, Timeframe.H1, Vol);
+        var res = _resolver.ResolveAtEntry(opts, "test", "EURUSD", Timeframe.H1, Vol);
 
         res.Resolved.Trailing.AtrMultiple.Should().Be(opts.Trailing.AtrMultiple);
         res.Resolved.Breakeven.TriggerRMultiple.Should().Be(opts.Breakeven.TriggerRMultiple);
@@ -37,7 +37,7 @@ public sealed class AddOnResolverTests
             Trailing = new TrailingOptions { Enabled = true, Mode = AddOnMode.Auto, Method = "AtrTrailing", AtrMultiple = 999 },
         };
         var tuned = AddOnAutoTuner.Tune(Timeframe.H1, Vol);
-        var res = _resolver.ResolveAtEntry(opts, Timeframe.H1, Vol);
+        var res = _resolver.ResolveAtEntry(opts, "test", "EURUSD", Timeframe.H1, Vol);
 
         res.Resolved.Trailing.AtrMultiple.Should().Be(tuned.TrailingAtrMultiple);
         res.Resolved.Trailing.AtrMultiple.Should().NotBe(999);
@@ -50,7 +50,7 @@ public sealed class AddOnResolverTests
         {
             Trailing = new TrailingOptions { Enabled = true, Mode = AddOnMode.Custom, Method = "AtrTrailing", AtrMultiple = 2.7 },
         };
-        var res = _resolver.ResolveAtEntry(opts, Timeframe.H1, Vol);
+        var res = _resolver.ResolveAtEntry(opts, "test", "EURUSD", Timeframe.H1, Vol);
 
         res.Resolved.Trailing.AtrMultiple.Should().Be(2.7);
     }

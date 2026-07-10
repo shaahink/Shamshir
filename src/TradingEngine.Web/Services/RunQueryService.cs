@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Web.Dtos.Runs;
 
@@ -50,9 +51,10 @@ public sealed class RunQueryService : IRunQueryService
             {
                 RunId = r.RunId,
                 CreatedAtUtc = r.CreatedAtUtc,
-                Status = r.CompletedAtUtc == default ? "running"
-                    : r.ErrorMessage != null ? "failed"
-                    : "completed",
+                Status = RunStatusResolver.Resolve(
+                    isCompleted: r.CompletedAtUtc != default,
+                    errorMessage: r.ErrorMessage,
+                    warningsJson: r.WarningsJson),
                 Symbol = r.Symbol,
                 Period = r.Period,
                 Symbols = r.Symbols,
@@ -70,8 +72,14 @@ public sealed class RunQueryService : IRunQueryService
                 ErrorMessage = r.ErrorMessage,
             Venue = r.Venue ?? "replay",
                 RiskProfileId = r.RiskProfileId,
+                WarningsJson = r.WarningsJson,
+                ParentRunId = r.ParentRunId,
+                ComparePairId = r.ComparePairId,
             })
             .ToListAsync(ct);
+
+        await FixStaleTradeCounts(runs, ct);
+        FixStuckRunStatuses(runs);
 
         _memoryCache?.Set(RunsListCacheKey, runs, RunsListCacheDuration);
         return runs;
@@ -96,9 +104,7 @@ public sealed class RunQueryService : IRunQueryService
         return new RunDetailResponse
         {
             RunId = r.RunId,
-            Status = r.CompletedAtUtc == default ? "running"
-                : r.ErrorMessage != null ? "failed"
-                : "completed",
+            Status = ResolveStatus(r, _orchestrator),
             Symbol = r.Symbol,
             Period = r.Period,
             Symbols = r.Symbols,
@@ -118,6 +124,7 @@ public sealed class RunQueryService : IRunQueryService
             WinRatePct = r.WinRatePct,
             ErrorMessage = r.ErrorMessage,
             ExitCode = r.ExitCode,
+            WarningsJson = r.WarningsJson,
             EffectiveConfigJson = r.EffectiveConfigJson,
             ReportJsonPath = r.ReportJsonPath,
             RunPlanJson = r.RunPlanJson,
@@ -130,6 +137,10 @@ public sealed class RunQueryService : IRunQueryService
             WallElapsedMs = r.WallElapsedMs,
             BarsPerSec = r.BarsPerSec,
             TotalBars = r.TotalBars,
+            ParentRunId = r.ParentRunId,
+            ComparePairId = r.ComparePairId,
+            ExplorationMode = r.ExplorationMode,
+            RecordExcursions = r.RecordExcursions,
         };
     }
 
@@ -192,6 +203,8 @@ public sealed class RunQueryService : IRunQueryService
             ExitResolution = state.ExitResolution,
             EffectiveConfigJson = state.EffectiveConfigJson,
             RunPlanJson = state.RunPlanJson ?? "[]",
+            ExplorationMode = state.ExplorationMode,
+            RecordExcursions = state.RecordExcursions,
         };
     }
 
@@ -214,6 +227,7 @@ public sealed class RunQueryService : IRunQueryService
                     SwapAmount = t.Swap.Amount, NetPnLAmount = t.NetPnL.Amount,
                     PnLPips = t.PnLPips.Value, RMultiple = t.RMultiple,
                     MaxAdverseExcursion = t.MaxAdverseExcursion.Value, MaxFavorableExcursion = t.MaxFavorableExcursion.Value,
+                    MaeR = t.MaeR, MfeR = t.MfeR,
                     ExitReason = t.ExitReason, StrategyId = t.StrategyId,
                     DurationSeconds = t.DurationSeconds, EntryType = t.OrderEntryMethod,
                     EntryReason = t.EntryReason, EntryRegime = t.EntryRegime,
@@ -248,6 +262,8 @@ public sealed class RunQueryService : IRunQueryService
                 RMultiple = t.RMultiple,
                 MaxAdverseExcursion = t.MaxAdverseExcursion,
                 MaxFavorableExcursion = t.MaxFavorableExcursion,
+                MaeR = t.MaeR,
+                MfeR = t.MfeR,
                 ExitReason = t.ExitReason,
                 StrategyId = t.StrategyId,
                 DurationSeconds = t.DurationSeconds,
@@ -474,4 +490,62 @@ public sealed class RunQueryService : IRunQueryService
         !reason.Equals("PartialClose", StringComparison.Ordinal) &&
         !reason.Equals("StillReducing", StringComparison.Ordinal) &&
         !reason.Equals("PartialCloseWhileClosing", StringComparison.Ordinal);
+
+    private async Task FixStaleTradeCounts(List<RunListResponse> runs, CancellationToken ct)
+    {
+        var zeroTradeRunIds = runs
+            .Where(r => r.TotalTrades == 0)
+            .Select(r => r.RunId)
+            .Take(200)
+            .ToHashSet();
+
+        if (zeroTradeRunIds.Count == 0) return;
+
+        var actualCounts = await _db.Trades
+            .AsNoTracking()
+            .Where(t => t.RunId != null && zeroTradeRunIds.Contains(t.RunId))
+            .GroupBy(t => t.RunId!)
+            .Select(g => new { RunId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        if (actualCounts.Count == 0) return;
+
+        var countMap = actualCounts.ToDictionary(x => x.RunId, x => x.Count);
+        for (var i = 0; i < runs.Count; i++)
+        {
+            if (runs[i].TotalTrades == 0 && countMap.TryGetValue(runs[i].RunId, out var actual) && actual > 0)
+            {
+                runs[i] = runs[i] with { TotalTrades = actual };
+            }
+        }
+    }
+
+    private static readonly TimeSpan StuckThreshold = TimeSpan.FromMinutes(30);
+
+    private void FixStuckRunStatuses(List<RunListResponse> runs)
+    {
+        for (var i = 0; i < runs.Count; i++)
+        {
+            var r = runs[i];
+            if (r.Status == "running" && r.CompletedAtUtc is null
+                && DateTime.UtcNow - r.StartedAtUtc > StuckThreshold
+                && (_orchestrator?.GetState(r.RunId) is null))
+            {
+                runs[i] = r with { Status = "failed", ErrorMessage = (r.ErrorMessage ?? "") + " Timed out (stuck)." };
+            }
+        }
+    }
+
+    private static string ResolveStatus(BacktestRunSummary r, BacktestOrchestrator? orchestrator)
+    {
+        var isStuck = r.CompletedAtUtc == default
+            && DateTime.UtcNow - r.StartedAtUtc > StuckThreshold
+            && orchestrator?.GetState(r.RunId) is null;
+
+        return RunStatusResolver.Resolve(
+            isCompleted: r.CompletedAtUtc != default,
+            errorMessage: r.ErrorMessage,
+            warningsJson: r.WarningsJson,
+            isStuck: isStuck);
+    }
 }

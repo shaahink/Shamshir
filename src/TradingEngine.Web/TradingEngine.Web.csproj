@@ -35,12 +35,15 @@
     <NgProjectDir>..\..\web-ui</NgProjectDir>
   </PropertyGroup>
 
-  <!-- Auto-rebuild Angular front-end when any web-ui source file is newer than the last build stamp.
-       Runs before the .NET build so VS / dotnet run picks up fresh static files. -->
-  <Target Name="RebuildAngularIfStale" BeforeTargets="BeforeBuild"
+  <!-- Pre-build check: ensure Angular front-end is up to date.
+       The Angular build cannot run inside dotnet build because .NET 10's static web assets
+       pipeline evaluates @(Content) items at project evaluation time (before any targets run).
+       If src is newer than wwwroot, fail with a clear message.
+       Run `npm run build` in web-ui/ first, then re-run dotnet build. -->
+  <Target Name="EnsureAngularCurrent" BeforeTargets="ResolveStaticWebAssetsConfiguration"
           Condition="Exists('$(NgProjectDir)\package.json')">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;..\..\scripts\rebuild-ng-if-stale.ps1&quot; -NgProjectDir &quot;$(NgProjectDir)&quot; -NgBuildStamp &quot;$(NgBuildStamp)&quot;"
-          ContinueOnError="true" />
+          ContinueOnError="false" />
   </Target>
 
 </Project>

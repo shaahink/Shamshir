@@ -1,8 +1,8 @@
 import { Component, DestroyRef, inject, OnDestroy, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { DatePipe, NgClass } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
-import { interval, firstValueFrom } from 'rxjs';
+import { DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { interval } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RunHubService, type RunProgressEnvelope, type RunCompletedEnvelope } from '../../../core/signalr/run-hub.service';
 import { RunsStore } from '../runs.store';
@@ -10,21 +10,7 @@ import { RunsApiService } from '../runs.service';
 import type { EquityPoint, NarrativeEvent, NarrativeResponse } from '../../../models/api.types';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
-
-interface NarrativeEvent {
-  seq: number;
-  simTime: string;
-  severity: string;
-  category: string;
-  headline: string;
-  detail: string;
-}
-
-interface NarrativeResponse {
-  events: NarrativeEvent[];
-  latestSeq: number;
-  hasMore: boolean;
-}
+import { BacktestTimelineComponent, type TimelineEvent } from '../../../shared/backtest-timeline.component';
 
 const NARRATIVE_POLL_MS = 2000;
 const NARRATIVE_LIMIT = 100;
@@ -32,7 +18,7 @@ const NARRATIVE_LIMIT = 100;
 @Component({
   selector: 'app-run-monitor',
   standalone: true,
-  imports: [DatePipe, NgClass, RouterLink, StatTileComponent, EquityChartComponent],
+  imports: [DatePipe, RouterLink, FormsModule, StatTileComponent, EquityChartComponent, BacktestTimelineComponent],
   template: `
     <div class="space-y-4">
       <!-- Header -->
@@ -65,12 +51,12 @@ const NARRATIVE_LIMIT = 100;
         </div>
       }
 
-      @if (terminal() && status() === 'completed') {
+      @if (terminal() && (status() === 'completed' || status() === 'completed-with-warnings')) {
         <div class="rounded-lg border border-emerald-800 bg-emerald-900/20 p-4 flex items-center justify-between">
           <div>
             <div class="text-sm text-emerald-400">Run completed</div>
             <div class="text-xs text-gray-500 mt-1">
-              {{ equity().toFixed(0) }} equity &middot; {{ barCount() }} bars &middot; {{ elapsed() }}
+              {{ equity()?.toFixed(0) ?? '--' }} equity &middot; {{ barCount() }} bars &middot; {{ elapsed() }}
             </div>
           </div>
           <a [routerLink]="['/runs', runId()]"
@@ -99,6 +85,15 @@ const NARRATIVE_LIMIT = 100;
           </span>
           <span>{{ percent().toFixed(1) }}% ({{ barCount() }} / {{ totalBars() || '?' }} &#64; {{ barsPerSec().toFixed(0) }} bar/s)</span>
         </div>
+        @if (venue() === 'tape' && !terminal()) {
+          <div class="flex items-center gap-2 mt-2">
+            <button (click)="togglePause()" class="rounded border border-gray-600 px-2 py-0.5 text-xs text-gray-300 hover:bg-gray-700">
+              {{ speed() === 0 ? '▶ Resume' : '⏸ Pause' }}
+            </button>
+            <input type="range" [(ngModel)]="speedDisplay" (input)="onSpeedChange($event)" min="0" max="10" step="0.5" class="flex-1 accent-emerald-500 h-5" />
+            <span class="text-xs font-mono text-gray-300 w-10 text-right">{{ speed() === 0 ? 'Paused' : speedDisplay + '×' }}</span>
+          </div>
+        }
         <div class="h-2 overflow-hidden rounded-full bg-gray-700">
           <div class="h-full rounded-full bg-emerald-500 transition-all duration-500" [style.width]="percent() + '%'"></div>
         </div>
@@ -109,21 +104,17 @@ const NARRATIVE_LIMIT = 100;
         </div>
       </div>
 
-      <!-- Terminal state -->
-      @if (status() === 'completed' || status() === 'failed' || status() === 'cancelled') {
-        <div class="rounded-lg border p-4" [class.border-emerald-800]="status() === 'completed'" [ngClass]="status() === 'completed' ? 'bg-emerald-900/20' : 'bg-red-900/20'" [class.border-red-800]="status() !== 'completed'">
-          <div class="flex items-center justify-between">
-            <div>
-              <span class="text-sm font-medium capitalize" [class.text-emerald-400]="status() === 'completed'" [class.text-red-400]="status() !== 'completed'">{{ status() }}</span>
-              @if (finalEquity() > 0) { <span class="ml-3 text-xs text-gray-400">Final equity: {{ finalEquity().toFixed(2) }}</span> }
-            </div>
-            <a [routerLink]="['/runs', runId()]" class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500">View Report</a>
-          </div>
-          <div class="mt-2 flex gap-4 text-xs text-gray-500">
-            <span>Trades: {{ tradeCount() }}</span>
-            <span>Net P/L: <span [class.text-emerald-400]="netPnL() > 0" [class.text-red-400]="netPnL() < 0">{{ netPnL().toFixed(2) }}</span></span>
-            <span>Max DD: {{ (maxDdPct() * 100).toFixed(2) }}%</span>
-          </div>
+      @if (backtestFrom() && backtestTo()) {
+        <div class="rounded-lg border border-gray-800 bg-gray-800/20 p-4">
+          <h3 class="mb-2 text-xs font-medium text-gray-500 uppercase tracking-wider">Simulation Timeline</h3>
+          <app-backtest-timeline
+            [from]="backtestFrom()!"
+            [to]="backtestTo()!"
+            [simTime]="simTime() || null"
+            [events]="timelineEvents()"
+            [passCount]="passTotal() || 1"
+            [currentPass]="passIndex() || 1"
+          />
         </div>
       }
 
@@ -138,7 +129,7 @@ const NARRATIVE_LIMIT = 100;
         <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4 space-y-3">
           <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wider">Risk &amp; Account</h3>
           <div class="grid grid-cols-2 gap-2">
-            <app-stat-tile label="Equity" [value]="equity().toFixed(0)" />
+            <app-stat-tile label="Equity" [value]="equity()?.toFixed(0) ?? '--'" />
             <app-stat-tile label="Balance" [value]="balance().toFixed(0)" />
             <app-stat-tile
               label="Daily DD"
@@ -246,14 +237,14 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   totalBars = signal(0);
   percent = signal(0);
   barsPerSec = signal(0);
+  speed = signal(10);
+  speedDisplay = signal(10);
+  venue = signal('');
   eta = signal('--');
   elapsed = signal('--');
   simTime = signal('');
-  equity = signal(0);
+  equity = signal<number | null>(null);
   balance = signal(0);
-  finalEquity = signal(0);
-  netPnL = signal(0);
-  tradeCount = signal(0);
   openPositions = signal(0);
   dailyDdPct = signal(0);
   maxDdPct = signal(0);
@@ -262,6 +253,9 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
   breachBanner = signal<string | null>(null);
   counters = signal<Record<string, number>>({ signals: 0, orders: 0, fills: 0, closes: 0, rejections: 0, breaches: 0 });
   equityData = signal<ChartPoint[]>([]);
+  backtestFrom = signal<string | null>(null);
+  backtestTo = signal<string | null>(null);
+  timelineEvents = signal<TimelineEvent[]>([]);
   cancelling = signal(false);
   narrativeEntries = signal<NarrativeEvent[]>([]);
   private narrativeLatestSeq = 0;
@@ -287,12 +281,15 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
       const detail = await this.api.getRun(rid);
       if (detail.backtestFrom) this.backtestFrom.set(detail.backtestFrom);
       if (detail.backtestTo) this.backtestTo.set(detail.backtestTo);
+      this.venue.set((detail as any).venue ?? '');
     } catch { /* */ }
 
     try {
       const eq = await this.api.getRunEquity(rid);
       if (eq.length > 0) {
-        this.equityData.set(eq.map((p: EquityPoint) => ({ time: new Date(p.timestampUtc).getTime(), value: p.equity, balance: p.balance })));
+        this.equityData.set(eq.map((p: EquityPoint) => ({
+          time: new Date(p.timestampUtc).getTime(), value: p.equity, balance: p.balance,
+        })));
       }
     } catch { /* */ }
 
@@ -343,16 +340,18 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
         this.totalBars.set(e.barsTotal ?? 0);
         this.percent.set(e.percent ?? 0);
         this.barsPerSec.set(e.barsPerSec ?? 0);
+        if (e.speed != null) { this.speed.set(e.speed); this.speedDisplay.set(e.speed); }
         if (e.etaSeconds > 0) {
           const m = Math.floor(e.etaSeconds / 60);
           this.eta.set(m > 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm');
         }
         if (e.simTimeUtc) this.simTime.set(e.simTimeUtc);
         if (e.equity != null) {
-          this.equity.set(e.equity);
+          const eq = e.equity;
+          this.equity.set(eq);
           const t = e.simTimeUtc ? new Date(e.simTimeUtc).getTime()
             : this.equityData().length > 0 ? this.equityData()[this.equityData().length - 1].time : Date.now();
-          this.equityData.update((d) => [...d.slice(-499), { time: t, value: e.equity, balance: e.balance ?? e.equity }]);
+          this.equityData.update((d) => [...d.slice(-499), { time: t, value: eq, balance: e.balance ?? eq }]);
         }
         if (e.balance != null) this.balance.set(e.balance);
         if (e.openPositions != null) this.openPositions.set(e.openPositions);
@@ -393,8 +392,18 @@ export class RunMonitorComponent implements OnInit, OnDestroy {
     this.cancelling.set(false);
   }
 
+  togglePause(): void {
+    const newSpeed = this.speed() === 0 ? this.speedDisplay() || 1 : 0;
+    this.api.setSpeed(this.runId(), newSpeed);
+  }
+
+  onSpeedChange(event: Event): void {
+    const val = parseFloat((event.target as HTMLInputElement).value);
+    this.speedDisplay.set(val);
+    this.api.setSpeed(this.runId(), val);
+  }
+
   ngOnDestroy(): void {
-    if (this.narrTimer) clearInterval(this.narrTimer);
     this.hub.leaveRun(this.runId());
   }
 }

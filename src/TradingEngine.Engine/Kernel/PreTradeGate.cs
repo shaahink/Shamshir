@@ -24,10 +24,10 @@ namespace TradingEngine.Engine;
 /// </summary>
 public static class PreTradeGate
 {
-    public readonly record struct GateResult(bool Accepted, decimal Lots, decimal RiskAmount, string? RejectReason)
+    public readonly record struct GateResult(bool Accepted, decimal Lots, decimal RiskAmount, string? RejectReason, KernelSizing.SizingBreakdown? Sizing = null)
     {
         public static GateResult Reject(string reason) => new(false, 0m, 0m, reason);
-        public static GateResult Accept(decimal lots, decimal riskAmount) => new(true, lots, riskAmount, null);
+        public static GateResult Accept(decimal lots, decimal riskAmount, KernelSizing.SizingBreakdown sizing) => new(true, lots, riskAmount, null, sizing);
     }
 
     public static GateResult Evaluate(
@@ -90,9 +90,31 @@ public static class PreTradeGate
             return GateResult.Reject($"STRATEGY_MAX_POSITIONS:{p.StrategyId}:{openForStrategy}>={profile.MaxConcurrentPositions}");
         }
 
-        // 4. Exposure (notional new risk vs equity). iter-redesign P2.2: gated behind ExposureEnabled.
+        // 4. Compute new-position risk for exposure checks (P5.4 group caps + global cap).
         var totalOpenRisk = SumWorstCase(openPositions);
         var newPositionRiskNotional = equity * c.RiskPerTrade;
+
+        // 4a. Per-group exposure caps (P5.4). Opt-in: when ExposureGroups is null/empty, this is a no-op.
+        if (c.ExposureEnabled && c.ExposureGroups is { Count: > 0 } groups)
+        {
+            var newSymbol = p.Symbol.Value;
+            foreach (var group in groups)
+            {
+                if (!group.Contains(newSymbol))
+                    continue;
+                var groupRisk = openPositions
+                    .Where(op => group.Contains(op.Symbol))
+                    .Sum(op => op.SlPips * op.Lots * op.PipValuePerLot);
+                var groupTotal = groupRisk + newPositionRiskNotional;
+                if (groupTotal / equity > group.MaxExposure)
+                {
+                    return GateResult.Reject(
+                        $"GROUP_EXPOSURE:{group.Id}: groupRisk={groupRisk:F2} + new≈{newPositionRiskNotional:F2} = {groupTotal / equity:P2} > cap={group.MaxExposure:P2}");
+                }
+            }
+        }
+
+        // 5. Global exposure (notional new risk vs equity). iter-redesign P2.2: gated behind ExposureEnabled.
         if (c.ExposureEnabled && (totalOpenRisk + newPositionRiskNotional) / equity > c.MaxExposure)
         {
             return GateResult.Reject(
@@ -118,8 +140,9 @@ public static class PreTradeGate
         // 5. Sizing (H5/H6).
         var drawdownScale = (decimal)KernelSizing.ComputeScaleFactor(
             state.Drawdown.CurrentMaxDrawdown, c.MaxTotalLoss, profile.DrawdownScaleThreshold, profile.DrawdownScaleFloor);
-        var lots = KernelSizing.Calculate(
+        var breakdown = KernelSizing.Explain(
             equity, profile, p.SlPips, p.PipValuePerLot, drawdownScale, symbol.MaxLots, symbol.MinLots, symbol.LotStep);
+        var lots = breakdown.Lots;
         if (lots <= 0)
         {
             return GateResult.Reject("ZERO_LOTS");
@@ -196,7 +219,10 @@ public static class PreTradeGate
             }
         }
 
-        return GateResult.Accept(lots, riskAmount);
+        // The budget loop above may have downsized lots (and thus riskAmount); reflect the FINAL
+        // decision in the journaled breakdown so DetailJson never disagrees with the accepted lots.
+        var finalBreakdown = breakdown with { Lots = lots, RiskAmount = riskAmount };
+        return GateResult.Accept(lots, riskAmount, finalBreakdown);
     }
 
     private static decimal SumWorstCase(IReadOnlyList<ProjectedPosition> open)

@@ -17,6 +17,7 @@ public sealed class MarketDataBarRow
     public double Low { get; set; }
     public double Close { get; set; }
     public double Volume { get; set; }
+    public double? Spread { get; set; }
     public string Source { get; set; } = "";
     public int Quality { get; set; }
     public DateTime IngestedAtUtc { get; set; }

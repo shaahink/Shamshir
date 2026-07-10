@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -31,10 +32,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private readonly IRunDataCache? _runDataCache;
     private readonly IMemoryCache? _memoryCache;
     private readonly ConcurrentDictionary<string, BacktestRunState> _runs = new();
+    private readonly ConcurrentDictionary<string, string> _idempotencyKeys = new();
+    private readonly object _idempotencyLock = new();
 
     private const string RunsListCacheKey = "runs:all";
+    private const int MaxIdempotencyKeys = 10_000;
 
     private sealed record TradeStats(decimal NetProfit, decimal GrossPnL, decimal CommissionTotal, decimal SwapTotal, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
+
+    // P0.2 (F5, Q5): a teardown/persistence anomaly that does NOT invalidate a complete engine result.
+    public sealed record RunWarning(string Code, string Detail, DateTime AtUtc);
 
     public sealed record BacktestRunState
     {
@@ -43,12 +50,23 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         public string Status { get; set; } = "starting";
         public BacktestResult? Result { get; set; }
         public string? Error { get; set; }
+
+        // P0.2 (F5, Q5): teardown/persistence anomalies collected during a run that still produced a
+        // complete engine result. Non-empty => the run finalizes `completed-with-warnings`, never
+        // `failed`. Thread-safe: teardown warnings are appended from the run's finally block.
+        public ConcurrentQueue<RunWarning> Warnings { get; } = new();
         public string Symbol { get; init; } = "";
         public string Period { get; init; } = "";
         public ConcurrentQueue<string> LogLines { get; init; } = new();
         public CancellationTokenSource? CancellationSource { get; set; }
         public Task? RunTask { get; set; }
         public IHost? EngineHost { get; set; }
+
+        // P2.1 (F8): user-cancel intent, separate from Status. Cancel() no longer writes a (lying)
+        // terminal `cancelled` while the run is still finalizing — it records intent here and lets the
+        // run's own finalize path make the truthful terminal transition through the state machine. Also
+        // lets the OperationCanceled path distinguish a user cancel from a near-completion timeout/teardown.
+        public volatile bool CancelRequested;
         public int BarCount;
         public int BarsTotal { get; set; }
         public string SimTime { get; set; } = "";
@@ -68,6 +86,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         // after the run completes for the final RunProgress envelope.
         public decimal Equity;
         public decimal Balance;
+        public bool HasEquityObservation;
         public decimal DailyDdPct;
         public decimal MaxDdPct;
         public decimal DistanceToDailyLimit;
@@ -97,6 +116,18 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         // iter-tape-trust T0/F8: which exit resolution the tape venue actually used.
         public string? ExitResolution;
+
+        // Tape replay playback speed (see TapeReplayAdapter.Speed).
+        public float Speed = 10f;
+
+        // Reference to the tape adapter for live speed changes.
+        public TapeReplayAdapter? TapeAdapter;
+
+        // P3.2: exploration mode — one-click preset run (SL=ATR×4, TP=none, add-ons off).
+        public bool ExplorationMode;
+
+        // P3.2: whether excursion paths were recorded for this run (tape-only, opt-in).
+        public bool RecordExcursions;
     }
 
     public BacktestOrchestrator(
@@ -133,7 +164,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var barsTotal = state.BarsTotal > 0 ? state.BarsTotal : 0;
         double percent;
         double? etaSeconds;
-        if (status == "completed")
+        if (status is "completed" or "completed-with-warnings")
         {
             percent = 100.0;
             etaSeconds = 0;
@@ -152,8 +183,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         return new RunProgress(
             state.RunId, status, simTime,
             BarsProcessed: state.BarCount, BarsTotal: barsTotal, Percent: percent, EtaSeconds: etaSeconds,
-            WallElapsedMs: elapsedMs, BarsPerSec: barsPerSec,
-            Equity: state.Equity, Balance: state.Balance, OpenPositions: state.OpenPositions,
+            WallElapsedMs: elapsedMs, BarsPerSec: barsPerSec, Speed: state.Speed,
+            Equity: state.HasEquityObservation ? state.Equity : null,
+            Balance: state.Balance, OpenPositions: state.OpenPositions,
             DailyDdPct: state.DailyDdPct, MaxDdPct: state.MaxDdPct,
             DistanceToDailyLimit: state.DistanceToDailyLimit,
             GovernorState: state.GovernorState, GovernorReason: state.GovernorReason,
@@ -164,7 +196,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     internal static void TallyEvent(BacktestRunState state, BacktestProgressEvent evt)
     {
-        // Counter keys match event-type strings the ENGINE emits.
+        // Counter keys must match the event-type strings the ENGINE actually emits:
+        //   TradingLoop → "SIGNAL"/"ORDER"; MarketEventSource → "EXEC" (fill) / "REJECTED";
+        //   EffectExecutor → "CLOSE" (on trade close); AccountProcessor → "BREACH".
+        // The old keys ("FILL"/"REJECT"/no breach producer) never matched, so Fills/Rejections/
+        // Breaches were always 0 and Closes undercounted.
+        // Interlocked: a Progress<T> created on a thread with no captured SyncContext (the background
+        // RunAsync task) posts its callbacks to the thread pool, so these can fire concurrently.
         switch (evt.EventType)
         {
             case "SIGNAL": Interlocked.Increment(ref state.Signals); break;
@@ -249,6 +287,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             BacktestFrom = cfg.Start,
             BacktestTo = cfg.End,
             RiskProfileId = cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
+            Speed = float.TryParse(cfg.CustomParams.GetValueOrDefault("Speed"), NumberStyles.Float, CultureInfo.InvariantCulture, out var spd) ? Math.Clamp(spd, 0f, 10f) : 10f,
+            ExplorationMode = cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
+            RecordExcursions = cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true",
         };
         _runs[runId] = state;
         state.CancellationSource = new CancellationTokenSource();
@@ -303,7 +344,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         if (state is null) return null;
         var status = state.Status switch
         {
-            "completed" or "failed" or "cancelled" => state.Status,
+            "completed" or "completed-with-warnings" or "failed" or "cancelled" => state.Status,
             _ => "running",
         };
         return BuildProgress(state, status);
@@ -313,18 +354,103 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     public async Task<string> StartAsync(BacktestConfig cfg, CancellationToken ct)
     {
-        var state = Start(cfg);
-        await Task.CompletedTask;
-        return state.RunId;
+        var idemKey = cfg.CustomParams.GetValueOrDefault("IdempotencyKey");
+        if (string.IsNullOrWhiteSpace(idemKey))
+        {
+            var state = Start(cfg);
+            await Task.CompletedTask;
+            return state.RunId;
+        }
+
+        if (_idempotencyKeys.TryGetValue(idemKey, out var existingRunId))
+        {
+            _logger.LogInformation("Idempotency key {Key} already used for run {RunId} — returning existing", idemKey, existingRunId);
+            return existingRunId;
+        }
+
+        lock (_idempotencyLock)
+        {
+            if (_idempotencyKeys.TryGetValue(idemKey, out existingRunId))
+            {
+                _logger.LogInformation("Idempotency key {Key} already used for run {RunId} — returning existing", idemKey, existingRunId);
+                return existingRunId;
+            }
+
+            var state = Start(cfg);
+            _idempotencyKeys[idemKey] = state.RunId;
+
+            if (_idempotencyKeys.Count > MaxIdempotencyKeys)
+            {
+                _logger.LogWarning("Idempotency key dictionary exceeded {Max} entries — clearing", MaxIdempotencyKeys);
+                _idempotencyKeys.Clear();
+            }
+
+            return state.RunId;
+        }
     }
 
     public void Cancel(string runId)
     {
-        if (_runs.TryGetValue(runId, out var state))
+        if (!_runs.TryGetValue(runId, out var state))
+            return;
+
+        // P2.1 (F8): idempotent + truthful. A double-cancel or a cancel of an already-terminal run is a
+        // no-op (the state machine forbids leaving a terminal state). We do NOT stamp `cancelled` here —
+        // the run is still finalizing; its own finalize path makes the truthful terminal transition. We
+        // record intent + trip the token, then best-effort kill the ctrader-cli tree so a live cTrader run
+        // stops promptly instead of hanging until the 30-min linked timeout.
+        if (RunStateMachine.IsTerminal(state.Status))
         {
-            state.Status = "cancelled";
-            state.CancellationSource?.Cancel();
+            _logger.LogInformation("Cancel ignored for {RunId}: already terminal ({Status})", runId, state.Status);
+            return;
         }
+
+        state.CancelRequested = true;
+        _logger.LogInformation("Cancel requested for {RunId} (status={Status})", runId, state.Status);
+        state.CancellationSource?.Cancel();
+
+        if (string.Equals(state.Venue, "ctrader", StringComparison.OrdinalIgnoreCase))
+            _ = KillCtraderProcessTreeAsync(runId, "cancel");
+    }
+
+    /// <summary>
+    /// P2.1 (F8): the SINGLE guarded writer for a run's lifecycle status. Every status change in the
+    /// orchestrator routes through here so an illegal jump (or a stray assignment) can never bypass
+    /// <see cref="RunStateMachine"/>. Non-throwing: an illegal transition from a non-terminal state is
+    /// logged + journalled as a warning (a real ordering bug to fix), while any transition out of a
+    /// terminal state is a benign idempotent no-op (double-cancel, teardown after completion).
+    /// </summary>
+    private void TransitionRun(BacktestRunState state, string to)
+    {
+        var from = state.Status;
+        switch (RunStateMachine.Classify(from, to))
+        {
+            case RunStateMachine.TransitionKind.Legal:
+                state.Status = to;
+                _logger.LogDebug("Run {RunId} {From}->{To}", state.RunId, from, to);
+                return;
+
+            case RunStateMachine.TransitionKind.IdempotentNoOp:
+                // Re-entering the current state (e.g. an OperationCanceled that lands while already
+                // finalizing) or leaving a terminal (double-cancel, post-completion teardown). Not a bug —
+                // do NOT warn/journal, or the LIFECYCLE flag stops meaning "real ordering violation".
+                _logger.LogDebug("Run {RunId} transition {From}->{To} ignored (no-op)", state.RunId, from, to);
+                return;
+
+            default:
+                _logger.LogWarning("Run {RunId} ILLEGAL transition {From}->{To} rejected; status unchanged", state.RunId, from, to);
+                _journal.Write(state.RunId, "LIFECYCLE", $"illegal transition {from}->{to} rejected");
+                return;
+        }
+    }
+
+    public void SetSpeed(string runId, float speed)
+    {
+        if (!_runs.TryGetValue(runId, out var state)) return;
+        speed = Math.Clamp(speed, 0f, 10f);
+        state.Speed = speed;
+        if (state.TapeAdapter is { } tape)
+            tape.Speed = speed;
     }
 
     public async Task StopAllAsync()
@@ -356,7 +482,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             state.EffectiveConfigJson = effectiveConfigJson;
             state.RunPlanJson = cfg.CustomParams.GetValueOrDefault("RunRows") ?? "[]";
 
-            state.Status = "running";
+            TransitionRun(state, RunStateMachine.Running);
             EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Starting backtest {runId}...");
 
             BacktestResult result;
@@ -380,6 +506,19 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 result = await RunEngineReplayAsync(runId, cfg, state.LogLines, ct);
             }
 
+            // P2.1 (F8): the engine loop has returned a result; enter the transient `finalizing` state for
+            // the barrier + stats + end-record write. Every terminal transition below goes finalizing->terminal
+            // through the state machine (never running->completed directly), so the lifecycle is enforced.
+            TransitionRun(state, RunStateMachine.Finalizing);
+
+            // P0.3 (F6): trade-persistence integrity barrier. BEFORE computing stats, reconcile the run's
+            // journalled closes against persisted TradeResults and backfill any that were lost (the audited
+            // BTC scenario: fills journalled, venue killed before closes settled → 0 TradeResults, reported
+            // TotalTrades=0). A shortfall attaches a TRADES_LOST warning → completed-with-warnings; the
+            // backfill happens first so GetTradeStatsAsync counts the restored trades.
+            if (result.Success)
+                await RunTradePersistenceBarrierAsync(runId, state, ct);
+
             var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
 
             result = result with
@@ -390,13 +529,22 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 WinningTrades = tradeStats.WinningTrades,
                 WinRatePct = tradeStats.WinRatePct,
             };
+            // P0.2 (F5, Q5): fold any teardown/persistence warnings collected during the run (e.g. the
+            // in-process cTrader leg's transport teardown) into the result. A run that produced a
+            // complete result but hit a teardown fault is `completed-with-warnings`, never `failed`.
+            var warningsJson = MergeWarningsJson(state, result.WarningsJson);
+            result = result with { WarningsJson = warningsJson };
 
             state.Result = result;
-            state.Status = result.Success ? "completed" : "failed";
+            TransitionRun(state, result.Success
+                ? (RunStatusResolver.HasWarnings(warningsJson)
+                    ? RunStateMachine.CompletedWithWarnings
+                    : RunStateMachine.Completed)
+                : RunStateMachine.Failed);
             state.Error = result.ErrorMessage;
 
             EnqueueLog(runId, state.LogLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Done. Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1} Gross={tradeStats.GrossPnL:N2} Comm={tradeStats.CommissionTotal:N2} Swap={tradeStats.SwapTotal:N2}");
+                $"[{DateTime.UtcNow:HH:mm:ss}] Done. Status={state.Status} Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1} Gross={tradeStats.GrossPnL:N2} Comm={tradeStats.CommissionTotal:N2} Swap={tradeStats.SwapTotal:N2}");
 
             finalized = await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson);
         }
@@ -406,8 +554,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             // at/near completion). Trades were persisted during the run, so this is NOT a failure — finalize
             // with the trades-so-far and an info log instead of scaring the user with a "failed" + error.
             var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
-            var userCancelled = state.Status == "cancelled";
-            state.Status = userCancelled ? "cancelled" : "completed";
+            var userCancelled = state.CancelRequested;
+            TransitionRun(state, RunStateMachine.Finalizing);
+            TransitionRun(state, userCancelled ? RunStateMachine.Cancelled : RunStateMachine.Completed);
             state.Error = null;
             var cancelResult = new BacktestResult
             {
@@ -428,7 +577,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
         catch (Exception ex)
         {
-            state.Status = "failed";
+            TransitionRun(state, RunStateMachine.Failed);
             state.Error = ex.Message;
             EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Error: {ex.Message}");
             _logger.LogError(ex, "Backtest {RunId} failed", runId);
@@ -526,13 +675,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 exposureEnabled = cfg.CustomParams.GetValueOrDefault("ExposureEnabled"),
                 budgetEnabled = cfg.CustomParams.GetValueOrDefault("BudgetEnabled"),
                 maxPositionsEnabled = cfg.CustomParams.GetValueOrDefault("MaxPositionsEnabled"),
+                honestFills = cfg.CustomParams.GetValueOrDefault("HonestFills"),
+                recordExcursions = cfg.CustomParams.GetValueOrDefault("RecordExcursions"),
+                exitTimeframe = cfg.CustomParams.GetValueOrDefault("ExitTimeframe"),
             });
             var configSetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(configIdentity);
             var parentRunId = cfg.CustomParams.GetValueOrDefault("ParentRunId");
             var summary = new BacktestRunSummary(
                 runId, startedAt, DateTime.MinValue,
                 cfg.Symbol, cfg.Period, SymbolsJson(cfg.Symbols), PeriodsJson(cfg.Periods), cfg.Start, cfg.End,
-                cfg.Balance, "", "{}", effectiveConfigJson,
+                cfg.Balance, "", effectiveConfigJson ?? "{}", effectiveConfigJson,
                 0, 0, 0, 0, 0, 0, 0, 0, -1, null,
                 ReportJsonPath: null, DatasetId: datasetId, ConfigSetId: configSetId, Seed: 42,
                 ParentRunId: string.IsNullOrWhiteSpace(parentRunId) ? null : parentRunId,
@@ -542,7 +694,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 GovernorEnabled: cfg.CustomParams.GetValueOrDefault("GovernorEnabled") != "false",
                 RegimeEnabled: cfg.CustomParams.GetValueOrDefault("DisableRegime") != "true",
                 CommissionPerMillion: cfg.CommissionPerMillion,
-                SpreadPips: cfg.SpreadPips);
+                SpreadPips: cfg.SpreadPips,
+                ExplorationMode: cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
+                RecordExcursions: cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true");
             await repo.SaveAsync(summary, CancellationToken.None);
         }
         catch (Exception ex)
@@ -569,14 +723,19 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             var summary = new BacktestRunSummary(
                 runId, startedAt, DateTime.UtcNow,
                 cfg.Symbol, cfg.Period, SymbolsJson(cfg.Symbols), PeriodsJson(cfg.Periods), cfg.Start, cfg.End,
-                cfg.Balance, result.AlgoHash, "{}", effectiveConfigJson,
+                cfg.Balance, result.AlgoHash, effectiveConfigJson ?? "{}", effectiveConfigJson,
                 stats.NetProfit, stats.GrossPnL, stats.CommissionTotal, stats.SwapTotal, stats.MaxDrawdownPct,
                 stats.TotalTrades, stats.WinningTrades, stats.WinRatePct,
                 result.ExitCode, result.ErrorMessage,
                 result.ReportJsonPath,
                 WallElapsedMs: wallElapsedMs,
                 BarsPerSec: barsPerSec,
-                TotalBars: totalBars);
+                TotalBars: totalBars,
+                WarningsJson: result.WarningsJson,
+                ComparePairId: cfg.CustomParams.GetValueOrDefault("ComparePairId"),
+                ParentRunId: cfg.CustomParams.GetValueOrDefault("ParentRunId"),
+                ExplorationMode: cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
+                RecordExcursions: cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true");
             await repo.UpdateAsync(summary, CancellationToken.None);
             return true;
         }
@@ -585,6 +744,45 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             _logger.LogWarning(ex, "Failed to write end record for {RunId}", runId);
             return false;
         }
+    }
+
+    // P0.2 (F5, Q5): serialize the run's collected teardown/persistence warnings into a JSON array,
+    // merging any warnings already carried on the result (e.g. from the cTrader leg). Returns null when
+    // there are none, so a clean run keeps WarningsJson NULL and resolves to plain `completed`.
+    private static string? MergeWarningsJson(BacktestRunState state, string? existingJson)
+    {
+        var warnings = new List<RunWarning>();
+
+        if (RunStatusResolver.HasWarnings(existingJson))
+        {
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<List<RunWarning>>(existingJson!);
+                if (parsed is not null) warnings.AddRange(parsed);
+            }
+            catch { /* malformed prior warnings must never break finalization */ }
+        }
+
+        while (state.Warnings.TryDequeue(out var w))
+            warnings.Add(w);
+
+        return warnings.Count == 0 ? null : JsonSerializer.Serialize(warnings);
+    }
+
+    // P0.2 (F5, Q5): record a teardown/persistence anomaly against the run without failing it.
+    private void AddTeardownWarning(string runId, string code, string detail)
+    {
+        if (_runs.TryGetValue(runId, out var state))
+            state.Warnings.Enqueue(new RunWarning(code, detail, DateTime.UtcNow));
+        _logger.LogWarning("RUN_WARNING|run={RunId}|code={Code}|detail={Detail}", runId, code, detail);
+    }
+
+    // P0.2 (F5, Q5): run one teardown step in isolation. A fault after a complete engine result becomes
+    // a warning, never a propagated exception (which the outer catch would turn into `failed`).
+    private async Task SafeTeardownStepAsync(string runId, string code, Func<Task> step)
+    {
+        try { await step(); }
+        catch (Exception ex) { AddTeardownWarning(runId, code, ex.Message); }
     }
 
     // Builds the engine's LoadedConfig from the DATABASE (canonical config source) rather than letting
@@ -683,6 +881,13 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 if (stripAddOns)
                     c = c with { PositionManagement = EffectiveConfigResolver.StripAddOns(c.PositionManagement) };
 
+                // P3.2 exploration mode: after stripping add-ons (if requested), force every strategy
+                // to the exploration preset — SL=ATR×4, TP=none, zero enrichments — so the entry signal
+                // runs bare. The recorded excursion paths (RecordExcursions=true) are the raw measure of
+                // entry quality that the P3.3 ExitReplayer calibrates exits from.
+                if (cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true")
+                    c = c with { PositionManagement = EffectiveConfigResolver.ApplyExplorationPreset(c.PositionManagement) };
+
                 strategyConfigs.Add(c);
             }
         }
@@ -756,9 +961,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         if (!cfg.CustomParams.ContainsKey("ComparePairId"))
             cfg.CustomParams["ComparePairId"] = comparePairId;
 
-        // Step 1: tape run
-        var tapeCfg = cfg;
-        tapeCfg.CustomParams["Venue"] = "tape";
+        // Step 1: tape run — use a dedicated copy to avoid mutating cfg
+        var tapeCfg = cfg with
+        {
+            CustomParams = new Dictionary<string, string>(cfg.CustomParams)
+            {
+                ["Venue"] = "tape",
+            },
+        };
         var tapeResult = await RunEngineReplayAsync(runId, tapeCfg, logLines, ct);
 
         if (!tapeResult.Success)
@@ -767,7 +977,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             return tapeResult;
         }
 
-        // Step 2: cTrader run — new runId, same config, tagged with the pair
+        // Step 2: cTrader run — new runId, same config, tagged with the pair.
+        // Must NOT inherit Compare="both" or RunAsync will recurse into RunCompareBothAsync.
         var ctraderRunId = Guid.NewGuid().ToString("N")[..8];
         var ctraderCfg = cfg with
         {
@@ -779,33 +990,59 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 ["ParentRunId"] = runId,
             },
         };
+        ctraderCfg.CustomParams.Remove("Compare");
 
-        var ctraderState = Start(ctraderCfg);
+        // Manually register state without spawning a duplicate RunAsync —
+        // Start() would fire RunAsync which would see Venue="ctrader" and run
+        // RunEngineNetMqAsync again, racing with our own call below.
+        var ctraderState = new BacktestRunState { RunId = ctraderRunId, Venue = "ctrader" };
+        ctraderState.CancellationSource = new CancellationTokenSource();
+        _runs[ctraderRunId] = ctraderState;
         EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] Compare mode — running cTrader leg {ctraderRunId}...");
 
-        // Run cTrader path in-process (the RunAsync task will handle it)
-        ctraderState.Status = "running";
-        EnqueueLog(ctraderRunId, ctraderState.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
-        var ctraderResult = await RunEngineNetMqAsync(ctraderRunId, ctraderCfg, ctraderState.LogLines, ct);
-
-        var tradeStats = await GetTradeStatsAsync(ctraderRunId, cfg.Balance);
-        ctraderResult = ctraderResult with
+        try
         {
-            NetProfit = tradeStats.NetProfit,
-            MaxDrawdownPct = tradeStats.MaxDrawdownPct,
-            TotalTrades = tradeStats.TotalTrades,
-            WinningTrades = tradeStats.WinningTrades,
-            WinRatePct = tradeStats.WinRatePct,
-        };
+            TransitionRun(ctraderState, RunStateMachine.Running);
+            EnqueueLog(ctraderRunId, ctraderState.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
+            var ctraderResult = await RunEngineNetMqAsync(ctraderRunId, ctraderCfg, ctraderState.LogLines, ct);
 
-        ctraderState.Result = ctraderResult;
-        ctraderState.Error = ctraderResult.ErrorMessage;
-        ctraderState.Status = ctraderResult.Success ? "completed" : "failed";
+            var tradeStats = await GetTradeStatsAsync(ctraderRunId, cfg.Balance);
+            ctraderResult = ctraderResult with
+            {
+                NetProfit = tradeStats.NetProfit,
+                MaxDrawdownPct = tradeStats.MaxDrawdownPct,
+                TotalTrades = tradeStats.TotalTrades,
+                WinningTrades = tradeStats.WinningTrades,
+                WinRatePct = tradeStats.WinRatePct,
+            };
 
-        await WriteEndRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, ctraderResult, tradeStats, null);
+            ctraderState.Result = ctraderResult;
+            ctraderState.Error = ctraderResult.ErrorMessage;
+            TransitionRun(ctraderState, RunStateMachine.Finalizing);
+            TransitionRun(ctraderState, ctraderResult.Success ? RunStateMachine.Completed : RunStateMachine.Failed);
 
-        EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] Compare complete. Tape={runId} ({tapeResult.TotalBars} bars) / cTrader={ctraderRunId} ({ctraderResult.TotalBars} bars / {ctraderResult.TotalTrades}t) — reconcile: GET /api/backtest/analytics/reconcile?left={runId}&right={ctraderRunId}");
+            await WriteEndRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, ctraderResult, tradeStats, null);
+
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] Compare complete. Tape={runId} ({tapeResult.TotalBars} bars) / cTrader={ctraderRunId} ({ctraderResult.TotalBars} bars / {ctraderResult.TotalTrades}t) — reconcile: GET /api/backtest/analytics/reconcile?left={runId}&right={ctraderRunId}");
+        }
+        catch (OperationCanceledException)
+        {
+            TransitionRun(ctraderState, RunStateMachine.Cancelled);
+            ctraderState.Error = "Cancelled";
+            EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader leg cancelled.");
+        }
+        catch (Exception ex)
+        {
+            TransitionRun(ctraderState, RunStateMachine.Failed);
+            ctraderState.Error = ex.Message;
+            EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader leg failed: {ex.Message}");
+        }
+        finally
+        {
+            ctraderState.CancellationSource?.Dispose();
+            _runs.TryRemove(ctraderRunId, out _);
+        }
 
         return tapeResult;
     }
@@ -814,12 +1051,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines, CancellationToken userCt = default)
     {
         var from = cfg.Start;
-        var to = cfg.End;
         var wallStart = DateTime.UtcNow;
 
-        var dbPath = _configuration.GetValue<string>("Persistence:DbPath")
-            ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                "..", "..", "..", "..", "..", "data", "trading.db"));
+        var dbPath = DbPathResolver.ResolveTradingDbPath(_configuration.GetValue<string>("Persistence:DbPath"));
 
         using var scope = _scopeFactory.CreateScope();
         var barRepo = scope.ServiceProvider.GetRequiredService<IBarRepository>();
@@ -828,6 +1062,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         // store in-process (no cTrader-cli/NetMQ) with dual-resolution exits (decision TF vs ExitTimeframe,
         // default m1). Default/empty venue keeps the existing per-run-bars BacktestReplayAdapter unchanged.
         var useTape = string.Equals(cfg.CustomParams.GetValueOrDefault("Venue"), "tape", StringComparison.OrdinalIgnoreCase);
+        var to = useTape ? cfg.End.Date.AddDays(1) : cfg.End;
         var marketDataStore = useTape ? scope.ServiceProvider.GetService<IMarketDataStore>() : null;
         var exitTf = ParseTimeframe(cfg.CustomParams.GetValueOrDefault("ExitTimeframe") ?? "M1");
 
@@ -937,6 +1172,27 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             state.PassIndex = passIndex;
             state.PassTotal = passes.Count;
 
+            // P1.3: compute auxiliary-timeframe bars needed by multi-TF strategies (e.g. mtf-trend needs H4).
+            IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? auxBars = null;
+            if (useTape && marketDataStore is not null && activeStrategyIds.Contains("mtf-trend"))
+            {
+                var auxTf = Timeframe.H4;
+                if (tf != auxTf)
+                {
+                    var auxBarList = await marketDataStore.ReadBarsAsync(sym, auxTf, from, to, userCt);
+                    if (auxBarList.Count > 0)
+                    {
+                        auxBars = new Dictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>
+                        {
+                            [sym.ToString()] = new Dictionary<Timeframe, IReadOnlyList<Bar>>
+                            {
+                                [auxTf] = auxBarList,
+                            },
+                        };
+                    }
+                }
+            }
+
             var innerHost = EngineHostFactory.Create(new EngineHostOptions
             {
                 RunId = runId,
@@ -945,10 +1201,21 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 {
                     if (useTape && marketDataStore is not null)
                     {
-                        return new TapeReplayAdapter(marketDataStore, sym, tf, exitTf, from, to,
+                        // P0.3 (D4): honest entry timing default ON; CustomParams["HonestFills"]="false"
+                        // preserves the old optimistic (fill-at-signal-bar-close) behavior for A/B.
+                        var honestFills = cfg.CustomParams.GetValueOrDefault("HonestFills") != "false";
+                        // P3.1: opt-in excursion recorder, default OFF (unlike HonestFills) -- this is
+                        // instrumentation for the exploration/exit-lab workflow (P3.2+), not a default-on
+                        // behavior change. CustomParams["RecordExcursions"]="true" turns it on.
+                        var recordExcursions = cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true";
+                        var tapeAdapter = new TapeReplayAdapter(marketDataStore, sym, tf, exitTf, from, to,
                             cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
                             sp.GetRequiredService<Func<string, string, decimal>>(),
-                            sp.GetRequiredService<ILogger<TapeReplayAdapter>>());
+                            sp.GetRequiredService<ILogger<TapeReplayAdapter>>(),
+                            honestFills, recordExcursions);
+                        tapeAdapter.Speed = state.Speed;
+                        state.TapeAdapter = tapeAdapter;
+                        return tapeAdapter;
                     }
                     return new BacktestReplayAdapter(barRepo, sym, tf, from, to,
                         cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
@@ -966,6 +1233,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 DiagnosticsEnabled = _configuration.GetSection("Engine:Diagnostics").GetValue<bool>("Enabled"),
                 RunDataCache = _runDataCache,
                 SkipJournal = string.Equals(cfg.CustomParams.GetValueOrDefault("SkipJournal"), "true", StringComparison.OrdinalIgnoreCase),
+                PreloadedAuxBars = auxBars,
+                InitialBalance = cfg.Balance,
             });
             state.EngineHost = innerHost;
             EngineHostFactory.WireEventHandlers(innerHost);
@@ -1060,12 +1329,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
         var (dataPort, commandPort) = AllocatePorts();
 
-        var dbPath = _configuration.GetValue<string>("Persistence:DbPath")
-            ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                "..", "..", "..", "..", "..", "data", "trading.db"));
+        var dbPath = DbPathResolver.ResolveTradingDbPath(_configuration.GetValue<string>("Persistence:DbPath"));
 
-        var solutionRoot = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var solutionRoot = DbPathResolver.FindRepoRoot();
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct,
             new CancellationTokenSource(TimeSpan.FromMinutes(30)).Token);
@@ -1144,6 +1410,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             MinLogLevel = LogLevel.Warning,
             DiagnosticsEnabled = _configuration.GetSection("Engine:Diagnostics").GetValue<bool>("Enabled"),
             RunDataCache = _runDataCache,
+            InitialBalance = cfg.Balance,
         });
         EngineHostFactory.WireEventHandlers(innerHost);
         EngineHostFactory.WireRiskRules(innerHost);
@@ -1215,79 +1482,38 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         }
         finally
         {
+            // P0.2 (F5, Q5): the engine has already produced a complete result by the time we get here.
+            // Any exception during transport/host teardown must NOT propagate to the orchestrator's outer
+            // catch (which would stamp this complete run `failed`). Each step is isolated and records a
+            // warning instead — the run downgrades to `completed-with-warnings`, never `failed`. The
+            // idempotent transport fix (6533c7e) removes the known NetMQPoller race at source; this is the
+            // durable safety net for any future teardown fault.
             var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
-            await adapter.BarStream.Completion;
-            ctraderBarCount = _runs[runId].BarCount;
-            await FlushRunPersistenceAsync(innerHost);
-            CaptureFinalEquity(_runs[runId], innerHost, runId);
-            await innerHost.StopAsync(CancellationToken.None);
-            await DisposeHostAsync(innerHost);
+            var barDone = adapter.BarStream.Completion;
+            var safety = Task.Delay(TimeSpan.FromSeconds(30));
+            if (await Task.WhenAny(barDone, safety) == safety)
+            {
+                _logger.LogWarning("CTRADER|BAR_STREAM_TIMEOUT|run={RunId}|forcing disconnect", runId);
+                EnqueueLog(runId, logLines,
+                    $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: Bar stream did not complete — forcing disconnect");
+                AddTeardownWarning(runId, "BAR_STREAM_TIMEOUT", "Bar stream did not complete within 30s — forced disconnect");
+                try { await adapter.DisconnectAsync(CancellationToken.None); } catch { }
+                try { await barDone; } catch { }
+            }
+            ctraderBarCount = _runs.TryGetValue(runId, out var rs) ? rs.BarCount : 0;
+            await SafeTeardownStepAsync(runId, "FLUSH_PERSISTENCE", () => FlushRunPersistenceAsync(innerHost));
+            try { CaptureFinalEquity(_runs[runId], innerHost, runId); }
+            catch (Exception ex) { AddTeardownWarning(runId, "CAPTURE_EQUITY", ex.Message); }
+            await SafeTeardownStepAsync(runId, "HOST_STOP", () => innerHost.StopAsync(CancellationToken.None));
+            await SafeTeardownStepAsync(runId, "HOST_DISPOSE", () => DisposeHostAsync(innerHost));
         }
 
-        // iter-redesign-ctrader P6.3: after the engine has disposed and the run is done, kill any
+        // iter-redesign-ctrader P6.3 / P2.1: after the engine has disposed and the run is done, kill any
         // remaining ctrader-cli child processes. The ChildProcessReaper arms a job object that kills
         // on parent-exit, but for a persistent web app the parent lives on — we need explicit cleanup.
-        // The cli.BacktestAsync may have returned but left grandchild processes alive.
-        try
-        {
-            // ctrader-cli.exe may spawn cTrader.Automate.exe or other children.
-            foreach (var proc in System.Diagnostics.Process.GetProcessesByName("ctrader-cli"))
-            {
-                try
-                {
-                    if (!proc.HasExited)
-                    {
-                        _logger.LogInformation("CTRADER|REAP|pid={Pid}|killing orphan ctrader-cli", proc.Id);
-                        proc.Kill(entireProcessTree: true);
-                        _ = Task.Run(async () =>
-                        {
-                            using var scope = _scopeFactory.CreateScope();
-                            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-                            db.VenueSessions.Add(new TradingEngine.Infrastructure.Persistence.Entities.VenueSessionEntity
-                            {
-                                RunId = runId, Event = "CTRADER|REAP", Detail = $"killed orphan ctrader-cli pid={proc.Id}", OccurredAtUtc = DateTime.UtcNow
-                            });
-                            await db.SaveChangesAsync();
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "CTRADER|REAP_FAIL|pid={Pid}", proc.Id);
-                }
-                finally { proc.Dispose(); }
-            }
-            foreach (var proc in System.Diagnostics.Process.GetProcessesByName("cTrader.Automate"))
-            {
-                try
-                {
-                    if (!proc.HasExited)
-                    {
-                        _logger.LogInformation("CTRADER|REAP|pid={Pid}|killing orphan cTrader.Automate", proc.Id);
-                        proc.Kill(entireProcessTree: true);
-                        _ = Task.Run(async () =>
-                        {
-                            using var scope = _scopeFactory.CreateScope();
-                            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-                            db.VenueSessions.Add(new TradingEngine.Infrastructure.Persistence.Entities.VenueSessionEntity
-                            {
-                                RunId = runId, Event = "CTRADER|REAP", Detail = $"killed orphan cTrader.Automate pid={proc.Id}", OccurredAtUtc = DateTime.UtcNow
-                            });
-                            await db.SaveChangesAsync();
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "CTRADER|REAP_FAIL|pid={Pid}", proc.Id);
-                }
-                finally { proc.Dispose(); }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "CTRADER|REAP_ERR|failed to reap orphan processes");
-        }
+        // The cli.BacktestAsync may have returned but left grandchild processes alive. P2.1 reuses the
+        // same routine on the cancel path so a cancelled cTrader run stops promptly (no orphan tree).
+        await KillCtraderProcessTreeAsync(runId, "reap");
 
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] CLI exit code: {cliResult.ExitCode}");
@@ -1404,6 +1630,64 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         return (p1, p2);
     }
 
+    /// <summary>
+    /// P2.1 (F8) — kill any live ctrader-cli / cTrader.Automate process trees. Reused by the post-run
+    /// reaper AND the cancel path (Q2: at most one cTrader run at a time, so killing by image name is
+    /// safe under the serialized queue). Best-effort + fully isolated: a failure to reap must never
+    /// propagate (it would otherwise fault a cancel or a finalize). Each kill is journalled to
+    /// VenueSessions so an orphan-kill is auditable rather than silent.
+    ///
+    /// The synchronous enumerate+kill work is offloaded to the thread pool so the cancel path (which
+    /// invokes this fire-and-forget from the Cancel API/web-request thread) is never blocked on a slow
+    /// <c>Process.Kill(entireProcessTree)</c>; the reaper simply awaits the same offloaded work.
+    /// </summary>
+    private Task KillCtraderProcessTreeAsync(string runId, string reason) => Task.Run(() =>
+    {
+        foreach (var image in new[] { "ctrader-cli", "cTrader.Automate" })
+        {
+            System.Diagnostics.Process[] procs;
+            try { procs = System.Diagnostics.Process.GetProcessesByName(image); }
+            catch (Exception ex) { _logger.LogWarning(ex, "CTRADER|REAP_ERR|image={Image}", image); continue; }
+
+            foreach (var proc in procs)
+            {
+                try
+                {
+                    if (!proc.HasExited)
+                    {
+                        _logger.LogInformation("CTRADER|REAP|pid={Pid}|reason={Reason}|killing {Image}", proc.Id, reason, image);
+                        proc.Kill(entireProcessTree: true);
+                        RecordReap(runId, image, proc.Id, reason);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "CTRADER|REAP_FAIL|pid={Pid}", proc.Id);
+                }
+                finally { proc.Dispose(); }
+            }
+        }
+    });
+
+    private void RecordReap(string runId, string image, int pid, string reason)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
+                db.VenueSessions.Add(new TradingEngine.Infrastructure.Persistence.Entities.VenueSessionEntity
+                {
+                    RunId = runId, Event = "CTRADER|REAP",
+                    Detail = $"killed {image} pid={pid} reason={reason}", OccurredAtUtc = DateTime.UtcNow
+                });
+                await db.SaveChangesAsync();
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "CTRADER|REAP_PERSIST_FAIL|pid={Pid}", pid); }
+        });
+    }
+
     private string ResolveAlgoPath()
     {
         var configured = _configuration["CTrader:AlgoPath"];
@@ -1429,6 +1713,58 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         using var sha = SHA256.Create();
         using var fs = File.OpenRead(algoPath);
         return Convert.ToHexString(sha.ComputeHash(fs))[..16].ToLowerInvariant();
+    }
+
+    // P0.3 (F6): trade-persistence integrity barrier. Runs after the engine produced a complete result
+    // and the journal + TradeResults have drained. Reconciles journalled closes vs persisted TradeResults;
+    // backfills any lost trades from the journal and, on a shortfall, records a TRADES_LOST warning so the
+    // run finalizes `completed-with-warnings` (P0.2 plumbing) instead of silently reporting fewer trades.
+    private async Task RunTradePersistenceBarrierAsync(string runId, BacktestRunState state, CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var barrier = scope.ServiceProvider
+                .GetRequiredService<TradingEngine.Infrastructure.Persistence.TradePersistenceBarrier>();
+            var recon = await barrier.ReconcileAndBackfillAsync(runId, ct);
+
+            if (recon.Failed)
+            {
+                AddTeardownWarning(runId, "TRADE_BARRIER_FAILED", recon.FailureDetail ?? "reconciliation failed");
+                return;
+            }
+
+            // F6-R (P7.6): the barrier now attempts to reconstruct PublishTradeClosed from paired
+            // OrderFilled open+close events + proposals. JournalCloseFills counts only the close
+            // fills that COULD NOT be reconstructed (missing open fill or proposal in the journal).
+            // When ALL were unreconstructable (Persisted+Backfilled==0 && JournalCloseFills>0), the
+            // Unreconstructable flag is true. Partial recovery is also surfaced below.
+            if (recon.Unreconstructable)
+            {
+                AddTeardownWarning(runId, $"TRADES_UNRECONSTRUCTABLE:{recon.JournalCloseFills}",
+                    $"{recon.JournalCloseFills} venue close-fill(s) could not be reconstructed: missing open-fill or proposal data in the journal");
+                return;
+            }
+
+            // Partial recovery: some close fills were reconstructed (Persisted+Backfilled>0) but others
+            // could not be paired. Surface the gap.
+            if (recon.JournalCloseFills > 0)
+            {
+                AddTeardownWarning(runId, $"TRADES_PARTIALLY_UNRECONSTRUCTABLE:{recon.JournalCloseFills}",
+                    $"{recon.JournalCloseFills} close-fill(s) could not be paired with open-fill + proposal data; economics not recovered for those");
+            }
+
+            if (recon.HasLoss)
+            {
+                var stillMissing = recon.Expected - recon.Persisted - recon.Backfilled;
+                AddTeardownWarning(runId, $"TRADES_LOST:{recon.Expected}:{recon.Persisted}",
+                    $"journal had {recon.Expected} closes, {recon.Persisted} persisted; backfilled {recon.Backfilled}, still-missing {stillMissing}");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddTeardownWarning(runId, "TRADE_BARRIER_FAILED", ex.Message);
+        }
     }
 
     private async Task<TradeStats> GetTradeStatsAsync(string runId, decimal initialBalance)
@@ -1539,6 +1875,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         var latest = snaps[^1];
         state.Equity = latest.Equity;
         state.Balance = latest.Balance;
+        state.HasEquityObservation = true;
         state.DailyDdPct = latest.DailyDrawdown;
         state.MaxDdPct = latest.MaxDrawdown;
         state.OpenPositions = latest.OpenPositions;

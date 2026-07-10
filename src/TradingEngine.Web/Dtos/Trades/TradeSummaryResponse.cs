@@ -21,12 +21,10 @@ public sealed record TradeSummaryResponse
     public double RMultiple { get; init; }
     public double MaxAdverseExcursion { get; init; }
     public double MaxFavorableExcursion { get; init; }
+    public double? MaeR { get; init; }
+    public double? MfeR { get; init; }
     public required string ExitReason { get; init; }
     public required string StrategyId { get; init; }
     public double DurationSeconds { get; init; }
     public string? EntryType { get; init; }
-    public string? EntryReason { get; init; }
-    public string? EntryRegime { get; init; }
-    public string? EntrySnapshotJson { get; init; }
-    public string? ExitDetailJson { get; init; }
 }

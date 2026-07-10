@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using TradingEngine.Infrastructure.MarketData;
 using TradingEngine.Risk.Compliance;
 
 namespace TradingEngine.Experiments;
@@ -65,13 +64,14 @@ public static class ExperimentCli
         }
 
         var dbPath = Path.Combine(Path.GetTempPath(), $"exp_cli_{Guid.NewGuid():N}.db");
-        var mdPath = Path.Combine(Path.GetTempPath(), $"exp_cli_md_{Guid.NewGuid():N}.db");
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddDbContext<TradingDbContext>(o => o.UseSqlite($"Data Source={dbPath}"));
-        services.AddDbContextFactory<MarketDataDbContext>(o => o.UseSqlite($"Data Source={mdPath}"));
-        services.AddSingleton<IMarketDataStore, SqliteMarketDataStore>();
+        services.AddSingleton<IBarRepository, SqliteBarRepository>();
         services.AddSingleton<IExperimentRepository, SqliteExperimentRepository>();
+        services.AddSingleton<IBacktestRunRepository, SqliteBacktestRunRepository>();
+        services.AddSingleton<ITradeRepository, SqliteTradeRepository>();
+        services.AddSingleton<IEquityRepository, SqliteEquityRepository>();
         services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
         services.AddSingleton<ISymbolInfoRegistry>(_ =>
         {
@@ -82,9 +82,12 @@ public static class ExperimentCli
         });
         registerHostServices?.Invoke(services);
         services.AddSingleton<ExperimentRunner>(sp => new ExperimentRunner(
-            sp.GetRequiredService<IMarketDataStore>(),
+            sp.GetRequiredService<IBarRepository>(),
             sp.GetRequiredService<IPassProbabilityEstimator>(),
             sp.GetRequiredService<IExperimentRepository>(),
+            sp.GetRequiredService<IBacktestRunRepository>(),
+            sp.GetRequiredService<ITradeRepository>(),
+            sp.GetRequiredService<IEquityRepository>(),
             sp.GetRequiredService<ISymbolInfoRegistry>(),
             sp.GetRequiredService<IExperimentHostFactory>(),
             sp.GetRequiredService<ILogger<ExperimentRunner>>()
@@ -94,8 +97,6 @@ public static class ExperimentCli
         using var scope = sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
         db.Database.EnsureCreated();
-        using (var mdDb = scope.ServiceProvider.GetRequiredService<IDbContextFactory<MarketDataDbContext>>().CreateDbContext())
-            mdDb.Database.EnsureCreated();
 
         Console.WriteLine($"Running experiment: {spec.Name}");
         Console.WriteLine($"  Variants: {spec.Variants.Length}, MaxRuns: {spec.MaxRuns}");

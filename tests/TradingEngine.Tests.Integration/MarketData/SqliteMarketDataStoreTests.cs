@@ -22,6 +22,9 @@ public sealed class SqliteMarketDataStoreTests : IDisposable
     private static Bar H1(DateTime open, decimal close) =>
         new(Eur, Timeframe.H1, open, close, close + 0.0010m, close - 0.0010m, close, 100);
 
+    private static Bar H1WithSpread(DateTime open, decimal close, decimal? spread) =>
+        new(Eur, Timeframe.H1, open, close, close + 0.0010m, close - 0.0010m, close, 100, Spread: spread);
+
     [Fact]
     public async Task Write_then_read_returns_bars_in_open_time_order()
     {
@@ -38,6 +41,23 @@ public sealed class SqliteMarketDataStoreTests : IDisposable
 
         read.Select(b => b.OpenTimeUtc).Should().ContainInOrder(t0, t0.AddHours(1), t0.AddHours(2));
         read[0].Close.Should().Be(1.1000m);
+    }
+
+    // P6.2: per-bar spread stored and round-tripped correctly.
+    [Fact]
+    public async Task Write_then_read_preserves_bar_spread()
+    {
+        var t0 = new DateTime(2024, 1, 3, 10, 0, 0, DateTimeKind.Utc);
+        await _store.WriteBarsAsync("ctrader", new[]
+        {
+            H1WithSpread(t0, 1.1000m, 0.00012m),
+            H1WithSpread(t0.AddHours(1), 1.1010m, null),
+        }, default);
+
+        var read = await _store.ReadBarsAsync(Eur, Timeframe.H1, t0, t0.AddHours(5), default);
+
+        read[0].Spread.Should().Be(0.00012m);
+        read[1].Spread.Should().BeNull();
     }
 
     [Fact]

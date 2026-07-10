@@ -19,7 +19,16 @@ public record ExperimentSpec(
     public ScoringWeights Scoring { get; init; } = Scoring ?? new();
 }
 
-public record WalkForwardSpec(int Folds = 4, double TrainFraction = 0.7);
+public record WalkForwardSpec(int Folds = 4, double TrainFraction = 0.7)
+{
+    public string[]? Strategies { get; init; }
+    public string[]? Symbols { get; init; }
+    public string[]? Timeframes { get; init; }
+    public DateOnly From { get; init; }
+    public DateOnly To { get; init; }
+    public Dictionary<string, decimal[]>? ParamGrid { get; init; }
+    public decimal Balance { get; init; } = 100_000m;
+}
 
 public record VariantSpec(string Label)
 {

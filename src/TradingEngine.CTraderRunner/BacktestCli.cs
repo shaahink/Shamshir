@@ -8,6 +8,32 @@ public static class BacktestCli
     public static async Task<BacktestCliResult> InvokeAsync(
         BacktestCliRequest request, CancellationToken ct = default)
     {
+        var effectiveCt = ct;
+        var timeoutCts = (CancellationTokenSource?)null;
+        if (request.TimeoutSeconds > 0)
+        {
+            timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(request.TimeoutSeconds));
+            effectiveCt = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token).Token;
+        }
+
+        try
+        {
+            return await InvokeCoreAsync(request, effectiveCt);
+        }
+        catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true)
+        {
+            return new BacktestCliResult
+            {
+                ExitCode = -1,
+                StdErr = $"cTrader CLI timed out after {request.TimeoutSeconds}s",
+                IsKnownCrash = false,
+            };
+        }
+    }
+
+    private static async Task<BacktestCliResult> InvokeCoreAsync(
+        BacktestCliRequest request, CancellationToken ct)
+    {
         ChildProcessReaper.EnsureCurrentProcessInKillOnCloseJob();
 
         var cliPath = CTraderCliLocator.Locate(
@@ -27,50 +53,59 @@ public static class BacktestCli
             CreateNoWindow = true,
         }) ?? throw new InvalidOperationException($"Failed to start ctrader-cli at {cliPath}");
 
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
-        var stderrTask = process.StandardError.ReadToEndAsync(ct);
-        await process.WaitForExitAsync(ct);
-        swProc.Stop();
-
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
-
-        if (request.Diagnostics)
+        try
         {
-            try
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
+            var stderrTask = process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+            swProc.Stop();
+
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+
+            if (request.Diagnostics)
             {
-                var dir = Path.Combine(Path.GetTempPath(), "shamshir-profiling");
-                Directory.CreateDirectory(dir);
-                // First timestamped cTrader-cli stdout line ("Establishing connection…") splits pure
-                // .NET/plugin startup (procStart → firstLog) from connect+dataload+replay+teardown.
-                var firstStamp = stdout.Split('\n')
-                    .Select(l => l.Trim())
-                    .FirstOrDefault(l => l.Length > 23 && l.Contains(" | ") && DateTime.TryParse(l[..23], out _));
-                File.AppendAllText(Path.Combine(dir, "ctrader-cli-timing.log"),
-                    $"procStartUtc={procStartUtc:O}\tprocWallMs={swProc.ElapsedMilliseconds}\tfirstCliLog={firstStamp?[..Math.Min(23, firstStamp.Length)]}\trange={request.Start:yyyy-MM-dd}..{request.End:yyyy-MM-dd}\n");
+                try
+                {
+                    var dir = Path.Combine(Path.GetTempPath(), "shamshir-profiling");
+                    Directory.CreateDirectory(dir);
+                    var firstStamp = stdout.Split('\n')
+                        .Select(l => l.Trim())
+                        .FirstOrDefault(l => l.Length > 23 && l.Contains(" | ") && DateTime.TryParse(l[..23], out _));
+                    File.AppendAllText(Path.Combine(dir, "ctrader-cli-timing.log"),
+                        $"procStartUtc={procStartUtc:O}\tprocWallMs={swProc.ElapsedMilliseconds}\tfirstCliLog={firstStamp?[..Math.Min(23, firstStamp.Length)]}\trange={request.Start:yyyy-MM-dd}..{request.End:yyyy-MM-dd}\n");
+                }
+                catch { /* measurement only */ }
             }
-            catch { /* measurement only */ }
+
+            var isKnownCrash = process.ExitCode != 0
+                && (stderr.Contains("Message expected") || stderr.Contains("Object reference")
+                    || stdout.Contains("Message expected") || stdout.Contains("Object reference"));
+
+            var cbotLines = stdout.Split('\n')
+                .Where(l => l.Contains("CBOT|"))
+                .Select(l => l.Trim())
+                .ToList();
+
+            return new BacktestCliResult
+            {
+                ExitCode = process.ExitCode,
+                StdOut = stdout,
+                StdErr = stderr,
+                IsKnownCrash = isKnownCrash,
+                ReportJsonPath = request.ReportJsonPath,
+                CbotLines = cbotLines,
+                CliPath = cliPath,
+            };
         }
-
-        var isKnownCrash = process.ExitCode != 0
-            && (stderr.Contains("Message expected") || stderr.Contains("Object reference")
-                || stdout.Contains("Message expected") || stdout.Contains("Object reference"));
-
-        var cbotLines = stdout.Split('\n')
-            .Where(l => l.Contains("CBOT|"))
-            .Select(l => l.Trim())
-            .ToList();
-
-        return new BacktestCliResult
+        catch (OperationCanceledException)
         {
-            ExitCode = process.ExitCode,
-            StdOut = stdout,
-            StdErr = stderr,
-            IsKnownCrash = isKnownCrash,
-            ReportJsonPath = request.ReportJsonPath,
-            CbotLines = cbotLines,
-            CliPath = cliPath,
-        };
+            if (!process.HasExited)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+            }
+            throw;
+        }
     }
 
     internal static string BuildArgs(BacktestCliRequest r)

@@ -1,0 +1,765 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using TradingEngine.Domain;
+using TradingEngine.Domain.Experiments;
+
+namespace TradingEngine.ResearchCli;
+
+/// <summary>
+/// P3.2 (Q3) — the real <see cref="IStepRunner"/>: it runs one playbook step against the running Web app
+/// over HTTP and returns a machine <see cref="StepOutcome"/>. It reuses the SAME pure helpers as the
+/// single-shot CLI verbs (<see cref="InventoryCoverage"/>, <see cref="StartRunPlan"/>,
+/// <see cref="GateEvaluator"/>, <see cref="RunJson"/>) so a step's decision is identical to the
+/// equivalent standalone verb — the playbook is just the verbs, stitched and persisted. Control flow
+/// (stop/park/continue) is the executor's job; this only does + judges one step.
+///
+/// The <c>owner-gate</c> step always returns <see cref="StepOutcomeKind.AwaitingOwner"/> the first time
+/// it runs; on resume the executor never re-enters an approved gate (it was recorded <c>approved</c> by
+/// the API), so the runner is only asked to run a gate that is genuinely pending.
+/// </summary>
+public sealed class HttpStepRunner : IStepRunner
+{
+    private readonly ResearchApiClient _client;
+    private readonly TimeSpan _pollInterval;
+
+    public HttpStepRunner(ResearchApiClient client, TimeSpan? pollInterval = null)
+    {
+        _client = client;
+        _pollInterval = pollInterval ?? TimeSpan.FromSeconds(2);
+    }
+
+    public async Task<StepOutcome> RunAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        return step.Kind switch
+        {
+            StepKinds.EnsureData => await EnsureDataAsync(step, ct),
+            StepKinds.DataQuality => await DataQualityAsync(step, ct),
+            StepKinds.StartRun => await StartRunAsync(step, context, ct),
+            StepKinds.AwaitRun => await AwaitRunAsync(step, context, ct),
+            StepKinds.AssertGates => await AssertGatesAsync(step, context, ct),
+            StepKinds.Reconcile => await ReconcileAsync(step, context, ct),
+            StepKinds.ExitLabEval => await ExitLabAsync(step, context, ct),
+            StepKinds.WalkForward => await WalkForwardAsync(step, context, ct),
+            StepKinds.OwnerGate => OwnerGate(step),
+            StepKinds.ApplyCalibration => await ApplyCalibrationAsync(step, context, ct),
+            StepKinds.BlockBootstrap => await BlockBootstrapAsync(step, context, ct),
+            StepKinds.MetaAllocate => await MetaAllocateAsync(step, context, ct),
+            StepKinds.EntryQuality => await EntryQualityAsync(step, context, ct),
+            StepKinds.PyramidEval => await PyramidEvalAsync(step, context, ct),
+            StepKinds.Report => await Report(step, context),
+            _ => StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "unknown-step")).Render()),
+        };
+    }
+
+    private async Task<StepOutcome> EnsureDataAsync(PlaybookStep step, CancellationToken ct)
+    {
+        var symbols = SplitCsv(Str(step, "symbols"));
+        var tfs = SplitCsv(Str(step, "tfs"));
+        var from = Date(step, "from");
+        var to = Date(step, "to");
+
+        var inventory = InventoryCoverage.ParseInventory(await _client.GetInventoryAsync(ct));
+        var cells = InventoryCoverage.Evaluate(inventory, symbols, tfs, from, to);
+        var missing = InventoryCoverage.Missing(cells);
+
+        var v = missing.Count == 0
+            ? Verdict.Passing(VerdictField.Of("cells", cells.Count), VerdictField.Of("missing", 0))
+            : Verdict.Failing(VerdictField.Of("cells", cells.Count), VerdictField.Of("missing", missing.Count),
+                VerdictField.Of("gaps", string.Join(",", missing.Select(m => $"{m.Symbol}:{m.Timeframe}"))));
+        return missing.Count == 0 ? StepOutcome.Pass(v.Render()) : StepOutcome.Fail(v.Render());
+    }
+
+    private async Task<StepOutcome> DataQualityAsync(PlaybookStep step, CancellationToken ct)
+    {
+        var json = await _client.GetAsync("api/data-manager/quality-report", ct);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        var bars = root.TryGetProperty("totalBars", out var tb) ? tb.GetInt64() : 0;
+        var violations = root.TryGetProperty("totalViolations", out var tv) ? tv.GetInt32() : -1;
+        var ohlcCount = root.TryGetProperty("ohlcViolations", out var ov) ? ov.GetArrayLength() : 0;
+        var gapCount = root.TryGetProperty("gapEntries", out var ge) ? ge.GetArrayLength() : 0;
+
+        var v = violations switch
+        {
+            0 => Verdict.Passing(
+                VerdictField.Of("totalBars", bars.ToString()),
+                VerdictField.Of("violations", "0")),
+            _ => Verdict.Failing(
+                VerdictField.Of("totalBars", bars.ToString()),
+                VerdictField.Of("violations", violations.ToString()),
+                VerdictField.Of("ohlcViolations", ohlcCount.ToString()),
+                VerdictField.Of("gaps", gapCount.ToString())),
+        };
+        return violations == 0 ? StepOutcome.Pass(v.Render()) : StepOutcome.Fail(v.Render());
+    }
+
+    private async Task<StepOutcome> StartRunAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        // A start-run step's params ARE a StartRunRequest, with optional venue/compareBoth/explore overrides.
+        var planJson = step.Params.ToJsonString();
+        var body = StartRunPlan.BuildBody(planJson, Str(step, "venue"), Bool(step, "compareBoth"), Bool(step, "explore"));
+        var (runId, status) = StartRunPlan.ParseStartResponse(await _client.StartRunAsync(body, ct));
+        if (string.IsNullOrWhiteSpace(runId))
+        {
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-runId")).Render());
+        }
+        // Record the runId for downstream await/assert/reconcile steps. A named key lets compare-both
+        // record two ids (venue-specific) if a future playbook needs them.
+        var key = Str(step, "as") ?? "runId";
+        context.Values[key] = runId;
+        return StepOutcome.Pass(Verdict.Passing(VerdictField.Of("runId", runId), VerdictField.Of("status", status)).Render());
+    }
+
+    private async Task<StepOutcome> AwaitRunAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var runId = ResolveRunId(step, context);
+        if (string.IsNullOrWhiteSpace(runId))
+        {
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "missing-runId")).Render());
+        }
+        var timeoutSec = Int(step, "timeout", 1800);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(timeoutSec));
+
+        while (!cts.IsCancellationRequested)
+        {
+            RunGateInput run;
+            try
+            {
+                run = RunJson.ParseRun(await _client.GetRunAsync(runId!, cts.Token));
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                break;
+            }
+            if (RunStateMachine.IsTerminal(run.Status))
+            {
+                return StepOutcome.Pass(Verdict.Passing(
+                    VerdictField.Of("status", run.Status),
+                    VerdictField.Of("trades", run.TotalTrades)).Render());
+            }
+            try
+            {
+                await Task.Delay(_pollInterval, cts.Token);
+            }
+            catch (TaskCanceledException)
+            {
+                break;
+            }
+        }
+        return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "await-timeout")).Render());
+    }
+
+    private async Task<StepOutcome> AssertGatesAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var runId = ResolveRunId(step, context);
+        if (string.IsNullOrWhiteSpace(runId))
+        {
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "missing-runId")).Render());
+        }
+        var gates = new GateSpec
+        {
+            RequireStatus = Str(step, "requireStatus"),
+            MinTrades = Int(step, "minTrades", 0),
+            ForbidWarnings = Bool(step, "forbidWarnings"),
+            ForbidWarningCodes = StrArray(step, "forbidWarningCodes"),
+        };
+        var run = RunJson.ParseRun(await _client.GetRunAsync(runId!, ct));
+        var verdict = GateEvaluator.Evaluate(run, gates);
+        return verdict.Pass ? StepOutcome.Pass(verdict.Render()) : StepOutcome.Fail(verdict.Render());
+    }
+
+    private async Task<StepOutcome> ReconcileAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var left = ResolveRef(step, context, "left");
+        var right = ResolveRef(step, context, "right");
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "missing-left-or-right")).Render());
+        }
+        var json = await _client.GetReconcileAsync(left!, right!, ct);
+        var artifact = await WriteArtifactAsync(context, "reconcile.json", json, ct);
+        return StepOutcome.Pass(
+            Verdict.Passing(VerdictField.Of("left", left!), VerdictField.Of("right", right!)).Render(),
+            artifact);
+    }
+
+    private async Task<StepOutcome> ExitLabAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var resolvedParams = ResolveParams(step.Params, context);
+        var json = await _client.PostAsync("api/exit-lab/evaluate", resolvedParams.ToJsonString(), ct);
+        var (trades, cells) = ExitLabResult.ParseSummary(json);
+        var v = cells > 0
+            ? Verdict.Passing(VerdictField.Of("trades", trades), VerdictField.Of("cells", cells))
+            : Verdict.Failing(VerdictField.Of("cells", 0), VerdictField.Of("error", "no-cells"));
+        return cells > 0 ? StepOutcome.Pass(v.Render()) : StepOutcome.Fail(v.Render());
+    }
+
+    private async Task<StepOutcome> WalkForwardAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var resolvedParams = ResolveParams(step.Params, context);
+        var json = await _client.PostAsync("api/walk-forward/start", resolvedParams.ToJsonString(), ct);
+        var jobId = ExitLabResult.ParseJobId(json);
+        return string.IsNullOrWhiteSpace(jobId)
+            ? StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-jobId")).Render())
+            : StepOutcome.Pass(Verdict.Passing(VerdictField.Of("jobId", jobId)).Render());
+    }
+
+    private async Task<StepOutcome> ApplyCalibrationAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var resolvedParams = ResolveParams(step.Params, context);
+        var json = await _client.PostAsync("api/exit-lab/calibrations", resolvedParams.ToJsonString(), ct);
+        var saved = ParseBool(json, "saved");
+        if (!saved)
+        {
+            var error = ParseString(json, "error") ?? "unknown";
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", error)).Render());
+        }
+        return StepOutcome.Pass(Verdict.Passing(VerdictField.Of("saved", "true")).Render(), null);
+    }
+
+    private static StepOutcome OwnerGate(PlaybookStep step)
+    {
+        var reason = Str(step, "reason") ?? "owner-approval-required";
+        return StepOutcome.AwaitOwner(Verdict.Failing(
+            VerdictField.Of("gate", "owner"),
+            VerdictField.Of("reason", reason)).Render());
+    }
+
+    private async Task<StepOutcome> BlockBootstrapAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var symbol = Str(step, "symbol") ?? "EURUSD";
+        var tf = Str(step, "tf") ?? "H1";
+        var from = Str(step, "from") ?? "2024-01-01";
+        var to = Str(step, "to") ?? "2024-07-01";
+        var n = Int(step, "n", 100);
+        var blockSize = Str(step, "blockSize") ?? "week";
+        var strategyIds = StrArray(step, "strategyIds");
+        var balance = Int(step, "balance", 100_000);
+        var timeout = Int(step, "timeout", 1800);
+
+        var body = $@"{{
+            ""symbol"": ""{symbol}"",
+            ""timeframe"": ""{tf}"",
+            ""from"": ""{from}"",
+            ""to"": ""{to}"",
+            ""n"": {n},
+            ""blockSize"": ""{blockSize}"",
+            ""strategyIds"": [{string.Join(",", strategyIds.Select(s => $"\"{s}\""))}],
+            ""balance"": {balance}
+        }}";
+
+        var json = await _client.PostAsync("api/research/block-bootstrap", body, ct);
+        if (json is null)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-response")).Render());
+
+        var tapeCount = ParseInt(json, "tapeCount");
+        var runIds = ParseStringArray(json, "runIds");
+
+        context.Values["block-bootstrap:tapeCount"] = tapeCount.ToString();
+        context.Values["block-bootstrap:runIds"] = string.Join(",", runIds);
+
+        var completed = 0;
+        var failed = 0;
+        var ddPcts = new List<decimal>();
+        var netPnls = new List<decimal>();
+        var tradeCounts = new List<int>();
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeout));
+
+        while (completed + failed < runIds.Length && !cts.IsCancellationRequested)
+        {
+            await Task.Delay(_pollInterval, ct);
+            completed = 0;
+            failed = 0;
+            ddPcts.Clear();
+            netPnls.Clear();
+            tradeCounts.Clear();
+
+            foreach (var id in runIds)
+            {
+                var runJson = await _client.GetAsync($"api/runs/{id}", cts.Token);
+                if (runJson is null) continue;
+
+                var status = ParseString(runJson, "status") ?? "";
+                var isTerminal = status is "completed" or "completed-with-warnings" or "failed" or "cancelled";
+                if (!isTerminal) continue;
+
+                if (status is "completed" or "completed-with-warnings")
+                {
+                    completed++;
+                    ddPcts.Add((decimal?)(ParseDouble(runJson, "maxDrawdownPct") ?? 0) ?? 0);
+                    netPnls.Add((decimal)(ParseDouble(runJson, "netProfit") ?? 0));
+                    tradeCounts.Add(ParseInt(runJson, "totalTrades"));
+                }
+                else
+                {
+                    failed++;
+                }
+            }
+        }
+
+        if (completed + failed == 0)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "timeout")).Render());
+
+        var fields = new List<VerdictField>
+        {
+            VerdictField.Of("tapes-generated", tapeCount),
+            VerdictField.Of("runs-completed", completed),
+            VerdictField.Of("runs-failed", failed),
+        };
+
+        if (ddPcts.Count > 0)
+        {
+            var sorted = ddPcts.OrderBy(d => d).ToList();
+            fields.Add(VerdictField.Of("dd-min", sorted[0]));
+            fields.Add(VerdictField.Of("dd-median", sorted[sorted.Count / 2]));
+            fields.Add(VerdictField.Of("dd-max", sorted[^1]));
+            fields.Add(VerdictField.Of("dd-mean", Math.Round(sorted.Average(), 2)));
+        }
+
+        if (netPnls.Count > 0)
+        {
+            var sorted = netPnls.OrderBy(d => d).ToList();
+            fields.Add(VerdictField.Of("pnl-min", sorted[0]));
+            fields.Add(VerdictField.Of("pnl-median", sorted[sorted.Count / 2]));
+            fields.Add(VerdictField.Of("pnl-max", sorted[^1]));
+        }
+
+        if (tradeCounts.Count > 0)
+        {
+            fields.Add(VerdictField.Of("trades-mean", Math.Round(tradeCounts.Average(), 1)));
+        }
+
+        return failed == 0
+            ? StepOutcome.Pass(Verdict.Passing(fields.ToArray()).Render())
+            : StepOutcome.Fail(Verdict.Failing(fields.ToArray()).Render());
+    }
+
+    private async Task<StepOutcome> MetaAllocateAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var topN = Int(step, "topN", 4);
+        var minTrades = Int(step, "minTrades", 10);
+        var freqWeight = Double(step, "frequencyWeight", 0.3);
+        var parkFraction = Double(step, "parkFraction", 0.1);
+
+        var scoreboardJson = await _client.GetAsync("api/scoreboard", ct);
+        if (scoreboardJson is null)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-scoreboard-response")).Render());
+
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(scoreboardJson);
+        }
+        catch (JsonException ex)
+        {
+            return StepOutcome.Fail(Verdict.Failing(
+                VerdictField.Of("error", "scoreboard-parse"),
+                VerdictField.Of("detail", ex.Message)).Render());
+        }
+
+        if (root is not JsonArray arr || arr.Count == 0)
+        {
+            return StepOutcome.Fail(Verdict.Failing(
+                VerdictField.Of("error", "scoreboard-empty"),
+                VerdictField.Of("detail", "Scoreboard returned no cells. Run a backtest first.")).Render());
+        }
+
+        var cells = new List<CellMetrics>();
+        foreach (var item in arr)
+        {
+            if (item is not JsonObject obj) continue;
+            var e = obj["enabled"]?.GetValue<bool>() ?? true;
+            var p = obj["parked"]?.GetValue<bool>() ?? false;
+            cells.Add(new CellMetrics(
+                StrategyId: obj["strategyId"]?.GetValue<string>() ?? "?",
+                Symbol: obj["symbol"]?.GetValue<string>() ?? "?",
+                Timeframe: obj["timeframe"]?.GetValue<string>() ?? "?",
+                AvgR: obj["latestAvgR"]?.GetValue<double>() ?? 0,
+                TotalTrades: obj["totalTrades"]?.GetValue<int>() ?? 0,
+                TradesPerWeek: obj["tradesPerWeek"]?.GetValue<double>() ?? 0,
+                Enabled: e,
+                Parked: p));
+        }
+
+        var opts = new MetaAllocatorOptions
+        {
+            TopN = topN,
+            MinTrades = minTrades,
+            FrequencyWeight = freqWeight,
+            ParkFraction = parkFraction,
+        };
+
+        var result = MetaAllocator.Allocate(cells, opts);
+
+        context.Values["meta-allocate:cells-evaluated"] = result.CellsEvaluated.ToString();
+        context.Values["meta-allocate:cells-recommended"] = result.CellsRecommended.ToString();
+        context.Values["meta-allocate:total-score"] = result.TotalScore.ToString("F4");
+
+        var fields = new List<VerdictField>
+        {
+            VerdictField.Of("cells-evaluated", result.CellsEvaluated),
+            VerdictField.Of("cells-scored", result.Allocations.Count),
+            VerdictField.Of("cells-recommended", result.CellsRecommended),
+        };
+
+        var keep = result.Allocations.Where(a => a.Recommendation == "keep").ToList();
+        var monitor = result.Allocations.Where(a => a.Recommendation == "monitor").ToList();
+        var park = result.Allocations.Where(a => a.Recommendation == "park").ToList();
+
+        if (keep.Count > 0)
+        {
+            var top = keep[0];
+            fields.Add(VerdictField.Of("top-cell", $"{top.StrategyId}/{top.Symbol}/{top.Timeframe}"));
+            fields.Add(VerdictField.Of("top-score", top.ContributionScore));
+            fields.Add(VerdictField.Of("top-weight", top.Weight));
+
+            context.Values["meta-allocate:top-cell"] = $"{top.StrategyId}/{top.Symbol}/{top.Timeframe}";
+            context.Values["meta-allocate:top-score"] = top.ContributionScore.ToString("F4");
+            context.Values["meta-allocate:top-weight"] = top.Weight.ToString("P1");
+
+            for (var i = 0; i < keep.Count; i++)
+            {
+                var k = keep[i];
+                var label = $"keep-{i + 1}";
+                context.Values[$"meta-allocate:{label}"] =
+                    $"{k.StrategyId}/{k.Symbol}/{k.Timeframe} w={k.Weight:P1} score={k.ContributionScore:F4}";
+            }
+        }
+
+        foreach (var p in park)
+        {
+            context.Values[$"meta-allocate:park:{p.StrategyId}/{p.Symbol}/{p.Timeframe}"] =
+                $"score={p.ContributionScore:F4} threshold={result.Allocations[0].ContributionScore * parkFraction:F4}";
+        }
+
+        var hasRecommendations = keep.Count > 0 || monitor.Count > 0;
+        var verdict = hasRecommendations
+            ? Verdict.Passing(fields.ToArray()).Render()
+            : Verdict.Failing(fields.ToArray()).Render();
+
+        return hasRecommendations ? StepOutcome.Pass(verdict) : StepOutcome.Fail(verdict);
+    }
+
+    private async Task<StepOutcome> EntryQualityAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var runId = ResolveRef(step, context, "runId");
+        if (string.IsNullOrEmpty(runId))
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "entry-quality requires runId param")).Render());
+
+        var strategyId = Str(step, "strategyId") ?? "";
+        var minTrades = Int(step, "minTrades", 10);
+
+        var query = $"api/entry-quality?runId={Uri.EscapeDataString(runId)}&minTrades={minTrades}";
+        if (!string.IsNullOrEmpty(strategyId))
+            query += $"&strategyId={Uri.EscapeDataString(strategyId)}";
+
+        var json = await _client.GetAsync(query, ct);
+        if (json is null)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-entry-quality-response")).Render());
+
+        JsonNode? root;
+        try
+        {
+            root = JsonNode.Parse(json);
+        }
+        catch (JsonException ex)
+        {
+            return StepOutcome.Fail(Verdict.Failing(
+                VerdictField.Of("error", "entry-quality-parse"),
+                VerdictField.Of("detail", ex.Message)).Render());
+        }
+
+        if (root is not JsonObject obj)
+        {
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "invalid-entry-quality-response")).Render());
+        }
+
+        if (obj["error"] is JsonNode errNode)
+        {
+            var errMsg = errNode.GetValue<string>() ?? "unknown error";
+            var totalTrades = obj["totalTrades"]?.GetValue<int>() ?? 0;
+            return StepOutcome.Fail(Verdict.Failing(
+                VerdictField.Of("error", errMsg),
+                VerdictField.Of("totalTrades", totalTrades)).Render());
+        }
+
+        var rSquared = obj["rSquared"]?.GetValue<double>() ?? 0;
+        var summary = obj["summary"]?.GetValue<string>() ?? "";
+        var observations = obj["validObservations"]?.GetValue<int>() ?? 0;
+        var features = obj["features"] as JsonArray ?? [];
+
+        var fields = new List<VerdictField>
+        {
+            VerdictField.Of("runId", runId),
+            VerdictField.Of("observations", observations),
+            VerdictField.Of("rSquared", Math.Round(rSquared, 4)),
+            VerdictField.Of("summary", summary),
+        };
+
+        foreach (var f in features)
+        {
+            if (f is JsonObject fObj)
+            {
+                var name = fObj["name"]?.GetValue<string>() ?? "?";
+                var coeff = fObj["coefficient"]?.GetValue<double>() ?? 0;
+                var t = fObj["tStatistic"]?.GetValue<double>() ?? 0;
+                if (Math.Abs(t) > 2.0)
+                {
+                    var dir = coeff > 0 ? "+" : "";
+                    fields.Add(VerdictField.Of(name, $"{dir}{coeff:F4} (t={t:F1})"));
+                }
+            }
+        }
+
+        var verdict = rSquared > 0.01
+            ? Verdict.Passing(fields.ToArray()).Render()
+            : Verdict.Passing(fields.ToArray()).Render(); // always "pass" — this is diagnostic, not a gate
+
+        return StepOutcome.Pass(verdict);
+    }
+
+    private async Task<StepOutcome> PyramidEvalAsync(PlaybookStep step, PipelineContext context, CancellationToken ct)
+    {
+        var runId = ResolveRef(step, context, "runId");
+        if (string.IsNullOrEmpty(runId))
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "pyramid-eval requires runId param")).Render());
+
+        var strategyId = Str(step, "strategyId") ?? "";
+        var minTrades = Int(step, "minTrades", 10);
+
+        var body = new JsonObject
+        {
+            ["runId"] = runId,
+            ["minTrades"] = minTrades,
+        };
+        if (!string.IsNullOrEmpty(strategyId))
+            body["strategyId"] = strategyId;
+
+        var addLevelsArr = step.Params.TryGetPropertyValue("addLevels", out var alNode) && alNode is JsonArray alArr
+            ? alArr
+            : null;
+        if (addLevelsArr is not null)
+            body["addLevels"] = addLevelsArr;
+
+        var json = await _client.PostAsync("api/exit-lab/pyramid-eval", body.ToJsonString(), ct);
+        if (json is null)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "no-pyramid-eval-response")).Render());
+
+        JsonNode? root;
+        try { root = JsonNode.Parse(json); }
+        catch (JsonException ex)
+        {
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "pyramid-eval-parse"), VerdictField.Of("detail", ex.Message)).Render());
+        }
+
+        if (root is not JsonObject obj)
+            return StepOutcome.Fail(Verdict.Failing(VerdictField.Of("error", "invalid-pyramid-eval-response")).Render());
+
+        if (obj["error"] is JsonNode errNode)
+        {
+            return StepOutcome.Fail(Verdict.Failing(
+                VerdictField.Of("error", errNode.GetValue<string>() ?? "unknown"),
+                VerdictField.Of("totalTrades", obj["totalTrades"]?.GetValue<int>() ?? 0)).Render());
+        }
+
+        var totalTrades = obj["totalTrades"]?.GetValue<int>() ?? 0;
+        var levels = obj["levels"] as JsonArray;
+        var levelCount = levels?.Count ?? 0;
+
+        var fields = new List<VerdictField>
+        {
+            VerdictField.Of("runId", runId),
+            VerdictField.Of("totalTrades", totalTrades),
+        };
+
+        if (levels is not null)
+        {
+            foreach (var level in levels)
+            {
+                if (level is not JsonObject lObj) continue;
+                var addAtR = lObj["addAtR"]?.GetValue<double>() ?? 0;
+                var avgImprovement = lObj["avgImprovement"]?.GetValue<double>() ?? 0;
+                var triggerRate = lObj["triggerRate"]?.GetValue<double>() ?? 0;
+                if (triggerRate > 0.1)
+                    fields.Add(VerdictField.Of($"addAt{addAtR:F1}R", $"{avgImprovement:+0.##;-0.##} improvement, {triggerRate:P0} trigger"));
+            }
+        }
+
+        var verdict = Verdict.Passing(fields.ToArray()).Render();
+        return totalTrades > 0 ? StepOutcome.Pass(verdict) : StepOutcome.Fail(Verdict.Failing(fields.ToArray()).Render());
+    }
+
+    private async Task<StepOutcome> Report(PlaybookStep step, PipelineContext context)
+    {
+        // A report step summarizes the context's accumulated values into a markdown file written to the
+        // artifact dir. The report itself is always-passing (it's narrative, not a gate).
+        var now = DateTime.UtcNow;
+        var lines = new List<string>
+        {
+            $"# Pipeline Report — {context.PipelineId}",
+            $"**Generated:** {now:yyyy-MM-dd HH:mm:ss} UTC",
+            "",
+            "## Accumulated Context",
+            "",
+            "| Key | Value |",
+            "|-----|-------|",
+        };
+        foreach (var kv in context.Values)
+        {
+            lines.Add($"| `{EscapeMd(kv.Key)}` | `{EscapeMd(kv.Value)}` |");
+        }
+        var content = string.Join("\n", lines);
+        var artifact = await WriteArtifactAsync(context, "report.md", content, CancellationToken.None);
+        var fields = context.Values.Select(kv => VerdictField.Of(kv.Key, kv.Value)).ToArray();
+        return StepOutcome.Pass(Verdict.Passing(fields).Render(), artifact);
+    }
+
+    private static string EscapeMd(string s) => s.Replace("|", "\\|").Replace("`", "\\`");
+
+    private static async Task<string?> WriteArtifactAsync(PipelineContext context, string fileName, string content, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(context.ArtifactDir))
+        {
+            Console.Error.WriteLine($"WARN: pipeline {context.PipelineId}: artifact dir is null — skipping {fileName}");
+            return null;
+        }
+        Directory.CreateDirectory(context.ArtifactDir);
+        var path = Path.Combine(context.ArtifactDir, fileName);
+        await File.WriteAllTextAsync(path, content, ct);
+        return fileName;
+    }
+
+    private static string? ResolveRunId(PlaybookStep step, PipelineContext context) => ResolveRef(step, context, "runId");
+
+    /// <summary>
+    /// Walk every node in <paramref name="params"/> and replace <c>"$key"</c> string values
+    /// with the corresponding entry from <paramref name="context"/>.Values. Array elements that
+    /// are <c>"$key"</c> strings are also resolved. Returns a new <see cref="JsonObject"/> so
+    /// the original step params are never mutated (resume hash stability).
+    /// </summary>
+    private static JsonObject ResolveParams(JsonObject prms, PipelineContext context)
+    {
+        var resolved = new JsonObject();
+        foreach (var kv in prms)
+        {
+            resolved[kv.Key] = ResolveNode(kv.Value, context);
+        }
+        return resolved;
+    }
+
+    private static JsonNode? ResolveNode(JsonNode? node, PipelineContext context)
+    {
+        if (node is JsonValue val && val.TryGetValue<string>(out var s) && s is { Length: > 1 } && s[0] == '$')
+        {
+            var key = s[1..];
+            return context.Values.TryGetValue(key, out var v) ? JsonValue.Create(v) : node;
+        }
+
+        if (node is JsonArray arr)
+        {
+            var resolvedArr = new JsonArray();
+            foreach (var el in arr)
+            {
+                resolvedArr.Add(ResolveNode(el, context));
+            }
+            return resolvedArr;
+        }
+
+        if (node is JsonObject obj)
+        {
+            return ResolveParams(obj, context);
+        }
+
+        return node?.DeepClone();
+    }
+
+    // A reference either names a context key (e.g. "runId" set by a start-run step) or is a literal id.
+    private static string? ResolveRef(PlaybookStep step, PipelineContext context, string paramName)
+    {
+        var raw = Str(step, paramName);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return context.Values.TryGetValue(paramName, out var v) ? v : null;
+        }
+        if (raw.StartsWith('$') && context.Values.TryGetValue(raw[1..], out var refv))
+        {
+            return refv;
+        }
+        return context.Values.TryGetValue(raw, out var named) ? named : raw;
+    }
+
+    private static string? Str(PlaybookStep step, string key) =>
+        step.Params.TryGetPropertyValue(key, out var node) && node is not null
+            ? node.GetValueKind() == JsonValueKind.String ? node.GetValue<string>() : node.ToJsonString()
+            : null;
+
+    private static bool Bool(PlaybookStep step, string key) =>
+        step.Params.TryGetPropertyValue(key, out var node) && node is not null
+        && node.GetValueKind() == JsonValueKind.True;
+
+    private static int Int(PlaybookStep step, string key, int fallback) =>
+        step.Params.TryGetPropertyValue(key, out var node) && node is not null && node.GetValueKind() == JsonValueKind.Number
+            ? node.GetValue<int>() : fallback;
+
+    private static double Double(PlaybookStep step, string key, double fallback) =>
+        step.Params.TryGetPropertyValue(key, out var node) && node is not null && node.GetValueKind() == JsonValueKind.Number
+            ? node.GetValue<double>() : fallback;
+
+    private static IReadOnlyList<string> StrArray(PlaybookStep step, string key)
+    {
+        if (step.Params.TryGetPropertyValue(key, out var node) && node is JsonArray arr)
+        {
+            return [.. arr.Where(n => n is not null).Select(n => n!.GetValue<string>())];
+        }
+        return [];
+    }
+
+    private static bool ParseBool(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty(key, out var el)
+            && el.ValueKind == System.Text.Json.JsonValueKind.True;
+    }
+
+    private static string? ParseString(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty(key, out var el)
+            && el.ValueKind == System.Text.Json.JsonValueKind.String
+            ? el.GetString() : null;
+    }
+
+    private static List<string> SplitCsv(string? csv) =>
+        string.IsNullOrWhiteSpace(csv) ? [] : [.. csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+    private static int ParseInt(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty(key, out var el)
+            && el.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? el.GetInt32() : 0;
+    }
+
+    private static double? ParseDouble(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty(key, out var el)
+            && el.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? el.GetDouble() : null;
+    }
+
+    private static string[] ParseStringArray(string json, string key)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty(key, out var el) || el.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return [];
+        return el.EnumerateArray().Select(e => e.GetString() ?? "").Where(s => s.Length > 0).ToArray();
+    }
+
+    private static DateTime? Date(PlaybookStep step, string key) =>
+        DateTime.TryParse(Str(step, key), System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var dt)
+            ? dt : null;
+}

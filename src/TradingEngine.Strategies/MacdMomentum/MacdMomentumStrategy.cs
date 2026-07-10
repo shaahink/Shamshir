@@ -10,7 +10,6 @@ public sealed class MacdMomentumStrategy : IStrategy
     private readonly MacdMomentumConfig _config;
     private readonly ILogger<MacdMomentumStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
-    private double? _lastHist;
     private int _winStreak;
     private int _lossStreak;
 
@@ -27,15 +26,15 @@ public sealed class MacdMomentumStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => _config.Parameters.MacdSlow + _config.Parameters.SmaPeriod + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new("MACD_12_26_9", IndicatorType.Macd, 12) { Param1 = 26, Param2 = 9 },
-        new($"SMA_{_config.Parameters.SmaPeriod}", IndicatorType.Sma, _config.Parameters.SmaPeriod),
-        new($"ADX_{_config.Parameters.AdxPeriod}", IndicatorType.Adx, _config.Parameters.AdxPeriod),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new("MACD_12_26_9", IndicatorType.Macd, 12, Timeframe: _config.EntryTimeframe) { Param1 = 26, Param2 = 9 },
+        new($"SMA_{_config.Parameters.SmaPeriod}", IndicatorType.Sma, _config.Parameters.SmaPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ADX_{_config.Parameters.AdxPeriod}", IndicatorType.Adx, _config.Parameters.AdxPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);
@@ -44,7 +43,7 @@ public sealed class MacdMomentumStrategy : IStrategy
     {
         try
         {
-            var bars = context.Bars.GetValueOrDefault(Timeframe.H1);
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
             if (bars is null || bars.Count < RequiredBarCount)
             {
                 _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
@@ -56,8 +55,6 @@ public sealed class MacdMomentumStrategy : IStrategy
             // Indicator keys are bare (e.g. "ATR_14"), matching IndicatorSnapshotService —
             // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
             if (!context.IndicatorValues.TryGetValue($"SMA_{p.SmaPeriod}", out var sma200))
-                return null;
-            if (!context.IndicatorValues.TryGetValue("MACD_12_26_9_Histogram", out var histNow))
                 return null;
             if (!context.IndicatorValues.TryGetValue($"ADX_{p.AdxPeriod}", out var adx))
                 return null;
@@ -74,14 +71,12 @@ public sealed class MacdMomentumStrategy : IStrategy
             var close = (double)latestBar.Close;
             var priceAboveSma = close > sma200;
 
-            if (_lastHist is null)
-            {
-                _lastHist = histNow;
-                return null;
-            }
-
-            var histPrev = _lastHist.Value;
-            _lastHist = histNow;
+            // P2.1: read the MACD histogram series instead of caching a private field — a private
+            // "previous value" field silently desyncs if a bar is ever skipped/replayed out of order.
+            var histSeries = context.GetSeries("MACD_12_26_9_Histogram");
+            if (histSeries.Count < 2) return null;
+            var histPrev = histSeries[^2];
+            var histNow = histSeries[^1];
 
             TradeDirection? direction = null;
             string reason;
@@ -133,7 +128,6 @@ public sealed class MacdMomentumStrategy : IStrategy
 
     public void Reset()
     {
-        _lastHist = null;
         _winStreak = 0;
         _lossStreak = 0;
     }
@@ -148,6 +142,8 @@ public sealed class MacdMomentumStrategy : IStrategy
             OrderEntry = entry.OrderEntry ?? new(),
             PositionManagement = entry.PositionManagement ?? new(),
             Parameters = StrategyFactoryHelper.DeserializeParams<MacdMomentumParameters>(entry.Parameters),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
         };
         return new MacdMomentumStrategy(config,
             sp.GetRequiredService<ISymbolInfoRegistry>(),

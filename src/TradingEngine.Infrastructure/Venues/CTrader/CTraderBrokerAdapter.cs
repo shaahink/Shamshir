@@ -122,6 +122,11 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         {
             _logger.LogWarning(ex, "CTRADER|SUB_LOOP_ERR");
         }
+        finally
+        {
+            _tickChannel.Writer.TryComplete();
+            _accountChannel.Writer.TryComplete();
+        }
     }
 
     private async Task ReadRouterLoop(CancellationToken ct)
@@ -196,6 +201,8 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                         case "bar":
                             CurrentBarSeq = doc.RootElement.TryGetProperty("seq", out var s) ? s.GetInt64() : 0;
                             _barsReceived++;
+                            decimal? spread = doc.RootElement.TryGetProperty("spread", out var sp)
+                                ? sp.GetDecimal() : null;
                             var bar = new Bar(
                                 Symbol.Parse(doc.RootElement.GetProperty("symbol").GetString()!),
                                 Enum.Parse<Timeframe>(doc.RootElement.GetProperty("period").GetString()!, ignoreCase: true),
@@ -204,7 +211,8 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                                 doc.RootElement.GetProperty("high").GetDecimal(),
                                 doc.RootElement.GetProperty("low").GetDecimal(),
                                 doc.RootElement.GetProperty("close").GetDecimal(),
-                                doc.RootElement.GetProperty("volume").GetDouble());
+                                doc.RootElement.GetProperty("volume").GetDouble(),
+                                spread);
                             BrokerTimeUtc = bar.OpenTimeUtc;
                             _barChannel.Writer.TryWrite(bar);
                             _journal?.Write("BAR_RECV", null, bar.OpenTimeUtc,
@@ -245,6 +253,11 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "CTRADER|ROUTER_LOOP_ERR");
+        }
+        finally
+        {
+            _barChannel.Writer.TryComplete();
+            _execChannel.Writer.TryComplete();
         }
     }
 
@@ -444,7 +457,18 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         _logger.LogInformation("CTRADER|SUBMIT_ORDER|id={Id}|symbol={Symbol}|dir={Dir}|lots={Lots}|connected={Connected}",
             clientOrderId, request.Symbol, request.Direction, request.Lots, connected);
         var entryOpts = request.Intent.Entry;
-        var isLimit = entryOpts?.Method == OrderEntryMethod.LimitOffset;
+        // F5 fix (iter-quant-model P6): isLimit is now derived from request.Type, matching both replay
+        // adapters. Previously derived from entryOpts?.Method which was always null on the kernel path
+        // because EffectExecutor.SubmitOrder rebuilt a bare TradeIntent with no Entry attached. That gap
+        // is now closed — Entry threads through OrderProposed → SubmitOrder → TradeIntent, so entryOpts
+        // is populated. When request.Type==Limit, cTrader receives a genuine resting Limit order rather
+        // than a Market order. This is the correct behavior but means cTrader backtests with default
+        // LimitOffset params (2-pip offset, 3-bar expiry) may produce fewer fills than before — the
+        // strategy config controls fill rate via LimitOffsetPips and LimitOrderExpiryBars.
+        var isLimit = request.Type == OrderType.Limit;
+        var isStop = request.Type == OrderType.Stop;
+        var orderTypeStr = isStop ? "Stop" : isLimit ? "Limit" : "Market";
+        var isResting = isLimit || isStop;
         var cmd = new
         {
             type = "submit_order",
@@ -452,9 +476,9 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             symbol = request.Symbol.Value,
             direction = request.Direction.ToString(),
             lots = (double)request.Lots,
-            orderType = isLimit ? "Limit" : "Market",
-            limitPrice = isLimit ? (double)request.Intent.LimitPrice!.Value.Value : 0.0,
-            expiryBars = isLimit ? (entryOpts!.LimitOrderExpiryBars) : 0,
+            orderType = orderTypeStr,
+            limitPrice = isResting ? (double)request.Intent.LimitPrice!.Value.Value : 0.0,
+            expiryBars = isResting ? (entryOpts?.LimitOrderExpiryBars ?? 3) : 0,
             maxSlippagePips = entryOpts?.MaxSlippagePips ?? 2.0,
             slPrice = (double)request.Intent.StopLoss.Value,
             tpPrice = request.Intent.TakeProfit.HasValue ? (double)request.Intent.TakeProfit.Value.Value : 0.0

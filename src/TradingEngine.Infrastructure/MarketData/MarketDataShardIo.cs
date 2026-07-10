@@ -15,12 +15,14 @@ public static class MarketDataShardIo
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
     public static string ToLine(Bar bar) => JsonSerializer.Serialize(
         new ShardBar(
             bar.Symbol.ToString(), bar.Timeframe.ToString(), bar.OpenTimeUtc,
-            (double)bar.Open, (double)bar.High, (double)bar.Low, (double)bar.Close, bar.Volume),
+            (double)bar.Open, (double)bar.High, (double)bar.Low, (double)bar.Close, bar.Volume,
+            bar.Spread is { } s ? (double?)s : null),
         Json);
 
     public static bool TryParse(string line, out Bar bar)
@@ -35,7 +37,8 @@ public static class MarketDataShardIo
             if (!Enum.TryParse<Timeframe>(s.Timeframe, ignoreCase: true, out var tf)) return false;
             bar = new Bar(
                 Symbol.Parse(s.Symbol), tf, DateTime.SpecifyKind(s.OpenTimeUtc, DateTimeKind.Utc),
-                (decimal)s.Open, (decimal)s.High, (decimal)s.Low, (decimal)s.Close, s.Volume);
+                (decimal)s.Open, (decimal)s.High, (decimal)s.Low, (decimal)s.Close, s.Volume,
+                s.Spread is { } spread ? (decimal?)spread : null);
             return true;
         }
         catch
@@ -52,5 +55,6 @@ public static class MarketDataShardIo
         double High,
         double Low,
         double Close,
-        double Volume);
+        double Volume,
+        double? Spread = null);
 }

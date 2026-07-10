@@ -21,4 +21,8 @@ public sealed record PositionState(
     string? CloseReason = null,
     string OrderEntryMethod = "Market",
     string? EntryReason = null,
-    string? EntryRegime = null);
+    string? EntryRegime = null,
+    // P0.1: the stop-loss price at ORDER CREATION, set once in PositionLifecycle.CreateIntended and
+    // never touched by any later `with` (breakeven/trailing move CurrentStopLoss, not this). Carried
+    // onto PublishTradeClosed so R-multiple is computed against the risk actually taken at entry.
+    Price InitialStopLoss = default);

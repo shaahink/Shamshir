@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Services;
 
 namespace TradingEngine.Infrastructure.Persistence;
 
@@ -8,8 +9,8 @@ public sealed class TradePersistenceHandler : IEventHandler<TradeClosed>, IAsync
     private readonly PersistenceService _persistence;
     private readonly ILogger<TradePersistenceHandler> _logger;
     private readonly IRunDataCache? _cache;
-    private readonly Channel<(TradeResult Trade, string RunId)> _channel =
-        Channel.CreateBounded<(TradeResult, string)>(new BoundedChannelOptions(1_000)
+    private readonly Channel<(TradeResult Trade, string RunId, string? ExcursionPathJson)> _channel =
+        Channel.CreateBounded<(TradeResult, string, string?)>(new BoundedChannelOptions(1_000)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleWriter = false
@@ -27,18 +28,28 @@ public sealed class TradePersistenceHandler : IEventHandler<TradeClosed>, IAsync
 
     public async Task HandleAsync(TradeClosed evt, CancellationToken ct)
     {
-        await _channel.Writer.WriteAsync((evt.Result, evt.RunId), ct);
+        await _channel.Writer.WriteAsync((evt.Result, evt.RunId, evt.ExcursionPathJson), ct);
     }
 
     private async Task DrainAsync(CancellationToken ct)
     {
-        await foreach (var (trade, runId) in _channel.Reader.ReadAllAsync(ct))
+        await foreach (var (trade, runId, excursionPathJson) in _channel.Reader.ReadAllAsync(ct))
         {
             try
             {
                 await _persistence.SaveTradeAsync(trade, runId, ct);
                 _cache?.AppendTrade(runId, trade);
                 _logger.LogDebug("TRADE_SAVED|{TradeId}|RunId={RunId}", trade.Id, runId);
+
+                // P3.1: write-through the SAME channel/drain point as the trade itself, into a separate
+                // TradeExcursions table (not a new TradeResult column). Null for any trade the venue didn't
+                // record a path for (RecordExcursions off, or a venue that doesn't support it).
+                if (excursionPathJson is not null)
+                {
+                    var sessionLabel = SessionDetector.Detect(trade.OpenedAtUtc);
+                    await _persistence.SaveExcursionAsync(runId, trade.PositionId, excursionPathJson, sessionLabel, ct);
+                    _logger.LogDebug("EXCURSION_SAVED|{PositionId}|RunId={RunId}|Session={SessionLabel}", trade.PositionId, runId, sessionLabel);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

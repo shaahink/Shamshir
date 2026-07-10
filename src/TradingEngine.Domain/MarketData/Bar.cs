@@ -8,7 +8,8 @@ public record Bar(
     decimal High,
     decimal Low,
     decimal Close,
-    double Volume)
+    double Volume,
+    decimal? Spread = null)
 {
     public bool IsBullish => Close >= Open;
     public decimal Body => Math.Abs(Close - Open);

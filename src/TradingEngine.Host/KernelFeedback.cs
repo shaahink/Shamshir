@@ -30,6 +30,7 @@ public static class KernelFeedback
                 Commission = e.Commission,
                 Swap = e.Swap,
                 CloseReason = e.CloseReason,
+                ExcursionPathJson = e.ExcursionPathJson,
             },
         OrderState.Cancelled =>
             new OrderCancelled(e.OrderId, symbol, e.RejectionReason ?? "CANCELLED", e.TimestampUtc),

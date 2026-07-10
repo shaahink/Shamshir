@@ -12,6 +12,11 @@ public sealed record BacktestResult
     public double WinRatePct { get; init; }
     public string AlgoHash { get; init; } = "";
     public string? ErrorMessage { get; init; }
+
+    // P0.2 (F5, Q5): teardown/persistence anomalies that occurred AFTER the engine produced a complete
+    // result. Populated => the run is `completed-with-warnings`, not `failed`. JSON array of warnings.
+    public string? WarningsJson { get; init; }
+
     public string? ReportJsonPath { get; init; }
     public long WallElapsedMs { get; init; }
     public double BarsPerSec { get; init; }

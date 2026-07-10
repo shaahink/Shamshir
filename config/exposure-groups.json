@@ -1,0 +1,29 @@
+{
+  "groups": {
+    "eur-bloc": {
+      "label": "EUR Bloc",
+      "symbols": ["EURUSD", "EURGBP", "EURJPY"],
+      "maxExposure": 0.08
+    },
+    "usd-bloc": {
+      "label": "USD Majors",
+      "symbols": ["GBPUSD", "AUDUSD", "NZDUSD", "USDCAD", "USDCHF", "USDJPY"],
+      "maxExposure": 0.12
+    },
+    "cross-yen": {
+      "label": "Cross-Yen",
+      "symbols": ["GBPJPY", "EURJPY"],
+      "maxExposure": 0.06
+    },
+    "metals": {
+      "label": "Metals",
+      "symbols": ["XAUUSD", "XAGUSD"],
+      "maxExposure": 0.04
+    },
+    "crypto": {
+      "label": "Crypto",
+      "symbols": ["BTCUSD", "ETHUSD"],
+      "maxExposure": 0.02
+    }
+  }
+}

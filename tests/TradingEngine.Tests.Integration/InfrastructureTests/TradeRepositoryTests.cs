@@ -85,4 +85,23 @@ public sealed class TradeRepositoryTests : IDisposable
         recent.Should().HaveCount(1);
         recent[0].Should().BeOfType<TradeOpened>();
     }
+
+    // P3.1: the excursion recorder's persistence side -- a separate table from TradeResult (a few hundred
+    // bytes of compact JSON per trade), keyed by (RunId, PositionId).
+    [Fact]
+    public async Task Excursion_SaveAndRetrieve_RoundTrips()
+    {
+        using var db = CreateInMemoryDb();
+        var repo = new SqliteExcursionRepository(db);
+        var positionId = Guid.NewGuid();
+        const string pathJson = """[{"t":0,"hi":8.0,"lo":-4.0},{"t":60,"hi":-27.0,"lo":-52.0}]""";
+
+        await repo.SaveAsync("run-1", positionId, pathJson, null, CancellationToken.None);
+
+        var retrieved = await repo.GetAsync("run-1", positionId, CancellationToken.None);
+        retrieved.Should().Be(pathJson);
+
+        // A different run/position must not collide.
+        (await repo.GetAsync("run-2", positionId, CancellationToken.None)).Should().BeNull();
+    }
 }

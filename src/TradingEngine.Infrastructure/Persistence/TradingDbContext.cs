@@ -22,6 +22,14 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<JournalEntryEntity> JournalEntries => Set<JournalEntryEntity>();
     public DbSet<AddOnPackEntity> AddOnPacks => Set<AddOnPackEntity>();   // iter-38 PK1
     public DbSet<VenueSessionEntity> VenueSessions => Set<VenueSessionEntity>();
+    public DbSet<TradeExcursionEntity> TradeExcursions => Set<TradeExcursionEntity>();
+    public DbSet<ExitCalibrationEntity> ExitCalibrations => Set<ExitCalibrationEntity>();
+    public DbSet<ReferenceScaleEntity> ReferenceScales => Set<ReferenceScaleEntity>();
+    public DbSet<WalkForwardJobEntity> WalkForwardJobs => Set<WalkForwardJobEntity>();
+    public DbSet<WalkForwardWindowResultEntity> WalkForwardWindowResults => Set<WalkForwardWindowResultEntity>();
+    public DbSet<StrategyCellParkEntity> StrategyCellParks => Set<StrategyCellParkEntity>();
+    public DbSet<ResearchPipelineEntity> ResearchPipelines => Set<ResearchPipelineEntity>();
+    public DbSet<ResearchPipelineStepEntity> ResearchPipelineSteps => Set<ResearchPipelineStepEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,12 +39,27 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
         modelBuilder.ApplyConfiguration(new EngineEventMapping());
         modelBuilder.ApplyConfiguration(new EquitySnapshotMapping());
         modelBuilder.ApplyConfiguration(new BarMapping());
+        modelBuilder.ApplyConfiguration(new TradeExcursionMapping());
+        modelBuilder.ApplyConfiguration(new ExitCalibrationMapping());
+        modelBuilder.ApplyConfiguration(new ReferenceScaleMapping());
+        modelBuilder.ApplyConfiguration(new WalkForwardJobMapping());
+        modelBuilder.ApplyConfiguration(new WalkForwardWindowResultMapping());
+        modelBuilder.ApplyConfiguration(new ResearchPipelineMapping());
+        modelBuilder.ApplyConfiguration(new ResearchPipelineStepMapping());
+
+        modelBuilder.Entity<StrategyCellParkEntity>(e =>
+        {
+            e.ToTable("StrategyCellParks");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.StrategyId, x.Symbol, x.Timeframe }).IsUnique();
+        });
 
         modelBuilder.Entity<BacktestRunEntity>(e =>
         {
             e.ToTable("BacktestRuns");
             e.HasKey(x => x.RunId);
             e.Property(x => x.EffectiveConfigJson).HasColumnType("TEXT");
+            e.Property(x => x.WarningsJson).HasColumnType("TEXT");
             e.HasIndex(x => x.StartedAtUtc);
         });
 
@@ -69,6 +92,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.Property(x => x.OrderEntryJson).HasColumnType("TEXT");
             e.Property(x => x.RegimeFilterJson).HasColumnType("TEXT");
             e.Property(x => x.ReentryJson).HasColumnType("TEXT");
+            e.Property(x => x.EntryFilterJson).HasColumnType("TEXT");
             e.Property(x => x.Version).HasColumnType("INTEGER").IsRequired();
             e.Property(x => x.UpdatedAtUtc).HasColumnType("TEXT");
         });

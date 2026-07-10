@@ -49,8 +49,8 @@ public sealed class TrailingStopE2ETests
         private bool _opened;
         public string Id => "trail-test";
         public string DisplayName => "Trail Test";
-        public Timeframe EntryTimeframe => Timeframe.H1;
-        public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+        public Timeframe EntryTimeframe => Config.EntryTimeframe;
+        public IReadOnlyList<Timeframe> RequiredTimeframes => [Config.EntryTimeframe];
         public int RequiredBarCount => 1;
         public IReadOnlyList<IndicatorRequest> RequiredIndicators => [];
         public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
@@ -77,14 +77,14 @@ public sealed class TrailingStopE2ETests
         public bool Enabled => true;
         public IReadOnlyList<string> Symbols => ["EURUSD"];
         public string RiskProfileId => "standard";
-        public Timeframe Timeframe => Timeframe.H1;
+        public Timeframe EntryTimeframe { get; init; } = Timeframe.H1;
+        public string? Symbol { get; init; }
+        public IReadOnlyList<Timeframe> RequiredTimeframes { get; init; } = [];
         public RegimeFilterOptions RegimeFilter => new();
-        public OrderEntryOptions OrderEntry => new();
+        public OrderEntryOptions OrderEntry => new() { Method = OrderEntryMethod.Market };
         public PositionManagementOptions PositionManagement => new()
         {
             Breakeven = new BreakevenOptions { Enabled = true, TriggerRMultiple = 1.0, OffsetPips = 1.0 },
-            // iter-38 A1: trailing is now gated by its Enabled toggle (Method alone no longer activates it).
-            // Custom keeps the stored 2.5 multiple (no auto-tune), so this E2E stays byte-identical.
             Trailing = new TrailingOptions { Enabled = true, Mode = AddOnMode.Custom, Method = "AtrMultiple", AtrMultiple = 2.5 },
         };
         public ReentryOptions Reentry => new();

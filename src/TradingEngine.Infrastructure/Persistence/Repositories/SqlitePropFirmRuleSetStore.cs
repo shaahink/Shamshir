@@ -1,11 +1,12 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence.Entities;
 
 namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
-public sealed class SqlitePropFirmRuleSetStore(TradingDbContext db) : IPropFirmRuleSetStore
+public sealed class SqlitePropFirmRuleSetStore(TradingDbContext db, ILogger<SqlitePropFirmRuleSetStore> logger) : IPropFirmRuleSetStore
 {
     private static readonly JsonSerializerOptions _jsonOpts = new()
     {
@@ -51,12 +52,16 @@ public sealed class SqlitePropFirmRuleSetStore(TradingDbContext db) : IPropFirmR
         }
     }
 
-    private static PropFirmRuleSet? Deserialize(PropFirmRuleSetEntity entity)
+    private PropFirmRuleSet? Deserialize(PropFirmRuleSetEntity entity)
     {
         try
         {
             return JsonSerializer.Deserialize<PropFirmRuleSet>(entity.Json, _jsonOpts);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to deserialize PropFirmRuleSet {Id} — JSON is corrupt", entity.Id);
+            return null;
+        }
     }
 }

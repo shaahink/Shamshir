@@ -46,9 +46,10 @@ public sealed class BacktestQueryService : IBacktestQueryService
     }
 
     private static string StatusOf(BacktestRunSummary s) =>
-        s.CompletedAtUtc == default ? "running"
-        : s.ErrorMessage is not null ? "failed"
-        : "completed";
+        RunStatusResolver.Resolve(
+            isCompleted: s.CompletedAtUtc != default,
+            errorMessage: s.ErrorMessage,
+            warningsJson: s.WarningsJson);
 
     public async Task<IReadOnlyList<StrategyPerformance>> GetStrategyBreakdownAsync(
         string runId, CancellationToken ct)

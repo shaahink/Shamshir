@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Web.Dtos.Trades;
 
@@ -10,11 +11,13 @@ public sealed class TradesController : ControllerBase
 {
     private readonly TradingDbContext _db;
     private readonly IBarQueryService _bars;
+    private readonly IExcursionRepository _excursions;
 
-    public TradesController(TradingDbContext db, IBarQueryService bars)
+    public TradesController(TradingDbContext db, IBarQueryService bars, IExcursionRepository excursions)
     {
         _db = db;
         _bars = bars;
+        _excursions = excursions;
     }
 
     [HttpGet]
@@ -56,14 +59,12 @@ public sealed class TradesController : ControllerBase
                 RMultiple = t.RMultiple,
                 MaxAdverseExcursion = t.MaxAdverseExcursion,
                 MaxFavorableExcursion = t.MaxFavorableExcursion,
+                MaeR = t.MaeR,
+                MfeR = t.MfeR,
                 ExitReason = t.ExitReason,
                 StrategyId = t.StrategyId,
                 DurationSeconds = t.DurationSeconds,
                 EntryType = t.Mode,
-                EntryReason = t.EntryReason,
-                EntryRegime = t.EntryRegime,
-                EntrySnapshotJson = t.EntrySnapshotJson,
-                ExitDetailJson = t.ExitDetailJson,
             })
             .ToListAsync(ct);
 
@@ -105,6 +106,8 @@ public sealed class TradesController : ControllerBase
             RMultiple = t.RMultiple,
             MaxAdverseExcursion = t.MaxAdverseExcursion,
             MaxFavorableExcursion = t.MaxFavorableExcursion,
+            MaeR = t.MaeR,
+            MfeR = t.MfeR,
             ExitReason = t.ExitReason,
             StrategyId = t.StrategyId,
             DurationSeconds = t.DurationSeconds,
@@ -169,4 +172,19 @@ public sealed class TradesController : ControllerBase
         "D1" => TimeSpan.FromDays(1),
         _ => TimeSpan.FromHours(1),
     };
+
+    // P3.5 — per-bar excursion path (MAE/MFE at each fine bar) for one trade.
+    [HttpGet("{id:guid}/excursions")]
+    public async Task<IActionResult> GetExcursions(Guid id, CancellationToken ct)
+    {
+        var t = await _db.Trades.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (t is null) return NotFound(new { error = $"Trade {id} not found" });
+        if (t.RunId is not { } runId) return Ok(new TradeExcursionResponse { TradeId = id, PathJson = "[]" });
+
+        var pathJson = await _excursions.GetAsync(runId, t.PositionId, ct);
+        if (pathJson is null)
+            return Ok(new TradeExcursionResponse { TradeId = id, PathJson = "[]" });
+
+        return Ok(new TradeExcursionResponse { TradeId = id, PathJson = pathJson });
+    }
 }

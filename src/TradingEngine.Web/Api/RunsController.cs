@@ -1,4 +1,5 @@
 using TradingEngine.CTraderRunner;
+using TradingEngine.Infrastructure.MarketData;
 using TradingEngine.Web.Dtos.Runs;
 using TradingEngine.Web.Services;
 
@@ -14,6 +15,7 @@ public sealed class RunsController : ControllerBase
     private readonly IJournalQueryRepository _journals;
     private readonly IBacktestRunRepository _runRepo;
     private readonly BacktestOrchestrator _orchestrator;
+    private readonly IMarketDataStore? _marketDataStore;
     private readonly RunNarrativeService? _narrative;
     private readonly IRunDataCache? _cache;
     private readonly ILogger<RunsController> _logger;
@@ -26,6 +28,7 @@ public sealed class RunsController : ControllerBase
         IBacktestRunRepository runRepo,
         BacktestOrchestrator orchestrator,
         ILogger<RunsController> logger,
+        IMarketDataStore? marketDataStore = null,
         RunNarrativeService? narrative = null,
         IRunDataCache? cache = null)
     {
@@ -35,6 +38,7 @@ public sealed class RunsController : ControllerBase
         _journals = journals;
         _runRepo = runRepo;
         _orchestrator = orchestrator;
+        _marketDataStore = marketDataStore;
         _narrative = narrative;
         _cache = cache;
         _logger = logger;
@@ -55,15 +59,24 @@ public sealed class RunsController : ControllerBase
         return Ok(run);
     }
 
+    [HttpGet("{runId}/pass-probability")]
+    public async Task<IActionResult> GetPassProbability(string runId, [FromQuery] int daysRemaining = 30, CancellationToken ct = default)
+    {
+        try
+        {
+            var svc = HttpContext.RequestServices.GetRequiredService<PassProbabilityService>();
+            var result = await svc.ComputeAsync(runId, daysRemaining, ct);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost]
     public async Task<IActionResult> Start([FromBody] StartRunRequest req, CancellationToken ct)
     {
-        var activeRuns = _orchestrator.GetAll()
-            .Where(r => r.Status is "starting" or "running")
-            .Select(r => r.RunId).ToList();
-        if (activeRuns.Count > 0)
-            return Conflict(new { error = "A backtest is already running. Cancel it or wait for completion before starting a new one.", activeRunIds = activeRuns });
-
         // iter-strategy-system P1 (D3): the row-based builder sends explicit rows
         // (strategy × symbol × timeframe × pack). When present they supersede the legacy cross-product —
         // symbols/periods/strategies are DERIVED from the enabled rows.
@@ -91,6 +104,19 @@ public sealed class RunsController : ControllerBase
             validPeriods = perList.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
         }
 
+        var activeRuns = _orchestrator.GetAll()
+            .Where(r => r.Status is "starting" or "running")
+            .Select(r => r.RunId)
+            .ToList();
+        if (activeRuns.Count > 0)
+        {
+            return Conflict(new
+            {
+                error = "A backtest is already running. Wait for it to complete or cancel it first.",
+                activeRunIds = activeRuns,
+            });
+        }
+
         var errors = new List<string>();
         if (req.Rows is { Count: > 0 } && rowPlan is not { Entries.Count: > 0 })
             errors.Add("At least one enabled row is required.");
@@ -100,6 +126,14 @@ public sealed class RunsController : ControllerBase
         if (req.Balance <= 0) errors.Add("Balance must be positive.");
         if (errors.Count > 0)
             return BadRequest(new { error = "Invalid backtest request.", details = errors });
+
+        var venue = (!string.IsNullOrWhiteSpace(req.Venue) ? req.Venue!.Trim().ToLowerInvariant() : null) ?? "replay";
+        if (venue == "tape" && _marketDataStore is not null)
+        {
+            var missing = await ValidateTapeDataAsync(req, validSymbols, validPeriods, ct);
+            if (missing.Count > 0)
+                return BadRequest(new { error = "Missing market data for tape backtest.", missing });
+        }
 
         var cfg = new BacktestConfig
         {
@@ -126,7 +160,13 @@ public sealed class RunsController : ControllerBase
             cfg.CustomParams["ForceCloseOnBreachEnabled"] = req.ForceCloseOnBreachEnabled ? "true" : "false";
         if (!string.IsNullOrWhiteSpace(req.RiskProfileId))
             cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
-        cfg.CustomParams["Venue"] = (!string.IsNullOrWhiteSpace(req.Venue) ? req.Venue!.Trim().ToLowerInvariant() : null) ?? "replay";
+        cfg.CustomParams["Venue"] = venue;
+        cfg.CustomParams["Speed"] = req.Speed.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+        cfg.CustomParams["HonestFills"] = req.HonestFills ? "true" : "false";
+        if (req.RecordExcursions)
+            cfg.CustomParams["RecordExcursions"] = "true";
+        if (req.ExplorationMode)
+            cfg.CustomParams["ExplorationMode"] = "true";
         if (req.StrategyOverrides is { Count: > 0 })
             cfg.CustomParams["StrategyOverrides"] = System.Text.Json.JsonSerializer.Serialize(req.StrategyOverrides);
         if (!string.IsNullOrWhiteSpace(req.UsePackId))
@@ -139,6 +179,14 @@ public sealed class RunsController : ControllerBase
         if (req.StripAddOns)
             cfg.CustomParams["StripAddOns"] = "true";
 
+        // P6.1: compare-both mode — tape then cTrader, same ComparePairId.
+        if (req.CompareBoth)
+            cfg.CustomParams["Compare"] = "both";
+
+        // P5.1 (F15): server-side idempotency guard against double-submit.
+        if (!string.IsNullOrWhiteSpace(req.IdempotencyKey))
+            cfg.CustomParams["IdempotencyKey"] = req.IdempotencyKey.Trim();
+
         var runId = await _command.StartAsync(cfg, ct);
         var state = _orchestrator.GetState(runId);
         _logger.LogInformation("Run started. RunId={RunId}", runId);
@@ -146,11 +194,78 @@ public sealed class RunsController : ControllerBase
         return Ok(new StartRunResponse { RunId = runId, Status = state?.Status ?? "started" });
     }
 
+    [HttpPost("compare-both")]
+    public async Task<IActionResult> CompareBoth([FromBody] CompareBothRequest req, CancellationToken ct)
+    {
+        var configName = req.ConfigName?.Trim();
+        if (string.IsNullOrWhiteSpace(configName))
+            return BadRequest(new { error = "ConfigName is required." });
+
+        var configDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..", "config", "compare-both"));
+        var configPath = Path.Combine(configDir, configName);
+
+        if (!System.IO.File.Exists(configPath))
+            return NotFound(new { error = $"Config '{configName}' not found in config/compare-both/." });
+
+        StartRunRequest startReq;
+        try
+        {
+            var json = await System.IO.File.ReadAllTextAsync(configPath, ct);
+            startReq = System.Text.Json.JsonSerializer.Deserialize<StartRunRequest>(json, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                       ?? throw new InvalidOperationException("Config file is empty or invalid.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return BadRequest(new { error = $"Failed to parse config file: {ex.Message}" });
+        }
+
+        startReq = startReq with { CompareBoth = true };
+        return await Start(startReq, ct);
+    }
+
     [HttpDelete("{runId}")]
     public async Task<IActionResult> Cancel(string runId)
     {
         _orchestrator.Cancel(runId);
         return Ok(new { cancelled = true });
+    }
+
+    [HttpPost("{runId}/force-fail")]
+    public async Task<IActionResult> ForceFail(string runId, CancellationToken ct)
+    {
+        var run = await _runRepo.GetByIdAsync(runId, ct);
+        if (run is null)
+            return NotFound(new { error = $"Run '{runId}' not found." });
+
+        if (run.CompletedAtUtc != default)
+            return Conflict(new { error = $"Run '{runId}' already finished at {run.CompletedAtUtc:O}." });
+
+        var state = _orchestrator.GetState(runId);
+        if (state is not null)
+        {
+            _orchestrator.Cancel(runId);
+            return Ok(new { runId, action = "cancelled", note = "Run was still active in orchestrator — cancelled instead." });
+        }
+
+        await _runRepo.UpdateAsync(run with
+        {
+            CompletedAtUtc = DateTime.UtcNow,
+            ErrorMessage = (run.ErrorMessage ?? "") + " Manually forced to failed.",
+            ExitCode = -1,
+        }, ct);
+        _cache?.Evict(runId);
+        _query.InvalidateRunsCache();
+
+        return Ok(new { runId, action = "force-failed" });
+    }
+
+    [HttpPatch("{runId}")]
+    public IActionResult PatchRun(string runId, [FromBody] PatchRunRequest req)
+    {
+        if (req.Speed is { } speed)
+            _orchestrator.SetSpeed(runId, speed);
+        return Ok(new { runId });
     }
 
     [HttpPost("delete")]
@@ -241,10 +356,14 @@ public sealed class RunsController : ControllerBase
         return Ok(new StartRunResponse { RunId = newRunId, Status = state?.Status ?? "started" });
     }
 
-    private static string[] ParseJsonArray(string json)
+    private string[] ParseJsonArray(string json)
     {
         try { return System.Text.Json.JsonSerializer.Deserialize<string[]>(json) ?? []; }
-        catch { return []; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse JSON array — returning empty");
+            return [];
+        }
     }
 
     [HttpGet("{runId}/trades")]
@@ -425,5 +544,38 @@ public sealed class RunsController : ControllerBase
 
         return Ok(result);
     }
+
+    private async Task<List<object>> ValidateTapeDataAsync(StartRunRequest req, string[] symbols, string[] periods, CancellationToken ct)
+    {
+        var missing = new List<object>();
+        if (_marketDataStore is null) return missing;
+
+        var inventory = await _marketDataStore.GetInventoryAsync(ct);
+        var invBySymTf = inventory
+            .GroupBy(i => (i.Symbol.ToUpperInvariant(), i.Timeframe))
+            .ToDictionary(g => g.Key, g => g.First());
+
+        foreach (var sym in symbols)
+        {
+            foreach (var per in periods)
+            {
+                if (!Enum.TryParse<Timeframe>(per, ignoreCase: true, out var tf))
+                    continue;
+
+                var key = (sym.ToUpperInvariant(), tf);
+                if (!invBySymTf.TryGetValue(key, out _))
+                {
+                    missing.Add(new { symbol = sym, timeframe = per, reason = "No data downloaded." });
+                }
+            }
+        }
+
+        return missing;
+    }
+}
+
+public sealed record PatchRunRequest
+{
+    public float? Speed { get; init; }
 }
 

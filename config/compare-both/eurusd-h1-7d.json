@@ -1,0 +1,18 @@
+{
+  "start": "2026-05-01T00:00:00Z",
+  "end": "2026-05-08T00:00:00Z",
+  "balance": 100000,
+  "commissionPerMillion": 30,
+  "spreadPips": 1,
+  "symbols": ["EURUSD"],
+  "periods": ["H1"],
+  "strategyIds": ["trend-breakout"],
+  "venue": "tape",
+  "governorEnabled": false,
+  "dailyDdEnabled": false,
+  "maxDdEnabled": false,
+  "forceCloseOnBreachEnabled": false,
+  "stripAddOns": true,
+  "honestFills": true,
+  "speed": 10
+}

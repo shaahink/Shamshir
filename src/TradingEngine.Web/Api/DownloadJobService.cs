@@ -17,9 +17,16 @@ public sealed class DownloadJobService
         _scopeFactory = scopeFactory;
         _configuration = configuration;
         _logger = logger;
+
+        var dataDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data"));
+        ShardsRoot = configuration.GetValue<string>("MarketData:ShardsPath")
+            ?? Path.Combine(dataDir, "shards");
+        Directory.CreateDirectory(ShardsRoot);
     }
 
-    public DownloadJob Start(string symbol, string[] tfs, int days, DateTime? from, DateTime? to)
+    public string ShardsRoot { get; }
+
+    public DownloadJob Start(string symbol, string[] tfs, int days, DateTime? from, DateTime? to, bool keepShards = false, int timeoutSeconds = 0)
     {
         var jobId = Guid.NewGuid().ToString("N")[..8];
         var job = new DownloadJob
@@ -28,12 +35,32 @@ public sealed class DownloadJobService
             Symbol = symbol,
             Timeframes = tfs,
             Days = days,
+            From = from,
+            To = to,
             Status = "queued",
             CreatedAtUtc = DateTime.UtcNow,
+            KeepShards = keepShards,
+            TimeoutSeconds = timeoutSeconds,
         };
         _jobs[jobId] = job;
 
         _ = Task.Run(() => ExecuteAsync(job));
+        return job;
+    }
+
+    public DownloadJob StartIngest(string? symbol = null)
+    {
+        var jobId = Guid.NewGuid().ToString("N")[..8];
+        var job = new DownloadJob
+        {
+            Id = jobId,
+            Symbol = symbol ?? "all",
+            Status = "ingesting",
+            CreatedAtUtc = DateTime.UtcNow,
+        };
+        _jobs[jobId] = job;
+
+        _ = Task.Run(() => ExecuteIngestAsync(job, symbol));
         return job;
     }
 
@@ -48,7 +75,7 @@ public sealed class DownloadJobService
         job.Status = "running";
         job.StartedAtUtc = DateTime.UtcNow;
 
-        var shardsDir = Path.Combine(Path.GetTempPath(), "shamshir-download", job.Id);
+        var shardsDir = Path.Combine(ShardsRoot, job.Id);
         try
         {
             Directory.CreateDirectory(shardsDir);
@@ -93,10 +120,11 @@ public sealed class DownloadJobService
                 DataMode = "m1",
                 ReportDir = shardsDir,
                 Record = true,
+                Symbols = [job.Symbol],
                 Periods = [periodsStr],
-                // iter-tape-trust T1/B4: hardcoded ports — no dynamic port manager yet
                 DataPort = 15562,
                 CommandPort = 15563,
+                TimeoutSeconds = job.TimeoutSeconds,
             };
 
             _logger.LogInformation("Download job {JobId}: starting cTrader CLI for {Symbol} {Tfs}", job.Id, job.Symbol, periodsStr);
@@ -135,16 +163,111 @@ public sealed class DownloadJobService
         }
         finally
         {
-            if (job.Status == "done" || job.Status == "failed")
+            if (job.Status == "done")
+            {
+                if (job.KeepShards)
+                {
+                    var archiveDir = Path.Combine(ShardsRoot, "archive");
+                    try
+                    {
+                        Directory.CreateDirectory(archiveDir);
+                        var archivedDest = Path.Combine(archiveDir, job.Id);
+                        if (Directory.Exists(archivedDest)) Directory.Delete(archivedDest, true);
+                        Directory.Move(shardsDir, archivedDest);
+                        _logger.LogInformation("Download job {JobId}: shards archived to {Dir}", job.Id, archivedDest);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Download job {JobId}: could not archive shards from {Dir}", job.Id, shardsDir);
+                    }
+                }
+                else
+                {
+                    try { if (Directory.Exists(shardsDir)) Directory.Delete(shardsDir, true); }
+                    catch { _logger.LogWarning("Download job {JobId}: could not clean up shards dir {Dir}", job.Id, shardsDir); }
+                }
+            }
+            else if (job.Status == "failed")
             {
                 try { if (Directory.Exists(shardsDir)) Directory.Delete(shardsDir, true); }
-                catch { _logger.LogWarning("Download job {JobId}: could not clean up shards dir {Dir}", job.Id, shardsDir); }
+                catch { _logger.LogWarning("Download job {JobId}: could not clean up failed shards dir {Dir}", job.Id, shardsDir); }
             }
             else
             {
-                // Keep shards on unexpected failure — they can be inspected/re-ingested
                 _logger.LogWarning("Download job {JobId}: shards retained at {Dir} (status={Status})", job.Id, shardsDir, job.Status);
             }
+        }
+    }
+
+    private async Task ExecuteIngestAsync(DownloadJob job, string? symbol)
+    {
+        try
+        {
+            var root = ShardsRoot;
+            if (!Directory.Exists(root))
+            {
+                job.Status = "done";
+                job.BarsRecorded = 0;
+                return;
+            }
+
+            var files = new List<string>();
+            foreach (var file in Directory.GetFiles(root, "*.ndjson", SearchOption.AllDirectories))
+            {
+                var rel = Path.GetRelativePath(root, file);
+                if (rel.StartsWith("archive", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!string.IsNullOrEmpty(symbol))
+                {
+                    var fname = Path.GetFileNameWithoutExtension(file);
+                    if (!fname.StartsWith(symbol, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
+                files.Add(file);
+            }
+
+            if (files.Count == 0)
+            {
+                job.Status = "done";
+                job.BarsRecorded = 0;
+                return;
+            }
+
+            using var scope = _scopeFactory.CreateScope();
+            var store = scope.ServiceProvider.GetRequiredService<IMarketDataStore>();
+            var ingester = new MarketDataIngester(store, scope.ServiceProvider.GetService<ILogger<MarketDataIngester>>());
+
+            job.FilesTotal = files.Count;
+            var progress = new Progress<IngestProgress>(p =>
+            {
+                job.FilesProcessed = p.FilesProcessed;
+                job.BarsRecorded = p.BarsInserted;
+                job.LinesProcessed = p.LinesRead;
+                job.StatusDetails = p.FileName ?? "";
+            });
+
+            foreach (var file in files)
+            {
+                var ir = await ingester.IngestFileAsync(file, "ctrader", CancellationToken.None, progress);
+                job.BarsRecorded = ir.BarsInserted;
+
+                var archiveDir = Path.Combine(root, "archive");
+                Directory.CreateDirectory(archiveDir);
+                var dest = Path.Combine(archiveDir, Path.GetFileName(file));
+                if (File.Exists(dest)) File.Delete(dest);
+                File.Move(file, dest);
+            }
+
+            job.Status = "done";
+            job.CompletedAtUtc = DateTime.UtcNow;
+            _logger.LogInformation("Ingest job {JobId}: complete — {Files} files, {Bars} bars",
+                job.Id, files.Count, job.BarsRecorded);
+        }
+        catch (Exception ex)
+        {
+            job.Status = "failed";
+            job.Error = ex.Message;
+            _logger.LogError(ex, "Ingest job {JobId}: failed", job.Id);
         }
     }
 
@@ -181,5 +304,11 @@ public sealed class DownloadJob
     public DateTime? StartedAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
     public int BarsRecorded { get; set; }
+    public int LinesProcessed { get; set; }
+    public int FilesTotal { get; set; }
+    public int FilesProcessed { get; set; }
     public string? Error { get; set; }
+    public string? StatusDetails { get; set; }
+    public bool KeepShards { get; set; }
+    public int TimeoutSeconds { get; set; }
 }

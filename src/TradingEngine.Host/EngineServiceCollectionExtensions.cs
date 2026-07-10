@@ -60,6 +60,7 @@ public static class EngineServiceCollectionExtensions
         });
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
+        services.AddScoped<IExcursionRepository, SqliteExcursionRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
         services.AddScoped<IDatasetRepository, SqliteDatasetRepository>();
         services.AddScoped<IConfigSetRepository, SqliteConfigSetRepository>();
@@ -108,7 +109,7 @@ public static class EngineServiceCollectionExtensions
     {
         var catalog = new SymbolCatalog(options.SolutionRoot);
         var symbols = catalog.GetAll();
-        services.AddSingleton(new EngineRunContext(options.RunId) { DiagnosticsEnabled = options.DiagnosticsEnabled });
+        services.AddSingleton(new EngineRunContext(options.RunId) { DiagnosticsEnabled = options.DiagnosticsEnabled, InitialBalance = options.InitialBalance });
         services.AddSingleton(options.AdapterFactory);
 
         var symbolRegistry = new SymbolInfoRegistry();
@@ -172,10 +173,10 @@ public static class EngineServiceCollectionExtensions
         {
             var reg = sp.GetRequiredService<StrategyRegistry>();
             var loaded = sp.GetRequiredService<LoadedConfig>();
-            // Honour the run's strategy selection (the New-Backtest picker). Empty = all configured.
+            var runPlan = options.RunPlan ?? RunPlan.Empty;
             var activeIds = StrategyRegistry.SelectActiveIds(
                 loaded.StrategyConfigs.Select(c => c.Id), options.ActiveStrategyIds);
-            return reg.CreateStrategies(activeIds, loaded, sp).ToList();
+            return reg.CreateStrategies(activeIds, loaded, runPlan, sp).ToList();
         });
         services.AddSingleton<IEnumerable<IStrategy>>(sp => sp.GetRequiredService<IReadOnlyList<IStrategy>>());
         return services;
@@ -234,6 +235,7 @@ public static class EngineServiceCollectionExtensions
                 EntryPlanner = sp.GetRequiredService<EntryPlanner>(),
                 PositionManager = sp.GetRequiredService<IPositionManager>(),
                 SignalGate = sp.GetRequiredService<ISignalGate>(),
+                ExitCalibrationLookup = sp.GetService<IExitCalibrationLookup>(),
             },
             Persistence = new PersistenceServices
             {
@@ -245,6 +247,7 @@ public static class EngineServiceCollectionExtensions
                 Journal = sp.GetRequiredService<IPipelineJournal>(),
                 StepJournal = sp.GetRequiredService<IJournalWriter>(),
                 ScopeFactory = sp.GetRequiredService<IServiceScopeFactory>(),
+                PreloadedAuxBars = options.PreloadedAuxBars,
             },
         });
 
@@ -330,6 +333,13 @@ public static class EngineHostWireExtensions
             var constraints = ConstraintSet.Resolve(resolvedProfile, ruleSet);
             var govOptions = app.Services.GetRequiredService<GovernorOptions>();
             constraints = constraints with { GovernorEnabled = constraints.GovernorEnabled && govOptions.Enabled };
+
+            // P5.4: wire per-group exposure caps from config/exposure-groups.json (opt-in, empty → no-op).
+            var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+            var groups = LoadExposureGroups(solutionRoot);
+            if (groups.Count > 0)
+                constraints = constraints.WithExposureGroups(groups);
+
             rm.SetConstraints(constraints);
             var passEstimator = app.Services.GetRequiredService<IPassProbabilityEstimator>();
             var complianceSvc = new PropFirmComplianceService(
@@ -339,5 +349,34 @@ public static class EngineHostWireExtensions
 
         var sizePipeline = app.Services.GetRequiredService<SizeModifierPipeline>();
         rm.SetSizePipeline(sizePipeline);
+    }
+
+    private static IReadOnlyList<ExposureGroup> LoadExposureGroups(string solutionRoot)
+    {
+        var path = Path.Combine(solutionRoot, "config", "exposure-groups.json");
+        if (!File.Exists(path)) return Array.Empty<ExposureGroup>();
+
+        try
+        {
+            var json = File.ReadAllText(path);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var groupsNode = doc.RootElement.GetProperty("groups");
+            var result = new List<ExposureGroup>();
+            foreach (var prop in groupsNode.EnumerateObject())
+            {
+                var id = prop.Name;
+                var label = prop.Value.GetProperty("label").GetString() ?? id;
+                var symbols = prop.Value.GetProperty("symbols").EnumerateArray()
+                    .Select(s => s.GetString()!.ToUpperInvariant())
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var maxExposure = (decimal)prop.Value.GetProperty("maxExposure").GetDouble();
+                result.Add(new ExposureGroup(id, label, symbols, maxExposure));
+            }
+            return result;
+        }
+        catch
+        {
+            return Array.Empty<ExposureGroup>();
+        }
     }
 }

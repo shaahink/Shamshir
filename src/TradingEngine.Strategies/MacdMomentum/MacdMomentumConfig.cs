@@ -11,6 +11,9 @@ public sealed record MacdMomentumConfig : IStrategyConfig
     public PositionManagementOptions PositionManagement { get; init; } = new();
     public ReentryOptions Reentry { get; init; } = new();
     public MacdMomentumParameters Parameters { get; init; } = new();
+    public Timeframe EntryTimeframe { get; init; } = Timeframe.H1;
+    public string? Symbol { get; init; }
+    public IReadOnlyList<Timeframe> RequiredTimeframes { get; init; } = [];
 }
 
 public sealed record MacdMomentumParameters

@@ -8,8 +8,8 @@ public sealed class ComposedStrategy : IStrategy
 
     public string Id { get; }
     public string DisplayName { get; }
-    public Timeframe EntryTimeframe => Timeframe.H1;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => Config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [Config.EntryTimeframe];
     public int RequiredBarCount => _signal.RequiredBarCount;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => _signal.RequiredIndicators;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors { get; }
@@ -38,8 +38,8 @@ public sealed class ComposedStrategy : IStrategy
     {
         try
         {
-            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            var bars = context.Bars.GetValueOrDefault(Config.EntryTimeframe);
+            if (bars is null || bars.Count < RequiredBarCount)
                 return null;
 
             foreach (var filter in _filters)
@@ -99,4 +99,7 @@ internal sealed record ComposedStrategyConfig(string Id, string DisplayName, Ree
     public OrderEntryOptions OrderEntry => new();
     public PositionManagementOptions PositionManagement => new();
     public ReentryOptions Reentry => ReentryOverride ?? new();
+    public Timeframe EntryTimeframe { get; init; } = Timeframe.H1;
+    public string? Symbol { get; init; }
+    public IReadOnlyList<Timeframe> RequiredTimeframes { get; init; } = [];
 }

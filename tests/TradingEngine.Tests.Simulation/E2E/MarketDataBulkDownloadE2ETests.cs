@@ -6,6 +6,7 @@ using TradingEngine.Infrastructure.MarketData;
 namespace TradingEngine.Tests.Simulation.E2E;
 
 [Collection("CtraderSerial")]
+[Trait("Category", "CtraderContract")]
 [Trait("RequiresCTrader", "true")]
 public sealed class MarketDataBulkDownloadE2ETests : IDisposable
 {

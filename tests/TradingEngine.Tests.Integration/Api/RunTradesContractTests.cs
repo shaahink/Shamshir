@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -38,7 +39,7 @@ public sealed class RunTradesContractTests : IClassFixture<WebApplicationFactory
     {
         _client.Dispose();
         _configuredFactory.Dispose();
-        if (Directory.Exists(_tempDir)) { try { Directory.Delete(_tempDir, true); } catch { /* best-effort */ } }
+        if (Directory.Exists(_tempDir)) { SqliteConnection.ClearAllPools(); try { Directory.Delete(_tempDir, true); } catch { /* best-effort */ } }
     }
 
     private async Task SeedTradeAsync(decimal stopLoss, decimal? takeProfit, string mode = "Market")

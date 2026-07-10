@@ -1,4 +1,4 @@
-import { Component, inject, input, signal, computed, OnInit, OnChanges, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, input, signal, computed, OnInit, OnDestroy, effect, ChangeDetectionStrategy } from '@angular/core';
 import { CandleChartComponent, type OhlcBar, type PriceMarker } from './candle-chart.component';
 import type { TradeDetail } from '../models/api.types';
 import { TradesApiService } from '../features/trades/trades.service';
@@ -65,7 +65,7 @@ import { markerFor } from './chart-marker.helper';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TradeChartCardComponent implements OnInit, OnChanges {
+export class TradeChartCardComponent implements OnInit, OnDestroy {
   private api = inject(TradesApiService);
   readonly tradeId = input.required<string>();
 
@@ -80,15 +80,15 @@ export class TradeChartCardComponent implements OnInit, OnChanges {
   }, { allowSignalWrites: true });
 
   async ngOnInit(): Promise<void> {
-    await this.loadTradeData();
-  }
-
-  async ngOnChanges(): Promise<void> {
-    await this.loadTradeData();
-  }
-
-  private async loadTradeData(): Promise<void> {
     const id = this.tradeId();
+    if (id) await this.loadTrade(id);
+  }
+
+  ngOnDestroy(): void {
+    this.loadEffect.destroy();
+  }
+
+  private async loadTrade(id: string): Promise<void> {
     this.bars.set([]);
     this.markers.set([]);
 
@@ -108,13 +108,10 @@ export class TradeChartCardComponent implements OnInit, OnChanges {
           open: b.open, high: b.high, low: b.low, close: b.close,
         })),
       );
-      const mks = chart.markers.map((m: any) => ({
-        ...markerFor(m.kind, m.price),
-        time: m.time ? m.time * 1000 : undefined,
-      }));
+      const mks = chart.markers.map((m: any) => markerFor(m.kind, m.price));
       const t = this.trade();
       if (t?.exitReason) {
-        mks.push({ price: t.exitPrice, label: `Exit: ${t.exitReason}`, color: '#fbbf24', time: this.tradeCloseMs() ?? undefined });
+        mks.push({ price: t.exitPrice, label: `Exit: ${t.exitReason}`, color: '#fbbf24' });
       }
       this.markers.set(mks);
     } catch {

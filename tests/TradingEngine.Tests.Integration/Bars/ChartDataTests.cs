@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NSubstitute;
+using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
 using TradingEngine.Web.Api;
@@ -57,7 +59,7 @@ public sealed class ChartDataTests : IDisposable
         }
 
         await using var read = NewContext();
-        var result = await new TradesController(read, new TradingEngine.Web.Services.BarQueryService(read)).Get(tradeId, CancellationToken.None);
+        var result = await new TradesController(read, new TradingEngine.Web.Services.BarQueryService(read), Substitute.For<IExcursionRepository>()).Get(tradeId, CancellationToken.None);
 
         var detail = (result as OkObjectResult)!.Value as TradeDetailResponse;
         detail.Should().NotBeNull();

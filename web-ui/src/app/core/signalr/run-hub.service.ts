@@ -12,12 +12,13 @@ export interface RunProgressEnvelope {
   etaSeconds: number;
   wallElapsedMs: number;
   barsPerSec: number;
-  equity: number;
+  speed: number;
+  equity: number | null;
   balance: number;
   openPositions: number;
-  dailyDdPct: number;
-  maxDdPct: number;
-  distanceToDailyLimit: number;
+  dailyDdPct: number | null;
+  maxDdPct: number | null;
+  distanceToDailyLimit: number | null;
   governorState: string;
   governorReason: string;
   counters: { signals: number; orders: number; fills: number; closes: number; rejections: number; breaches: number };

@@ -71,6 +71,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<decimal>("CommissionTotal")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ComparePairId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CompletedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -90,6 +93,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("ExitCode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ExplorationMode")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("GovernorEnabled")
@@ -117,6 +123,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<string>("Periods")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("RecordExcursions")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("RegimeEnabled")
                         .HasColumnType("INTEGER");
@@ -169,6 +178,9 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<long>("WallElapsedMs")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("WarningsJson")
+                        .HasColumnType("TEXT");
 
                     b.Property<double>("WinRatePct")
                         .HasColumnType("REAL");
@@ -387,6 +399,81 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.HasIndex("TimestampUtc");
 
                     b.ToTable("EquitySnapshots", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ExitCalibrationEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("BeOffsetPips")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("BeTriggerR")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DatasetId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntryTimeframe")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("FittedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("IsEndUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("IsStartUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("OosEndUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("OosStartUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("PartialCloseFraction")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("PartialTriggerR")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Regime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("SlAtrMultiple")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("StrategyId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("TpRrMultiple")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("TrailAtrMultiple")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StrategyId", "Symbol", "EntryTimeframe", "Regime")
+                        .IsUnique();
+
+                    b.ToTable("ExitCalibrations", (string)null);
                 });
 
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ExperimentEntity", b =>
@@ -693,6 +780,147 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.ToTable("PropFirmRuleSets", (string)null);
                 });
 
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ReferenceScaleEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntryTimeframe")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("MedianAtrPips")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("MedianBarRangePips")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("MedianSpreadPips")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("RefreshedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SampleBarCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Symbol", "EntryTimeframe")
+                        .IsUnique();
+
+                    b.ToTable("ReferenceScales", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ResearchPipelineEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ArtifactDir")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CurrentStepIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlaybookJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StartedAtUtc");
+
+                    b.ToTable("ResearchPipelines", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ResearchPipelineStepEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ArtifactPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParamHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PipelineId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("StartedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StepIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VerdictJson")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PipelineId", "StepIndex")
+                        .IsUnique();
+
+                    b.ToTable("ResearchPipelineSteps", (string)null);
+                });
+
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.RiskProfileEntity", b =>
                 {
                     b.Property<string>("Id")
@@ -709,12 +937,57 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("SeededAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SeededHash")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.ToTable("RiskProfiles", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.StrategyCellParkEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ParkedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StrategyId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Timeframe")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StrategyId", "Symbol", "Timeframe")
+                        .IsUnique();
+
+                    b.ToTable("StrategyCellParks", (string)null);
                 });
 
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.StrategyConfigEntity", b =>
@@ -730,6 +1003,15 @@ namespace TradingEngine.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EntryFilterJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ExpectedHoldBars")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ExpectedTradesPerWeek")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("OrderEntryJson")
@@ -752,6 +1034,15 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("SeededAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SeededHash")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Thesis")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -761,6 +1052,42 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("StrategyConfigs", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.TradeExcursionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PathJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PositionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RunId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SessionLabel")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RunId");
+
+                    b.HasIndex("RunId", "PositionId")
+                        .IsUnique();
+
+                    b.ToTable("TradeExcursions", (string)null);
                 });
 
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.TradeResultEntity", b =>
@@ -801,6 +1128,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<string>("EntrySnapshotJson")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("EntryTimeframe")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ExitDetailJson")
                         .HasColumnType("TEXT");
 
@@ -818,13 +1148,22 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<decimal?>("InitialStopLoss")
+                        .HasColumnType("REAL");
+
                     b.Property<decimal>("Lots")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MaeR")
                         .HasColumnType("REAL");
 
                     b.Property<double>("MaxAdverseExcursion")
                         .HasColumnType("REAL");
 
                     b.Property<double>("MaxFavorableExcursion")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MfeR")
                         .HasColumnType("REAL");
 
                     b.Property<string>("Mode")
@@ -905,6 +1244,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Detail")
                         .HasColumnType("TEXT");
 
@@ -917,6 +1259,9 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<string>("RunId")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Venue")
@@ -932,6 +1277,119 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.ToTable("VenueSessions", (string)null);
                 });
 
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.WalkForwardJobEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CompletedWindows")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SpecJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TotalWindows")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("WalkForwardJobs", (string)null);
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.WalkForwardWindowResultEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ChosenParamsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("PlateauValue")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("StrategyId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("TestFromUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("TestNetProfit")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TestRunId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("TestToUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TestTotalTrades")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("TestWinRatePct")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Timeframe")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("TrainFromUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("TrainToUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TrialsCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("WindowIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "WindowIndex")
+                        .IsUnique();
+
+                    b.ToTable("WalkForwardWindowResults", (string)null);
+                });
+
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ExperimentRunEntity", b =>
                 {
                     b.HasOne("TradingEngine.Infrastructure.Persistence.Entities.ExperimentEntity", "Experiment")
@@ -943,9 +1401,37 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Navigation("Experiment");
                 });
 
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ResearchPipelineStepEntity", b =>
+                {
+                    b.HasOne("TradingEngine.Infrastructure.Persistence.Entities.ResearchPipelineEntity", null)
+                        .WithMany("Steps")
+                        .HasForeignKey("PipelineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.WalkForwardWindowResultEntity", b =>
+                {
+                    b.HasOne("TradingEngine.Infrastructure.Persistence.Entities.WalkForwardJobEntity", null)
+                        .WithMany("Windows")
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ExperimentEntity", b =>
                 {
                     b.Navigation("Runs");
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ResearchPipelineEntity", b =>
+                {
+                    b.Navigation("Steps");
+                });
+
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.WalkForwardJobEntity", b =>
+                {
+                    b.Navigation("Windows");
                 });
 #pragma warning restore 612, 618
         }
