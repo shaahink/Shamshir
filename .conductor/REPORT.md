@@ -1,10 +1,10 @@
 ﻿# Conductor — Shamshir iter-land-fix run report
 
-_Updated 2026-07-10 01:31 UTC · branch `iter/parity-pipeline` · HEAD `9962432`_
+_Updated 2026-07-10 01:55 UTC · branch `iter/parity-pipeline` · HEAD `f809a9b`_
 
 **Status:** Idle
-**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 1 · working ▸ A1
-**Checkpoints:** 0/6 done · **Sessions run:** 9 · **Cost:** $0.6227 · **Tokens:** 832,769 in / 64,189 out / 76,787 think
+**Stage:** A1 — Fix F17 — tape/replay zero-trade regression · attempts used 2 · working ▸ A1
+**Checkpoints:** 0/6 done · **Sessions run:** 10 · **Cost:** $0.7320 · **Tokens:** 977,834 in / 69,464 out / 94,928 think
 
 ## Stage progress
 
@@ -78,6 +78,7 @@ _Updated 2026-07-10 01:31 UTC · branch `iter/parity-pipeline` · HEAD `9962432`
 | 7 | A1 | Resume | 6r1 | 07-09 22:29 | 0:20 | Stalled |  | 0 |  | $0.0289 | 57,031/1,669 |
 | 8 | A1 | Deliver | 1 | 07-10 01:00 | 0:00 | Interrupted |  | 0 |  |  |  |
 | 9 | A1 | Resume | 1r1 | 07-10 01:01 | 0:29 | Stalled |  | 0 |  | $0.0903 | 91,222/11,587 |
+| 10 | A1 | Resume | 2r2 | 07-10 01:31 | 0:23 | Stalled |  | 0 |  | $0.1092 | 145,065/5,275 |
 
 ## Timeline
 
@@ -110,6 +111,8 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 07-09 23:50:56  ■ needs human — stage A1 used all 6 attempts without completing — inspect and `conductor resume` (or `conductor skip`)
 07-10 02:01:58  ◆ run resumed · Shamshir iter-land-fix
 07-10 02:01:58  • session #9 A1 Resume started (attempt 1/6)
+07-10 02:31:42  • session #9 A1 → Stalled  (29m43s)
+07-10 02:31:42  • session #10 A1 Resume started (attempt 2/6)
 ```
 
 ## Health
@@ -117,8 +120,9 @@ _Transitions with duration, from the event log (`.conductor/events.jsonl`)._
 _Execution-health signals, folded from the event log (`.conductor/events.jsonl`)._
 
 ```
-sessions 8 · retries 6 (75 %) · overall Warn
-⚠ [high-retry-rate] 6/8 sessions were retries (75 %)
+sessions 9 · retries 7 (78 %) · overall Alert
+⛔ [same-failure-loop] stage A1: 3 consecutive sessions made no progress
+⚠ [high-retry-rate] 7/9 sessions were retries (78 %)
 ```
 
 ## Repo
@@ -128,7 +132,7 @@ _Live git snapshot (branch, working tree, sync vs upstream)._
 ```
 branch: iter/parity-pipeline
 working tree: M docs/iterations/iter-land-fix/TRACKER.md, M src/TradingEngine.Adapters.CTrader/BuildInfo.g.cs, ?? conductor.plan.json
-vs upstream: 5 ahead
+vs upstream: 6 ahead
 ```
 
 ### Commits by session
