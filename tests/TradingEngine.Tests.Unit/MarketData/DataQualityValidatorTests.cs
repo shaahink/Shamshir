@@ -286,5 +286,9 @@ public sealed class DataQualityValidatorTests
         }
 
         public void Register(SymbolInfo info) { }
+
+        public void UpsertVenueSpec(VenueSymbolSpec spec) { }
+        public bool TryGetVenueSpec(Symbol symbol, out VenueSymbolSpec spec) { spec = null!; return false; }
+        public bool HasAnyVenueSpecs => false;
     }
 }

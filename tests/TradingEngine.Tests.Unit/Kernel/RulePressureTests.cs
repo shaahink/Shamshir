@@ -99,6 +99,6 @@ public sealed class RulePressureTests
             ResetUtc);
 
         costs.NightsHeld.Should().Be(3, "Wed→Thu: 1 night × triple = 3 nights charged");
-        costs.Swap.Should().Be(-4.5m, "3 nights × -1.5/night = -4.5 swap total");
+        costs.Swap.Should().Be(4.5m, "3 nights × 1.5 = 4.5 credit (costs negative convention: credit = positive)");
     }
 }

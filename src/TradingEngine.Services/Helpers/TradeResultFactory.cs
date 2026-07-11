@@ -26,7 +26,7 @@ public static class TradeResultFactory
         var gross = effect.GrossProfit is { } g ? new Money(g, currency) : recomputedGross;
         var commission = new Money(effect.Commission ?? 0m, currency);
         var swap = new Money(effect.Swap ?? 0m, currency);
-        var net = effect.NetProfit is { } n ? new Money(n, currency) : gross.Subtract(commission).Subtract(swap);
+        var net = effect.NetProfit is { } n ? new Money(n, currency) : gross.Add(commission).Add(swap);
 
         var pipSize = symbolInfo.PipSize;
         var entry = effect.EntryPrice.Value;

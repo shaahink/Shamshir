@@ -2,8 +2,9 @@ namespace TradingEngine.Services.Helpers;
 
 /// <summary>
 /// Itemised result of closing a position: the gross (cost-free) PnL, the round-turn commission,
-/// the accrued overnight swap, and the resulting net. <see cref="NightsHeld"/> is surfaced for the
-/// journal so a reader can see WHY the swap is what it is.
+/// the accrued overnight swap, and the resulting net. All costs follow the unified negative
+/// convention (D9): costs are NEGATIVE, <c>Net = Gross + Commission + Swap</c>.
+/// <see cref="NightsHeld"/> is surfaced for the journal so a reader can see WHY the swap is what it is.
 /// </summary>
 public readonly record struct TradeCosts(
     decimal GrossProfit,
@@ -15,14 +16,19 @@ public readonly record struct TradeCosts(
 /// <summary>
 /// Single source of truth for trade-close economics, shared by every venue so the simulated and the
 /// replay backtests (and the live itemisation) can never diverge. Gross PnL uses the canonical
-/// <see cref="PipCalculator.GrossPnL"/> (which correctly handles account-currency, base==account and
-/// cross-quoted symbols — the previous inline formula in the simulated venue mis-priced USD-base pairs
-/// such as USDJPY/USDCHF/USDCAD). Commission is a round-turn charge (per-side × 2). Swap accrues per
-/// rollover boundary crossed, tripled on the configured triple-swap weekday.
+/// <see cref="PipCalculator.GrossPnL"/>.
 ///
-/// F5 (gap): Commission is computed as the full round-turn at close. Real cTrader charges half at
-/// position open and half at close. Splitting this requires entry-side commission tracking in the
-/// venues + a separate entry commission field on TradeCosts. Tracked as a fidelity gap.
+/// <para>Costs follow the cTrader/industry convention (D9): <b>costs are NEGATIVE</b>,
+/// <c>Net = Gross + Commission + Swap</c>. Commission is always a cost (negative); swap is
+/// negated from the broker rate so that a cost-rate produces a negative number.</para>
+///
+/// <para>Commission uses the per-lot-per-side rate from <see cref="SymbolInfo"/>. The
+/// <paramref name="commissionPerMillion"/> parameter is reserved for P1 (venue-declared commission
+/// model) — when <c>null</c> the symbol-level rate is used.</para>
+///
+/// <para>Swap sources its rate from <see cref="SymbolInfo"/> swap rates.
+/// <paramref name="swapLongPerLotPerNight"/> / <paramref name="swapShortPerLotPerNight"/> overrides
+/// are reserved for P1 (venue-declared rates).</para>
 /// </summary>
 public static class TradeCostCalculator
 {
@@ -37,20 +43,23 @@ public static class TradeCostCalculator
         Func<string, string, decimal> getCrossRate,
         DateTime openedAtUtc,
         DateTime closedAtUtc,
-        TimeSpan? dailyResetUtc = null)
+        TimeSpan? dailyResetUtc = null,
+        decimal? commissionPerMillion = null,
+        decimal? swapLongPerLotPerNight = null,
+        decimal? swapShortPerLotPerNight = null)
     {
         var gross = PipCalculator.GrossPnL(direction, entryPrice, exitPrice, lots, symbol, getCrossRate).Amount;
 
-        var commission = lots * symbol.CommissionPerLotPerSide * 2m;
+        var commission = -(lots * symbol.CommissionPerLotPerSide * 2m);
 
         var nights = CountNightsHeld(openedAtUtc, closedAtUtc, symbol.TripleSwapWeekday,
             dailyResetUtc ?? DefaultDailyResetUtc);
         var swapRate = direction == TradeDirection.Long
-            ? symbol.SwapLongPerLotPerNight
-            : symbol.SwapShortPerLotPerNight;
-        var swap = nights * swapRate * lots;
+            ? swapLongPerLotPerNight ?? symbol.SwapLongPerLotPerNight
+            : swapShortPerLotPerNight ?? symbol.SwapShortPerLotPerNight;
+        var swap = -(nights * swapRate * lots);
 
-        var net = gross - commission - swap;
+        var net = gross + commission + swap;
         return new TradeCosts(gross, commission, swap, net, nights);
     }
 
@@ -64,14 +73,10 @@ public static class TradeCostCalculator
     {
         if (openedUtc >= closedUtc) return 0;
 
-        // First rollover on/after open: the reset on the open's date, or the next day's if open is
-        // already past today's reset.
         var d = openedUtc.Date;
         var resetTime = d + dailyResetUtc;
         if (openedUtc > resetTime) d = d.AddDays(1);
 
-        // Last rollover on/before close: the reset on the close's date, or the prior day's if close
-        // hasn't reached today's reset yet.
         var end = closedUtc.Date;
         if (closedUtc < end + dailyResetUtc) end = end.AddDays(-1);
 

@@ -570,7 +570,7 @@ public partial class TradingEngineCBot : Robot
                 // fraction gives a close estimate for the closed portion.
                 var commission = pos.Commissions * fraction;
                 var swap = pos.Swap * fraction;
-                var netProfit = grossProfit - commission - swap;
+                var netProfit = grossProfit + commission + swap;
                 Diag($"CLOSE_PARTIAL|{positionIdStr}|lots={closeLots}|units={volumeInUnits}|success={result?.IsSuccessful}|net={netProfit:F2}");
                 if (result?.IsSuccessful == true) PublishAccount();
 

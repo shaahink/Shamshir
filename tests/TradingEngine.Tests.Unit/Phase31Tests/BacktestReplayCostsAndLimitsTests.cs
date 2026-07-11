@@ -54,9 +54,9 @@ public sealed class BacktestReplayCostsAndLimitsTests
 
         var close = Drain(adapter).Single();
         close.NewState.Should().Be(OrderState.Filled);
-        close.Commission.Should().Be(7m, "1 lot × $3.5/side × 2 = round-turn $7");
+        close.Commission.Should().Be(-7m, "1 lot × $3.5/side × 2 = round-turn $7; costs are negative");
         close.GrossProfit.Should().NotBeNull();
-        close.NetProfit.Should().Be(close.GrossProfit!.Value - 7m, "net = gross − commission − swap");
+        close.NetProfit.Should().Be(close.GrossProfit!.Value + (-7m), "net = gross + commission + swap (costs negative)");
         close.NetProfit.Should().BeLessThan(close.GrossProfit!.Value, "costs must reduce the net");
     }
 
