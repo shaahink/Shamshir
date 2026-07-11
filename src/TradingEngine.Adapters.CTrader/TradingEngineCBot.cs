@@ -179,6 +179,40 @@ public partial class TradingEngineCBot : Robot
 
         Print($"CBOT|HANDSHAKE_COMPLETE|connected");
 
+        // Emit venue symbol specs so the engine can adopt the broker's real economics (D10).
+        var emittedSpecs = new HashSet<string>();
+        foreach (var sym in symbols)
+        {
+            if (!emittedSpecs.Add(sym)) continue;
+            try
+            {
+                var spec = Symbols.GetSymbol(sym);
+                var specMsg = Serialize("symbol_spec", new
+                {
+                    v = 1,
+                    symbol = sym,
+                    commission = (double)spec.Commission,
+                    commissionType = spec.CommissionType.ToString(),
+                    swapLong = (double)spec.SwapLong,
+                    swapShort = (double)spec.SwapShort,
+                    swapCalculationType = spec.SwapCalculationType.ToString(),
+                    lotSize = (double)spec.LotSize,
+                    pipSize = (double)spec.PipSize,
+                    tickSize = (double)spec.TickSize,
+                    tickValue = (double)spec.TickValue,
+                    digits = spec.Digits,
+                    tripleSwapDay = "Wednesday",
+                    spread = (double)spec.Spread
+                });
+                _dealer.SendFrame(specMsg);
+                Print($"CBOT|SYMBOL_SPEC|symbol={sym}|commType={spec.CommissionType}|comm={spec.Commission:F4}|swapL={spec.SwapLong:F4}|swapS={spec.SwapShort:F4}");
+            }
+            catch (Exception ex)
+            {
+                Print($"CBOT|SYMBOL_SPEC_ERROR|symbol={sym}|err={ex.Message}");
+            }
+        }
+
         foreach (var (sym, period) in subs)
         {
             var tf = ParseTimeFrame(period);

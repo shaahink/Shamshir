@@ -30,6 +30,7 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
     public DbSet<StrategyCellParkEntity> StrategyCellParks => Set<StrategyCellParkEntity>();
     public DbSet<ResearchPipelineEntity> ResearchPipelines => Set<ResearchPipelineEntity>();
     public DbSet<ResearchPipelineStepEntity> ResearchPipelineSteps => Set<ResearchPipelineStepEntity>();
+    public DbSet<VenueSymbolSpecEntity> VenueSymbolSpecs => Set<VenueSymbolSpecEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -181,6 +182,16 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.Property(x => x.Detail).HasColumnType("TEXT");
             e.HasIndex(x => x.RunId);
             e.HasIndex(x => x.OccurredAtUtc);
+        });
+
+        modelBuilder.Entity<VenueSymbolSpecEntity>(e =>
+        {
+            e.ToTable("VenueSymbolSpecs");
+            e.HasKey(x => new { x.Symbol, x.Broker });
+            e.Property(x => x.CapturedAtUtc).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.CommissionType).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.SwapCalculationType).HasColumnType("TEXT").IsRequired();
+            e.Property(x => x.TripleSwapDay).HasColumnType("TEXT").IsRequired();
         });
     }
 }

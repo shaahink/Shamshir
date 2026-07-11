@@ -18,8 +18,10 @@ public static class BrokerAdapterFactory
             var transport = new NetMqMessageTransport(
                 $"tcp://127.0.0.1:{dataPort}", $"tcp://*:{commandPort}",
                 sp.GetRequiredService<ILogger<NetMqMessageTransport>>());
-            return new CTraderBrokerAdapter(transport,
+            var adapter = new CTraderBrokerAdapter(transport,
                 sp.GetRequiredService<ILogger<CTraderBrokerAdapter>>());
+            adapter.OnSymbolSpec = spec => sp.GetRequiredService<ISymbolInfoRegistry>().UpsertVenueSpec(spec);
+            return adapter;
         }
 
         return new SimulatedBrokerAdapter(

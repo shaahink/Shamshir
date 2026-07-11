@@ -893,6 +893,27 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
                 strategyConfigs.Add(c);
             }
+
+            var runOverrides = ParseOverrides(cfg);
+            if (runOverrides.Count > 0)
+            {
+                for (var i = 0; i < strategyConfigs.Count; i++)
+                {
+                    var c = strategyConfigs[i];
+                    if (runOverrides.TryGetValue(c.Id, out var ovr))
+                    {
+                        var resolved = _configResolver.Resolve(c, ovr);
+                        strategyConfigs[i] = c with
+                        {
+                            Parameters = resolved.Parameters,
+                            PositionManagement = resolved.PositionManagement,
+                            OrderEntry = resolved.OrderEntry,
+                            RegimeFilter = resolved.RegimeFilter,
+                            Reentry = resolved.Reentry,
+                        };
+                    }
+                }
+            }
         }
 
         var pfStore = scope.ServiceProvider.GetRequiredService<IPropFirmRuleSetStore>();
@@ -1235,7 +1256,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                             cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
                             sp.GetRequiredService<Func<string, string, decimal>>(),
                             sp.GetRequiredService<ILogger<TapeReplayAdapter>>(),
-                            honestFills, recordExcursions);
+                            honestFills, recordExcursions,
+                            commissionPerMillion: (decimal?)cfg.CommissionPerMillion);
                         tapeAdapter.Speed = state.Speed;
                         state.TapeAdapter = tapeAdapter;
                         return tapeAdapter;
@@ -1243,7 +1265,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     return new BacktestReplayAdapter(barRepo, sym, tf, from, to,
                         cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
                         sp.GetRequiredService<Func<string, string, decimal>>(),
-                        sp.GetRequiredService<ILogger<BacktestReplayAdapter>>());
+                        sp.GetRequiredService<ILogger<BacktestReplayAdapter>>(),
+                        commissionPerMillion: (decimal?)cfg.CommissionPerMillion);
                 },
                 DbPath = dbPath,
                 SolutionRoot = solutionRoot,
@@ -1401,6 +1424,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     sp.GetRequiredService<ILogger<NetMqMessageTransport>>());
                 var adapter = new CTraderBrokerAdapter(transport,
                     sp.GetRequiredService<ILogger<CTraderBrokerAdapter>>());
+                adapter.OnSymbolSpec = spec => sp.GetRequiredService<ISymbolInfoRegistry>().UpsertVenueSpec(spec);
                 adapter.OnStatusChange = (type, msg) =>
                 {
                     _journal.Write(runId, type, msg);

@@ -123,6 +123,7 @@ public sealed class CTraderListenService : IDisposable
                     sp.GetRequiredService<ILogger<NetMqMessageTransport>>());
                 var adapter = new CTraderBrokerAdapter(transport,
                     sp.GetRequiredService<ILogger<CTraderBrokerAdapter>>());
+                adapter.OnSymbolSpec = spec => sp.GetRequiredService<ISymbolInfoRegistry>().UpsertVenueSpec(spec);
                 adapter.RegisterSessionStartedHandler(info => listenService.OnSessionStarted(info));
                 adapter.OnStatusChange = (type, msg) =>
                 {

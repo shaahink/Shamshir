@@ -47,8 +47,9 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     // The engine never detects exits bar-by-bar — it reconciles to the venue's open set.
     public ExitMode ExitMode => ExitMode.VenueManaged;
 
-    // iter-redesign-ctrader P2.1: the venue's authoritative open position set, built from
-    // the cBot's clientOrderId ledger (populated on position open, removed on close).
+    /// <summary>Fired when the cBot emits venue-authoritative symbol economics (commission, swap,
+    /// contract size, etc.) — D10. Hook this to <see cref="ISymbolInfoRegistry.UpsertVenueSpec"/>.</summary>
+    public Action<VenueSymbolSpec>? OnSymbolSpec { get; set; }
     private readonly ConcurrentDictionary<Guid, byte> _openPositionIds = new();
     public IReadOnlySet<Guid> GetOpenPositionIds() => _openPositionIds.Keys.ToHashSet();
 
@@ -240,6 +241,10 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                             _logger.LogInformation("CTRADER|STATS|{Json}", json);
                             _journal?.Write("STATS", null, DateTime.UtcNow);
                             HandleStats(doc.RootElement);
+                            break;
+
+                        case "symbol_spec":
+                            HandleSymbolSpec(doc.RootElement);
                             break;
                     }
                 }
@@ -620,6 +625,55 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         }
         return null;
     }
+
+    private void HandleSymbolSpec(JsonElement root)
+    {
+        try
+        {
+            var sym = root.GetProperty("symbol").GetString()!;
+            var commission = (decimal)root.GetProperty("commission").GetDouble();
+            var commTypeStr = root.GetProperty("commissionType").GetString()!;
+            var swapLong = (decimal)root.GetProperty("swapLong").GetDouble();
+            var swapShort = (decimal)root.GetProperty("swapShort").GetDouble();
+            var swapCalcType = root.GetProperty("swapCalculationType").GetString()!;
+            var lotSize = (decimal)root.GetProperty("lotSize").GetDouble();
+            var pipSize = (decimal)root.GetProperty("pipSize").GetDouble();
+            var tickSize = (decimal)root.GetProperty("tickSize").GetDouble();
+            var tickValue = (decimal)root.GetProperty("tickValue").GetDouble();
+            var digits = root.GetProperty("digits").GetInt32();
+            var tripleSwapDay = root.GetProperty("tripleSwapDay").GetString()!;
+            var spread = (decimal)root.GetProperty("spread").GetDouble();
+
+            var commType = MapCommissionType(commTypeStr);
+
+            var spec = new VenueSymbolSpec(
+                Symbol.Parse(sym), "cTrader", DateTime.UtcNow,
+                commission, commType, swapLong, swapShort, swapCalcType,
+                lotSize, pipSize, tickSize, tickValue, digits,
+                Enum.TryParse<DayOfWeek>(tripleSwapDay, ignoreCase: true, out var tw) ? tw : DayOfWeek.Wednesday,
+                spread);
+
+            _logger.LogInformation("CTRADER|SYMBOL_SPEC|symbol={Symbol}|commType={CommType}|comm={Commission}|" +
+                "swapL={SwapLong}|swapS={SwapShort}|lotSize={LotSize}|pipSize={PipSize}|spread={Spread}",
+                spec.Symbol, spec.CommissionType, spec.Commission, spec.SwapLong, spec.SwapShort,
+                spec.LotSize, spec.PipSize, spec.TypicalSpread);
+
+            OnSymbolSpec?.Invoke(spec);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CTRADER|SYMBOL_SPEC_PARSE_ERR");
+        }
+    }
+
+    private static CommissionType MapCommissionType(string ctraderValue) => ctraderValue switch
+    {
+        "UsdPerMillionUsdVolume" => CommissionType.UsdPerMillionUsdVolume,
+        "Absolute" => CommissionType.AbsolutePerLot,
+        "Pips" => CommissionType.Pips,
+        "Percentage" => CommissionType.PercentOfNotionalValue,
+        _ => CommissionType.Unknown,
+    };
 
     private void TryWriteExec(ExecutionEvent exec)
     {
