@@ -17,6 +17,9 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     private readonly ISymbolInfoRegistry _symbolRegistry;
     private readonly Func<string, string, decimal> _crossRateProvider;
     private readonly ILogger<BacktestReplayAdapter> _logger;
+    private readonly decimal? _commissionPerMillion;
+    private readonly decimal? _swapLongPerLotPerNight;
+    private readonly decimal? _swapShortPerLotPerNight;
 
     private readonly Channel<Tick> _tickChannel =
         Channel.CreateUnbounded<Tick>(new UnboundedChannelOptions { SingleWriter = true });
@@ -44,7 +47,8 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         decimal Lots,
         DateTime OpenedAtUtc,
         Price StopLoss,
-        Price? TakeProfit);
+        Price? TakeProfit,
+        decimal EntryCommission = 0m);
     private sealed class PendingLimit
     {
         public required TradeDirection Direction { get; init; }
@@ -91,7 +95,10 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         decimal initialBalance,
         ISymbolInfoRegistry symbolRegistry,
         Func<string, string, decimal> crossRateProvider,
-        ILogger<BacktestReplayAdapter> logger)
+        ILogger<BacktestReplayAdapter> logger,
+        decimal? commissionPerMillion = null,
+        decimal? swapLongPerLotPerNight = null,
+        decimal? swapShortPerLotPerNight = null)
     {
         _barRepo = barRepo;
         _symbol = symbol;
@@ -103,6 +110,9 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         _symbolRegistry = symbolRegistry;
         _crossRateProvider = crossRateProvider;
         _logger = logger;
+        _commissionPerMillion = commissionPerMillion;
+        _swapLongPerLotPerNight = swapLongPerLotPerNight;
+        _swapShortPerLotPerNight = swapShortPerLotPerNight;
     }
 
     public async Task ConnectAsync(CancellationToken ct)
@@ -248,9 +258,15 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
 
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
     {
+        var symbolInfo = _symbolRegistry.Get(_symbol);
+        var entryCommission = TradeCostCalculator.ComputeEntryCommission(
+            lots, symbolInfo, fillPrice, _crossRateProvider, _commissionPerMillion);
+        _balance += entryCommission; // costs are negative — reduces balance
+
         EmitExecutionEvent(
             new ExecutionEvent(orderId, OrderState.Filled, new Price(fillPrice), lots, null, BrokerTimeUtc) { Symbol = _symbol });
-        _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc, sl, tp);
+        _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc, sl, tp, entryCommission);
+        EmitAccountUpdate(BrokerTimeUtc);
     }
 
     // Match resting limit orders against the bar that just became current. A buy limit fills when the
@@ -412,7 +428,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
             }
 
             var costs = ComputeCosts(trade, fillPrice);
-            _balance += costs.NetProfit;
+            _balance += costs.NetProfit - trade.EntryCommission;
             _openTrades.Remove(orderId);
 
             EmitExecutionEvent(new ExecutionEvent(
@@ -484,7 +500,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
             var costs = ComputeCosts(trade, fillPrice.Value);
-            _balance += costs.NetProfit;
+            _balance += costs.NetProfit - trade.EntryCommission;
             _openTrades.Remove(positionId);
 
             // Stamp the itemised economics on the close fill so the engine ledger (and the DB/report)
@@ -525,7 +541,10 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
             var symbolInfo = _symbolRegistry.Get(_symbol);
             return TradeCostCalculator.Compute(
                 trade.Direction, new Price(trade.EntryPrice), new Price(exitPrice), trade.Lots,
-                symbolInfo, _crossRateProvider, trade.OpenedAtUtc, BrokerTimeUtc);
+                symbolInfo, _crossRateProvider, trade.OpenedAtUtc, BrokerTimeUtc,
+                commissionPerMillion: _commissionPerMillion,
+                swapLongPerLotPerNight: _swapLongPerLotPerNight,
+                swapShortPerLotPerNight: _swapShortPerLotPerNight);
         }
         catch (Exception ex)
         {
@@ -547,7 +566,9 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
         {
             var partialTrade = trade with { Lots = lots };
             var costs = ComputeCosts(partialTrade, fillPrice.Value);
-            _balance += costs.NetProfit;
+            var fraction = trade.Lots > 0 ? lots / trade.Lots : 1m;
+            var entryPortion = trade.EntryCommission * fraction;
+            _balance += costs.NetProfit - entryPortion;
 
             EmitExecutionEvent(new ExecutionEvent(
                 positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc)
@@ -563,7 +584,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
             if (remaining <= 0m)
                 _openTrades.Remove(positionId);
             else
-                _openTrades[positionId] = trade with { Lots = remaining };
+                _openTrades[positionId] = trade with { Lots = remaining, EntryCommission = trade.EntryCommission - entryPortion };
             // F1: realized partial PnL must reach the account stream too.
             EmitAccountUpdate(BrokerTimeUtc);
             _logger.LogDebug("BacktestReplay: partial close {PositionId} lots={Lots} remaining={Remaining} gross={Gross:F2} net={Net:F2}",

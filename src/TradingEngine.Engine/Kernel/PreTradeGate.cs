@@ -236,11 +236,13 @@ public static class PreTradeGate
     }
 
     // M7: include round-trip commission in the candidate worst case. Swap is night-count dependent and
-    // unknown at entry — TODO(deepseek): add an estimate if a max-hold is configured.
+    // unknown at entry. Commission rate is absolute (always a cost), so use Math.Abs to guard the
+    // worst-case projection regardless of the rate's sign convention.
+    // TODO(P1): compute notional-based commission for UsdPerMillionUsdVolume when the gate has entry price.
     private static decimal CandidateWorstCase(OrderProposed p, decimal lots, SymbolInfo symbol)
     {
         var slLoss = p.SlPips * p.PipValuePerLot * lots;
-        var commission = symbol.CommissionPerLotPerSide * lots * 2m;
+        var commission = Math.Abs(symbol.CommissionPerLotPerSide) * lots * 2m;
         return slLoss + commission;
     }
 

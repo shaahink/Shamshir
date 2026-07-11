@@ -37,6 +37,9 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     private readonly ISymbolInfoRegistry _symbolRegistry;
     private readonly Func<string, string, decimal> _crossRateProvider;
     private readonly ILogger<TapeReplayAdapter> _logger;
+    private readonly decimal? _commissionPerMillion;
+    private readonly decimal? _swapLongPerLotPerNight;
+    private readonly decimal? _swapShortPerLotPerNight;
 
     private readonly TimeSpan _decisionInterval;
     private readonly TimeSpan _exitInterval;
@@ -90,7 +93,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     private DateTime _lastDecisionBarTime = DateTime.MinValue;
 
     private sealed record OpenTrade(
-        TradeDirection Direction, decimal EntryPrice, decimal Lots, DateTime OpenedAtUtc, Price StopLoss, Price? TakeProfit);
+        TradeDirection Direction, decimal EntryPrice, decimal Lots, DateTime OpenedAtUtc, Price StopLoss, Price? TakeProfit,
+        decimal EntryCommission = 0m);
 
     private sealed class PendingLimit
     {
@@ -153,7 +157,10 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         Func<string, string, decimal> crossRateProvider,
         ILogger<TapeReplayAdapter> logger,
         bool honestFills = true,
-        bool recordExcursions = false)
+        bool recordExcursions = false,
+        decimal? commissionPerMillion = null,
+        decimal? swapLongPerLotPerNight = null,
+        decimal? swapShortPerLotPerNight = null)
     {
         _store = store;
         _symbol = symbol;
@@ -168,6 +175,9 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         _logger = logger;
         _honestFills = honestFills;
         _recordExcursions = recordExcursions;
+        _commissionPerMillion = commissionPerMillion;
+        _swapLongPerLotPerNight = swapLongPerLotPerNight;
+        _swapShortPerLotPerNight = swapShortPerLotPerNight;
         _decisionInterval = decisionTf.ToTimeSpan();
         _exitInterval = exitTf.ToTimeSpan();
     }
@@ -413,9 +423,15 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
     {
+        var symbolInfo = _symbolRegistry.Get(_symbol);
+        var entryCommission = TradeCostCalculator.ComputeEntryCommission(
+            lots, symbolInfo, fillPrice, _crossRateProvider, _commissionPerMillion);
+        _balance += entryCommission;
+
         EmitExecutionEvent(
             new ExecutionEvent(orderId, OrderState.Filled, new Price(fillPrice), lots, null, BrokerTimeUtc) { Symbol = _symbol });
-        _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc, sl, tp);
+        _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc, sl, tp, entryCommission);
+        EmitAccountUpdate(BrokerTimeUtc);
     }
 
     // A buy limit fills when a bar trades down to the limit; a sell limit when it trades up to it. Fill at
@@ -586,7 +602,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                     fillPrice = checkBar.Open;
             }
             var costs = ComputeCosts(trade, fillPrice);
-            _balance += costs.NetProfit;
+            _balance += costs.NetProfit - trade.EntryCommission;
             _openTrades.Remove(orderId);
 
             EmitExecutionEvent(new ExecutionEvent(
@@ -634,7 +650,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
             var costs = ComputeCosts(trade, fillPrice.Value);
-            _balance += costs.NetProfit;
+            _balance += costs.NetProfit - trade.EntryCommission;
             _openTrades.Remove(positionId);
 
             EmitExecutionEvent(new ExecutionEvent(
@@ -669,7 +685,9 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             // it here), so TradePersistenceHandler correctly skips the null.
             var partialTrade = trade with { Lots = lots };
             var costs = ComputeCosts(partialTrade, fillPrice.Value);
-            _balance += costs.NetProfit;
+            var fraction = trade.Lots > 0 ? lots / trade.Lots : 1m;
+            var entryPortion = trade.EntryCommission * fraction;
+            _balance += costs.NetProfit - entryPortion;
 
             EmitExecutionEvent(new ExecutionEvent(
                 positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc)
@@ -683,7 +701,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
             var remaining = trade.Lots - lots;
             if (remaining <= 0m) _openTrades.Remove(positionId);
-            else _openTrades[positionId] = trade with { Lots = remaining };
+            else _openTrades[positionId] = trade with { Lots = remaining, EntryCommission = trade.EntryCommission - entryPortion };
             EmitAccountUpdate(BrokerTimeUtc);
         }
         else
@@ -701,7 +719,10 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             var symbolInfo = _symbolRegistry.Get(_symbol);
             return TradeCostCalculator.Compute(
                 trade.Direction, new Price(trade.EntryPrice), new Price(exitPrice), trade.Lots,
-                symbolInfo, _crossRateProvider, trade.OpenedAtUtc, BrokerTimeUtc);
+                symbolInfo, _crossRateProvider, trade.OpenedAtUtc, BrokerTimeUtc,
+                commissionPerMillion: _commissionPerMillion,
+                swapLongPerLotPerNight: _swapLongPerLotPerNight,
+                swapShortPerLotPerNight: _swapShortPerLotPerNight);
         }
         catch (Exception ex)
         {

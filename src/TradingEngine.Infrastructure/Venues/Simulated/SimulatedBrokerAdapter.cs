@@ -151,7 +151,7 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
             var now = BrokerTimeUtc;
             var (commission, swap, grossPnl, netPnl) = ComputeCosts(pos, exitPrice, now);
 
-            _currentBalance += netPnl;
+            _currentBalance += netPnl - pos.EntryCommission;
 
             _executionChannel.Writer.TryWrite(new ExecutionEvent(
                 positionId, OrderState.Filled, new Price(exitPrice), pos.Lots, null, now)
@@ -184,13 +184,20 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                     pos.Direction, pos.EntryPrice, new Price(exitPrice), lots,
                     pos.SymbolInfo, _crossRateProvider, pos.OpenedAtUtc, now, _dailyResetTimeUtc);
 
-                _currentBalance += costs.NetProfit;
+                var fraction = pos.Lots > 0 ? lots / pos.Lots : 1m;
+                var entryPortion = pos.EntryCommission * fraction;
+                _currentBalance += costs.NetProfit - entryPortion;
 
                 var remaining = pos.Lots - lots;
                 if (remaining <= 0)
+                {
                     _openPositions.Remove(positionId);
+                }
                 else
+                {
                     pos.Lots = remaining;
+                    pos.EntryCommission -= entryPortion;
+                }
 
                 _executionChannel.Writer.TryWrite(new ExecutionEvent(
                     positionId, OrderState.Filled, new Price(exitPrice), lots, null, now)
@@ -275,7 +282,7 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
                     var closeReason = slHit ? "SL" : "TP";
                     var (commission, swap, grossPnl, netPnl) = ComputeCosts(pos, exitPrice, tick.TimestampUtc);
 
-                    _currentBalance += netPnl;
+                    _currentBalance += netPnl - pos.EntryCommission;
 
                     _executionChannel.Writer.TryWrite(new ExecutionEvent(
                         id, OrderState.Filled,
@@ -319,6 +326,10 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
 
     private void FillOrder(Guid id, PendingOrder order, decimal fillPrice, Tick tick, SymbolInfo symbolInfo)
     {
+        var entryCommission = TradeCostCalculator.ComputeEntryCommission(
+            order.Lots, symbolInfo, fillPrice, _crossRateProvider);
+        _currentBalance += entryCommission;
+
         var pos = new SimPosition
         {
             OrderId = id,
@@ -331,6 +342,7 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
             StrategyId = order.StrategyId,
             SymbolInfo = symbolInfo,
             OpenedAtUtc = tick.TimestampUtc,
+            EntryCommission = entryCommission,
         };
 
         _openPositions[id] = pos;
@@ -389,5 +401,6 @@ public sealed class SimulatedBrokerAdapter : IBrokerAdapter
         public string StrategyId { get; set; } = "";
         public SymbolInfo SymbolInfo { get; set; } = null!;
         public DateTime OpenedAtUtc { get; set; }
+        public decimal EntryCommission { get; set; }
     }
 }

@@ -81,6 +81,7 @@ public sealed class SymbolInfoRegistry : ISymbolInfoRegistry
         return existing with
         {
             CommissionPerLotPerSide = spec.Commission,
+            CommissionType = spec.CommissionType,
             SwapLongPerLotPerNight = spec.SwapLong,
             SwapShortPerLotPerNight = spec.SwapShort,
             ContractSize = spec.LotSize,

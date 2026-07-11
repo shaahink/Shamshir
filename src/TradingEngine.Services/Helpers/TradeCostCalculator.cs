@@ -22,17 +22,38 @@ public readonly record struct TradeCosts(
 /// <c>Net = Gross + Commission + Swap</c>. Commission is always a cost (negative); swap is
 /// negated from the broker rate so that a cost-rate produces a negative number.</para>
 ///
-/// <para>Commission uses the per-lot-per-side rate from <see cref="SymbolInfo"/>. The
-/// <paramref name="commissionPerMillion"/> parameter is reserved for P1 (venue-declared commission
-/// model) — when <c>null</c> the symbol-level rate is used.</para>
+/// <para>Commission model: dispatches on <see cref="SymbolInfo.CommissionType"/>.
+/// <b>AbsolutePerLot</b>: rate is a flat per-lot-per-side fee. <b>UsdPerMillionUsdVolume</b>: rate
+/// is USD charged per million USD of notional volume per side. The notional is
+/// <c>lots × contractSize × baseToUsdRate</c>, where baseToUsdRate = price for USD-quoted symbols
+/// and = 1 for USD-based symbols. Cross pairs (e.g. EURJPY) use the supplied cross-rate function.</para>
+///
+/// <para>Half-at-open (D10): <see cref="ComputeEntryCommission"/> returns the per-side commission
+/// payable at position open. <see cref="Compute"/> returns the full round-trip. Adapters deduct the
+/// entry side at open and the remaining close side at close, keeping intra-trade equity truthful.</para>
 ///
 /// <para>Swap sources its rate from <see cref="SymbolInfo"/> swap rates.
 /// <paramref name="swapLongPerLotPerNight"/> / <paramref name="swapShortPerLotPerNight"/> overrides
-/// are reserved for P1 (venue-declared rates).</para>
+/// allow per-run calibration.</para>
 /// </summary>
 public static class TradeCostCalculator
 {
     public static readonly TimeSpan DefaultDailyResetUtc = TimeSpan.FromHours(22);
+
+    /// <summary>
+    /// Per-side commission payable at position entry. Returns a negative value (cost).
+    /// Callers deduct this from the running balance immediately at position open.
+    /// </summary>
+    public static decimal ComputeEntryCommission(
+        decimal lots,
+        SymbolInfo symbol,
+        decimal entryPrice,
+        Func<string, string, decimal> getCrossRate,
+        decimal? commissionPerMillion = null)
+    {
+        var perSide = ComputePerSideCommission(lots, symbol, entryPrice, getCrossRate, commissionPerMillion);
+        return -perSide; // costs are negative
+    }
 
     public static TradeCosts Compute(
         TradeDirection direction,
@@ -50,7 +71,8 @@ public static class TradeCostCalculator
     {
         var gross = PipCalculator.GrossPnL(direction, entryPrice, exitPrice, lots, symbol, getCrossRate).Amount;
 
-        var commission = -(lots * symbol.CommissionPerLotPerSide * 2m);
+        var perSide = ComputePerSideCommission(lots, symbol, entryPrice.Value, getCrossRate, commissionPerMillion);
+        var commission = -(perSide * 2m); // round-trip, negative
 
         var nights = CountNightsHeld(openedAtUtc, closedAtUtc, symbol.TripleSwapWeekday,
             dailyResetUtc ?? DefaultDailyResetUtc);
@@ -61,6 +83,46 @@ public static class TradeCostCalculator
 
         var net = gross + commission + swap;
         return new TradeCosts(gross, commission, swap, net, nights);
+    }
+
+    private static decimal ComputePerSideCommission(
+        decimal lots, SymbolInfo symbol, decimal price,
+        Func<string, string, decimal> getCrossRate, decimal? commissionPerMillion)
+    {
+        // commissionPerMillion override takes precedence (backward compat with config-driven runs)
+        var rate = commissionPerMillion ?? symbol.CommissionPerLotPerSide;
+
+        return symbol.CommissionType switch
+        {
+            CommissionType.AbsolutePerLot or CommissionType.None or CommissionType.Unknown
+                => lots * rate,
+
+            CommissionType.UsdPerMillionUsdVolume
+                => lots * symbol.ContractSize * BaseToUsd(symbol, price, getCrossRate) * rate / 1_000_000m,
+
+            CommissionType.Pips
+                => lots * rate * (decimal)symbol.PipSize * BaseToUsd(symbol, price, getCrossRate),
+
+            CommissionType.PercentOfNotionalValue
+                => lots * symbol.ContractSize * BaseToUsd(symbol, price, getCrossRate) * rate / 100m,
+
+            _ => lots * rate,
+        };
+    }
+
+    /// <summary>
+    /// Returns the price of 1 unit of the symbol's base currency in USD.
+    /// For USD-quoted symbols (EURUSD, XAUUSD): the price IS the USD rate.
+    /// For USD-based symbols (USDCAD, USDJPY): 1 USD = 1 USD.
+    /// For cross pairs (EURJPY, EURGBP): delegates to the cross-rate function.
+    /// </summary>
+    private static decimal BaseToUsd(SymbolInfo symbol, decimal price, Func<string, string, decimal> getCrossRate)
+    {
+        if (symbol.QuoteCurrency == "USD")
+            return price;
+        if (symbol.BaseCurrency == "USD")
+            return 1m;
+        return getCrossRate(symbol.BaseCurrency, "USD");
     }
 
     /// <summary>
