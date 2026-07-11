@@ -46,6 +46,8 @@ public sealed class LedgerReconcileService
                 t.Lots,
                 t.EntryPrice,
                 t.ExitPrice,
+                t.CommissionAmount,
+                t.SwapAmount,
                 t.NetPnLAmount,
                 t.ExitReason))
             .ToListAsync(ct);

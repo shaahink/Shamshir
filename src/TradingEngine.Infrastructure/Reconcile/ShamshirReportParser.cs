@@ -41,6 +41,8 @@ public static class ShamshirReportParser
                     GetDecimal(it, "quantity"),
                     GetDecimal(it, "entryPrice"),
                     GetDecimal(it, "closePrice"),
+                    GetDecimal(it, "commissions"),
+                    GetDecimal(it, "swaps"),
                     net,
                     ExitReason: null));
             }

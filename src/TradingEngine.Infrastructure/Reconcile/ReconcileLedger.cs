@@ -24,6 +24,8 @@ public sealed record ReconcileTrade(
     decimal Lots,
     decimal EntryPrice,
     decimal ExitPrice,
+    decimal Commission,
+    decimal Swap,
     decimal NetPnL,
     string? ExitReason);
 
@@ -44,7 +46,7 @@ public sealed record Divergence(string Field, DivergenceCategory Category, doubl
 /// <summary>Per-category tolerances. Money is an absolute currency amount; Pct is absolute percentage points.</summary>
 public sealed record ReconcileTolerance(decimal Money = 0.01m, double Pct = 0.05, int TradeCount = 0);
 
-public sealed record ReconcileReport(IReadOnlyList<Divergence> Divergences)
+public sealed record ReconcileReport(IReadOnlyList<Divergence> Divergences, IReadOnlyList<PerTradeDelta> TradeDeltas)
 {
     public bool IsMatch => Divergences.Count == 0;
 
@@ -53,10 +55,35 @@ public sealed record ReconcileReport(IReadOnlyList<Divergence> Divergences)
 
     public string ToText()
     {
-        if (IsMatch) return "RECONCILE: MATCH (no divergences beyond tolerance)";
-        var lines = Divergences
-            .OrderBy(d => d.Category)
-            .Select(d => $"  [{d.Category,-11}] {d.Field,-16} engine={d.EngineValue,12:F4}  venue={d.VenueValue,12:F4}  Δ={d.AbsDiff,10:F4}");
-        return "RECONCILE: DIVERGENCES\n" + string.Join("\n", lines);
+        if (IsMatch && TradeDeltas.Count == 0) return "RECONCILE: MATCH (no divergences beyond tolerance)";
+        var lines = new List<string>();
+        if (Divergences.Count > 0)
+        {
+            lines.Add("RECONCILE: DIVERGENCES");
+            foreach (var d in Divergences.OrderBy(d => d.Category))
+                lines.Add($"  [{d.Category,-11}] {d.Field,-16} engine={d.EngineValue,12:F4}  venue={d.VenueValue,12:F4}  Δ={d.AbsDiff,10:F4}");
+        }
+        if (TradeDeltas.Count > 0)
+        {
+            lines.Add("PER-TRADE DELTAS:");
+            lines.Add("  #  openedAt            dir  lots    entry     exit      commission  swap       net");
+            for (var i = 0; i < TradeDeltas.Count; i++)
+            {
+                var td = TradeDeltas[i];
+                lines.Add($"  {i+1,2}  {td.OpenedAtUtc:yyyy-MM-dd HH:mm}  {td.Direction,4}  {td.Lots,5:F2}  {td.EntryPrice,8:F5}  {td.ExitPrice,8:F5}  {td.CommissionDelta,10:F2}  {td.SwapDelta,8:F2}  {td.NetDelta,8:F2}");
+            }
+        }
+        return string.Join("\n", lines);
     }
 }
+
+/// <summary>Per-trade comparison between two venue legs. Costs use the unified negative convention (D9).</summary>
+public sealed record PerTradeDelta(
+    DateTime OpenedAtUtc,
+    string Direction,
+    decimal Lots,
+    decimal EntryPrice,
+    decimal ExitPrice,
+    decimal CommissionDelta,
+    decimal SwapDelta,
+    decimal NetDelta);

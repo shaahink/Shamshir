@@ -39,6 +39,38 @@ public static class LedgerReconciler
         Pct("MaxDrawdownPct", engine.MaxDrawdownPct, venue.MaxDrawdownPct);
         Pct("WinRatePct", engine.WinRatePct, venue.WinRatePct);
 
-        return new ReconcileReport(d);
+        // Per-trade deltas — match by (OpenedAtUtc, Direction, Lots) and compute cost differences.
+        var tradeDeltas = ComputeTradeDeltas(engine.Trades, venue.Trades);
+
+        return new ReconcileReport(d, tradeDeltas);
+    }
+
+    private static IReadOnlyList<PerTradeDelta> ComputeTradeDeltas(
+        IReadOnlyList<ReconcileTrade> leftTrades, IReadOnlyList<ReconcileTrade> rightTrades)
+    {
+        var deltas = new List<PerTradeDelta>();
+        var rightCopy = rightTrades.ToList();
+
+        foreach (var lt in leftTrades)
+        {
+            var matchIdx = rightCopy.FindIndex(rt =>
+                Math.Abs((rt.OpenedAtUtc - lt.OpenedAtUtc).TotalMinutes) < 5 &&
+                rt.Direction == lt.Direction &&
+                Math.Abs(rt.Lots - lt.Lots) < 0.001m);
+
+            if (matchIdx < 0) continue;
+
+            var rt = rightCopy[matchIdx];
+            rightCopy.RemoveAt(matchIdx);
+
+            deltas.Add(new PerTradeDelta(
+                lt.OpenedAtUtc, lt.Direction, lt.Lots,
+                lt.EntryPrice, lt.ExitPrice,
+                CommissionDelta: lt.Commission - rt.Commission,
+                SwapDelta: lt.Swap - rt.Swap,
+                NetDelta: lt.NetPnL - rt.NetPnL));
+        }
+
+        return deltas;
     }
 }
