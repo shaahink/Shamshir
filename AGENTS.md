@@ -281,16 +281,33 @@ the two agree destroys the only oracle we have.
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** iter-alpha-loop — **R1 and R2 are INVALID. P-phases (parity truth) come next.**
-**Read first:** `docs/iterations/iter-alpha-loop/PARITY-TRUTH.md`, then `PLAN.md` §0b/§3b.
+**Phase:** iter-alpha-loop — **P0, P1, P2, P3 all DONE (2026-07-11). P4 next.**
+**Read first:** `docs/iterations/iter-alpha-loop/TRACKER.md`, then `PLAN.md` §3b (P4), then the
+evidence files (`evidence/p1-symbol-specs.md`, `p2-limit-entry-parity.md`, `p3-exit-spread-parity.md`)
+and `docs/reference/RESTING-ORDER-CONTRACT.md`.
 **Tracker:** `docs/iterations/iter-alpha-loop/TRACKER.md`
 **Branch:** `iter/alpha-loop`
-**Gate baseline:** build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
-**Next:** **P0 — cost-sign truth.** One convention (costs NEGATIVE, `Net = Gross + Commission + Swap`),
-invariant test on every TradeResult, fix the cBot partial-close double-sign bug
-(`TradingEngineCBot.cs:571-573`), per-trade reconcile output.
-**Do NOT commit the uncommitted `TradeCostCalculator` commission formula** — it is wrong (see PARITY-TRUTH
-F4). Keep the `OrderEntry` override plumbing in `BacktestOrchestrator.cs:896-916`; that part is good.
-**Do NOT proceed to R3.**
+**Gate baseline:** build 0err/5warn · Unit 728/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
+**What shipped:** D9 (cost sign), D10 (venue-declared specs), D11 (limit-entry default) all live.
+QA + live cTrader compare-both verification (not just credential-free gates) found and fixed FOUR
+live-only cross-venue defects this session — F24, F30, F31, F32 — each with the same "0 trades on
+cTrader, N on tape" signature but a different root cause each time. See
+[[feedback-ctrader-verification-recurring-failures]] equivalent in
+`evidence/p1-symbol-specs.md` §8 for the pattern and a checklist — **any future phase touching
+`CTraderBrokerAdapter`, `TradingEngineCBot.cs`, `SymbolInfoRegistry`, order-entry/expiry, or the
+cost/spread model MUST run a live compare-both before being called done, not just the
+credential-free gate battery.**
+**Known open gaps (not blocking, filed for later):** F25 (VenueSymbolSpecs DB table never written —
+in-memory only), F26 (PreTradeGate ignores CommissionType), F27 (no unit tests on notional
+commission math), F28 (SwapCalculationType captured but unused), F29 (reconcile per-trade matcher's
+5-min window too tight for real entry-latency, and doesn't compare entry price at all). The
+`ctrader-e2e` xUnit harness's `CtraderE2EHarnessSmokeTests` currently fail with 0 trades — confirmed
+PRE-EXISTING environmental cTrader Desktop CLI bug (reproduced on pre-P0 baseline), not a regression;
+do not spend time "fixing" this without first re-confirming it's still broken (may be a transient
+cTrader auto-update issue).
+**Next:** **P4 — parity as a permanent gate** [OWNER GATE after]. `research parity` verb + the
+pre-registered tolerance budget (PLAN.md table: trade count exact, entry price ≤1 tick, lots exact,
+exit price ≤1 tick/95%, commission ≤2%, swap ≤5%, net PnL ≤1% of gross). Fix F29 first (or the
+verb can't actually measure entry-price tolerance). Then R1' (one cell per run, needs P4 green).
 
 
