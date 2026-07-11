@@ -11,21 +11,23 @@ handoff.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **P2 COMPLETE 2026-07-11** (`evidence/p2-limit-entry-parity.md`). Wrote
-  `docs/reference/RESTING-ORDER-CONTRACT.md` first, then found+fixed 2 more live cross-venue defects:
-  F30 (tape decremented limit-expiry per FINE bar instead of per DECISION bar under the default
-  dual-resolution mode — fixed, 4 new regression tests) and F31 (cBot's PlaceLimitOrder/PlaceStopOrder
-  used a shared label instead of clientOrderId, breaking expiry-cancel AND leaving no
-  Positions.Opened handler — so a resting order that filled natively in cTrader was invisible to the
-  engine; live repro was 0 vs 12 trades, same signature as F24 but a different root cause). Fixed;
-  live re-verified: tape 12, cTrader 12 (exact match, up from 0). D11 flipped live (all 9 strategies
-  now default LimitOffset, confirmed via app restart + ConfigSyncService resync). Entry-price "to the
-  tick" not fully met (attributed to pre-existing F23, tracked separately) — mechanism itself proven
-  correct (count, correlation, reporting all fixed).
-stage: **P3 — Exit + spread parity — NOT STARTED**
-gate: build 0err/5warn · Unit 725/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean (re-verified post-F30/F31-fix)
-next: **P3 → P4** (PLAN.md §3b). Then R1' (one cell per run).
-  X-phases (queue, progress truth, cTrader PID ownership, runs page, trade chart) run in parallel.
+last: **P3 COMPLETE 2026-07-11** (`evidence/p3-exit-spread-parity.md`). Gap-through fills (P3a) and
+  exit-side spread direction (P3c) already correct on code read — no fix needed. Found+fixed F32:
+  tape's spread model silently ignored the run's configured SpreadPips (always fell back to
+  symbols.json's static 30-pip XAUUSD default) while cTrader has always honoured --spread from the
+  same config field — a 30x cost-model mismatch on every compare-both run. Fixed (spreadPipsOverride
+  on TapeReplayAdapter, mirrors P1's commissionPerMillion pattern exactly), 3 new tests, live
+  re-verified (tape 13 / cTrader 12 trades — count shift is expected, a tighter matching spread eases
+  limit touch conditions tape previously missed). Deliberate side effect flagged: EVERY tape run now
+  defaults to 1-pip spread cost (was symbol-realistic ~30 pips for XAUUSD) unless a caller sets
+  SpreadPips explicitly — matches cTrader's pre-existing behavior, not scoped down to parity-only.
+  P0-P3 of the alpha-loop parity track are now DONE: 4 live cross-venue defects found+fixed this
+  session (F24, F30, F31, F32), each independently confirmed live and gate-verified.
+stage: **P4 — Parity as a permanent gate — NOT STARTED**
+gate: build 0err/5warn · Unit 728/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean (re-verified post-F32-fix)
+next: **P4** (PLAN.md §3b — research parity verb + tolerance budget, OWNER GATE after). Then R1'
+  (one cell per run, needs P4 green). X-phases (queue, progress truth, cTrader PID ownership, runs
+  page, trade chart) run in parallel with P.
 
 ## Checkpoints
 
@@ -60,7 +62,8 @@ phase (a code path is not evidence).
 | P0 | Cost-sign truth: unified negative convention, cBot partial-close fix, invariant tests | DONE | de52441 | Costs unified (Net=Gross+Comm+Swap); TradeCostCalculator+TradeResultFactory+TradingEngineCBot fixed; 2 invariant tests; 4 sign tests updated; gate 721/0/6·121/0/0·144/0/0 |
 | P1 | Venue-declared symbol specs: cBot symbol_spec, VenueSymbolSpec entity, correct commission model, half-at-open | DONE | 393ff67 56871de 83519da | M51 migration; cBot emits specs for all subscribed symbols; CTraderBrokerAdapter parses + upserts registry; CommissionType dispatch (AbsPerLot/UsdPerMillion); half-at-open in all 3 adapters; per-trade reconcile deltas; gate 721/0/6·121/0/0·144/0/0 |
 | P0+P1.QA | Static audit + LIVE cTrader verification; found+fixed F24 (MaxSlPips collapse, 100% signal rejection); filed F25-F29 | DONE | b418a98 | evidence/p1-symbol-specs.md; live repro RunIds e907e647/921ce1e4 (broken) -> f22e51bb/261bb748 (fixed); gate re-verified 721/0/6·121/0/0·144/0/0 |
-| P2 | Limit-entry parity: resting-order contract doc + F30 (fine-bar expiry decrement) + F31 (cBot fill-reporting) + D11 flip | DONE | (pending) | docs/reference/RESTING-ORDER-CONTRACT.md; evidence/p2-limit-entry-parity.md; RestingOrderContractTests.cs (4 tests); live repro a59183c1/02c56355 (0 ctrader trades) -> 26664e81/438b5977 (12/12); gate 725/0/6·121/0/0·144/0/0 |
+| P2 | Limit-entry parity: resting-order contract doc + F30 (fine-bar expiry decrement) + F31 (cBot fill-reporting) + D11 flip | DONE | 15c7f85 | docs/reference/RESTING-ORDER-CONTRACT.md; evidence/p2-limit-entry-parity.md; RestingOrderContractTests.cs (4 tests); live repro a59183c1/02c56355 (0 ctrader trades) -> 26664e81/438b5977 (12/12); gate 725/0/6·121/0/0·144/0/0 |
+| P3 | Exit + spread parity: gap-through/exit-spread verified correct + F32 (spread-number mismatch, same class as P1/P2 gaps) | DONE | (pending) | evidence/p3-exit-spread-parity.md; TapeReplaySpreadOverrideTests.cs (3 tests); live repro da7b3427/7c2be39b (13/12, tighter matching spread); gate 728/0/6·121/0/0·144/0/0 |
 
 ## Quick commands
 

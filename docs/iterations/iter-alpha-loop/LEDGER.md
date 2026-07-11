@@ -294,3 +294,34 @@ verification loop was specifically built to catch:
 - Truth gate: fill/no-fill parity MET for the one cell/window tested live; "identical to the tick"
   entry price NOT fully met (attributed to F23, tracked separately); only 1 of the plan's "2 cells ×
   2 windows" tested given session time — full matrix belongs to P4's `research parity` verb.
+
+---
+
+## P3 — 2026-07-11 — Exit + spread parity
+
+**Full detail:** `evidence/p3-exit-spread-parity.md`.
+
+- **P3(a) gap-through fills, P3(c) exit-side spread direction:** both already correct on code read
+  (`TapeReplayAdapter.ProcessSlTpHits` — SL fills at bar Open when gapped, TP does not; short exits
+  use ask-adjusted bar/price, long exits use raw bid — internally consistent with the entry-side
+  convention P2 already verified). No fix needed.
+- **F32 (found + fixed + live-verified) — the same class of gap P1/P2 kept finding:** tape's
+  `GetSpread()` only ever used the static `symbols.json` `TypicalSpread` (30 pips for XAUUSD),
+  silently ignoring the run's configured `SpreadPips` (default 1) — while cTrader has always
+  unconditionally honoured that same config field via `--spread`. A compare-both run explicitly
+  asking for a shared spread got 1 pip on cTrader and 30 pips on tape, a 30× mismatch no
+  credential-free gate could ever see. Fixed: added `spreadPipsOverride` to `TapeReplayAdapter`
+  (mirroring P1's `commissionPerMillion` pattern exactly), wired unconditionally from
+  `cfg.SpreadPips` in `BacktestOrchestrator`. 3 new tests (`TapeReplaySpreadOverrideTests.cs`).
+  **Deliberate side effect** (documented, not hidden): every tape run — not just parity ones — now
+  defaults to 1-pip spread cost instead of the symbol's static realistic value, matching what
+  cTrader has always done; flagged clearly since it changes backtest realism broadly.
+- Live re-verified (same XAUUSD H4 trend-breakout config as P2): tape `da7b3427` = 13 trades
+  (up from 12 — expected, a tighter matching spread makes limit touch conditions easier to satisfy),
+  cTrader `7c2be39b` = 12 trades. Commission still differs (-134.40 vs -45.36) — attributed to the
+  same already-documented F23 entry-latency effect (different specific trades → different lot
+  sizes), not a new P3 defect; not pursued further this session.
+- Gate battery green throughout: build 0err/5warn · Unit 728/0/6 (+3 from P2 baseline) ·
+  Integration 121/0/0 · Sim-fast 144/0/0 (one flaky, order-dependent, unrelated test failure seen
+  once — `VenueSizingParityTests.CtraderHello_SurfacesDemoBalance_ThatBacktestMustNotAdopt` —
+  confirmed to pass both in isolation and on a clean full-suite re-run, not a P3 regression).

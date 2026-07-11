@@ -1257,7 +1257,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                             sp.GetRequiredService<Func<string, string, decimal>>(),
                             sp.GetRequiredService<ILogger<TapeReplayAdapter>>(),
                             honestFills, recordExcursions,
-                            commissionPerMillion: (decimal?)cfg.CommissionPerMillion);
+                            commissionPerMillion: (decimal?)cfg.CommissionPerMillion,
+                            spreadPipsOverride: (decimal?)cfg.SpreadPips);
                         tapeAdapter.Speed = state.Speed;
                         state.TapeAdapter = tapeAdapter;
                         return tapeAdapter;

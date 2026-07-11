@@ -40,6 +40,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     private readonly decimal? _commissionPerMillion;
     private readonly decimal? _swapLongPerLotPerNight;
     private readonly decimal? _swapShortPerLotPerNight;
+    private readonly decimal? _spreadPipsOverride;
 
     private readonly TimeSpan _decisionInterval;
     private readonly TimeSpan _exitInterval;
@@ -160,7 +161,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         bool recordExcursions = false,
         decimal? commissionPerMillion = null,
         decimal? swapLongPerLotPerNight = null,
-        decimal? swapShortPerLotPerNight = null)
+        decimal? swapShortPerLotPerNight = null,
+        decimal? spreadPipsOverride = null)
     {
         _store = store;
         _symbol = symbol;
@@ -178,6 +180,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         _commissionPerMillion = commissionPerMillion;
         _swapLongPerLotPerNight = swapLongPerLotPerNight;
         _swapShortPerLotPerNight = swapShortPerLotPerNight;
+        _spreadPipsOverride = spreadPipsOverride;
         _decisionInterval = decisionTf.ToTimeSpan();
         _exitInterval = exitTf.ToTimeSpan();
     }
@@ -419,10 +422,20 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     }
 
     // P0.2 (D3): FULL spread — bars are bid, ask = bid + spread. See SpreadConvention.
-    // P6.2: per-bar recorded spread takes precedence when available (e.g. from live-tick capture);
-    // falls back to the symbol's TypicalSpread for bars without per-bar data (all historical bars).
+    // P3 (F32): the run's explicit spreadPips — the SAME number cTrader gets via --spread — takes
+    // top priority. Before this, tape always fell back to the static symbols.json TypicalSpread
+    // regardless of what spreadPips a compare-both/parity run configured, so the two legs' cost
+    // models used different spreads even when the run explicitly asked for one shared number
+    // ("Feed both from the same source", PLAN.md P3(b)). Then P6.2's per-bar recorded spread
+    // (e.g. from live-tick capture); falls back to the symbol's TypicalSpread for bars without
+    // per-bar data (all historical bars) or when no run-level override was given.
     private decimal GetSpread()
     {
+        if (_spreadPipsOverride is { } pips)
+        {
+            try { return pips * _symbolRegistry.Get(_symbol).PipSize; }
+            catch { /* fall through to the other sources below */ }
+        }
         if (_currentSpread is { } s) return s;
         try { return _symbolRegistry.Get(_symbol).TypicalSpread; }
         catch { return 0.0001m; }
