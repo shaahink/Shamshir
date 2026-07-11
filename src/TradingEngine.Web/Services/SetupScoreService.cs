@@ -110,15 +110,17 @@ public sealed class SetupScoreService
         }, ScoreJsonOpts);
 
         // Persist as ExperimentRun
+        var effectiveVariant = variantLabel ?? strategyId ?? "";
         var targetExperimentId = experimentId ?? await GetOrCreateDefaultExperimentAsync(ct);
 
         var existing = await _db.ExperimentRuns
             .FirstOrDefaultAsync(er => er.ExperimentId == targetExperimentId && er.BacktestRunId == backtestRunId
-                && er.VariantLabel == (variantLabel ?? ""), ct);
+                && er.VariantLabel == effectiveVariant, ct);
 
         if (existing is not null)
         {
             existing.ScoreJson = scoreJson;
+            existing.UpdatedAtUtc = DateTime.UtcNow;
             existing.VariantLabel = variantLabel ?? existing.VariantLabel;
             if (foldIndex.HasValue) existing.FoldIndex = foldIndex.Value;
             if (foldRole is not null) existing.FoldRole = foldRole;
@@ -130,7 +132,7 @@ public sealed class SetupScoreService
                 Id = Guid.NewGuid(),
                 ExperimentId = targetExperimentId,
                 BacktestRunId = backtestRunId,
-                VariantLabel = variantLabel ?? "",
+                VariantLabel = effectiveVariant,
                 FoldIndex = foldIndex ?? 0,
                 FoldRole = foldRole ?? "Train",
                 ScoreJson = scoreJson,

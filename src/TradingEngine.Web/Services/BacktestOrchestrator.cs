@@ -1382,9 +1382,6 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             _broadcaster.Publish(BuildProgress(runState, "running"), force: evt.EventType == "BREACH");
         });
 
-        var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
-            0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
-
         var strategyIds = ParseStrategyIds(cfg);
         var loadedConfig = await BuildLoadedConfigFromDbAsync(cfg);
         var effectiveStrategyIds = strategyIds.Length > 0

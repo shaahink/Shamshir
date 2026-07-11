@@ -11,14 +11,15 @@ handoff.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **R1 COMPLETE** — baseline sweep executed. 252 cells (9 strat x 14 sym x {H1,H4}) over 2025-07-04->2026-05-05.
-  28 batched tape runs (each running all 9 strategies), 31 min wall time. 4/252 cells above 20-trade floor:
-  trend-breakout/XAUUSD/H4=100.0, trend-breakout/USDCAD/H4=74.7, bb-squeeze/USDCAD/H4=73.2, trend-breakout/NZDUSD/H1=47.1.
-  248 below-floor cells all have recorded reasons. Scoreboard artifacts at evidence/scoreboard-s1.{md,csv}.
-  SetupScoreService now supports per-strategy filtering (strategyId param). Baseline-sv1 experiment: 4 ExperimentRuns.
-stage: **R1 — Baseline sweep — DONE**
-gate: build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden 61/0/0 · sweep 100% coverage
-next: **R2 — Parity guard: compare-both on top 3 cells + reconcile + owner gate**
+last: **R2 COMPLETE** — parity guard executed (4 iterations). v4: 2-month windows on clean (XAUUSD-tb) and
+  problematic (USDCAD-tb) cells. XAUUSD: 14v15 (+7.1%). USDCAD: 13v13 (0% — exact match).
+  The 33% divergence from v3 was a short-window artefact — converges to 0% on 2 months.
+  Divergence investigation document: docs/iterations/iter-alpha-loop/R2-DIVERGENCE-INVESTIGATION.md.
+  F22 (H4 sparse-window), F23 (F2 cascading) filed. Old F6 regression is DEAD (0/26 pairs show tape overcount).
+  Owner gate: agent recommends PROCEED to R3 — divergence is F2 (known, small, window-dependent).
+stage: **R2 — Parity guard — DONE**
+gate: build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean · parity PASS (13:13 on 2m)
+next: **R3 — Refinement loop** (owner decision — investigation doc at R2-DIVERGENCE-INVESTIGATION.md)
 
 ## Checkpoints
 
@@ -42,6 +43,14 @@ phase (a code path is not evidence).
 | R1.1 | Batched sweep: 28 tape runs (14 sym x {H1,H4}) all 9 strategies | DONE | — | 28 runs completed, 0 warnings, 31 min wall time. All runs serialize correctly with per-strategy TradeResult rows. |
 | R1.2 | Score all 252 cells against baseline-sv1 experiment | DONE | — | 4 scored (>=20 trades), 248 below-floor, 0 failed. 100% coverage. 4 ExperimentRuns in DB. |
 | R1.3 | Scoreboard artifacts | DONE | — | evidence/scoreboard-s1.md + evidence/scoreboard-s1.csv committed. Top: XAUUSD/H4/trend-breakout=100.0 |
+| R2.0 | Audit fixes (C1, S1, S2, S5) — dead code, FoldRole, variantLabel, UpdatedAtUtc | DONE | — | SetupScoreService.cs, ExperimentRunEntity.cs, BacktestOrchestrator.cs |
+| R2.1 | Compare-both configs: 6 configs created for top-3 cells x 2 windows | DONE | — | config/compare-both/*.json (6 new files) |
+| R2.2 | Parity guard runs: 6 compare-both executed (3 cells x 2 windows) | DONE | — | 6 tape+6 cTrader runs, all terminal, no stuck runs, F18/F19/B1-3 verified |
+| R2.3 | Reconcile: all 6 pairs reconciled; V4 table filled | DONE | — | docs/audit/RECONCILE-FINDINGS.md V4 table; 1 cell tradable (1:1 count, $271 delta per F1+F2) |
+| R2.4 | Owner gate: BLOCKED (1 cell 33%); agent recommends PROCEED | DONE | — | RECONCILE-FINDINGS.md Owner gate block; F22/F23 filed |
+| R2.5 | Gate battery re-verified | DONE | — | 0err/5warn · 716/0/6 · 121/0/0 · 144/0/0 · golden clean |
+| R2.6 | v4: 2-month windows — XAUUSD-tb (14v15, 7.1%) + USDCAD-tb (13v13, 0%) | DONE | — | XAUUSD: 9f0ea5e5/197598ab; USDCAD: e29c5dfe/00aaba6a; divergence convergent at scale |
+| R2.7 | Divergence investigation document | DONE | — | docs/iterations/iter-alpha-loop/R2-DIVERGENCE-INVESTIGATION.md (full trace + methodology + recommendations) |
 
 ## Quick commands
 

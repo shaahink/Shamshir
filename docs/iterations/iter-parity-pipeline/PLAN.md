@@ -4,8 +4,7 @@
 finding (F1–F16) or retrospective item (R1–R10). This plan supersedes nothing in iter-quant-model's
 delivered code; it repairs its seams and builds the next capability on top.
 
-**Branch:** start from `iter/quant-model--p1-tf-agnostic` after P-0 lands the working tree. New branch
-`iter/parity-pipeline`.
+**Branch:** `iter/parity-pipeline` (forked from `iter/quant-model--p1-tf-agnostic`, squashed into `develop` at 06adecf).
 
 **The thesis:** iter-quant-model built the measurement machine but the owner cannot yet trust a single
 number from a cTrader comparison (F1 ¼-sizing, F2 entry lag, F5 fake-failed, F6 vanishing trades, F9

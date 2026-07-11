@@ -1,7 +1,7 @@
 # Shamshir Trading Engine — System Reference
 
-**Written**: 2026-06-18 (updated post iter-31/32)
-**Branch**: `iter/31-costs-journal`
+**Written**: 2026-06-18 (updated 2026-07-10)
+**Branch**: `iter/parity-pipeline`
 **For**: Any implementing agent needing to understand the full system
 
 > ## ⚠ iter-36 UPDATE (2026-06-20) — read this first; sections below are pre-cutover history

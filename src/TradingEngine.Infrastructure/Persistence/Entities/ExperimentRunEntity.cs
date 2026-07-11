@@ -11,6 +11,6 @@ public sealed class ExperimentRunEntity : IAuditableEntity
     public string BacktestRunId { get; set; } = "";
     public string VariantLabel { get; set; } = "";
     public int FoldIndex { get; set; }
-    public string FoldRole { get; set; } = "Test";
+    public string FoldRole { get; set; } = "Train";
     public string ScoreJson { get; set; } = "{}";
 }

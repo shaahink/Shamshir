@@ -143,7 +143,7 @@ As you work through phases, maintain these records:
 
 ### Branch discipline
 - One branch per sub-phase: `phase/{N}{letter}-{name}` (e.g., `phase/4a-money-management`)
-- PR into `dev`. Never push directly to `main`
+- PR into `develop`. Never push directly to `main`
 - Commit message: imperative mood, under 72 chars, reference the phase
 
 ### Tests — write them as you go, not at the end

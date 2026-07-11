@@ -1,4 +1,7 @@
-# Shamshir — Post-P6 Cleanup + Verification Workflow
+# Shamshir — Post-P6 Cleanup + Verification Workflow (ARCHIVED)
+
+> **This workflow is historical.** All 8 sessions are complete. The parity-pipeline iteration replaced this workflow.
+> See `docs/WORKFLOW.md` for current agent workflow rules and `AGENTS.md` for session startup.
 
 ## Phase State
 - P6 COMPLETE — all P6.1-P6.8 delivered (sessions 27-31)

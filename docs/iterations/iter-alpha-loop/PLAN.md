@@ -4,7 +4,7 @@
 scored search for FTMO-viable setups — with the agent doing the searching, machine verdicts
 doing the verifying, and the owner reviewing only candidate cards at the end.
 
-**Branch:** continue on `iter/parity-pipeline` (or cut `iter/alpha-loop` from it).
+**Branch:** cut `iter/alpha-loop` from `develop`.
 **Prerequisite reading (in order):** this file → `../iter-parity-pipeline/DELIVERY-VERIFICATION.md`
 → `../iter-land-fix/ENGINE-TRUTH.md` → `docs/audit/RECONCILE-FINDINGS.md` → `docs/agents/ctrader-quickstart.md` (with F21 corrections).
 

@@ -1,7 +1,7 @@
 # Shamshir — The System in Plain Words
 
 **For:** anyone (owner/agent) who wants a portable mental model to reason about + ask questions against.
-**Written:** 2026-06-20 (post iter-36 kernel cutover) · **Branch:** `iter/36-kernel-cutover`
+**Written:** 2026-06-20 (post iter-36 kernel cutover) · **Branch:** `iter/parity-pipeline`
 **Companion to:** the technical reference set (`SYSTEM-REFERENCE.md`, `CODE-MAP.md`, `BACKTEST-ARCHITECTURE.md`,
 `TEST-ARCHITECTURE.md`, `TEST-AUDIT.md`) — this doc is the plain-English overview, not the spec.
 

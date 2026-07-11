@@ -3,5 +3,5 @@
 namespace TradingEngine.Adapters.CTrader;
 partial class TradingEngineCBot
 {
-    internal const string CbotBuildStamp = "v2.0.0 2026-07-09 7268801 iter/parity-pipeline";
+    internal const string CbotBuildStamp = "v2.0.0 2026-07-11 5a6c016 iter/alpha-loop";
 }

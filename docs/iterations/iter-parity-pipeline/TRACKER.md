@@ -9,7 +9,7 @@ handoff that Conductor verifies against. Read `PLAN.md` first (it is the durable
 unresolved bugs + deferred work from P0 audit) → `PLAN.md` → `AUDIT.md` → `../../WORKFLOW.md` →
 `../../reference/SYSTEM-REFERENCE.md` (+ CODE-MAP, BACKTEST-ARCHITECTURE, TEST-ARCHITECTURE) →
 `../../../DECISIONS.md`.
-Branch: `iter/parity-pipeline` off `iter/quant-model--p1-tf-agnostic`.
+Branch: `iter/parity-pipeline` (forked from iter/quant-model--p1-tf-agnostic; squashed into `develop`).
 Convention: one subphase = one commit, gate output pasted in the body (PLAN §10). Do not batch.
 
 > NOTE ON IDS: `PLAN.md` calls the first phase "P-0"; this tracker uses **P0.0** for it (the

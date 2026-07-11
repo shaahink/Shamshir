@@ -1,9 +1,9 @@
 # AGENTS.md — Session Startup Guide
 
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `iter/parity-pipeline`
+**Branch:** `iter/alpha-loop`
 **Created:** 2026-06-18
-**Updated:** 2026-07-09 (P7 Cleanup + Verification phase)
+**Updated:** 2026-07-10 (iter-alpha-loop r0 — session setup)
 
 ---
 
@@ -11,29 +11,28 @@
 
 At the start of every session:
 
-1. **`docs/iterations/iter-parity-pipeline/TRACKER.md`** — Current state + handoff block
-2. **`docs/workflows/shamshir-post-p6-workflow.md`** — THE WORKFLOW for this phase (8 sessions, protocols, rating system)
+1. **`docs/iterations/iter-alpha-loop/TRACKER.md`** — Current state + handoff block
+2. **`docs/WORKFLOW.md`** — Agent workflow rules, code standards (current active workflow)
 3. **`conductor-DEBT.md`** — Open debt items
-4. **`docs/iterations/iter-parity-pipeline/PLAN.md`** — Master plan (P-0→P6 + verification matrix)
-5. **`docs/iterations/iter-parity-pipeline/AUDIT.md`** — Evidence audit (F1-F16, R1-R10)
+4. **`docs/iterations/iter-alpha-loop/PLAN.md`** — Master plan (R0→R5 + verification matrix)
+5. **`docs/iterations/iter-parity-pipeline/AUDIT.md`** — Evidence audit (F1-F16, R1-R10) — historical
 6. **`docs/reference/SYSTEM-REFERENCE.md`** — System overview
 7. **`docs/reference/CODE-MAP.md`** — Feature→file index
 8. **`docs/reference/BACKTEST-ARCHITECTURE.md`** — Venue backtest paths
 9. **`docs/reference/TEST-ARCHITECTURE.md`** — Test tiers + harnesses
-10. **`docs/WORKFLOW.md`** — Agent workflow rules, code standards
-11. **`DECISIONS.md`** — All resolved decisions (D1-D96)
-12. **`docs/audit/RECONCILE-FINDINGS.md`** — Fidelity gaps + run templates
-13. **`docs/CTRADER-TEST-POLICY.md`** — cTrader test triage
+10. **`DECISIONS.md`** — All resolved decisions (D1-D97)
+11. **`docs/audit/RECONCILE-FINDINGS.md`** — Fidelity gaps + run templates
+12. **`docs/CTRADER-TEST-POLICY.md`** — cTrader test triage
 
-**cTrader credentials are accessible to the agent.** The historic "needs creds" belief was from deadlock bugs (B1-B3, now fixed). Credentials: CtId=seankiaa, Account=5834367, PwdFile=ctrader.pwd. Session P7.2 proves this. See `docs/agents/ctrader-quickstart.md` after P7.2 completes.
+**cTrader credentials are accessible to the agent.** The historic "needs creds" belief was from deadlock bugs (B1-B3, now fixed). Credentials: CtId=seankiaa, Account=5834367, PwdFile=ctrader.pwd. P7.2 proved this — the cTrader path is functional. See `docs/agents/ctrader-quickstart.md`.
 
 ## Build and test
 
 ```powershell
 dotnet build                                 # Full build
-dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (504 pass)
-dotnet test tests/TradingEngine.Tests.Simulation  # Simulation/FTMO tests
-dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (101)
+dotnet test tests/TradingEngine.Tests.Unit   # Unit tests (716 pass, 6 skip)
+dotnet test tests/TradingEngine.Tests.Simulation  # Simulation/FTMO tests (144 pass)
+dotnet test tests/TradingEngine.Tests.Integration  # Integration tests (121 pass)
 ```
 
 ## Architecture at a glance
@@ -66,20 +65,22 @@ tests/
 - **`BoundedChannelFullMode.Wait`** for order/trade channels; `DropOldest` only for analytics.
 - **`IEngineClock`** for all time — never `DateTime.UtcNow` directly.
 
-## Current state (iter-parity-pipeline — NEW iteration, 2026-07-07)
+## Current state (iter/parity-pipeline — P0-P7 COMPLETE, 2026-07-10)
 
-The owner ran paired tape/cTrader backtests after iter-quant-model and kept the DB for audit. The
-audit (`docs/iterations/iter-parity-pipeline/AUDIT.md`) found critical parity bugs the previous
-iteration's gates never caught:
+The parity-pipeline iteration is fully delivered. All P0-P6 phases completed, all 8 P7 sessions done.
+The working tree was landed and squashed into `develop` (06adecf). 18 stale local branches deleted,
+mdtape remote removed, docs cleaned and reconciled.
 
-- **F1 (CRITICAL):** cTrader path sizes orders at exactly ¼ of tape risk for byte-identical proposals
-- **F2 (CRITICAL):** cTrader entries fill one full decision bar later than tape, every trade
-- **F5 (CRITICAL):** every cTrader run saved `failed` (NetMQPoller teardown) despite complete stats — the committed B4 fix did NOT work
-- **F6 (CRITICAL):** a run journalled 12 proposals + 17 fills but persisted 0 TradeResults
-- **F9:** the agent's LimitOffset switch never propagated — DB StrategyConfigs still Market; the F5 kernel fix was never exercised
-- **F10:** two databases; Host CLI crashes on startup against the un-migrated root `data/trading.db`
-
-The working tree is UNCOMMITTED (~24 modified + 3 new files) — land it per PLAN P-0, do not batch-commit.
+Key deliverables:
+- **P0:** Parity truth — sizing (F1), status truth (F5), trade persistence (F6), entry latency (F2)
+- **P1:** One database (F10) + config propagation (F9)
+- **P2:** Run lifecycle state machine (F8) + compare-both
+- **P3:** ResearchCli pipeline — HTTP driver, playbooks, exit lab, walk-forward
+- **P4:** Exploration funnel (F11), MAE/MFE units doctrine (F12), reference scales
+- **P5:** UI truth — equity (F13), start button (F15), compare-both visibility (F16)
+- **P6:** Data quality sentinel, session fingerprinting, spread/vol filter, regime calibration, block bootstrap, meta-allocator, entry quality
+- **P7:** Live verification, cTrader proof, traps 1-6, compare-both gate, F6-R economics, cTrader audit, final audit
+- **A1:** F17 fix — kernel event persistence verified; docs cleaned up
 
 ## QA protocol (added 2026-07-09 — saves tokens on clean sessions)
 - Skip previous-session QA when the last session ended `advanced` or `progress` with all gates green.
@@ -90,18 +91,9 @@ After every session, update BOTH the handoff block AND the checkpoint row in TRA
 
 ## What's next
 
-See `docs/iterations/iter-parity-pipeline/PLAN.md`. Phase order: P-0 (land tree) → P0 (parity truth:
-¼-sizing, status truth, trade-persistence barrier, latency instrumentation) → P1 (one DB + config
-propagation) → P2 (run state machine + cTrader queue + compare-both first-class → the inherited P6.1
-gate) → P3 (ResearchCli pipeline — the centerpiece) → P4 (labs) → P5 (UI truth) → P6 (wild list).
-
-Owner decisions Q1–Q6 have locked defaults in PLAN §0 — read them before P-0 (Q1 reverts the 8
-strategy JSONs to Market).
-
-Inherited debts (tracked in PLAN, do not lose): `MISSING_DATA` verdict funnel, `ReferenceScales`
-84-cell population (blocked by F10), `AddOnResolver.Ride` Calibrated, `VenueSessionEntity` audit
-interface, M15 triage sweep, longer triage window for H4, P3.6 entry lab (full handover at
-`docs/iterations/iter-quant-model/P3.6-HANDOVER.md`).
+See `docs/iterations/iter-alpha-loop/PLAN.md`. The next iteration is **iter-alpha-loop** —
+closing the research loop with portfolio-level automation, entry lab productionization, and
+regime-conditioned execution.
 
 ---
 
@@ -236,13 +228,12 @@ changes needed.
 
 ---
 
-## RESUME (iter-land-fix — overwrite this block each session)
+## RESUME (overwrite this block each session)
 
-**Phase:** iter-land-fix — A1 in progress. C# default revert to Market + diagnostic log done.
-**Tracker:** `docs/iterations/iter-land-fix/TRACKER.md`
-**Branch:** `iter/parity-pipeline`
+**Phase:** iter-alpha-loop r0 → r1 — R0 code complete, truth gate deferred
+**Tracker:** `docs/iterations/iter-alpha-loop/TRACKER.md`
+**Branch:** `iter/alpha-loop`
 **Gate baseline:** build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
-**Next:** A1 (cont'd) — F17 not yet fixed. Kernel events not persisted (0 journal, 0 trades despite bar processing).
-NOTE: DB OrderEntryJson has correct Market values. Root cause is in kernel event persistence, not config default. Start next session by tracing why Journal entries and TradeResults are 0 when engine processes 145 bars and progress counter shows fills.
+**Next:** r1 — start with live truth gate verify, then baseline sweep scoring all 9 strategies × 14 sym × {H1,H4}
 
 

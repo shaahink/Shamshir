@@ -35,7 +35,7 @@ The "needs creds" myth from P0-P2 was a deadlock bug (B1-B3, now fixed). Credent
    $env:ASPNETCORE_ENVIRONMENT = "Development"
    dotnet run
    ```
-   Wait for `Now listening on: http://localhost:5000`.
+   Wait for `Now listening on: http://localhost:5134`.
 
 ## Quick Verification (no new run needed)
 
@@ -52,13 +52,13 @@ Confirmed run: `77e37dee` — ExitCode=0, TotalTrades=1, EURUSD Long, NetPnL=312
 
 1. Verify the app is listening:
    ```powershell
-   Invoke-RestMethod -Uri "http://localhost:5000/api/health" -Method Get -TimeoutSec 5
+   Invoke-RestMethod -Uri "http://localhost:5134/api/system/health" -Method Get -TimeoutSec 5
    ```
 
 2. Start the backtest (3-day window, fast turnaround):
    ```powershell
    $body = '{"start":"2026-01-15","end":"2026-01-18","symbols":["EURUSD"],"periods":["H1"],"balance":100000,"venue":"ctrader"}'
-   Invoke-RestMethod -Uri "http://localhost:5000/api/runs" -Method Post -Body $body -ContentType "application/json"
+    Invoke-RestMethod -Uri "http://localhost:5134/api/runs" -Method Post -Body $body -ContentType "application/json"
    ```
    Response contains `runId`. Expected turnaround: 60-120 seconds for a short window.
 
@@ -68,7 +68,7 @@ Confirmed run: `77e37dee` — ExitCode=0, TotalTrades=1, EURUSD Long, NetPnL=312
    $runId = "{runId}"
    do {
      Start-Sleep -Seconds 5
-     $status = Invoke-RestMethod -Uri "http://localhost:5000/api/runs/$runId" -Method Get -TimeoutSec 10
+      $status = Invoke-RestMethod -Uri "http://localhost:5134/api/runs/$runId" -Method Get -TimeoutSec 10
      Write-Output "$(Get-Date -Format 'HH:mm:ss') status=$($status.status) trades=$($status.totalTrades) exitCode=$($status.exitCode)"
    } while ($status.status -eq 'running')
    ```
@@ -89,13 +89,13 @@ Confirmed run: `77e37dee` — ExitCode=0, TotalTrades=1, EURUSD Long, NetPnL=312
 | Run stays "running" after CLI exit | The 30-second `BarStream.Completion` safety timeout in `RunEngineNetMqAsync`'s `finally` block forces `DisconnectAsync()`. |
 | `ExitCode=-1` | cTrader CLI crashed or was killed. Check `BacktestRun.ErrorMessage` in DB. |
 | `TotalTrades=0` | The trade persistence barrier surfaces `TRADES_UNRECONSTRUCTABLE` if closes arrive as raw OrderFilled events (no PublishTradeClosed). Status becomes `completed-with-warnings`. |
-| App won't start (port 5000 in use) | Kill all dotnet processes: `Get-Process dotnet -ErrorAction SilentlyContinue \| Stop-Process -Force` |
-| Build lock (MSB3021) | Kill all dotnet processes before building. |
+| App won't start (port 5134 in use) | Kill the app's dotnet process by PID. Find it with `Get-Process dotnet` and stop the one running from `TradingEngine.Web`. |
+| Build lock (MSB3021) | Kill all dotnet processes before building: `Get-Process dotnet -ErrorAction SilentlyContinue | Stop-Process -Force` |
 
 ## Architecture: How It Works
 
 ```
-Web App (localhost:5000)
+Web App (localhost:5134)
   └─ POST /api/runs {"venue":"ctrader",...}
        └─ BacktestOrchestrator.RunAsync()
             └─ CTraderCli.BacktestAsync()              ← runs %LOCALAPPDATA%\Spotware\cTrader\[hash]\ctrader-cli.exe

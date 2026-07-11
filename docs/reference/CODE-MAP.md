@@ -1,7 +1,7 @@
 # Code Map — Feature & Process to File Reference
 
 **For**: Any agent needing to find "where is X implemented" without grepping the codebase.
-**Updated**: 2026-06-18 (iter/31-costs-journal)
+**Updated**: 2026-07-10 (iter/parity-pipeline — docs/cleanup-refs)
 
 > ## ⚠ iter-36 UPDATE (2026-06-20) — kernel cutover; some entries below are pre-cutover
 > - **Engine (production):** `Host/EngineRunner` → `Host/KernelBacktestLoop.RunFromBrokerAsync` →
