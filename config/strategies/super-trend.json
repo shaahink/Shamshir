@@ -10,7 +10,7 @@
                          "allowRanging":  false
                      },
     "orderEntry":  {
-                        "method":  "Market",
+                        "method":  "LimitOffset",
                         "limitOffsetPips":  3.0,
                         "limitOffsetAtrFraction":  0.15,
                         "limitOrderExpiryBars":  12,

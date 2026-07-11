@@ -256,3 +256,41 @@ All claims in the previous session's report independently re-verified true: buil
 Unit 721/0/6, Integration 121/0/0, Sim-fast 144/0/0. Cost-sign convention, cBot partial-close fix,
 half-at-open logic (all 3 adapters), `BaseToUsd`/notional commission math, and `MapCommissionType`
 string dispatch are all correct on both static review and live verification.
+
+---
+
+## P2 — 2026-07-11 — Limit-entry parity
+
+**Full detail:** `evidence/p2-limit-entry-parity.md`, `docs/reference/RESTING-ORDER-CONTRACT.md`.
+
+Wrote the resting-order contract first, then found and fixed TWO real cross-venue defects the live
+verification loop was specifically built to catch:
+
+- **F30 (code-read, fixed, regression-tested):** `TapeReplayAdapter` decremented `LimitOrderExpiryBars`
+  per FINE (M1) bar in dual-resolution mode (the default) instead of per DECISION bar, which is all
+  cTrader's cBot can ever see. A 3-bar expiry burned out in ~3 minutes on tape vs ~12h on cTrader.
+  Fixed (`decrementedThisWindow` gate in `OnBarObserved`); 4 new tests in
+  `RestingOrderContractTests.cs`, confirmed to fail pre-fix (via `git stash`) and pass post-fix.
+- **F31 (live-found, fixed, live-reverified) — the big one:** flipping D11 live (first-ever cTrader
+  test of resting entry orders) showed cTrader filling 0 of 17 proposed trades while tape filled 12 —
+  the SAME "0 vs N" signature as F24, different root cause. Two compounding cBot bugs: (1)
+  `PlaceLimitOrder`/`PlaceStopOrder` used a shared `"Shamshir"` label instead of `clientOrderId`,
+  breaking `ProcessLimitExpiry`'s cancel-matching (orders "expired" on our side but were NEVER
+  cancelled on the venue — they lived on indefinitely); (2) no `Positions.Opened` handler existed, so
+  when one of those orders eventually filled natively in cTrader (confirmed — the venue's own account
+  balance moved), the engine never learned about it. Fixed: label is now `clientOrderId`; added
+  `OnPositionOpened` reporting the fill via the same venue-initiated `exec` pattern
+  `OnPositionClosed` already uses. Live re-verification (same XAUUSD H4 trend-breakout 2-month
+  window): tape 12 trades, cTrader **12 trades** (exact match, up from 0).
+- **D11 flip:** all 9 strategies' `orderEntry.method` → `LimitOffset` in `config/strategies/*.json`;
+  confirmed live via app restart (`ConfigSyncService` auto-resync, startup log shows all 9 resolved).
+- **Gap not fixed (F29, already filed under P0/P1 QA):** the reconcile per-trade delta table doesn't
+  compare entry price at all (carries the left venue's raw price, not a delta) and its 5-minute
+  match window still misses most pairs under F23 latency — verified entry-price closeness via direct
+  DB query instead (deltas ~$0.15–$17.5 on a ~$3300–3800 symbol, attributed to F23 signal-timing
+  divergence, not a P2 mechanism defect).
+- Gate battery green throughout, including after both live-found fixes: build 0err/5warn ·
+  Unit 725/0/6 (+4 from P0/P1 QA baseline) · Integration 121/0/0 · Sim-fast 144/0/0.
+- Truth gate: fill/no-fill parity MET for the one cell/window tested live; "identical to the tick"
+  entry price NOT fully met (attributed to F23, tracked separately); only 1 of the plan's "2 cells ×
+  2 windows" tested given session time — full matrix belongs to P4's `research parity` verb.

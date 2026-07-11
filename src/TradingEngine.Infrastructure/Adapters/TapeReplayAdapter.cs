@@ -273,6 +273,12 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
         var windowEnd = decisionBar.OpenTimeUtc + _decisionInterval;
         var minEquity = _balance;
+        // P2 (resting-order contract): the cBot only sees DECISION-timeframe bars (its OnBarClosed
+        // subscription is the decision period), so LimitOrderExpiryBars must mean decision bars on
+        // BOTH venues. Decrementing once per FINE (e.g. M1) bar here — the pre-fix behaviour — burned
+        // a 3-bar expiry in ~3 minutes on tape while the identical order survived ~12h on cTrader (3
+        // H4 bars), a fill/no-fill divergence that would masquerade as a signal difference.
+        var decrementedThisWindow = false;
         while (_exitIndex < _exitBars.Count && _exitBars[_exitIndex].OpenTimeUtc < windowEnd)
         {
             var fine = _exitBars[_exitIndex];
@@ -282,8 +288,9 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             _currentSpread = fine.Spread ?? _currentSpread;
             BrokerTimeUtc = fine.OpenTimeUtc + _exitInterval;
             ProcessPendingMarketOrders(fine);
-            ProcessPendingLimits(fine, decrementExpiry: true);
-            ProcessPendingStops(fine, decrementExpiry: true);
+            ProcessPendingLimits(fine, decrementExpiry: isNewDecisionBar && !decrementedThisWindow);
+            ProcessPendingStops(fine, decrementExpiry: isNewDecisionBar && !decrementedThisWindow);
+            decrementedThisWindow = true;
             RecordExcursionPoints(fine);
             ProcessSlTpHits(fine);
             var floatingEquity = _balance + ComputeFloatingPnL(fine.Close);

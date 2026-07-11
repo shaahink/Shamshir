@@ -224,6 +224,7 @@ public partial class TradingEngineCBot : Robot
         Print($"CBOT|SUBSCRIBED|subs={subs.Count}");
 
         Positions.Closed += OnPositionClosed;
+        Positions.Opened += OnPositionOpened;
 
         PublishAccount();
 
@@ -423,15 +424,21 @@ public partial class TradingEngineCBot : Robot
         TradeResult? result;
         if (orderType == "Limit" && limitPrice > 0)
         {
+            // P2 (F31): label MUST be clientOrderId, not a shared literal — ProcessLimitExpiry's
+            // cancel path and OnPositionOpened's fill-correlation path both match on PendingOrders/
+            // Position.Label == clientOrderId. A shared "Shamshir" label made both permanently unable
+            // to find their order, so pending orders were never cancelled on expiry AND a resting
+            // order that later filled natively in cTrader was invisible to the engine (0 fills
+            // reported despite cTrader actually opening positions) — confirmed live 2026-07-11.
 #pragma warning disable CS0618
-            result = PlaceLimitOrder(tradeType, symbol, volumeInUnits, limitPrice, "Shamshir",
+            result = PlaceLimitOrder(tradeType, symbol, volumeInUnits, limitPrice, clientOrderId,
                 slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null);
 #pragma warning restore CS0618
         }
         else if (orderType == "Stop" && limitPrice > 0)
         {
 #pragma warning disable CS0618
-            result = PlaceStopOrder(tradeType, symbol, volumeInUnits, limitPrice, "Shamshir",
+            result = PlaceStopOrder(tradeType, symbol, volumeInUnits, limitPrice, clientOrderId,
                 slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null);
 #pragma warning restore CS0618
         }
@@ -769,6 +776,60 @@ public partial class TradingEngineCBot : Robot
 
         _inbox.Add(captured);
         if (Verbose) Diag($"DEALER_RECV|inboxDepth={_inbox.Count}|jsonLen={captured.Length}");
+    }
+
+    // P2 (F31): a resting Limit/Stop entry order fills OUTSIDE our command flow — cTrader's own
+    // backtest engine converts it to a position on its own schedule, with no engine-initiated
+    // submit_order round-trip to piggyback a result on. Without this handler the fill is invisible:
+    // _positionMap never gets the entry, RecordOpen never fires, and the engine sees 0 trades even
+    // though cTrader's own account balance moved. Correlates via Position.Label == clientOrderId
+    // (see ExecuteSubmitOrder's PlaceLimitOrder/PlaceStopOrder call — label is now the clientOrderId,
+    // not a shared literal, specifically so this lookup can work).
+    private void OnPositionOpened(PositionOpenedEventArgs args)
+    {
+        var pos = args.Position;
+        if (!Guid.TryParse(pos.Label, out var clientOrderId)) return; // not one of ours (or a market fill, already handled synchronously)
+        if (_positionMap.ContainsKey(pos.Id)) return; // already recorded via the synchronous ExecuteSubmitOrder path
+
+        var clientOrderIdStr = clientOrderId.ToString();
+        if (!_pendingEntryOrders.Remove(clientOrderIdStr)) return; // not a tracked pending order
+
+        var sym = Symbols.GetSymbol(pos.SymbolName);
+        var lots = sym is not null ? pos.VolumeInUnits / sym.LotSize : pos.VolumeInUnits / 100_000.0;
+        var direction = pos.TradeType == TradeType.Buy ? "Long" : "Short";
+
+        _positionMap[pos.Id] = clientOrderId;
+        _ordersExecuted++;
+
+        _tradeLog.RecordOpen(pos.Id, clientOrderIdStr, direction, pos.EntryPrice, lots,
+            EpochMs(Server.TimeInUtc), Account.Balance, Account.Equity);
+
+        var execJson = Serialize("exec", new
+        {
+            v = 1,
+            clientOrderId = clientOrderIdStr,
+            kind = "entry_fill",
+            positionId = pos.Id,
+            state = "Filled",
+            fillPrice = pos.EntryPrice,
+            filledLots = lots,
+            reason = (string?)null,
+            simTime = Server.TimeInUtc.ToString("o"),
+            grossProfit = 0.0,
+            netProfit = 0.0,
+            commission = 0.0,
+            swap = 0.0
+        });
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try { _dealer?.SendFrame(execJson); break; }
+            catch when (attempt < 2) { Thread.Sleep(100); }
+            catch (Exception ex) { Print($"CBOT|EXEC_SEND_FAIL|clientOrderId={clientOrderIdStr}|ex={ex.Message}"); }
+        }
+        _execsSent++;
+        if (Verbose) Diag($"EXEC_SENT|{clientOrderIdStr}|Filled|kind=entry_fill|resting-order|fill={pos.EntryPrice:F5}|lots={lots:F4}");
+        Print($"CBOT|RESTING_ORDER_FILLED|orderId={clientOrderIdStr}|posId={pos.Id}|fill={pos.EntryPrice:F5}|lots={lots:F4}");
+        PublishAccount();
     }
 
     private void OnPositionClosed(PositionClosedEventArgs args)

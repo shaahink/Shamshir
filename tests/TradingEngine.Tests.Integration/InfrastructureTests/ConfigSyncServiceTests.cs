@@ -69,7 +69,7 @@ public sealed class ConfigSyncServiceTests : IDisposable
         var afterBaseline = Strat();
         afterBaseline.SeededHash.Should().NotBeNull();
         afterBaseline.Version.Should().Be(1, "baseline must not bump Version");
-        afterBaseline.OrderEntryJson.Should().Contain("\"Method\":0", "content untouched (Market)");
+        afterBaseline.OrderEntryJson.Should().Contain("\"Method\":1", "content untouched (LimitOffset — D11 research default)");
 
         var svc2 = NewService(out _);
         var r2 = await svc2.SyncAsync();
@@ -84,8 +84,8 @@ public sealed class ConfigSyncServiceTests : IDisposable
         await SeedFromFilesAsync();
         await (NewService(out _)).SyncAsync();  // baseline
 
-        // The F9 scenario: flip the order-entry method on disk.
-        var edited = File.ReadAllText(_stratFile).Replace("\"Market\"", "\"LimitOffset\"");
+        // The F9 scenario: flip the order-entry method on disk (baseline is LimitOffset — D11).
+        var edited = File.ReadAllText(_stratFile).Replace("\"LimitOffset\"", "\"Market\"");
         edited.Should().NotBe(File.ReadAllText(_stratFile), "the edit must actually change the file");
         File.WriteAllText(_stratFile, edited);
 
@@ -93,7 +93,7 @@ public sealed class ConfigSyncServiceTests : IDisposable
 
         result.Resynced.Should().BeGreaterThanOrEqualTo(1);
         var row = Strat();
-        row.OrderEntryJson.Should().Contain("\"Method\":1", "LimitOffset must have propagated into the DB");
+        row.OrderEntryJson.Should().Contain("\"Method\":0", "Market must have propagated into the DB");
         row.Version.Should().Be(2, "a propagated JSON edit bumps Version");
         row.SeededHash.Should().Be(ConfigSyncService.HashFile(_stratFile));
     }
@@ -113,9 +113,9 @@ public sealed class ConfigSyncServiceTests : IDisposable
             await ctx.SaveChangesAsync();
         }
 
-        // Now the file changes on disk too — a genuine conflict.
+        // Now the file changes on disk too — a genuine conflict (baseline is LimitOffset — D11).
         File.WriteAllText(_stratFile,
-            File.ReadAllText(_stratFile).Replace("\"Market\"", "\"LimitOffset\""));
+            File.ReadAllText(_stratFile).Replace("\"LimitOffset\"", "\"Market\""));
 
         var result = await (NewService(out _)).SyncAsync();
 
@@ -124,7 +124,7 @@ public sealed class ConfigSyncServiceTests : IDisposable
 
         var row = Strat();
         row.DisplayName.Should().Be("HAND EDITED", "a hand-edited row must not be clobbered by the JSON");
-        row.OrderEntryJson.Should().Contain("\"Method\":0", "the LimitOffset file edit must NOT have been applied");
+        row.OrderEntryJson.Should().Contain("\"Method\":1", "the Market file edit must NOT have been applied");
 
         // The read-only drift endpoint reports the same conflict without mutating.
         var drift = await (NewService(out _)).DetectDriftAsync();
