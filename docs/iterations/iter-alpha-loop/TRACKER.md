@@ -11,15 +11,19 @@ handoff.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **R2 COMPLETE** — parity guard executed (4 iterations). v4: 2-month windows on clean (XAUUSD-tb) and
-  problematic (USDCAD-tb) cells. XAUUSD: 14v15 (+7.1%). USDCAD: 13v13 (0% — exact match).
-  The 33% divergence from v3 was a short-window artefact — converges to 0% on 2 months.
-  Divergence investigation document: docs/iterations/iter-alpha-loop/R2-DIVERGENCE-INVESTIGATION.md.
-  F22 (H4 sparse-window), F23 (F2 cascading) filed. Old F6 regression is DEAD (0/26 pairs show tape overcount).
-  Owner gate: agent recommends PROCEED to R3 — divergence is F2 (known, small, window-dependent).
-stage: **R2 — Parity guard — DONE**
-gate: build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean · parity PASS (13:13 on 2m)
-next: **R3 — Refinement loop** (owner decision — investigation doc at R2-DIVERGENCE-INVESTIGATION.md)
+last: **P0+P1 COMPLETE 2026-07-11.** Costs unified under negative convention (D9): Net = Gross + Commission + Swap.
+  F1 (opposite cost signs) fixed — TradeCostCalculator, TradeResultFactory, all 3 adapters use one convention.
+  F2 (cBot partial-close double-sign) fixed — TradingEngineCBot.cs:571-573 now uses gross+commission+swap.
+  F3+F4 (fabricated symbols.json + wrong commission formula) killed — cBot emits symbol_spec (D10), engine
+  persists VenueSymbolSpec, ISymbolInfoRegistry prefers venue economics, symbols.json is loudly-warned fallback.
+  Commission model: dispatches on CommissionType (AbsolutePerLot, UsdPerMillionUsdVolume with correct USD notional).
+  Half-at-open: all 3 adapters track entry commission, balance reflects split (close-side only).
+  Reconcile: per-trade deltas with CommissionDelta/SwapDelta/NetDelta on each matched trade pair.
+  Invariant test: Net == Gross + Commission + Swap verified on all TradeCosts outputs.
+stage: **P2 — Limit-entry parity — NOT STARTED**
+gate: build 0err/5warn · Unit 721/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
+next: **P2 → P3 → P4** (PLAN.md §3b). Then R1' (one cell per run).
+  X-phases (queue, progress truth, cTrader PID ownership, runs page, trade chart) run in parallel.
 
 ## Checkpoints
 
@@ -51,6 +55,8 @@ phase (a code path is not evidence).
 | R2.5 | Gate battery re-verified | DONE | — | 0err/5warn · 716/0/6 · 121/0/0 · 144/0/0 · golden clean |
 | R2.6 | v4: 2-month windows — XAUUSD-tb (14v15, 7.1%) + USDCAD-tb (13v13, 0%) | DONE | — | XAUUSD: 9f0ea5e5/197598ab; USDCAD: e29c5dfe/00aaba6a; divergence convergent at scale |
 | R2.7 | Divergence investigation document | DONE | — | docs/iterations/iter-alpha-loop/R2-DIVERGENCE-INVESTIGATION.md (full trace + methodology + recommendations) |
+| P0 | Cost-sign truth: unified negative convention, cBot partial-close fix, invariant tests | DONE | de52441 | Costs unified (Net=Gross+Comm+Swap); TradeCostCalculator+TradeResultFactory+TradingEngineCBot fixed; 2 invariant tests; 4 sign tests updated; gate 721/0/6·121/0/0·144/0/0 |
+| P1 | Venue-declared symbol specs: cBot symbol_spec, VenueSymbolSpec entity, correct commission model, half-at-open | DONE | 393ff67 56871de 83519da | M51 migration; cBot emits specs for all subscribed symbols; CTraderBrokerAdapter parses + upserts registry; CommissionType dispatch (AbsPerLot/UsdPerMillion); half-at-open in all 3 adapters; per-trade reconcile deltas; gate 721/0/6·121/0/0·144/0/0 |
 
 ## Quick commands
 

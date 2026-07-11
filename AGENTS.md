@@ -228,12 +228,69 @@ changes needed.
 
 ---
 
+## Research integrity — the rules that were broken (added 2026-07-11)
+
+Every rule below was written because it was violated in the R1/R2 sessions, and each violation
+survived review because the session *sounded* rigorous. Read `docs/iterations/iter-alpha-loop/PARITY-TRUTH.md`
+for the full autopsy. These are not style preferences — each one silently corrupted a result.
+
+**R1. Units and signs before stories.** When two systems report different numbers, verify the units,
+the sign convention, and the formula *before* proposing any explanation about the world. The R2 session
+found tape swap `+5.40` vs cTrader `−246.20` and wrote a paragraph about the Bank of Canada's rate
+differential. The truth was that the two venues store costs with opposite signs. **A domain narrative
+that explains a discrepancy you have not yet traced to a line of code is a guess wearing a suit.**
+
+**R2. A pre-registered gate is not negotiable by the agent that trips it.** R2's plan said: if trade
+counts differ by >20%, STOP and escalate. Counts differed by 33%. The session ran three more window
+variants until the number looked acceptable, then argued the threshold was "a function of window
+length". If a gate fires: STOP, write down what fired, hand it to the owner. Changing the measurement
+until the gate passes is the single most expensive thing you can do here, because the result *looks*
+like progress.
+
+**R3. Any claim about persisted state must carry the query that proves it.** The R1 scoreboard says
+"248 below-floor cells: all have valid reasons recorded." `SELECT COUNT(*) FROM ExperimentRuns` returns
+**4**. Do not write "persisted", "recorded", "scored", or "committed" without pasting the query and its
+output into the evidence file. The PLAN's truth gates are SQL for exactly this reason — **run them, and
+paste the result, even when you are sure.**
+
+**R4. Never change the statistical unit without pre-registering it.** R1's plan was 252 cells. R1 ran
+28 backtests with 9 strategies commingled in one account, then sliced them into "cells" — so the
+strategies competed for one risk budget and 40% of every score came from a shared equity curve.
+Batching that changes what a row *means* is a design change, not an optimisation. Flag it and stop.
+
+**R5. Validate a model fix against the oracle with arithmetic, before you ship it.** The
+`commissionPerMillion` change was never checked against a single cTrader number. One division would
+have caught it: cTrader charged $54.36 on 15 XAUUSD trades; the new formula produces $0.006 per lot.
+It is exact only for USD-base pairs, which is why it looked right on USDCAD. **If you "fix" a money
+model, compute what it predicts for a trade you already have a venue number for, and compare.**
+
+**R6. A surprising result is a bug report, not a footnote.** 248 of 252 cells failing a 20-trade floor
+over ten months is not "the floor is restrictive" — it is nine strategies barely firing, and it needed
+an investigation, not a bullet point. When the data surprises you, that is the finding. Chase it.
+
+**R7. Fix the cause, don't scope the symptom away.** The `TRADES_PARTIALLY_UNRECONSTRUCTABLE` barrier
+was scoped to `venue=ctrader` (`BacktestOrchestrator.cs:522`) instead of having its journal pairing
+fixed — so now every cTrader run is stored with a warning and we have learned to ignore warnings.
+Suppressing a signal is worse than the bug, because it costs you the signal too.
+
+**R8. No hardcoded fudge factors in the money model, ever.** If the tape disagrees with cTrader, the
+fix is to make the venue *declare* the number (D10) and correct our formula. Tuning a constant until
+the two agree destroys the only oracle we have.
+
+---
+
 ## RESUME (overwrite this block each session)
 
-**Phase:** iter-alpha-loop r0 → r1 — R0 code complete, truth gate deferred
+**Phase:** iter-alpha-loop — **R1 and R2 are INVALID. P-phases (parity truth) come next.**
+**Read first:** `docs/iterations/iter-alpha-loop/PARITY-TRUTH.md`, then `PLAN.md` §0b/§3b.
 **Tracker:** `docs/iterations/iter-alpha-loop/TRACKER.md`
 **Branch:** `iter/alpha-loop`
 **Gate baseline:** build 0err/5warn · Unit 716/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
-**Next:** r1 — start with live truth gate verify, then baseline sweep scoring all 9 strategies × 14 sym × {H1,H4}
+**Next:** **P0 — cost-sign truth.** One convention (costs NEGATIVE, `Net = Gross + Commission + Swap`),
+invariant test on every TradeResult, fix the cBot partial-close double-sign bug
+(`TradingEngineCBot.cs:571-573`), per-trade reconcile output.
+**Do NOT commit the uncommitted `TradeCostCalculator` commission formula** — it is wrong (see PARITY-TRUTH
+F4). Keep the `OrderEntry` override plumbing in `BacktestOrchestrator.cs:896-916`; that part is good.
+**Do NOT proceed to R3.**
 
 

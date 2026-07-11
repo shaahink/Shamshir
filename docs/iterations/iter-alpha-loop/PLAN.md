@@ -30,18 +30,70 @@ verbs work E2E with machine verdicts; 11 playbooks on disk; walk-forward has an 
 
 ---
 
-## 1. Phase map
+---
+
+## 0b. AMENDMENT 2026-07-11 — R1 and R2 are INVALID. Parity work inserted before R3.
+
+**Read `PARITY-TRUTH.md` before anything else in this file.** It supersedes
+`R2-DIVERGENCE-INVESTIGATION.md`, whose money analysis was computed with inverted cost signs.
+
+Summary of what was found:
+
+| # | Defect | Impact |
+|---|---|---|
+| F1 | Tape stores costs **positive**, cTrader stores them **negative**; reconcile compares raw | Every money delta in the R2 doc is void |
+| F2 | cBot partial-close subtracts already-negative costs (`TradingEngineCBot.cs:571-573`) | Partial closes over-report by 2× costs. Latent — fires when R3 turns packs on |
+| F3 | `config/symbols.json` is fabricated; XAUUSD long swap is a **credit** | The #1 cell (`trend-breakout/XAUUSD/H4`, score 100.0) is subsidised by carry that doesn't exist |
+| F4 | Uncommitted `commissionPerMillion` formula uses base-currency units as USD notional | XAUUSD commission ~3,300× too low; BTCUSD ~60,000×. **Do not commit as-is** |
+| F5 | R1's "252 cells" were 28 runs with 9 strategies commingled in one account | Strategies blocked each other; 40% of every score comes from a shared equity curve; only 4 `ExperimentRuns` rows persisted (gate required ≥225) |
+| F6 | Position sizing diverges ~29% between venues (USDCAD) | Never measured — reconcile compares aggregates, not per-trade lots/prices |
+| F7 | Limit-entry machinery exists on **both** venues and is unused by default | The structural fix for entry-price divergence |
+| F8 | Kernel is a pure reducer → concurrent tape runs are safe; no queue/limiter exists | Blocks the run-queue feature, not correctness |
+| F9 | cTrader leg's progress uses a **calendar** bar estimate (`BacktestOrchestrator.cs:1028`) | The "stuck at ~70%" progress bar |
+
+**New decisions (locked; override by editing this block):**
+
+| # | Decision | Choice |
+|---|---|---|
+| D9 | Cost sign convention | **One convention everywhere: costs are NEGATIVE.** `Net = Gross + Commission + Swap` (cTrader/industry). Tape changes to match cTrader, not the reverse. Enforced by an invariant test on every `TradeResult`. |
+| D10 | Symbol economics | **The venue declares them; we never invent them.** The cBot emits a `symbol_spec` message (commission + type, swap long/short + calc type, lot size, pip/tick size, digits, triple-swap day). Persisted as `VenueSymbolSpec`; the tape reads it. `symbols.json` becomes a loudly-logged fallback only. **No hardcoded fudge factors, ever** — if the tape disagrees with cTrader, we fix the model, not the number. |
+| D11 | Entry style | **Limit entries are the research default** (`OrderEntry.Method = LimitOffset`). A limit fills at the price we named on both venues, so entry price is identical *by construction*. Market entries stay available but are not used for scored search. |
+| D12 | Parity is a permanent gate, not a phase | `research parity` verb + a pre-registered tolerance budget (§P4). Any scored candidate carries a parity verdict ≤ 14 days old. A cell that cannot pass parity cannot be a candidate. |
+| D13 | R1 re-run shape | **One cell = one run.** No strategy commingling in a census. Below-floor cells persist a null score **with reason** (D3 was not honoured). |
+| D14 | Platform track | The X-phases (§X) run in parallel with P — different files, no engine overlap. They are prerequisites for R3 being *drivable* (queue, progress truth, cTrader process ownership). |
+
+---
+
+## 1. Phase map (revised 2026-07-11)
 
 ```
-R0  Readiness & truth (2 sessions)      — fix F18/F19, market-hours DataQuality, score verb, doctor verb
-R1  Baseline sweep (2 sessions)         — score all 9 strategies × 14 sym × {H1,H4}, defaults
-R2  Parity guard (1 session)            — compare-both + reconcile on top cells   [OWNER GATE]
-R3  Refinement loop (3–5 sessions)      — pre-registered variants, walk-forward, cull
-R4  FTMO dress rehearsal (1–2 sessions) — governor ON, embargoed window, challenge sims
-R5  Final audit + candidate cards (1)   — audit, bugfix queue, owner review pack  [OWNER GATE]
+R0  Readiness & truth                   — DONE
+R1  Baseline sweep                      — INVALID (F5). Re-run as R1' after P.
+R2  Parity guard                        — INVALID (F1). Re-run as P4 verdict.
+
+P0  Cost-sign truth (1 session)         — one convention, invariant test, cBot partial-close fix
+P1  Venue-declared symbol specs (1–2)   — cBot emits spec → DB → tape; correct commission + swap model
+P2  Limit-entry parity (1)              — identical resting-order semantics both venues, contract test
+P3  Exit + spread parity (1)            — gap-through fills, one spread number both venues
+P4  Parity as a gate (1)                — `research parity` verb + tolerance budget  [OWNER GATE]
+
+X0  Run queue + concurrency (1–2)       — bounded tape pool, serial cTrader lane, persisted queue
+X1  Progress + status truth (1)         — real bar counts server-side, lifecycle, cTrader PID ownership
+X2  Runs page + notes + copy-run (1)    — richer table, notes, clone params, compare-pair grouping
+X3  Trade chart rework (1)              — context window, real entry/exit markers, prev/next navigation
+X4  Data manager auto-sync (1)          — coverage view, sync-to-latest, gap report
+
+R1' Baseline sweep, redone (2)          — one cell per run, null-with-reason persisted
+R3  Refinement loop (3–5)               — unchanged protocol, now on a trustworthy tape
+R4  FTMO dress rehearsal (1–2)          — unchanged
+R5  Final audit + candidate cards (1)   — unchanged                                  [OWNER GATE]
 ```
-Dependencies strictly linear except R0.2 ∥ R0.1 (different files). No other parallelism —
-sessions are cheap, merge conflicts are not.
+
+**Ordering:** P0 → P1 → P2 → P3 → P4 strictly linear (each depends on the last). X-phases run in
+parallel with P (different files). R1' needs P4 green. R3 needs R1' + X0/X1.
+
+**The P-phases are not optional polish.** Until parity holds, every score is measured against a tape
+that pays you to hold gold.
 
 ---
 
@@ -123,6 +175,145 @@ signal-parity investigation as the next stage (a scored search on a diverged tap
 carries `HUMAN:` line for owner sign-off.
 **Watch out:** cTrader runs need creds + the cBot build; expect BAR_STREAM_TIMEOUT warning
 (F23, known, not a failure); serialize cTrader runs (no parallel CLI instances).
+
+---
+
+## 3b. P-phases — Parity truth (inserted 2026-07-11; see PARITY-TRUTH.md)
+
+**Governing principle: stop modelling the venue, make the venue declare itself.** Every parity fix
+below removes a guess and replaces it with a number cTrader gave us. If a gap remains after that, we
+fix the *model*. We never tune a constant to make the numbers meet (D10).
+
+### P0 — Cost-sign truth (1 session)
+**Approach:** (a) adopt D9 everywhere: costs NEGATIVE, `Net = Gross + Commission + Swap`. Change
+`TradeCostCalculator.cs:65` and the tape/replay adapters' `TradeResult` writes; cTrader already
+complies. (b) Fix `TradingEngineCBot.cs:571-573` — the partial-close path must not subtract
+already-negative costs; derive net the same way the full-close path does. (c) Add an invariant test
+over `TradeResults`: `|Net − (Gross + Commission + Swap)| < 0.01` for **every** row, both venues —
+this is the regression guard that makes F1 unrepeatable. (d) Teach the reconcile to compare costs as
+signed values under the one convention, and to emit **per-trade** rows (lots, entry, exit, SL, commission,
+swap) — not just aggregates, so F6 becomes visible.
+**Truth gate:** invariant test green on a fresh tape run AND a fresh cTrader run; reconcile of the
+four R2 runs (`9f0ea5e5`/`197598ab`, `e29c5dfe`/`00aaba6a`) reprinted with corrected deltas, committed
+to `evidence/p0-signs.md`.
+**Watch out:** existing `TradeResults` rows carry the OLD tape sign. Either migrate them or stamp a
+`CostConvention` column — do NOT leave a table with two conventions in it. Golden fixtures WILL move
+(net is unchanged, but Commission/Swap flip sign): re-bless deliberately, in its own commit, and say so.
+
+### P1 — Venue-declared symbol specs (1–2 sessions) — kills F3 + F4
+**Approach:** (a) cBot: on connect, emit `symbol_spec` for the run's symbol — `Symbol.Commission`,
+`Symbol.CommissionType`, `Symbol.SwapLong`, `Symbol.SwapShort`, `Symbol.SwapCalculationType`,
+`Symbol.LotSize`, `Symbol.PipSize`, `Symbol.TickSize`, `Symbol.TickValue`, `Symbol.Digits`,
+triple-swap day, current spread. (b) Engine: persist `VenueSymbolSpec` (symbol, broker, capturedAtUtc,
+all fields). (c) `ISymbolInfoRegistry` prefers the venue spec; falls back to `symbols.json` with a
+**loud warning naming the symbol** (a silent fallback is how F3 survived this long). (d) Capture specs
+for all 14 symbols. (e) Rewrite the commission model to honour `CommissionType` properly —
+for `UsdPerMillionUsdVolume`: `notionalUsd = lots × contractSize × baseToUsdRate(price)`, charged
+**per side**: half at entry price on open, half at exit price on close. (f) Swap from the venue's
+rates + calc type.
+**Truth gate:** on a 2-month XAUUSD compare-both with identical trade sets —
+`|tape commission − cTrader commission| ≤ 2%` and `|tape swap − cTrader swap| ≤ 5%`. Evidence at
+`evidence/p1-symbol-specs.md` with the captured spec JSON for all 14 symbols.
+**Watch out:** the shipped `commissionPerMillion` diff is wrong (F4) — **revert the formula, keep the
+`OrderEntry` override plumbing in `BacktestOrchestrator.cs:896-916`.** Commission moving from
+close-only to half-at-open changes intra-trade equity, so MaxDD and FTMO-survival scores will shift.
+That is correct, not a regression — say so in the ledger. `PreTradeGate.cs:243` also computes
+commission for the worst-case gate; it must use the same model or the sizer and the ledger disagree.
+
+### P2 — Limit-entry parity (1–2 sessions) — kills the entry-price gap (old F1/F2)
+**Approach:** (a) Write the resting-order contract down first (`docs/reference/RESTING-ORDER-CONTRACT.md`):
+the touch rule (buy limit fills when **ask** ≤ limit), the fill price (**exactly** the limit, never
+better), expiry in **bars** and how bars map to cTrader's wall-clock expiry, and cancel semantics.
+(b) Make both venues obey it — tape (`TapeReplayAdapter.cs:434-465`) already fills at exactly
+`LimitPrice`; verify the cBot's `PlaceLimitOrder` (line 393) uses the same expiry and the same
+cancel-on-expiry path (line 477-483). (c) A **contract test** that drives the same synthetic bar
+sequence through both venues and asserts identical fill/no-fill decisions and identical fill prices.
+(d) Flip the research default to `LimitOffset` (D11).
+**Truth gate:** compare-both on 2 cells × 2 windows with limit entries → **entry prices identical to
+the tick on every matched trade**, and fill/no-fill decisions identical (zero unmatched orders).
+**Watch out:** the failure mode here is one venue filling an order the other expired — that shows up
+as a trade-count divergence and looks like a signal bug. If counts diverge, suspect expiry semantics
+before you suspect the strategy. Also: a limit that never fills is a *skipped trade*, and skipped
+trades change the equity path — expect trade counts to DROP vs the market-entry baseline. That is
+expected and is not a regression.
+
+### P3 — Exit + spread parity (1 session)
+**Approach:** (a) Gap-through fills (the never-measured F4 gap): when a bar opens beyond the stop, the
+tape must fill at the **bar open**, not at the stop price. Verify cTrader does the same; test with a
+synthetic gap bar. (b) One spread number: the tape reads `TypicalSpread` from `symbols.json` while
+cTrader gets `--spread`. Feed both from the same source (venue spec, or the run's `spreadPips` applied
+identically to both). (c) Confirm the exit side applies the spread in the correct direction on both
+venues (`SpreadConvention`).
+**Truth gate:** per-trade exit-price delta ≤ 1 tick on ≥ 95% of matched trades; gap fills listed
+explicitly and explained; evidence at `evidence/p3-exit-parity.md`.
+
+### P4 — Parity as a permanent gate (1 session) [OWNER GATE after]
+**Approach:** (a) New verb `research parity --strategy S --symbol Y --tf T --from D --to D` — runs
+compare-both, reconciles per-trade, prints a signed tolerance report + one `VERDICT:` line.
+(b) **Pre-registered tolerance budget** (the owner's "identical, or the margin is minimal"):
+
+| Quantity | Tolerance | Rationale |
+|---|---|---|
+| Trade count | **exact** | limit entries make this deterministic; any mismatch = FAIL + list unmatched trades |
+| Entry price | **≤ 1 tick** | limit fills at the named price on both venues |
+| Position size (lots) | **exact** | same inputs → same sizer; a mismatch means F6 is alive |
+| Exit price | ≤ 1 tick on ≥95% | gap fills exempted but must be listed |
+| Commission | ≤ 2% | venue-declared spec, same formula |
+| Swap | ≤ 5% | venue-declared rates; night-count edges are the residual |
+| Net PnL | ≤ 1% of gross | falls out of the above |
+
+(c) Record a cTrader ledger as a **golden pair** checked into the repo so parity can be re-verified
+offline in CI without a live cTrader.
+**Truth gate:** `VERDICT: PASS` on 3 cells × 2 windows. Any FAIL → **STOP and escalate to the owner**;
+do not widen the window, do not widen the tolerance, do not proceed (see AGENTS.md "Gates are not
+negotiable").
+
+---
+
+## 3c. X-phases — Platform (parallel with P; owner's request list)
+
+### X0 — Run queue + concurrency (1–2 sessions)
+Kernel is a pure reducer with per-run state (F8) → concurrent **tape** runs are safe. Build: a
+persisted run queue (`queued`/`running`/`completed`/`failed`/`cancelled`), a bounded worker pool for
+tape (start at 3, configurable), and a **strictly serial lane for cTrader** (one CLI, one desktop —
+never parallel). Queue visible and manageable from the Runs page. Guard SQLite writes (WAL = one
+writer): serialize writes or retry on `SQLITE_BUSY`.
+**Gate:** 5 tape runs queued at once → all complete, results byte-identical to running them serially
+(this is the real proof of concurrency safety). A cTrader run queued behind them waits its turn.
+
+### X1 — Progress + status + cTrader process ownership (1 session)
+(a) Kill the calendar estimate (F9): resolve the **real** bar count server-side for every venue before
+the run starts, using the query the tape path already uses (`BacktestOrchestrator.cs:~1185`); the
+cTrader child at line 1028 must use it too. One progress source, server-side, for all venues.
+(b) Reliable lifecycle: honest `startedAt`/`finishedAt`/terminal status for every run, every venue.
+(c) **cTrader process ownership:** track the CLI PID with the run, kill it on cancel/failure, reap
+orphans on startup. (d) Root-cause "every cTrader backtest is stored with a warning" — the
+`TRADES_PARTIALLY_UNRECONSTRUCTABLE` barrier was *scoped* to cTrader (`BacktestOrchestrator.cs:522`)
+rather than fixed. **Fix the journal pairing; do not scope the warning away.**
+**Gate:** a cTrader run finishes with **zero** warnings; progress is monotonic and lands on 100%;
+cancelling a run leaves no orphaned `ctrader-cli.exe`.
+
+### X2 — Runs page, notes, copy-run (1 session)
+Richer table (strategy, symbol, TF, venue, trades, net, DD, score, duration, notes, queue position).
+Notes on a run — create from the Runs page, **edit from the report page**. "Copy run" clones params
+into a new run; "reuse last params" prefills the form. Fix compare-both pair grouping so the cTrader
+child is displayed as its own venue and paired with its tape sibling (the child *is* tagged
+`Venue="ctrader"` at `BacktestOrchestrator.cs:1025` — verify whether the bug is in the API projection
+or the SPA before changing the backend). Live via SignalR, reconciled against `RunDataCache` —
+**note the known cache bugs first** (`docs/iterations/iter-cache-reads-2/PLAN.md`: live snapshots
+freeze after first read; `MarkCompleted`/`Evict` never called). Fix those or the "liveness" is a lie.
+
+### X3 — Trade chart rework (1 session)
+Per-trade chart currently shows meaningless lines. Rebuild: window = N bars **before** entry through N
+bars **after** exit (context, zoomed to focus — default N ≈ 20, configurable); real entry/exit markers
+(directional arrows with price + time); SL/TP lines and any modifications (BE/trail) as they moved;
+prev/next trade navigation that keeps the chart mounted.
+
+### X4 — Data manager auto-sync (1 session)
+Coverage view per symbol × TF; "sync to latest" against the current date; gap report that is
+market-hours aware (weekends are not gaps).
+
+---
 
 ### R3 — Refinement loop (3–5 sessions, identical protocol each)
 **Approach per session:** (1) read scoreboard + ledger; (2) PRE-REGISTER ≤ 12 variants in the

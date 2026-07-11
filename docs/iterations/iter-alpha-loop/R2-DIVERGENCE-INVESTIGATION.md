@@ -1,9 +1,29 @@
+> # ⛔ SUPERSEDED — DO NOT USE THIS DOCUMENT'S CONCLUSIONS
+>
+> **Read `PARITY-TRUTH.md` instead.** (Owner audit, 2026-07-11.)
+>
+> Every money figure in §3, §4.2, §4.3 and §7 below was computed by comparing costs that the two
+> venues store with **opposite signs** (tape: positive = cost; cTrader: negative = cost). The
+> resulting deltas are meaningless, and the economic explanations built on them — "tape refund
+> model", "tape credits rollover while cTrader debits it", "USDCAD positive interest due to the
+> BOC-CAD rate differential" — are artifacts of that bug, not facts about the market.
+>
+> The PASS verdict is also invalid: the plan's >20% trade-count gate fired at 33%, and this
+> investigation responded by lengthening the window until the percentage looked acceptable.
+>
+> **What survives:** the trade-count observation itself. Counts really are within ±1 across venues,
+> and the old F6 tape-overcount regression really is dead. That is the only load-bearing conclusion here.
+>
+> Kept in the repo as a record of the failure mode, not as a source of truth.
+
+---
+
 # R2 Parity Guard — Divergence Investigation
 
 **Date:** 2026-07-11
 **Branch:** `iter/alpha-loop`
 **Phase:** R2 — Parity guard (`docs/iterations/iter-alpha-loop/PLAN.md` §R2)
-**Status:** Complete — findings documented, owner to decide
+**Status:** SUPERSEDED by PARITY-TRUTH.md — conclusions void (see banner above)
 
 ---
 

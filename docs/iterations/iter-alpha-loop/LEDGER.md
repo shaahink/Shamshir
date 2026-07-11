@@ -135,3 +135,54 @@ threshold. Scored search (tape-only per D1) unaffected. cTrader parity is "close
 
 **Agent recommendation: PROCEED to R3.** F2 effect is small, predictable, and venue-relative
 scoring on tape is valid. F23 filed for tracking.
+
+---
+
+## P0+P1 — 2026-07-11 — Cost-sign truth + Venue-declared economics
+
+### Decisions locked
+
+- **D9 (cost sign):** One convention — costs NEGATIVE, `Net = Gross + Commission + Swap`. Implemented.
+- **D10 (venue economics):** cBot emits symbol_spec, engine persists VenueSymbolSpec, registry prefers it. `symbols.json` is now a loudly-warned fallback. Implemented.
+- **D11 (limit entries):** Deferred to P2.
+- No CostConvention column — scrapped old DB, no backward compat (owner decision).
+
+### P0 — Cost-sign truth (commit de52441)
+
+- TradeCostCalculator: commission and swap negated, net formula = `gross + commission + swap`.
+- TradingEngineCBot.cs:571-573 — partial-close now uses `grossProfit + commission + swap` (matching full-close).
+- TradeResultFactory: fallback net updated.
+- ISymbolInfoRegistry: new UpsertVenueSpec/TryGetVenueSpec/HasAnyVenueSpecs.
+- SymbolInfoRegistry: venue spec merge, loud warning on fallback.
+- Tests: 4 sign assertions updated, 2 invariant tests added.
+- Gate: 721/0/6 · 121/0/0 · 144/0/0.
+
+### P1 — Venue-declared symbol specs (commits 393ff67, 56871de, 83519da)
+
+- CommissionType enum (domain): AbsolutePerLot, UsdPerMillionUsdVolume, Pips, PercentOfNotionalValue, Unknown.
+- VenueSymbolSpec record (domain): 14 fields capturing full cTrader Symbol spec.
+- VenueSymbolSpecEntity + EF migration M51: new table with (Symbol, Broker) PK.
+- cBot: emits symbol_spec after handshake for each unique symbol.
+- CTraderBrokerAdapter: OnSymbolSpec callback, HandleSymbolSpec parses message, MapCommissionType translates cTrader enum to domain enum.
+- Wired in BacktestOrchestrator, CTraderListenService, BrokerAdapterFactory.
+- SymbolInfo: CommissionType added as last param (default AbsolutePerLot).
+- SymbolInfoRegistry.MergeVenueSpec: carries CommissionType from venue spec.
+- TradeCostCalculator: dispatches on CommissionType — BaseToUsd helper for correct USD notional.
+  - UsdPerMillionUsdVolume: `lots × contractSize × baseToUsdRate × rate / 1e6 × 2` (round-trip, negative).
+  - Works correctly for USD-quoted (EURUSD, XAUUSD, BTCUSD), USD-based (USDCAD, USDJPY), and cross pairs.
+- ComputeEntryCommission: new method for per-side entry commission.
+- Half-at-open in all 3 adapters:
+  - BacktestReplayAdapter: OpenTrade now has EntryCommission; FillEntry deducts at open; CloseAtAsync/PartialClose adjust balance.
+  - TapeReplayAdapter: same pattern.
+  - SimulatedBrokerAdapter: SimPosition now has EntryCommission; FillOrder deducts at open; all close paths adjusted.
+- PreTradeGate: Math.Abs for commission rate (worst-case guard).
+- Reconcile: per-trade deltas — CommissionDelta, SwapDelta, NetDelta on each matched trade pair.
+- Gate: 721/0/6 · 121/0/0 · 144/0/0.
+
+### Known limitations
+
+- TripleSwapDay from cTrader: Symbol API may not expose it — hardcoded "Wednesday" in cBot.
+- SwapLong/SwapShort from cTrader: may be null; safe-cast to double in cBot.
+- PreTradeGate: uses AbsolutePerLot formula (no notional lookup at gate time). TODO for future.
+- The cBot's Commission/SwapLong/SwapShort API access is untested against a real cTrader instance.
+  Live verification needs a cTrader backtest run.
