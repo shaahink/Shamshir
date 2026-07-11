@@ -1277,6 +1277,62 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.ToTable("VenueSessions", (string)null);
                 });
 
+            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.VenueSymbolSpecEntity", b =>
+                {
+                    b.Property<string>("Symbol")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Broker")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CapturedAtUtc")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Commission")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("CommissionType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Digits")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("LotSize")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("PipSize")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("SwapCalculationType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("SwapLong")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("SwapShort")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("TickSize")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("TickValue")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("TripleSwapDay")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("TypicalSpread")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Symbol", "Broker");
+
+                    b.ToTable("VenueSymbolSpecs", (string)null);
+                });
+
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.WalkForwardJobEntity", b =>
                 {
                     b.Property<Guid>("Id")

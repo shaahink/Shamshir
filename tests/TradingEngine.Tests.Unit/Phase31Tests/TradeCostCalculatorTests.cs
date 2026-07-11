@@ -128,4 +128,46 @@ public sealed class TradeCostCalculatorTests
 
         costs.GrossProfit.Should().Be(expected.Amount);
     }
+
+    // F39: a commissionPerMillion override is a rate per MILLION USD of notional. It used to be
+    // substituted for the per-lot rate and then dispatched on the SYMBOL's CommissionType — so for a
+    // symbol declared AbsolutePerLot (every FX pair in symbols.json) the tape billed $30 PER LOT.
+    // Live proof: 1.78 EURUSD lots cost the tape $106.80 round-turn where cTrader, given the same
+    // --commission=30, charged $10.60.
+    [Fact]
+    public void CommissionPerMillion_is_priced_on_notional_not_per_lot_even_when_symbol_says_per_lot()
+    {
+        var costs = TradeCostCalculator.Compute(
+            TradeDirection.Short, new Price(1.16156m), new Price(1.16255m), lots: 1.78m,
+            Eurusd(commissionPerSide: 3.5m), NoCross,
+            new DateTime(2026, 5, 28, 9, 1, 0, DateTimeKind.Utc),
+            new DateTime(2026, 5, 28, 12, 26, 0, DateTimeKind.Utc),
+            commissionPerMillion: 30m);
+
+        // notional = 1.78 lots x 100,000 x 1.16156 = $206,757.68
+        // per side = 206,757.68 x 30 / 1e6 = $6.203; round-turn = $12.41 (negative: a cost)
+        costs.Commission.Should().BeApproximately(-12.41m, 0.01m);
+
+        // The bug: $30/lot/side x 1.78 lots x 2 = $106.80. Guard the magnitude, not just the value.
+        costs.Commission.Should().BeGreaterThan(-20m);
+    }
+
+    [Fact]
+    public void CommissionPerMillion_scales_with_price_for_a_high_priced_symbol()
+    {
+        // XAUUSD at ~$3,300: notional is lots x 100oz x price, so a per-lot formula is off by ~3,300x.
+        var xauusd = new SymbolInfo(Symbol.Parse("XAUUSD"), SymbolCategory.Metal, "XAU", "USD",
+            0.1m, 0.01m, 100m, 0.01m, 100m, 0.01m, 0.03333m, 0.1m,
+            "USD", 3.5m, 0m, 0m, "Wednesday");
+
+        var costs = TradeCostCalculator.Compute(
+            TradeDirection.Long, new Price(3300m), new Price(3310m), lots: 1m,
+            xauusd, NoCross,
+            new DateTime(2026, 5, 28, 9, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 5, 28, 12, 0, 0, DateTimeKind.Utc),
+            commissionPerMillion: 30m);
+
+        // notional = 1 x 100oz x $3,300 = $330,000; per side = $9.90; round-turn = $19.80
+        costs.Commission.Should().BeApproximately(-19.80m, 0.01m);
+    }
 }

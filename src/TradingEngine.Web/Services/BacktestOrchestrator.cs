@@ -22,6 +22,11 @@ namespace TradingEngine.Web.Services;
 
 public sealed class BacktestOrchestrator : IBacktestCommandService
 {
+    // F34: the currency every money figure in this engine is denominated in — pip values, risk sizing,
+    // FTMO limits and the whole tape. A venue account in any other currency is not comparable to a tape
+    // run, so the run says so instead of silently applying an FX factor to everything.
+    private const string ModelledAccountCurrency = "USD";
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BacktestOrchestrator> _logger;
     private readonly BacktestProgressStore _progressStore;
@@ -1051,7 +1056,19 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             EnqueueLog(ctraderRunId, ctraderState.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
             var ctraderResult = await RunEngineNetMqAsync(ctraderRunId, ctraderCfg, ctraderState.LogLines, ct);
 
+            TransitionRun(ctraderState, RunStateMachine.Finalizing);
+
+            // This leg is the one every parity comparison is measured against, and it was the only leg
+            // with no integrity checks on it: this path is a parallel copy of RunAsync's finalize block
+            // that never ran the trade-persistence barrier and never merged the run's warnings, so a
+            // compare-both cTrader leg could lose trades, or declare a EUR account, and still be stored
+            // as a clean `completed` run with WarningsJson NULL. Both steps now run here, as they do in
+            // RunAsync — barrier first, so its backfilled trades are counted by GetTradeStatsAsync.
+            if (ctraderResult.Success)
+                await RunTradePersistenceBarrierAsync(ctraderRunId, ctraderState, ct);
+
             var tradeStats = await GetTradeStatsAsync(ctraderRunId, cfg.Balance);
+            var ctraderWarnings = MergeWarningsJson(ctraderState, ctraderResult.WarningsJson);
             ctraderResult = ctraderResult with
             {
                 NetProfit = tradeStats.NetProfit,
@@ -1059,12 +1076,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 TotalTrades = tradeStats.TotalTrades,
                 WinningTrades = tradeStats.WinningTrades,
                 WinRatePct = tradeStats.WinRatePct,
+                WarningsJson = ctraderWarnings,
             };
 
             ctraderState.Result = ctraderResult;
             ctraderState.Error = ctraderResult.ErrorMessage;
-            TransitionRun(ctraderState, RunStateMachine.Finalizing);
-            TransitionRun(ctraderState, ctraderResult.Success ? RunStateMachine.Completed : RunStateMachine.Failed);
+            TransitionRun(ctraderState, ctraderResult.Success
+                ? (RunStatusResolver.HasWarnings(ctraderWarnings)
+                    ? RunStateMachine.CompletedWithWarnings
+                    : RunStateMachine.Completed)
+                : RunStateMachine.Failed);
 
             await WriteEndRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, ctraderResult, tradeStats, null);
 
@@ -1567,6 +1588,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         // cTrader backtest can be profiled from the UI — this is the round-trip-window-vs-total + tick-publish
         // count the audit's fast-track said to measure FIRST to decide whether F11 or ctrader-cli tick replay
         // dominates wall-clock.
+        // NOTE: the cBot's Print() output does NOT survive the cTrader CLI — nothing it prints reaches
+        // StandardOutput. Anything the cBot must tell the engine goes over NetMQ or into its own
+        // ledger (see WarnOnVenueCurrencyMismatch); this loop is kept only for the CLI's own lines.
         foreach (var line in cliResult.StandardOutput.Split('\n'))
         {
             var t = line.Trim();
@@ -1647,6 +1671,14 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             : null;
         if (finalReportPath == cbotReport)
             EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cBot ledger: {cbotReport}");
+
+        // F34: the venue declares its deposit currency in its own ledger. Every figure in that ledger
+        // — gross, net, commission, swap, equity — is denominated in it, while this engine models USD
+        // throughout (pip values, risk sizing, FTMO limits, the entire tape). A mismatch is a silent
+        // FX scaling on every number the run produces, so the run has to say so out loud. (The cBot's
+        // Print output does NOT survive the cTrader CLI, so the report file is the only reliable
+        // channel for this.)
+        WarnOnVenueCurrencyMismatch(runId, finalReportPath, logLines);
 
         var wallElapsedMsCtrader = (long)(DateTime.UtcNow - wallStart).TotalMilliseconds;
         return new BacktestResult
@@ -1762,6 +1794,58 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 
     // P0.3 (F6): trade-persistence integrity barrier. Runs after the engine produced a complete result
     // and the journal + TradeResults have drained. Reconciles journalled closes vs persisted TradeResults;
+    // F34: read the deposit currency the venue declared in its own ledger and warn if it is not the
+    // currency this engine models. A EUR-denominated venue account scales every figure a cTrader run
+    // produces by the EURUSD rate (~0.86), which is indistinguishable from a strategy difference
+    // unless somebody says the word "EUR" out loud — and nothing in the system ever did.
+    private void WarnOnVenueCurrencyMismatch(string runId, string? reportPath, ConcurrentQueue<string> logLines)
+    {
+        if (string.IsNullOrEmpty(reportPath) || !File.Exists(reportPath))
+        {
+            return;
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(reportPath));
+            if (!doc.RootElement.TryGetProperty("main", out var main) ||
+                !main.TryGetProperty("accountCurrency", out var ccyEl))
+            {
+                return;
+            }
+
+            // F33: the venue-intent invariant. The cBot compares the protection the venue actually
+            // holds against the prices the engine asked for, and counts the disagreements. This is the
+            // check that turns "every cTrader stop was at the wrong distance" from a four-session blind
+            // spot into a warning on the very first run.
+            if (main.TryGetProperty("protectionMismatches", out var pmEl) &&
+                pmEl.TryGetInt32(out var mismatches) && mismatches > 0)
+            {
+                AddTeardownWarning(runId, $"VENUE_PROTECTION_MISMATCH:{mismatches}",
+                    $"{mismatches} position(s) carried a stop-loss/take-profit the venue did not hold at the price the engine asked for");
+                EnqueueLog(runId, logLines,
+                    $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: {mismatches} position(s) had venue protection that did not match the engine's intent");
+            }
+
+            var venueCurrency = ccyEl.GetString();
+            if (string.IsNullOrWhiteSpace(venueCurrency) ||
+                string.Equals(venueCurrency, ModelledAccountCurrency, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            AddTeardownWarning(runId, $"VENUE_CURRENCY_MISMATCH:{venueCurrency}",
+                $"venue account is denominated in {venueCurrency} but the engine models {ModelledAccountCurrency} — " +
+                "every money figure from this run is scaled by an FX rate and is NOT comparable to a tape run");
+            EnqueueLog(runId, logLines,
+                $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: venue account currency is {venueCurrency}, engine models {ModelledAccountCurrency}");
+        }
+        catch (Exception ex)
+        {
+            AddTeardownWarning(runId, "VENUE_LEDGER_UNREADABLE", ex.Message);
+        }
+    }
+
     // backfills any lost trades from the journal and, on a shortfall, records a TRADES_LOST warning so the
     // run finalizes `completed-with-warnings` (P0.2 plumbing) instead of silently reporting fewer trades.
     private async Task RunTradePersistenceBarrierAsync(string runId, BacktestRunState state, CancellationToken ct)

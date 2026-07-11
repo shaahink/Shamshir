@@ -95,6 +95,21 @@ public sealed class ShamshirTradeLogger
     public string Period { get; set; } = "";
     public double StartingCapital { get; set; }
 
+    /// <summary>
+    /// F34: the venue account's deposit currency. Every figure in this report — gross, net,
+    /// commission, swap, equity — is denominated in it. The engine models USD, so a report in any
+    /// other currency is scaled by an FX rate and is not comparable to a tape run. It goes in the
+    /// report (not just a Print) because the cBot's stdout does not survive the cTrader CLI.
+    /// </summary>
+    public string AccountCurrency { get; set; } = "";
+
+    /// <summary>
+    /// F33: how many positions the venue did NOT hold at the stop-loss/take-profit price the engine
+    /// asked for. Must be zero. Reported in the ledger rather than via Print for the same reason as
+    /// <see cref="AccountCurrency"/> — the cBot's stdout does not survive the cTrader CLI.
+    /// </summary>
+    public int ProtectionMismatches { get; set; }
+
     public void RecordEquity(double balance, double equity, long time)
     {
         lock (_gate)
@@ -195,6 +210,8 @@ public sealed class ShamshirTradeLogger
                 startingCapital = StartingCapital,
                 endingEquity,
                 endingBalance,
+                accountCurrency = AccountCurrency,
+                protectionMismatches = ProtectionMismatches,
             },
             tradeStatistics = new
             {

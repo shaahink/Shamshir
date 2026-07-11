@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text.Json;
 using cAlgo.API;
+using cAlgo.API.Internals;
 using NetMQ;
 using NetMQ.Sockets;
 
@@ -72,6 +73,10 @@ public partial class TradingEngineCBot : Robot
     {
         public int BarsRemaining;
         public string Symbol = "";
+        // F33: kept so the fill handler can verify the venue actually honoured the protection prices
+        // the resting order was placed with.
+        public double? StopLoss;
+        public double? TakeProfit;
     }
 
     private readonly ShamshirTradeLogger _tradeLog = new();
@@ -111,6 +116,7 @@ public partial class TradingEngineCBot : Robot
         _tradeLog.Symbol = SymbolName;
         _tradeLog.Period = TimeFrame.ShortName;
         _tradeLog.StartingCapital = Account.Balance;
+        _tradeLog.AccountCurrency = Account.Asset.Name;
         _tradeLog.RecordEquity(Account.Balance, Account.Equity, EpochMs(Server.TimeInUtc));
         if (!string.IsNullOrWhiteSpace(ReportPath))
             Print($"CBOT|REPORT_PATH|{ReportPath}");
@@ -153,12 +159,15 @@ public partial class TradingEngineCBot : Robot
             periods = periods,
             subs = subs.Select(s => new { s.sym, tf = s.tf }).ToArray(),
             barsLoaded = _subscriptions.Sum(s => s.Count),
-            account = new { balance = Account.Balance, equity = Account.Equity },
+            // F34: the account's currency was never declared, so nobody noticed the venue account is
+            // EUR-denominated while the whole engine models USD — a silent 0.8638 scaling on every
+            // cTrader money figure ever produced.
+            account = new { balance = Account.Balance, equity = Account.Equity, currency = Account.Asset.Name },
             positions = positionSnapshot,
             mode = IsBacktesting ? "backtest" : "live"
         });
         _dealer.SendFrame(helloMsg);
-        Print($"CBOT|HELLO_SENT|subs={subs.Count}|barsLoaded={_subscriptions.Sum(s => s.Count)}|mode={(IsBacktesting ? "backtest" : "live")}");
+        Print($"CBOT|HELLO_SENT|subs={subs.Count}|barsLoaded={_subscriptions.Sum(s => s.Count)}|ccy={Account.Asset.Name}|mode={(IsBacktesting ? "backtest" : "live")}");
 
         for (int retry = 0; retry < 50 && !_connected; retry++)
         {
@@ -421,6 +430,16 @@ public partial class TradingEngineCBot : Robot
         var tradeType = direction == "Long" ? TradeType.Buy : TradeType.Sell;
         var volumeInUnits = Math.Floor(lots * sym.LotSize / sym.VolumeInUnitsStep) * sym.VolumeInUnitsStep;
 
+        // F33: slPrice/tpPrice are ABSOLUTE PRICES. The legacy overloads of PlaceLimitOrder /
+        // PlaceStopOrder / ExecuteMarketOrder read their stopLoss/takeProfit arguments as a DISTANCE
+        // IN PIPS ("Stop loss in pips" — cAlgo.API.xml), so passing a price put every stop
+        // `price * pipSize` away from entry: a 1.2-pip stop on EURUSD, a 7,708-point stop on BTCUSD.
+        // Pending orders now take ProtectionType.Absolute. ExecuteMarketOrder has no absolute
+        // overload, so it gets a pip distance derived from the live reference price (never naked) and
+        // is snapped to the exact intended prices immediately after the fill, below.
+        double? sl = slPrice > 0 ? slPrice : null;
+        double? tp = tpPrice > 0 ? tpPrice : null;
+
         TradeResult? result;
         if (orderType == "Limit" && limitPrice > 0)
         {
@@ -430,22 +449,21 @@ public partial class TradingEngineCBot : Robot
             // to find their order, so pending orders were never cancelled on expiry AND a resting
             // order that later filled natively in cTrader was invisible to the engine (0 fills
             // reported despite cTrader actually opening positions) — confirmed live 2026-07-11.
-#pragma warning disable CS0618
             result = PlaceLimitOrder(tradeType, symbol, volumeInUnits, limitPrice, clientOrderId,
-                slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null);
-#pragma warning restore CS0618
+                sl, tp, ProtectionType.Absolute);
         }
         else if (orderType == "Stop" && limitPrice > 0)
         {
-#pragma warning disable CS0618
             result = PlaceStopOrder(tradeType, symbol, volumeInUnits, limitPrice, clientOrderId,
-                slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null);
-#pragma warning restore CS0618
+                sl, tp, ProtectionType.Absolute);
         }
         else
         {
+            var reference = tradeType == TradeType.Buy ? sym.Ask : sym.Bid;
             result = ExecuteMarketOrder(tradeType, symbol, volumeInUnits, "Shamshir",
-                slPrice > 0 ? slPrice : null, tpPrice > 0 ? tpPrice : null, clientOrderId);
+                ToProtectionPips(sl, reference, tradeType, isStopLoss: true, sym),
+                ToProtectionPips(tp, reference, tradeType, isStopLoss: false, sym),
+                clientOrderId);
         }
 
         if (result?.IsSuccessful == true)
@@ -458,6 +476,8 @@ public partial class TradingEngineCBot : Robot
                 {
                     BarsRemaining = expiryBars,
                     Symbol = symbol,
+                    StopLoss = sl,
+                    TakeProfit = tp,
                 };
                 return MakeExecResult(clientOrderId, "pending_limit", 0, "Pending", limitPrice, lots, null);
             }
@@ -475,16 +495,11 @@ public partial class TradingEngineCBot : Robot
             _tradeLog.RecordOpen(pos.Id, clientOrderId, direction, pos.EntryPrice,
                 pos.VolumeInUnits / sym.LotSize, EpochMs(Server.TimeInUtc), Account.Balance, Account.Equity);
 
-            if ((slPrice > 0 || tpPrice > 0) && pos.StopLoss != slPrice && pos.TakeProfit != tpPrice)
-            {
-                try
-                {
-#pragma warning disable CS0618
-                    ModifyPosition(pos, slPrice > 0 ? slPrice : pos.StopLoss, tpPrice > 0 ? tpPrice : pos.TakeProfit);
-#pragma warning restore CS0618
-                }
-                catch { Print($"CBOT|MODIFY_FAIL|posId={pos.Id}|orderId={clientOrderId}"); }
-            }
+            // F33/F37: snap the position to the EXACT intended prices. The market-order path can only
+            // express protection as a pip distance from the fill, so it lands a tick or two off. The
+            // old guard here used `&&`, which skipped the repair whenever either level already
+            // matched, and it was unreachable for pending orders (pos is null at submit time).
+            ApplyProtection(pos, sl, tp, clientOrderId);
 
             PublishAccount();
             return MakeExecResult(clientOrderId, "entry_fill", pos.Id, "Filled", pos.EntryPrice,
@@ -492,6 +507,58 @@ public partial class TradingEngineCBot : Robot
         }
 
         return MakeExecResult(clientOrderId, "entry_fill", 0, "Rejected", 0, lots, result?.Error.ToString() ?? "Null result");
+    }
+
+    // F33: convert an absolute protection price into the positive pip distance the legacy
+    // market-order overload expects. Returns null when unset, or when the price sits on the wrong
+    // side of the reference — a negative distance would be silently rejected by the venue and leave
+    // the position naked.
+    private static double? ToProtectionPips(double? price, double reference, TradeType tradeType, bool isStopLoss, Symbol sym)
+    {
+        if (price is null || reference <= 0 || sym.PipSize <= 0) return null;
+
+        // A stop-loss sits below a buy and above a sell; a take-profit is the mirror of that.
+        var isBuy = tradeType == TradeType.Buy;
+        var distance = isBuy == isStopLoss ? reference - price.Value : price.Value - reference;
+
+        var pips = distance / sym.PipSize;
+        return pips > 0 ? pips : null;
+    }
+
+    // F33: set the venue's protection to the EXACT prices the engine asked for, then verify the venue
+    // agrees. The verification is the point: for four sessions the venue silently held stops at a
+    // completely different distance from the ones in our journal, and nothing compared the two.
+    private void ApplyProtection(Position pos, double? sl, double? tp, string clientOrderId)
+    {
+        if (sl is null && tp is null) return;
+
+        if (pos.StopLoss != sl || pos.TakeProfit != tp)
+        {
+            try
+            {
+                var modify = ModifyPosition(pos, sl ?? pos.StopLoss, tp ?? pos.TakeProfit, ProtectionType.Absolute);
+                if (modify?.IsSuccessful != true)
+                    Print($"CBOT|PROTECTION_SET_FAIL|posId={pos.Id}|orderId={clientOrderId}|err={modify?.Error}");
+            }
+            catch (Exception ex)
+            {
+                Print($"CBOT|PROTECTION_SET_ERR|posId={pos.Id}|orderId={clientOrderId}|{ex.Message}");
+            }
+        }
+
+        var sym = Symbols.GetSymbol(pos.SymbolName);
+        var tick = sym?.TickSize ?? 0.0;
+        if (Off(pos.StopLoss, sl, tick) || Off(pos.TakeProfit, tp, tick))
+        {
+            _tradeLog.ProtectionMismatches++;
+            Print($"CBOT|PROTECTION_MISMATCH|posId={pos.Id}|orderId={clientOrderId}" +
+                  $"|wantSl={Fmt(sl)}|gotSl={Fmt(pos.StopLoss)}|wantTp={Fmt(tp)}|gotTp={Fmt(pos.TakeProfit)}");
+        }
+
+        static bool Off(double? actual, double? intended, double tick)
+            => intended is not null && (actual is null || Math.Abs(actual.Value - intended.Value) > Math.Max(tick, 1e-9));
+
+        static string Fmt(double? v) => v is null ? "-" : v.Value.ToString("F5");
     }
 
     private void ProcessLimitExpiry(string symbol, string timeframe)
@@ -520,9 +587,7 @@ public partial class TradingEngineCBot : Robot
                 if (!string.Equals(order.Label, id, StringComparison.OrdinalIgnoreCase)) continue;
                 try
                 {
-#pragma warning disable CS0618
                     CancelPendingOrder(order);
-#pragma warning restore CS0618
                 }
                 catch (Exception ex)
                 {
@@ -642,10 +707,10 @@ public partial class TradingEngineCBot : Robot
                 var appliedTp = newTp > 0 ? newTp : (pos.TakeProfit ?? 0.0);
                 try
                 {
-#pragma warning disable CS0618
+                    // F33: newSl/newTp are absolute prices — say so explicitly rather than relying on
+                    // the deprecated overload's implicit convention.
                     var result = ModifyPosition(pos, appliedSl > 0 ? appliedSl : (double?)null,
-                        appliedTp > 0 ? appliedTp : (double?)null);
-#pragma warning restore CS0618
+                        appliedTp > 0 ? appliedTp : (double?)null, ProtectionType.Absolute);
                     Diag($"MODIFY|{orderIdStr}|sl={appliedSl:F5}|tp={appliedTp:F5}|success={result?.IsSuccessful}");
                     return MakeModifyResult(guid.ToString(), pos.Id,
                         result?.IsSuccessful == true ? "Filled" : "Rejected", appliedSl, appliedTp);
@@ -792,7 +857,11 @@ public partial class TradingEngineCBot : Robot
         if (_positionMap.ContainsKey(pos.Id)) return; // already recorded via the synchronous ExecuteSubmitOrder path
 
         var clientOrderIdStr = clientOrderId.ToString();
-        if (!_pendingEntryOrders.Remove(clientOrderIdStr)) return; // not a tracked pending order
+        if (!_pendingEntryOrders.Remove(clientOrderIdStr, out var pending)) return; // not a tracked pending order
+
+        // F33: the resting order was placed with ProtectionType.Absolute, so the position should
+        // already carry the exact intended levels — verify that it does rather than assume it.
+        ApplyProtection(pos, pending.StopLoss, pending.TakeProfit, clientOrderIdStr);
 
         var sym = Symbols.GetSymbol(pos.SymbolName);
         var lots = sym is not null ? pos.VolumeInUnits / sym.LotSize : pos.VolumeInUnits / 100_000.0;

@@ -11,23 +11,28 @@ handoff.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **P3 COMPLETE 2026-07-11** (`evidence/p3-exit-spread-parity.md`). Gap-through fills (P3a) and
-  exit-side spread direction (P3c) already correct on code read — no fix needed. Found+fixed F32:
-  tape's spread model silently ignored the run's configured SpreadPips (always fell back to
-  symbols.json's static 30-pip XAUUSD default) while cTrader has always honoured --spread from the
-  same config field — a 30x cost-model mismatch on every compare-both run. Fixed (spreadPipsOverride
-  on TapeReplayAdapter, mirrors P1's commissionPerMillion pattern exactly), 3 new tests, live
-  re-verified (tape 13 / cTrader 12 trades — count shift is expected, a tighter matching spread eases
-  limit touch conditions tape previously missed). Deliberate side effect flagged: EVERY tape run now
-  defaults to 1-pip spread cost (was symbol-realistic ~30 pips for XAUUSD) unless a caller sets
-  SpreadPips explicitly — matches cTrader's pre-existing behavior, not scoped down to parity-only.
-  P0-P3 of the alpha-loop parity track are now DONE: 4 live cross-venue defects found+fixed this
-  session (F24, F30, F31, F32), each independently confirmed live and gate-verified.
-stage: **P4 — Parity as a permanent gate — NOT STARTED**
-gate: build 0err/5warn · Unit 728/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean (re-verified post-F32-fix)
-next: **P4** (PLAN.md §3b — research parity verb + tolerance budget, OWNER GATE after). Then R1'
-  (one cell per run, needs P4 green). X-phases (queue, progress truth, cTrader PID ownership, runs
-  page, trade chart) run in parallel with P.
+last: **P0–P3 WERE NOT THE PROBLEM. See `PARITY-TRUTH-2.md`** (owner-delegated deep audit 2026-07-12).
+  Three master defects sat underneath all of P0–P3, missed because *every* prior parity cell was XAUUSD
+  — the one symbol where the biggest of them looks plausible. **F33:** the cBot passed absolute SL/TP
+  *prices* into cAlgo parameters that mean *pip distance* (`stopLossPips`), so every cTrader stop ever
+  placed was at `price × pipSize` from entry — a 1.2-pip stop on EURUSD, a 7,708-pt stop on BTCUSD (a
+  long ran 7,000 pts past its stop, −29,500). Fixed with `ProtectionType.Absolute`. **F34:** the venue
+  account is **EUR**-denominated, the engine models USD — a constant 0.86376 on every cTrader money
+  figure. Now venue-declared + warned; **not resolved** (needs a USD account). **F39:** `commissionPerMillion`
+  was substituted for the per-lot rate, so the tape billed $30/LOT not $30/million — 8.6× overcharge.
+  Also F35 (OrderEntryMethod fabricated), and the compare-both cTrader leg never ran the trade-persistence
+  barrier and never merged its warnings — the one leg parity is measured against had no integrity checks.
+stage: **P4 — Parity as a permanent gate — NOT STARTED** (now measurable: the venues actually agree)
+gate: build 0err/5warn · Unit 730/0/6 · Integration 121/0/0 · Sim-fast 144/0/0
+verified live (both cells re-run from the owner's own manual tests, EURUSD + BTCUSD):
+  · EURUSD 3:3 trades, **stops identical to the tick**, **exit timestamps identical**, commission within
+    **0.85%** (was: cTrader +74 vs tape −2,032; stops firing at −1.7 pips)
+  · BTCUSD **6:6** trades, commission within 4.4% (was: 73,179 vs 9,037 gross — an 8× gap)
+  · venue-intent invariant `protectionMismatches = 0`; `VENUE_CURRENCY_MISMATCH:EUR` now surfaces
+next: **F38** — the largest remaining divergence: `LimitPrice == SignalPriceMid` in the journal, i.e. the
+  configured 5.25-pip LimitOffset is **never applied**, so the order is marketable on one venue and rests
+  on the other (tape fills at 1.15973, cTrader at 1.16156). Then P4. **Parity cells must include a
+  currency pair AND a high-priced symbol** — never XAUUSD alone; that is what hid F33 for four sessions.
 
 ## Checkpoints
 

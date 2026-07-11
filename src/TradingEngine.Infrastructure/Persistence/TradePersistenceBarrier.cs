@@ -190,7 +190,7 @@ public sealed class TradePersistenceBarrier(
                     ClosedAtUtc: orphan.CloseTime,
                     OpenedAtUtc: open.EntryTime,
                     OrderId: orphan.OrderId,
-                    OrderEntryMethod: "Market",
+                    OrderEntryMethod: prop.OrderEntryMethod,
                     GrossProfit: orphan.GrossProfit,
                     NetProfit: orphan.NetProfit,
                     Commission: orphan.Commission,
@@ -234,7 +234,7 @@ public sealed class TradePersistenceBarrier(
     // ── F6-R: snapshot POCOs used to pair journal events for orphan-close reconstruction ──
 
     private sealed record OpenFillSnapshot(Guid OrderId, Symbol Symbol, decimal EntryPrice, decimal Lots, DateTime EntryTime);
-    private sealed record ProposalSnapshot(Guid OrderId, string StrategyId, TradeDirection Direction, decimal StopLoss, decimal? TakeProfit);
+    private sealed record ProposalSnapshot(Guid OrderId, string StrategyId, TradeDirection Direction, decimal StopLoss, decimal? TakeProfit, string OrderEntryMethod);
     private sealed record CloseFillSnapshot(Guid OrderId, string Symbol, decimal ExitPrice, decimal Lots, DateTime CloseTime, string CloseReason, decimal? GrossProfit, decimal? NetProfit, decimal? Commission, decimal? Swap);
 
     private static bool TryParseOpenFill(string eventJson, [NotNullWhen(true)] out OpenFillSnapshot? result)
@@ -278,7 +278,20 @@ public sealed class TradePersistenceBarrier(
             if (r.TryGetProperty("TakeProfit", out var tpEl) && tpEl.ValueKind == JsonValueKind.Object)
                 takeProfit = tpEl.GetProperty("Value").GetDecimal();
 
-            result = new ProposalSnapshot(orderId, strategyId, direction, stopLoss, takeProfit);
+            // F35: the proposal knows how the order was actually entered. Reconstruction used to drop
+            // this and fall back to TradeResult's "Market" default, so every reconstructed cTrader
+            // trade claimed Market even when the journal recorded a Limit order — a fabricated column
+            // in the one table you'd use to debug entry parity.
+            var entryMethod = r.TryGetProperty("Entry", out var entryEl)
+                && entryEl.ValueKind == JsonValueKind.Object
+                && entryEl.TryGetProperty("Method", out var methodEl)
+                && methodEl.GetString() is { Length: > 0 } m
+                    ? m
+                    : r.TryGetProperty("OrderType", out var otEl) && otEl.GetString() is { Length: > 0 } ot
+                        ? ot
+                        : "Market";
+
+            result = new ProposalSnapshot(orderId, strategyId, direction, stopLoss, takeProfit, entryMethod);
             return true;
         }
         catch { return false; }

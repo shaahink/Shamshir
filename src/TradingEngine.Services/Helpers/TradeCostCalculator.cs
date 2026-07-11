@@ -89,8 +89,16 @@ public static class TradeCostCalculator
         decimal lots, SymbolInfo symbol, decimal price,
         Func<string, string, decimal> getCrossRate, decimal? commissionPerMillion)
     {
-        // commissionPerMillion override takes precedence (backward compat with config-driven runs)
-        var rate = commissionPerMillion ?? symbol.CommissionPerLotPerSide;
+        // F39: a commissionPerMillion override is — by its name, and by what cTrader's --commission
+        // flag means — a rate per MILLION USD of notional. It must carry its own formula with it. The
+        // old code substituted it for `rate` and then dispatched on the SYMBOL's CommissionType, so a
+        // symbol declared AbsolutePerLot (every FX pair in symbols.json) billed the run $30 PER LOT
+        // instead of $30 per million: the tape charged $106.80 round-turn on 1.78 EURUSD lots where
+        // cTrader, given the identical --commission=30, charged $10.60.
+        if (commissionPerMillion is { } perMillion)
+            return NotionalUsd(lots, symbol, price, getCrossRate) * perMillion / 1_000_000m;
+
+        var rate = symbol.CommissionPerLotPerSide;
 
         return symbol.CommissionType switch
         {
@@ -98,17 +106,22 @@ public static class TradeCostCalculator
                 => lots * rate,
 
             CommissionType.UsdPerMillionUsdVolume
-                => lots * symbol.ContractSize * BaseToUsd(symbol, price, getCrossRate) * rate / 1_000_000m,
+                => NotionalUsd(lots, symbol, price, getCrossRate) * rate / 1_000_000m,
 
             CommissionType.Pips
                 => lots * rate * (decimal)symbol.PipSize * BaseToUsd(symbol, price, getCrossRate),
 
             CommissionType.PercentOfNotionalValue
-                => lots * symbol.ContractSize * BaseToUsd(symbol, price, getCrossRate) * rate / 100m,
+                => NotionalUsd(lots, symbol, price, getCrossRate) * rate / 100m,
 
             _ => lots * rate,
         };
     }
+
+    /// <summary>The position's notional value in USD: <c>lots × contractSize × baseToUsdRate</c>.</summary>
+    private static decimal NotionalUsd(
+        decimal lots, SymbolInfo symbol, decimal price, Func<string, string, decimal> getCrossRate)
+        => lots * symbol.ContractSize * BaseToUsd(symbol, price, getCrossRate);
 
     /// <summary>
     /// Returns the price of 1 unit of the symbol's base currency in USD.
