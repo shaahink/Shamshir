@@ -78,6 +78,13 @@ public sealed class SymbolInfoRegistry : ISymbolInfoRegistry
 
     private static SymbolInfo MergeVenueSpec(SymbolInfo existing, VenueSymbolSpec spec)
     {
+        // D10 scopes the venue-declared merge to broker ECONOMICS (commission, swap, lot/pip/tick
+        // size) — stable structural facts. TypicalSpread is deliberately excluded: it is a live
+        // market snapshot (further distorted by backtest CLI args like --spread=1), not a broker
+        // constant, and it doubles as the reference scale for ATR-based sizing heuristics
+        // (UnitConversion.ReferenceAtrPips -> RiskProfile.MaxSlPips). Merging it collapsed MaxSlPips
+        // for XAUUSD from ~5250 to ~175 pips on the cTrader leg, rejecting every wide-stop signal
+        // with SL_TOO_WIDE while the tape leg (untouched) traded normally — confirmed live 2026-07-11.
         return existing with
         {
             CommissionPerLotPerSide = spec.Commission,
@@ -87,7 +94,6 @@ public sealed class SymbolInfoRegistry : ISymbolInfoRegistry
             ContractSize = spec.LotSize,
             PipSize = spec.PipSize,
             TickSize = spec.TickSize,
-            TypicalSpread = spec.TypicalSpread,
             TripleSwapWeekday = spec.TripleSwapDay.ToString(),
         };
     }

@@ -186,3 +186,73 @@ scoring on tape is valid. F23 filed for tracking.
 - PreTradeGate: uses AbsolutePerLot formula (no notional lookup at gate time). TODO for future.
 - The cBot's Commission/SwapLong/SwapShort API access is untested against a real cTrader instance.
   Live verification needs a cTrader backtest run.
+
+---
+
+## QA — 2026-07-11 — Static audit + live cTrader verification of P0+P1
+
+**Full detail:** `evidence/p1-symbol-specs.md`. Summary below.
+
+### Method
+
+Static diff read of all 4 P0/P1 commits (de52441/393ff67/56871de/83519da), reflection against the
+real installed cAlgo.API.dll (`C:\Users\shahi\AppData\Local\Spotware\cTrader\...\app_5.7.14.51420\`)
+to verify `MapCommissionType`'s string cases match cTrader's actual enum names (confirmed:
+`UsdPerMillionUsdVolume`, `Absolute`, `Percentage`, `Pips` all found byte-exact in the assembly),
+re-ran the full gate battery, then ran **live cTrader compare-both** via the actual web app
+(`POST /api/runs/compare-both`) — not just the credential-gated xUnit suite — per owner instruction.
+
+### F24 — CRITICAL, found live, fixed this session
+
+`SymbolInfoRegistry.MergeVenueSpec` merged the venue's captured `TypicalSpread` into the shared
+registry. `TypicalSpread` doubles as the reference-scale input to `UnitConversion.ReferenceAtrPips`
+→ `RiskProfile.MaxSlPips` (the ATR-based stop-loss ceiling). A cTrader backtest's `--spread=1`
+CLI arg (not a "typical" spread) got captured as the venue's live spread and merged in, collapsing
+XAUUSD/H4's `MaxSlPips` from a realistic **5250 pips → 175 pips** — a 30× shrink. Every
+trend-breakout signal on the cTrader leg was rejected `SL_TOO_WIDE`, while tape (untouched) traded
+normally. Live repro: XAUUSD H4 trend-breakout, 2025-08-01→2025-10-01, market entries — tape
+`e907e647` = 12 trades / 17 proposed, cTrader `921ce1e4` = **0 trades / 17 proposed, 0 filled.**
+D10 never asked for spread to be merged (its field list is commission/swap/lot/pip/tick/digits) —
+capturing it was scope creep beyond the plan, and it broke risk sizing silently (every
+credential-free gate stayed green throughout).
+
+**Fix:** `SymbolInfoRegistry.cs` `MergeVenueSpec` no longer copies `spec.TypicalSpread`. Re-verified
+live on a fresh run of the same config: tape `f22e51bb` = 12 trades, cTrader `261bb748` = 14 trades
+(comparable, consistent with the known F23 entry-latency effect — not a rejection). Gate battery
+re-verified green post-fix: build 0err/5warn · Unit 721/0/6 · Integration 121/0/0 · Sim-fast 144/0/0.
+
+### Other findings (not fixed this session, see evidence file for detail)
+
+- **F25 (MAJOR):** `VenueSymbolSpecs` DB table (M51 migration) is never written by any application
+  code — confirmed via grep and via `SELECT COUNT(*)=0` even after live runs that captured+merged
+  specs. Persistence is in-memory-only (process lifetime); TRACKER's "engine persists
+  VenueSymbolSpec" claim overstates what shipped.
+- **F26 (MODERATE):** `PreTradeGate.CandidateWorstCase` (PreTradeGate.cs:243) doesn't dispatch on
+  `CommissionType` — treats a post-merge `UsdPerMillionUsdVolume` rate as a flat per-lot dollar
+  figure. Pre-existing documented TODO; did not cause F24 (separate guard).
+- **F27 (MODERATE):** zero unit tests reference `UsdPerMillionUsdVolume`/`ComputeEntryCommission`/
+  `BaseToUsd` — the riskiest new P1 math is untested in isolation (verified correct only via static
+  derivation + this session's live run).
+- **F28 (MINOR):** `SwapCalculationType` captured/persisted but never dispatched on in
+  `TradeCostCalculator` — swap always computed as flat per-lot-per-night regardless of calc type.
+- **F29 (MINOR):** reconcile per-trade matcher (`LedgerReconciler.ComputeTradeDeltas`) uses a
+  5-minute `OpenedAtUtc` tolerance; real venue entry-latency (F23) is hours, so 0 of 12/14 trades
+  matched on the F24-repro run. The per-trade delta feature is non-functional on market-entry runs
+  today — expected to improve once P2 (limit entries) lands.
+- **Environmental, not a regression:** `CtraderE2EHarnessSmokeTests` (3-day EURUSD) fails with 0
+  trades on **current HEAD** — reproduced **identically on the pre-P0 baseline** (`e0583e6`, isolated
+  worktree) so this is NOT a P0/P1 regression. Root cause: installed cTrader Desktop CLI
+  (`5.7.14.51420`) throws `InvalidOperationException`/`NotImplementedException` in its own
+  report-generation step after every backtest, exit code 1 — our DB never receives the completed
+  run's data even though the cBot's own `shamshir-report.json` shows the trade executed. Recurring
+  cTrader-testing friction (owner-flagged, seen across sessions/models) + proposed mitigations
+  written up in evidence file §8: mandatory live-cTrader gate for venue-spec-touching phases, scope
+  `SymbolInfoRegistry` per-run instead of process-singleton, surface CLI crash-but-traded state
+  instead of silent 0-trades, and track installed cTrader version via `research doctor`.
+
+### Gate re-verification of P0+P1's own claims
+
+All claims in the previous session's report independently re-verified true: build 0err/5warn,
+Unit 721/0/6, Integration 121/0/0, Sim-fast 144/0/0. Cost-sign convention, cBot partial-close fix,
+half-at-open logic (all 3 adapters), `BaseToUsd`/notional commission math, and `MapCommissionType`
+string dispatch are all correct on both static review and live verification.

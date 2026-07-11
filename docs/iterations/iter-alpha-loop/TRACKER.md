@@ -11,17 +11,20 @@ handoff.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **P0+P1 COMPLETE 2026-07-11.** Costs unified under negative convention (D9): Net = Gross + Commission + Swap.
-  F1 (opposite cost signs) fixed — TradeCostCalculator, TradeResultFactory, all 3 adapters use one convention.
-  F2 (cBot partial-close double-sign) fixed — TradingEngineCBot.cs:571-573 now uses gross+commission+swap.
-  F3+F4 (fabricated symbols.json + wrong commission formula) killed — cBot emits symbol_spec (D10), engine
-  persists VenueSymbolSpec, ISymbolInfoRegistry prefers venue economics, symbols.json is loudly-warned fallback.
-  Commission model: dispatches on CommissionType (AbsolutePerLot, UsdPerMillionUsdVolume with correct USD notional).
-  Half-at-open: all 3 adapters track entry commission, balance reflects split (close-side only).
-  Reconcile: per-trade deltas with CommissionDelta/SwapDelta/NetDelta on each matched trade pair.
-  Invariant test: Net == Gross + Commission + Swap verified on all TradeCosts outputs.
-stage: **P2 — Limit-entry parity — NOT STARTED**
-gate: build 0err/5warn · Unit 721/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
+last: **P0+P1 QA COMPLETE 2026-07-11** (`evidence/p1-symbol-specs.md`). Static audit of all 4 P0/P1
+  commits + LIVE cTrader compare-both verification (not just credential-free gates). Found + fixed
+  F24 (CRITICAL, live-confirmed): `SymbolInfoRegistry.MergeVenueSpec` merged the venue's captured
+  spread into `TypicalSpread`, which feeds `RiskProfile.MaxSlPips` (ATR-sizing reference) — collapsed
+  XAUUSD/H4's SL ceiling 5250→175 pips, rejecting 17/17 cTrader-leg signals (0 trades) while tape
+  traded normally (12 trades) on the identical config. Fixed; re-verified live (tape 12 / cTrader 14,
+  comparable). Filed F25 (VenueSymbolSpecs DB table never written — in-memory only), F26
+  (PreTradeGate ignores CommissionType), F27 (no unit tests on notional commission math), F28
+  (SwapCalculationType captured but unused), F29 (reconcile per-trade matcher's 5-min window too
+  tight for real entry-latency). Confirmed the cTrader E2E xUnit harness's "0 trades" failures are a
+  PRE-EXISTING environmental cTrader Desktop CLI bug (reproduced identically on pre-P0 baseline
+  e0583e6) — NOT a P0/P1 regression.
+stage: **P2 — Limit-entry parity — IN PROGRESS**
+gate: build 0err/5warn · Unit 721/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean (re-verified post-F24-fix)
 next: **P2 → P3 → P4** (PLAN.md §3b). Then R1' (one cell per run).
   X-phases (queue, progress truth, cTrader PID ownership, runs page, trade chart) run in parallel.
 
@@ -57,6 +60,7 @@ phase (a code path is not evidence).
 | R2.7 | Divergence investigation document | DONE | — | docs/iterations/iter-alpha-loop/R2-DIVERGENCE-INVESTIGATION.md (full trace + methodology + recommendations) |
 | P0 | Cost-sign truth: unified negative convention, cBot partial-close fix, invariant tests | DONE | de52441 | Costs unified (Net=Gross+Comm+Swap); TradeCostCalculator+TradeResultFactory+TradingEngineCBot fixed; 2 invariant tests; 4 sign tests updated; gate 721/0/6·121/0/0·144/0/0 |
 | P1 | Venue-declared symbol specs: cBot symbol_spec, VenueSymbolSpec entity, correct commission model, half-at-open | DONE | 393ff67 56871de 83519da | M51 migration; cBot emits specs for all subscribed symbols; CTraderBrokerAdapter parses + upserts registry; CommissionType dispatch (AbsPerLot/UsdPerMillion); half-at-open in all 3 adapters; per-trade reconcile deltas; gate 721/0/6·121/0/0·144/0/0 |
+| P0+P1.QA | Static audit + LIVE cTrader verification; found+fixed F24 (MaxSlPips collapse, 100% signal rejection); filed F25-F29 | DONE | (pending) | evidence/p1-symbol-specs.md; live repro RunIds e907e647/921ce1e4 (broken) -> f22e51bb/261bb748 (fixed); gate re-verified 721/0/6·121/0/0·144/0/0 |
 
 ## Quick commands
 
