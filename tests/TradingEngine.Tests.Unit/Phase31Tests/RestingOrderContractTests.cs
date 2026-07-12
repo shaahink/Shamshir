@@ -5,13 +5,18 @@ using TradingEngine.Infrastructure.MarketData;
 namespace TradingEngine.Tests.Unit.Phase31Tests;
 
 /// <summary>
-/// P2 (docs/reference/RESTING-ORDER-CONTRACT.md). Guards the resting-order contract that makes
-/// entry price identical to cTrader "by construction": exact fill price at the named limit/stop, and
-/// — the regression this file exists to prevent (F30) — expiry counted in DECISION-timeframe bars on
-/// BOTH venues, never fine (exit-resolution) bars. The cBot's OnBarClosed only ever sees decision
-/// bars, so a tape adapter that decrements BarsRemaining per fine bar (the default M1 exit
-/// resolution) burns a 3-bar expiry in ~3 minutes instead of ~3 decision bars — a silent fill/no-fill
+/// P2 (docs/reference/RESTING-ORDER-CONTRACT.md). Guards the resting-order contract: the fill price the
+/// venue actually produces (P4.3/F43 — the first O/H/L/C tick to breach the level, NOT the level itself;
+/// see <c>VenueFillModel</c>), and — the regression this file exists to prevent (F30) — expiry counted in
+/// DECISION-timeframe bars on BOTH venues, never fine (exit-resolution) bars. The cBot's OnBarClosed only
+/// ever sees decision bars, so a tape adapter that decrements BarsRemaining per fine bar (the default M1
+/// exit resolution) burns a 3-bar expiry in ~3 minutes instead of ~3 decision bars — a silent fill/no-fill
 /// divergence indistinguishable from a signal bug.
+///
+/// P2's original claim — "entry price is identical to cTrader BY CONSTRUCTION, because both fill at exactly
+/// the named limit" — was never measured against cTrader, and was wrong in both halves: the venue does not
+/// fill at the named price, and the tape did not match it. Fill-price parity is now an EMPIRICAL result,
+/// pinned against real venue fills in <see cref="Adapters.VenueFillModelTests"/>, not a construction argument.
 /// </summary>
 [Trait("Category", "Infrastructure")]
 public sealed class RestingOrderContractTests
@@ -56,10 +61,17 @@ public sealed class RestingOrderContractTests
         return await a.SubmitOrderAsync(new OrderRequest(intent, 1.0m, Eurusd, dir, OrderType.Limit, limit), CancellationToken.None);
     }
 
-    // --- Touch rule + exact fill price (single-resolution — decisionTf == exitTf) ---
+    // --- Touch rule + fill price (single-resolution — decisionTf == exitTf) ---
+    //
+    // P4.3 (F43) REVERSED THE CONTRACT THESE TWO TESTS ORIGINALLY ASSERTED. P2 asserted "a limit fills at
+    // exactly the named price, never a better one" — reasoned from first principles, never measured against
+    // the venue. It is false. cTrader replays M1 as four synthetic ticks (O/H/L/C); a resting order fills on
+    // the first tick to BREACH its level, and with no tick at the level itself the fill lands on the bar's
+    // EXTREME — at-or-better than the limit. Measured tick-exact on the real venue: a sell limit at 1.15973
+    // filled at 1.15975 (the M1 bid high). See PARITY-TRUTH-4.md §2 and VenueFillModel.
 
     [Fact]
-    public async Task BuyLimit_FillsAtExactlyTheLimitPrice_NeverBetter()
+    public async Task BuyLimit_FillsAtTheFirstBreachingTick_WhichIsBetterThanTheLimit()
     {
         var adapter = MakeAdapter(Timeframe.H4, Timeframe.H4, []);
         adapter.OnBarObserved(H4(T0, 1.1000m, 1.1005m, 1.0995m, 1.1000m));
@@ -67,28 +79,33 @@ public sealed class RestingOrderContractTests
         var orderId = await SubmitLimit(adapter, TradeDirection.Long, limit, new Price(1.0900m), new Price(1.1100m), expiryBars: 3);
         Drain(adapter).Should().BeEmpty("resting limit must not fill at submit");
 
-        // Bar trades down through the limit (low=1.0970 < 1.0980) — should fill at exactly 1.0980, not the low.
+        // Bid bar trades down through the limit. A buy executes at the ASK (bid + 0.0002 spread), so the
+        // ask bar is O=1.0997 H=1.1000 L=1.0972 C=1.0987. The open (1.0997) has not breached the 1.0980
+        // limit, so the first breaching tick is the ask LOW.
         adapter.OnBarObserved(H4(T0.AddHours(4), 1.0995m, 1.0998m, 1.0970m, 1.0985m));
 
         var fill = Drain(adapter).Single();
         fill.OrderId.Should().Be(orderId);
-        fill.FillPrice!.Value.Value.Should().Be(1.0980m, "a limit fills at exactly the named price, never a better one");
+        fill.FillPrice!.Value.Value.Should().Be(1.0972m,
+            "the venue has no tick at the limit — it fills on the first O/H/L/C tick to breach it, here the ask low");
     }
 
     [Fact]
-    public async Task SellLimit_FillsAtExactlyTheLimitPrice_NeverBetter()
+    public async Task SellLimit_FillsAtTheFirstBreachingTick_WhichIsBetterThanTheLimit()
     {
         var adapter = MakeAdapter(Timeframe.H4, Timeframe.H4, []);
         adapter.OnBarObserved(H4(T0, 1.1000m, 1.1005m, 1.0995m, 1.1000m));
         var limit = new Price(1.1030m);
         var orderId = await SubmitLimit(adapter, TradeDirection.Short, limit, new Price(1.1100m), new Price(1.0900m), expiryBars: 3);
 
-        // Bar trades up through the limit (high=1.1040 > 1.1030) — should fill at exactly 1.1030.
+        // A sell-to-open executes at the raw BID. The open (1.1005) has not breached the 1.1030 limit, so
+        // the first breaching tick is the bid HIGH (1.1040) — a better sell than the limit named.
         adapter.OnBarObserved(H4(T0.AddHours(4), 1.1005m, 1.1040m, 1.1000m, 1.1010m));
 
         var fill = Drain(adapter).Single();
         fill.OrderId.Should().Be(orderId);
-        fill.FillPrice!.Value.Value.Should().Be(1.1030m, "a limit fills at exactly the named price, never a better one");
+        fill.FillPrice!.Value.Value.Should().Be(1.1040m,
+            "the venue has no tick at the limit — it fills on the first O/H/L/C tick to breach it, here the bid high");
     }
 
     // --- F30 regression guard: expiry must count DECISION bars, not fine bars ---
@@ -152,6 +169,7 @@ public sealed class RestingOrderContractTests
 
         var fill = Drain(adapter).Single();
         fill.OrderId.Should().Be(orderId);
-        fill.FillPrice!.Value.Value.Should().Be(1.0980m, "touch detection still runs every fine bar — only the expiry countdown changed");
+        // Fine bid bar L=1.0975 → ask low 1.0977, the first tick to breach the 1.0980 buy limit (F43).
+        fill.FillPrice!.Value.Value.Should().Be(1.0977m, "touch detection still runs every fine bar — only the expiry countdown changed");
     }
 }

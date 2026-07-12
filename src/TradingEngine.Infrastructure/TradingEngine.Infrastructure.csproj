@@ -27,4 +27,12 @@
     <NoWarn>CA1416</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- P4.3 (F43): VenueFillModel is the venue's resting-order fill rule, shared by both replay
+         adapters. It is pinned directly against real cTrader fills (VenueFillModelTests) rather than
+         only through an adapter, so the unit suite needs to see it. It stays internal — this is a
+         venue implementation detail, not public API. -->
+    <InternalsVisibleTo Include="TradingEngine.Tests.Unit" />
+  </ItemGroup>
+
 </Project>

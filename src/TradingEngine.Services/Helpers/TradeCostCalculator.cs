@@ -19,8 +19,9 @@ public readonly record struct TradeCosts(
 /// <see cref="PipCalculator.GrossPnL"/>.
 ///
 /// <para>Costs follow the cTrader/industry convention (D9): <b>costs are NEGATIVE</b>,
-/// <c>Net = Gross + Commission + Swap</c>. Commission is always a cost (negative); swap is
-/// negated from the broker rate so that a cost-rate produces a negative number.</para>
+/// <c>Net = Gross + Commission + Swap</c>. Commission is always a cost (negative). Swap is NOT negated:
+/// the broker's rate is already signed as a P&amp;L adjustment, so a negative rate is already a cost and
+/// a positive one is genuinely a credit (P4.4/F45).</para>
 ///
 /// <para>Commission model: dispatches on <see cref="SymbolInfo.CommissionType"/>.
 /// <b>AbsolutePerLot</b>: rate is a flat per-lot-per-side fee. <b>UsdPerMillionUsdVolume</b>: rate
@@ -32,9 +33,10 @@ public readonly record struct TradeCosts(
 /// payable at position open. <see cref="Compute"/> returns the full round-trip. Adapters deduct the
 /// entry side at open and the remaining close side at close, keeping intra-trade equity truthful.</para>
 ///
-/// <para>Swap sources its rate from <see cref="SymbolInfo"/> swap rates.
-/// <paramref name="swapLongPerLotPerNight"/> / <paramref name="swapShortPerLotPerNight"/> overrides
-/// allow per-run calibration.</para>
+/// <para>Swap model (P4.4/F45, measured against cTrader): the rates on <see cref="SymbolInfo"/> are
+/// <b>PIPS per lot per night</b> (the venue declares <c>SwapCalculationType=Pips</c>), signed as a P&amp;L
+/// adjustment. Money = <c>nights × ratePips × lots × pipValueInAccountCurrency</c>. Saturday and Sunday
+/// rollovers are NOT charged — the market is shut, which is why Wednesday is billed triple.</para>
 /// </summary>
 public static class TradeCostCalculator
 {
@@ -71,15 +73,36 @@ public static class TradeCostCalculator
     {
         var gross = PipCalculator.GrossPnL(direction, entryPrice, exitPrice, lots, symbol, getCrossRate).Amount;
 
-        var perSide = ComputePerSideCommission(lots, symbol, entryPrice.Value, getCrossRate, commissionPerMillion);
-        var commission = -(perSide * 2m); // round-trip, negative
+        // P4.4 (F46): each side is billed against ITS OWN notional, so the closing side is priced at the
+        // EXIT price — not the entry price twice. Commission scales with notional (lots × contract × price),
+        // and the venue charges the close when the close happens.
+        //
+        // On EURUSD this is invisible: price moves ~0.5% over a trade, so entry ≈ exit notional and the
+        // error hides inside the 2% budget (it measured 0.53%). On XAUUSD, where price moves hundreds of
+        // dollars, the same bug measured 10.2% and failed the gate. One test symbol hides scale-dependent
+        // bugs — INVESTIGATION-METHOD.
+        var entrySideCommission = ComputePerSideCommission(lots, symbol, entryPrice.Value, getCrossRate, commissionPerMillion);
+        var exitSideCommission = ComputePerSideCommission(lots, symbol, exitPrice.Value, getCrossRate, commissionPerMillion);
+        var commission = -(entrySideCommission + exitSideCommission); // round-trip, negative
 
         var nights = CountNightsHeld(openedAtUtc, closedAtUtc, symbol.TripleSwapWeekday,
             dailyResetUtc ?? DefaultDailyResetUtc);
-        var swapRate = direction == TradeDirection.Long
+        var swapRatePips = direction == TradeDirection.Long
             ? swapLongPerLotPerNight ?? symbol.SwapLongPerLotPerNight
             : swapShortPerLotPerNight ?? symbol.SwapShortPerLotPerNight;
-        var swap = -(nights * swapRate * lots);
+
+        // P4.4 (F45): swap rates are PIPS per lot per night, already SIGNED as a P&L adjustment —
+        // negative = the trader pays. The venue declares both facts itself (`SwapCalculationType=Pips`,
+        // `swapLong=-2.445` on a EURUSD long that cTrader then charged for). Two bugs lived here:
+        //
+        //   * the rate was treated as MONEY per lot per night, so it was never multiplied by the pip
+        //     value — an 8.6x understatement on EURUSD (the same units bug as F39, in swap this time);
+        //   * it was NEGATED, which turns the venue's signed cost into a CREDIT. The tape paid the
+        //     trader 2.55 to hold a long that the broker charged 35.90 for.
+        //
+        // Multiply by the pip value in ACCOUNT currency (PipValuePerLot converts) and do NOT negate.
+        var pipValue = PipCalculator.PipValuePerLot(symbol, exitPrice.Value, getCrossRate);
+        var swap = nights * swapRatePips * lots * pipValue;
 
         var net = gross + commission + swap;
         return new TradeCosts(gross, commission, swap, net, nights);
@@ -159,9 +182,13 @@ public static class TradeCostCalculator
     }
 
     /// <summary>
-    /// Counts the number of daily rollover boundaries (default 22:00 UTC) strictly crossed between
-    /// open and close, charging triple on the configured triple-swap weekday. A trade opened and
-    /// closed without crossing a rollover holds zero nights.
+    /// Counts the swap-charging rollover boundaries (default 22:00 UTC) strictly crossed between open and
+    /// close. The triple-swap weekday (Wednesday) counts 3×; a trade that crosses no rollover holds zero
+    /// nights.
+    ///
+    /// <para>P4.4 (F45): SATURDAY AND SUNDAY ROLLOVERS ARE NOT CHARGED. The market is shut, so no broker
+    /// finances a position over them — that is the whole reason Wednesday is billed triple. Counting them
+    /// made a Friday-to-Monday hold cost 3 nights instead of 1, which is exactly what the tape did.</para>
     /// </summary>
     public static int CountNightsHeld(
         DateTime openedUtc, DateTime closedUtc, string tripleSwapWeekday, TimeSpan dailyResetUtc)
@@ -181,7 +208,10 @@ public static class TradeCostCalculator
 
         var count = 0;
         for (var day = d; day <= end; day = day.AddDays(1))
+        {
+            if (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) continue;
             count += day.DayOfWeek == triple ? 3 : 1;
+        }
         return count;
     }
 }

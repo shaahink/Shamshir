@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
+using TradingEngine.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
@@ -1217,6 +1218,7 @@ namespace TradingEngine.Web.Services;
         var crossRateSeries = await LoadCrossRateSeriesAsync(
             accountCurrency, passes.Select(p => p.Sym).Distinct().ToList(), solutionRoot,
             scope.ServiceProvider.GetService<IMarketDataStore>(), from, to, runId, logLines, cts.Token);
+        var venueSymbolSpecs = await LoadVenueSymbolSpecsAsync(cts.Token);
 
         // P2.1: pre-query actual bar counts so progress shows % of real bars, not calendar estimate.
         // The foreach loop below also sums bar counts, but this locks in barsTotal BEFORE the first pass
@@ -1320,6 +1322,7 @@ namespace TradingEngine.Web.Services;
                 InitialBalance = cfg.Balance,
                 AccountCurrency = accountCurrency,
                 CrossRateSeries = crossRateSeries,
+                VenueSymbolSpecs = venueSymbolSpecs,
             });
             state.EngineHost = innerHost;
             EngineHostFactory.WireEventHandlers(innerHost);
@@ -1473,7 +1476,30 @@ namespace TradingEngine.Web.Services;
                     sp.GetRequiredService<ILogger<NetMqMessageTransport>>());
                 var adapter = new CTraderBrokerAdapter(transport,
                     sp.GetRequiredService<ILogger<CTraderBrokerAdapter>>());
-                adapter.OnSymbolSpec = spec => sp.GetRequiredService<ISymbolInfoRegistry>().UpsertVenueSpec(spec);
+                adapter.OnSymbolSpec = spec =>
+                {
+                    sp.GetRequiredService<ISymbolInfoRegistry>().UpsertVenueSpec(spec);
+
+                    // P4.4 (F44): persist it. The cTrader leg is the only leg that ever learns the broker's
+                    // real commission/swap; without durable storage those numbers die with the process and
+                    // the tape leg silently re-prices off the fabricated symbols.json rates.
+                    //
+                    // NOTE `sp` here is the INNER engine host's provider, which knows nothing of the web
+                    // app's services — resolving the store from it throws inside HandleSymbolSpec and takes
+                    // the whole cTrader leg down with it. Go through the orchestrator's own scope factory.
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            using var scope = _scopeFactory.CreateScope();
+                            await scope.ServiceProvider.GetRequiredService<IVenueSymbolSpecStore>().SaveAsync(spec);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to persist venue symbol spec for {Symbol}", spec.Symbol);
+                        }
+                    });
+                };
                 adapter.OnStatusChange = (type, msg) =>
                 {
                     _journal.Write(runId, type, msg);
@@ -1509,6 +1535,8 @@ namespace TradingEngine.Web.Services;
             // signals and every per-trade lot comparison in the parity gate is meaningless.
             AccountCurrency = accountCurrency,
             CrossRateSeries = crossRateSeries,
+            // ...and, for the same reason, the SAME venue-declared economics (F44).
+            VenueSymbolSpecs = await LoadVenueSymbolSpecsAsync(ct),
         });
         EngineHostFactory.WireEventHandlers(innerHost);
         EngineHostFactory.WireRiskRules(innerHost);
@@ -1885,6 +1913,28 @@ namespace TradingEngine.Web.Services;
         _configuration.GetValue<string>("Account:Currency") is { Length: > 0 } c
             ? c.ToUpperInvariant()
             : DefaultAccountCurrency;
+
+    /// <summary>
+    /// P4.4 (F44): the broker's own commission/swap/contract economics, captured from a live cTrader
+    /// session and persisted. EVERY EngineHostOptions built here must carry them — the engine host seeds
+    /// its registry from symbols.json, which is fabricated, and only the cTrader leg can learn the real
+    /// numbers for itself. Miss a site and that leg silently prices off fiction, which is precisely how
+    /// F34 (currency) shipped: two of three option sites never received it.
+    /// Never throws — an empty list just means "no venue session captured yet" and the registry warns.
+    /// </summary>
+    private async Task<IReadOnlyList<VenueSymbolSpec>> LoadVenueSymbolSpecsAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            return await scope.ServiceProvider.GetRequiredService<IVenueSymbolSpecStore>().LoadAllAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not load venue symbol specs — pricing falls back to symbols.json");
+            return [];
+        }
+    }
 
     /// <summary>
     /// Load the USD-leg rate series this run needs (F34). Returns null when nothing needs converting — a

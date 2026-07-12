@@ -48,7 +48,10 @@ public sealed class TradeCostCalculatorTests
             new DateTime(2024, 1, 3, 12, 0, 0, DateTimeKind.Utc));
 
         costs.NightsHeld.Should().Be(1);
-        costs.Swap.Should().Be(1.5m);
+        // P4.4 (F45): swap rates are PIPS per lot per night, signed as a P&L adjustment (negative = the
+        // trader PAYS). Money = nights × ratePips × lots × pipValue (100_000 × 0.0001 × 1 = 10/lot).
+        // This asserted +1.5 — it dropped the pip value and read the broker's charge as a credit.
+        costs.Swap.Should().Be(-15m, "1 night × -1.5 pips × 1 lot × 10/pip = -15 (a cost)");
     }
 
     [Fact]
@@ -94,7 +97,8 @@ public sealed class TradeCostCalculatorTests
     [Fact]
     public void Overnight_trade_with_commission_and_swap_satisfies_invariant()
     {
-        // Long EURUSD for 2 lots, held overnight, 3.5/side commission, -0.5/night swap (credit)
+        // Long EURUSD for 2 lots, held overnight, 3.5/side commission, -0.5 PIPS/night swap (a COST —
+        // negative = the trader pays, P4.4/F45).
         var sym = Eurusd(commissionPerSide: 3.5m, swapLong: -0.5m);
 
         var costs = TradeCostCalculator.Compute(
@@ -105,12 +109,12 @@ public sealed class TradeCostCalculatorTests
 
         costs.NightsHeld.Should().Be(1);
         costs.Commission.Should().Be(-14m, "2 lots × 3.5/side × 2 = -14");
-        costs.Swap.Should().Be(1m, "-(1 night × -0.5 × 2 lots) = 1 (credit)");
+        costs.Swap.Should().Be(-10m, "1 night × -0.5 pips × 2 lots × 10/pip = -10 (a cost)");
 
         var expectedNet = costs.GrossProfit + costs.Commission + costs.Swap;
         costs.NetProfit.Should().Be(expectedNet);
 
-        // Quick smoke: net should be less than gross (commission is bigger than swap credit)
+        // Both costs are negative, so net must land below gross.
         costs.NetProfit.Should().BeLessThan(costs.GrossProfit);
     }
 
@@ -167,7 +171,37 @@ public sealed class TradeCostCalculatorTests
             new DateTime(2026, 5, 28, 12, 0, 0, DateTimeKind.Utc),
             commissionPerMillion: 30m);
 
-        // notional = 1 x 100oz x $3,300 = $330,000; per side = $9.90; round-turn = $19.80
-        costs.Commission.Should().BeApproximately(-19.80m, 0.01m);
+        // P4.4 (F46): each side is billed on ITS OWN notional, at ITS OWN price.
+        //   entry: 1 × 100oz × $3,300 = $330,000 → $9.90
+        //   exit:  1 × 100oz × $3,310 = $331,000 → $9.93
+        //   round-turn = $19.83
+        // This asserted -19.80 — the entry side charged twice. On EURUSD that error is invisible (price
+        // barely moves); on a $10 gold move it is already 0.15%, and across a real XAUUSD run it measured
+        // 10.2% against the venue and failed the parity gate.
+        costs.Commission.Should().BeApproximately(-19.83m, 0.01m);
+    }
+
+    [Fact]
+    public void ClosingCommission_isBilledAtTheExitPrice_notTheEntryPrice()
+    {
+        // F46 regression guard, stated as plainly as possible: hold the trade identical except for where
+        // it EXITS. Commission must move with the exit notional. If the close is priced at the entry, both
+        // of these come back equal.
+        var xauusd = new SymbolInfo(Symbol.Parse("XAUUSD"), SymbolCategory.Metal, "XAU", "USD",
+            0.1m, 0.01m, 100m, 0.01m, 100m, 0.01m, 0.03333m, 0.1m,
+            "USD", 3.5m, 0m, 0m, "Wednesday");
+
+        decimal CommissionExitingAt(decimal exit) => TradeCostCalculator.Compute(
+            TradeDirection.Long, new Price(3300m), new Price(exit), lots: 1m,
+            xauusd, NoCross,
+            new DateTime(2026, 5, 28, 9, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 5, 28, 12, 0, 0, DateTimeKind.Utc),
+            commissionPerMillion: 30m).Commission;
+
+        var closedHigh = CommissionExitingAt(4000m);
+        var closedLow = CommissionExitingAt(3000m);
+
+        closedHigh.Should().BeLessThan(closedLow,
+            "a bigger exit notional costs MORE to close (costs are negative, so 'more' is 'less than')");
     }
 }

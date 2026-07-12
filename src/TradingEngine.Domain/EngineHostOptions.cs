@@ -55,6 +55,19 @@ public sealed record EngineHostOptions
     /// </summary>
     public IReadOnlyDictionary<string, IReadOnlyList<CrossRatePoint>>? CrossRateSeries { get; init; }
 
+    /// <summary>
+    /// P4.4 (F44): the broker's OWN economics (commission, swap, lot/pip/tick size), captured from a live
+    /// cTrader session and persisted. The engine host builds its own <see cref="ISymbolInfoRegistry"/> from
+    /// symbols.json, and symbols.json is a fabricated fallback — it has a EURUSD long EARNING 0.5 pips a
+    /// night that the broker in fact CHARGES 2.445 for. Only the cTrader leg ever meets a cBot, so without
+    /// these the TAPE leg of a compare-both prices every trade off fiction and swap can never reconcile.
+    ///
+    /// Empty = no venue session has been captured yet; the registry falls back to symbols.json and warns
+    /// (SYMBOL_FALLBACK). Supplied by the caller that owns persistence, exactly like
+    /// <see cref="CrossRateSeries"/>.
+    /// </summary>
+    public IReadOnlyList<VenueSymbolSpec> VenueSymbolSpecs { get; init; } = [];
+
     public IRunDataCache? RunDataCache { get; init; }
 
     public IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? PreloadedAuxBars { get; init; }

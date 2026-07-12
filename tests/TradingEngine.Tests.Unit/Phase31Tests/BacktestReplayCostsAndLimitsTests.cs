@@ -82,12 +82,16 @@ public sealed class BacktestReplayCostsAndLimitsTests
         adapter.OnBarObserved(Bar(1.1000m, 1.1010m, 1.0985m, 1.1000m, hour: 1));
         Drain(adapter).Should().BeEmpty("limit not reached yet");
 
-        // A bar that trades down to the limit fills it at the limit price (no slippage).
+        // A bar that trades down through the limit fills it. P4.3 (F43): the fill is the first O/H/L/C
+        // tick to breach the limit, not the limit itself. A buy executes at the ASK, so the bid bar
+        // O=1.0990 L=1.0975 becomes ask O=1.0991 L=1.0976 (spread 0.0001); the open has not breached the
+        // 1.0980 limit, so the ask LOW is the fill — at-or-BETTER than the limit, exactly as the venue
+        // fills it (measured: a sell limit at 1.15973 filled at 1.15975).
         adapter.OnBarObserved(Bar(1.0990m, 1.0995m, 1.0975m, 1.0985m, hour: 2));
         var fill = Drain(adapter).Single();
         fill.OrderId.Should().Be(orderId);
         fill.NewState.Should().Be(OrderState.Filled);
-        fill.FillPrice!.Value.Value.Should().Be(1.0980m);
+        fill.FillPrice!.Value.Value.Should().Be(1.0976m);
     }
 
     [Fact]

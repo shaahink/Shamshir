@@ -7,8 +7,6 @@ This is not a style guide. Every rule below is here because breaking it cost thi
 and because following it produced a root cause in a single session. Read it before you open a parity
 investigation, and cite it in your plan.
 
----
-
 ## 0. The one-sentence version
 
 **Make the venue tell you what it did. Do not infer what it did from what happened afterwards.**

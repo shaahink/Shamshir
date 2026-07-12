@@ -49,7 +49,7 @@ public sealed class TapeReplayStopOrderTests
     }
 
     [Fact]
-    public async Task BuyStop_ReachedWhenAskCrossesTrigger_NoGap_FillsAtStopPrice()
+    public async Task BuyStop_ReachedWhenAskCrossesTrigger_FillsAtTheAskHigh_TheFirstBreachingTick()
     {
         var adapter = MakeAdapter();
         adapter.OnBarObserved(Bar(1.1000m, 1.1005m, 1.0995m, 1.1000m));
@@ -61,7 +61,10 @@ public sealed class TapeReplayStopOrderTests
 
         var fill = Drain(adapter).Single();
         fill.OrderId.Should().Be(orderId);
-        fill.FillPrice!.Value.Value.Should().Be(1.1010m, "buy stop fills at the trigger price when there's no gap-through");
+        // Bid bar O=1.1005 H=1.1010 -> ask bar O=1.1007 H=1.1012. The open has not breached the 1.1010
+        // trigger, so the first breaching O/H/L/C tick is the ask HIGH (F43) - a buy stop fills at-or-
+        // WORSE than its trigger, never exactly on it.
+        fill.FillPrice!.Value.Value.Should().Be(1.1012m, "the venue has no tick at the trigger - it fills on the first tick to breach it");
     }
 
     [Fact]
@@ -80,7 +83,7 @@ public sealed class TapeReplayStopOrderTests
     }
 
     [Fact]
-    public async Task SellStop_ReachedWhenRawBidCrossesTrigger_NoGap_FillsAtStopPrice_NoSpreadAdjustment()
+    public async Task SellStop_ReachedWhenRawBidCrossesTrigger_FillsAtTheBidLow_TheFirstBreachingTick()
     {
         var adapter = MakeAdapter();
         adapter.OnBarObserved(Bar(1.1000m, 1.1005m, 1.0995m, 1.1000m));
@@ -92,7 +95,9 @@ public sealed class TapeReplayStopOrderTests
 
         var fill = Drain(adapter).Single();
         fill.OrderId.Should().Be(orderId);
-        fill.FillPrice!.Value.Value.Should().Be(1.0990m, "sell stop fills at the raw trigger level — unadjusted");
+        // A sell-to-open executes at the raw BID. Open 1.0995 has not breached the 1.0990 trigger, so the
+        // first breaching tick is the bid LOW (F43).
+        fill.FillPrice!.Value.Value.Should().Be(1.0988m, "the venue has no tick at the trigger - it fills on the first tick to breach it");
     }
 
     [Fact]

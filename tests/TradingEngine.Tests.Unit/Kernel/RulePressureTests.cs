@@ -75,7 +75,7 @@ public sealed class RulePressureTests
     }
 
     [Fact]
-    public void WeekendHolding_CrossesThreeRollovers()
+    public void WeekendHolding_ChargesOnlyTheFridayRollover()
     {
         var nights = TradingEngine.Services.Helpers.TradeCostCalculator.CountNightsHeld(
             new DateTime(2026, 6, 19, 10, 0, 0, DateTimeKind.Utc),  // Friday
@@ -83,7 +83,11 @@ public sealed class RulePressureTests
             "Wednesday",
             ResetUtc);
 
-        nights.Should().Be(3, "Friday→Monday crosses Fri, Sat, Sun = 3 nights");
+        // P4.4 (F45): this asserted 3 ("crosses Fri, Sat, Sun"). It DOES cross three rollovers — but the
+        // market is shut for two of them and no broker finances a position over a closed market. That is
+        // precisely why Wednesday is billed triple. Measured: cTrader charged a Fri→Mon EURUSD long
+        // 35.90 EUR = ONE night at its declared -2.445 pips (three would have been ~107).
+        nights.Should().Be(1, "Sat/Sun rollovers are not charged — only Friday's");
     }
 
     // G1: verify TripleSwapWeekday correctly triples swap on Wednesday.
@@ -99,6 +103,9 @@ public sealed class RulePressureTests
             ResetUtc);
 
         costs.NightsHeld.Should().Be(3, "Wed→Thu: 1 night × triple = 3 nights charged");
-        costs.Swap.Should().Be(4.5m, "3 nights × 1.5 = 4.5 credit (costs negative convention: credit = positive)");
+        // P4.4 (F45): the rate is PIPS, signed as a P&L adjustment — negative = the trader PAYS. Money =
+        // nights × ratePips × lots × pipValue (100_000 × 0.0001 × 1 = 10/lot). This asserted +4.5, which
+        // both dropped the pip value AND flipped a broker charge into a credit.
+        costs.Swap.Should().Be(-45m, "3 nights × -1.5 pips × 1 lot × 10/pip = -45 (a cost)");
     }
 }

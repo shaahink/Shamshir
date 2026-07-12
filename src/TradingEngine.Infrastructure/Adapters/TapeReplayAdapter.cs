@@ -454,10 +454,12 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         EmitAccountUpdate(BrokerTimeUtc);
     }
 
-    // A buy limit fills when a bar trades down to the limit; a sell limit when it trades up to it. Fill at
-    // the limit price. Unfilled orders burn one decision bar of life and expire with ENTRY_EXPIRED. Note:
-    // BarsRemaining is decremented per FINER bar in dual-resolution mode, so expiry counts sub-bars — the
-    // engine's own re-proposal cadence still governs strategy behaviour; this only bounds a resting fill.
+    // A buy limit fills when a bar trades down to the limit; a sell limit when it trades up to it.
+    // P4.3 (F43): the fill lands on the first O/H/L/C tick to breach the limit, which is at-or-BETTER than
+    // the limit price — not on the limit itself (VenueFillModel). Unfilled orders burn one decision bar of
+    // life and expire with ENTRY_EXPIRED. Note: BarsRemaining is decremented per FINER bar in
+    // dual-resolution mode, so expiry counts sub-bars — the engine's own re-proposal cadence still governs
+    // strategy behaviour; this only bounds a resting fill.
     private void ProcessPendingLimits(Bar bar, bool decrementExpiry = true)
     {
         if (_pendingLimits.Count == 0) return;
@@ -466,16 +468,21 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
         foreach (var (orderId, limit) in _pendingLimits.ToList())
         {
-            // Buy limit: fills once the ASK (bid-low + spread) reaches it. Sell limit: fills once the
-            // raw bid-high reaches it (a sell-to-open trades at bid — no spread adjustment).
-            var reached = limit.Direction == TradeDirection.Long
-                ? SpreadConvention.AskPrice(bar.Low, spread) <= limit.LimitPrice
-                : bar.High >= limit.LimitPrice;
+            // A buy-to-open executes at the ASK, a sell-to-open at the raw BID. Shift the bar to the
+            // order's own side once, then both the trigger test and the fill read from it.
+            var isLong = limit.Direction == TradeDirection.Long;
+            var sideBar = isLong ? SpreadConvention.AskBar(bar, spread) : bar;
+
+            // A buy limit rests BELOW the market — price must fall to it; a sell limit rests above.
+            var reached = isLong
+                ? sideBar.Low <= limit.LimitPrice
+                : sideBar.High >= limit.LimitPrice;
 
             if (reached)
             {
                 _pendingLimits.Remove(orderId);
-                FillEntry(orderId, limit.Direction, limit.LimitPrice, limit.Lots, limit.StopLoss, limit.TakeProfit);
+                var fillPrice = VenueFillModel.FirstBreachingTick(sideBar, limit.LimitPrice, fallsToLevel: isLong);
+                FillEntry(orderId, limit.Direction, fillPrice, limit.Lots, limit.StopLoss, limit.TakeProfit);
                 continue;
             }
 
@@ -494,10 +501,10 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     // P2.7: match resting STOP entry orders against the bar that just became current — the mirror image
     // of ProcessPendingLimits. A buy stop fills when price rises UP THROUGH the trigger (the ask side,
     // same long-entry spread convention as a market/limit buy); a sell stop fills when price falls DOWN
-    // THROUGH it (raw bid, same short-entry convention as a market/limit sell). Gap-through: if the
-    // bar's OPEN already lies beyond the trigger (price gapped past it before this bar started), fill at
-    // the bar's OPEN instead of the trigger price — the same rule ProcessSlTpHits applies to SL
-    // gap-through (F6), reused here for stop-entry gap-through. Same expiry semantics as limits.
+    // THROUGH it (raw bid, same short-entry convention as a market/limit sell).
+    // P4.3 (F43): the fill lands on the first O/H/L/C tick to breach the trigger, which is at-or-WORSE
+    // than it (VenueFillModel) — this subsumes the old gap-through special case, which only covered the
+    // one tick (the open) that could breach it. Same expiry semantics as limits.
     private void ProcessPendingStops(Bar bar, bool decrementExpiry = true)
     {
         if (_pendingStops.Count == 0) return;
@@ -506,24 +513,18 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
         foreach (var (orderId, stop) in _pendingStops.ToList())
         {
-            var reached = stop.Direction == TradeDirection.Long
-                ? SpreadConvention.AskPrice(bar.High, spread) >= stop.StopPrice
-                : bar.Low <= stop.StopPrice;
+            var isLong = stop.Direction == TradeDirection.Long;
+            var sideBar = isLong ? SpreadConvention.AskBar(bar, spread) : bar;
+
+            // A buy stop rests ABOVE the market — price must rise to it; a sell stop rests below.
+            var reached = isLong
+                ? sideBar.High >= stop.StopPrice
+                : sideBar.Low <= stop.StopPrice;
 
             if (reached)
             {
                 _pendingStops.Remove(orderId);
-                var fillPrice = stop.StopPrice;
-                if (stop.Direction == TradeDirection.Long)
-                {
-                    var askOpen = SpreadConvention.AskPrice(bar.Open, spread);
-                    if (askOpen >= stop.StopPrice) fillPrice = askOpen;
-                }
-                else if (bar.Open <= stop.StopPrice)
-                {
-                    fillPrice = bar.Open;
-                }
-
+                var fillPrice = VenueFillModel.FirstBreachingTick(sideBar, stop.StopPrice, fallsToLevel: !isLong);
                 FillEntry(orderId, stop.Direction, fillPrice, stop.Lots, stop.StopLoss, stop.TakeProfit);
                 continue;
             }
@@ -610,43 +611,18 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             var reason = EngineReducer.DetectSlTpExit(trade.Direction, trade.StopLoss, trade.TakeProfit, checkBar);
             if (reason is null) continue;
 
-            var fillPrice = reason == "TP" && trade.TakeProfit is { } tp ? tp.Value : trade.StopLoss.Value;
-            if (trade.Direction == TradeDirection.Short)
-                fillPrice = SpreadConvention.AskPrice(fillPrice, spread);
+            // P4.3 (F43): fill at the first O/H/L/C tick to breach the level, NOT at the level itself
+            // (VenueFillModel). checkBar is already on the exit side of the book, so its prices are the
+            // fill prices — the old code re-applied the spread here on top of the ask bar and counted it
+            // twice, and modelled the level itself as the fill, which no venue does.
+            //
+            // A long exits by SELLING: its stop is reached by price FALLING, its target by price RISING.
+            // A short exits by BUYING: mirrored.
+            var isLong = trade.Direction == TradeDirection.Long;
+            var level = reason == "TP" && trade.TakeProfit is { } tp ? tp.Value : trade.StopLoss.Value;
+            var fallsToLevel = reason == "SL" ? isLong : !isLong;
+            var fillPrice = VenueFillModel.FirstBreachingTick(checkBar, level, fallsToLevel);
 
-            if (reason == "SL")
-            {
-                var gapThrough = false;
-                if (trade.Direction == TradeDirection.Long && checkBar.Open <= trade.StopLoss.Value)
-                {
-                    gapThrough = true;
-                    fillPrice = checkBar.Open;
-                }
-                else if (trade.Direction == TradeDirection.Short && checkBar.Open >= trade.StopLoss.Value)
-                {
-                    gapThrough = true;
-                    fillPrice = checkBar.Open;
-                }
-                // When the bar CLOSED past the stop, the venue (cTrader) filled through it: the stop
-                // order triggered mid-bar, became a market order, and filled at a worse price. The
-                // close is the best bar-level proxy for where the market was when the fill executed.
-                else if (trade.Direction == TradeDirection.Long && checkBar.Close < trade.StopLoss.Value)
-                {
-                    gapThrough = true;
-                    fillPrice = checkBar.Close;
-                }
-                else if (trade.Direction == TradeDirection.Short && checkBar.Close > trade.StopLoss.Value)
-                {
-                    gapThrough = true;
-                    fillPrice = checkBar.Close;
-                }
-
-                _logger.LogDebug(
-                    "TapeReplay SL exit: {Dir} orderId={OrderId} barOpen={BarOpen} barClose={BarClose} " +
-                    "stop={Stop} spread={Spread} gapThrough={GapThrough} fillPrice={FillPrice}",
-                    trade.Direction, orderId, bar.Open, bar.Close,
-                    trade.StopLoss.Value, spread, gapThrough, fillPrice);
-            }
             var costs = ComputeCosts(trade, fillPrice);
             _balance += costs.NetProfit - trade.EntryCommission;
             _openTrades.Remove(orderId);

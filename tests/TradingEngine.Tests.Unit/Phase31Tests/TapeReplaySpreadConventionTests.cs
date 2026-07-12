@@ -135,32 +135,37 @@ public sealed class TapeReplaySpreadConventionTests
     }
 
     [Fact]
-    public async Task ShortStopLoss_FillsAtStopLevelPlusFullSpread()
+    public async Task ShortStopLoss_FillsAtTheAskHigh_NotTheStopPlusAnotherSpread()
     {
         var adapter = MakeAdapter();
         adapter.OnBarObserved(Bar(1.1000m, 1.1005m, 1.0995m, 1.1000m));
         await Submit(adapter, TradeDirection.Short, new Price(1.1050m), new Price(1.0900m));
         Drain(adapter);
 
+        // Bid bar O=1.1030 H=1.1048 → ask bar O=1.1032 H=1.1050. The ask high reaches the 1.1050 stop
+        // EXACTLY, so that is the fill. P4.3 (F43): this previously asserted 1.1052 — the stop plus the
+        // spread AGAIN, on a bar already shifted to the ask side. The venue refutes it: on run d64d9488
+        // a short stop at 1.16254 filled at 1.16255 (the ask high), not 1.16264 (stop + 1-pip spread).
         adapter.OnBarObserved(Bar(1.1030m, 1.1048m, 1.1020m, 1.1040m, hour: 1));
 
         var close = Drain(adapter).Single();
         close.CloseReason.Should().Be("SL");
-        close.FillPrice!.Value.Value.Should().Be(1.1052m);
+        close.FillPrice!.Value.Value.Should().Be(1.1050m);
     }
 
     [Fact]
-    public async Task ShortTakeProfit_FillsAtTargetLevelPlusFullSpread()
+    public async Task ShortTakeProfit_FillsAtTheAskLow_NotTheTargetPlusAnotherSpread()
     {
         var adapter = MakeAdapter();
         adapter.OnBarObserved(Bar(1.1000m, 1.1005m, 1.0995m, 1.1000m));
         await Submit(adapter, TradeDirection.Short, new Price(1.1050m), new Price(1.0900m));
         Drain(adapter);
 
+        // Bid bar O=1.0970 L=1.0898 → ask bar O=1.0972 L=1.0900, reaching the 1.0900 target exactly.
         adapter.OnBarObserved(Bar(1.0970m, 1.0975m, 1.0898m, 1.0960m, hour: 1));
 
         var close = Drain(adapter).Single();
         close.CloseReason.Should().Be("TP");
-        close.FillPrice!.Value.Value.Should().Be(1.0902m);
+        close.FillPrice!.Value.Value.Should().Be(1.0900m);
     }
 }

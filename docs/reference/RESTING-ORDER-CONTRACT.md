@@ -6,11 +6,15 @@ behaviour on either venue must keep this doc and `RestingOrderContractTests` in 
 
 **Why this exists:** a market order fills at whatever price the venue happens to be at, so tape's
 faster (or slower) evaluation path produces a different fill price than cTrader's — the root of the
-old F1/F2 entry-price divergence. A limit/stop order fills at the price we NAMED, on both venues, so
-entry price is identical by construction. The only way this fails is if the two venues disagree on
-**whether** an order fills before it expires — which shows up as a trade-count divergence and looks
-like a signal bug, not an execution bug. That failure mode is what this contract and its test guard
-against.
+old F1/F2 entry-price divergence. Resting orders remove that degree of freedom: both venues fill them
+by the same deterministic rule (§3), so entry price is reproducible rather than timing-dependent.
+
+> **P4.3 (F43) — this doc previously claimed the fill price was "the price we NAMED … identical by
+> construction". That was wrong, and it was never measured.** A resting order does NOT fill at its own
+> price on either venue. It fills at the first of the M1 bar's four synthetic O/H/L/C ticks to breach
+> the level. §3 below is now the MEASURED rule, verified tick-exact against six real cTrader fills.
+> The old claim is what made the residual entry-price deltas look like unexplained "latency" (§4) for
+> five sessions, when they were the fill mechanism itself.
 
 ---
 
@@ -37,16 +41,40 @@ against.
   "fills when the market reaches the named price"). Not independently verifiable without cTrader's own
   source; treated as an assumption until a live divergence proves otherwise (see §5).
 
-## 3. Fill price rule
+## 3. Fill price rule  (MEASURED — P4.3 / F43)
 
-**A resting order fills at EXACTLY the named price — never better, never worse.**
-- Limit: fills at `LimitPrice`, full stop.
-- Stop (entry): fills at `StopPrice`, UNLESS the bar's `Open` already lies beyond the trigger (gap-through)
-  — then it fills at the bar's `Open` (same gap-through convention `ProcessSlTpHits` uses for SL exits, F6).
-- Tape: `TapeReplayAdapter.cs::FillEntry` is called with `limit.LimitPrice` / `stop.StopPrice` (or the
-  gapped `Open`) directly — never a computed/adjusted price for the resting-fill case.
-- cTrader: native limit/stop fill semantics; assumed to match (no partial-fill-at-worse-price mode is
-  configured).
+**A resting order fills at the first O/H/L/C tick to BREACH its level — never at the level itself.**
+
+cTrader's backtest replays each M1 bar as four synthetic ticks: Open, High, Low, Close. There is no tick
+at an arbitrary price. So when a level sits strictly between the bar's open and the extreme that reaches
+it, the fill lands **on the extreme**. Consequences, both real and both previously mismodelled:
+
+- a **stop** fills *through* the stop (worse than named);
+- a **limit** fills *better* than the limit.
+
+Read the bar on the order's own side of the book first (bid for anything executing at the bid, ask for
+anything executing at the ask — `SpreadConvention.AskBar`), then:
+
+| Order | Side | Reached by price… | Fill |
+|---|---|---|---|
+| Buy limit | ask | falling | `askOpen <= limit ? askOpen : askLow` |
+| Sell limit | bid | rising | `bidOpen >= limit ? bidOpen : bidHigh` |
+| Buy stop (entry) | ask | rising | `askOpen >= stop ? askOpen : askHigh` |
+| Sell stop (entry) | bid | falling | `bidOpen <= stop ? bidOpen : bidLow` |
+| Long stop-loss | bid | falling | `bidOpen <= sl ? bidOpen : bidLow` |
+| Short stop-loss | ask | rising | `askOpen >= sl ? askOpen : askHigh` |
+| Long take-profit | bid | rising | `bidOpen >= tp ? bidOpen : bidHigh` |
+| Short take-profit | ask | falling | `askOpen <= tp ? askOpen : askLow` |
+
+The `Open` branch is the old "gap-through" case — price was already past the level when the bar began,
+so the open is itself the first breaching tick. It is no longer a special case, just the general rule.
+
+**One implementation:** `VenueFillModel.FirstBreachingTick`, shared by `TapeReplayAdapter` and
+`BacktestReplayAdapter`. The stop/target levels are already on the exit side of the book, so **no spread
+is added to the fill** — the pre-F43 code shifted the bar to the ask side for detection and then added
+the spread to the fill price again, counting it twice on every short exit.
+
+**cTrader:** native limit/stop semantics. No longer an assumption — measured (§5).
 
 ## 4. Expiry — the failure mode this contract exists to prevent
 
@@ -105,12 +133,15 @@ synchronously, and a non-GUID label is what lets `OnPositionOpened` correctly ig
 risk double-processing.
 
 **Re-verified live post-fix:** same config — tape `26664e81` = 12 trades, cTrader `438b5977` = **12
-trades** (exact count match). Per-trade entry prices are close but not bit-identical (deltas of
-$0.15–$1.5 on a ~$3300–3800 XAUUSD price, ≈0.01–0.04%) — attributed to the pre-existing F23
-entry-latency effect (the two venues can resolve the SAME strategy signal on slightly different bars,
-producing a slightly different `SignalPriceMid` and therefore a slightly different computed
-`LimitPrice`), not a defect in the fill mechanism itself, which now demonstrably works: same count,
-correct correlation, correct reporting. Full write-up: `evidence/p2-limit-entry-parity.md`.
+trades** (exact count match). Per-trade entry prices were close but not bit-identical (deltas of
+$0.15–$1.5 on a ~$3300–3800 XAUUSD price, ≈0.01–0.04%).
+
+> **P4.3 (F43) correction.** P2 attributed those residual deltas to "the pre-existing F23 entry-latency
+> effect … **not a defect in the fill mechanism itself**". That attribution was wrong. They *were* the
+> fill mechanism: the tape filled resting orders at the named price while cTrader filled them at the
+> first breaching M1 tick (§3). Two sessions then built on the mistaken conclusion. A residual delta
+> that is small is still a delta — "small enough to be latency" is a guess, not a measurement, and the
+> way to settle it was to check the fill against the M1 bar the venue actually traded (R1).
 
 **Watch out (next time this breaks):** if a resting-order run reports fewer engine-side trades than
 cTrader's own account balance implies, check `Positions.Opened` wiring and the order label FIRST —
@@ -120,12 +151,17 @@ F31 via missing fill correlation) and both looked identical from the outside ("0
 
 ## 5. Verification
 
-- `tests/.../RestingOrderContractTests.cs` (§6) drives the same synthetic bar sequence through both
-  the tape adapter and a mock of the touch/fill/expiry state machine, asserting identical fill/no-fill
-  decisions and identical fill prices, at both single-resolution and dual-resolution (M1 exit) settings.
-- Live parity: P4's `research parity` verb (once built) is the authoritative live cross-check —
-  compare-both with limit entries should show entry prices identical to the tick on every matched
-  trade and zero unmatched orders (PLAN.md P2 truth gate).
+- **`tests/.../Adapters/VenueFillModelTests.cs` — the fill rule (§3) pinned against SIX REAL cTrader
+  fills**, reproduced tick-exact from the M1 bars the venue replayed (EURUSD + XAUUSD, both directions,
+  limit entry + stop-loss + take-profit; runs `d64d9488` / `81729685`). This is the only test in the
+  repo that establishes the fill rule, and it does so from venue output, not from reasoning.
+- `tests/.../RestingOrderContractTests.cs` (§6) drives synthetic bar sequences through the tape adapter,
+  asserting fill/no-fill decisions, fill prices and expiry at both single- and dual-resolution (M1 exit).
+  Note its two limit tests previously asserted "fills at exactly the named price, never better" — the
+  §3 rule they were meant to guard. They asserted the assumption, so they went green while the venue
+  disagreed. **A test written from the same reasoning as the code cannot falsify that reasoning** — it
+  must be anchored to venue output (INVESTIGATION-METHOD R1).
+- Live parity: `research parity --tape <id> --ctrader <id>` is the authoritative cross-check.
 
 ## 6. Watch-outs (for whoever touches this next)
 

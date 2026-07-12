@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TradingEngine.Domain.Interfaces;
 using TradingEngine.Infrastructure.Adapters;
 using TradingEngine.Infrastructure.Venues.CTrader;
 using TradingEngine.Infrastructure.Transport.NetMq;
@@ -20,7 +21,14 @@ public static class BrokerAdapterFactory
                 sp.GetRequiredService<ILogger<NetMqMessageTransport>>());
             var adapter = new CTraderBrokerAdapter(transport,
                 sp.GetRequiredService<ILogger<CTraderBrokerAdapter>>());
-            adapter.OnSymbolSpec = spec => sp.GetRequiredService<ISymbolInfoRegistry>().UpsertVenueSpec(spec);
+            adapter.OnSymbolSpec = spec =>
+            {
+                sp.GetRequiredService<ISymbolInfoRegistry>().UpsertVenueSpec(spec);
+
+                // P4.4 (F44): persist venue economics so they outlive this process and reach the tape leg.
+                if (sp.GetService<IVenueSymbolSpecStore>() is { } store)
+                    _ = Task.Run(() => store.SaveAsync(spec));
+            };
             return adapter;
         }
 

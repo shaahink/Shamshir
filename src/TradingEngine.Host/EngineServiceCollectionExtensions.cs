@@ -114,6 +114,13 @@ public static class EngineServiceCollectionExtensions
 
         var symbolRegistry = new SymbolInfoRegistry();
         foreach (var si in symbols) symbolRegistry.Register(si);
+
+        // P4.4 (F44): overlay the broker's own economics on top of the symbols.json defaults, so BOTH legs
+        // of a compare-both are priced from the venue. Without this the tape leg — which never meets a cBot
+        // and so can never learn them itself — prices commission and swap off symbols.json, which is
+        // fabricated. That is the whole reason swap could not reconcile (PARITY-TRUTH-4 §2).
+        foreach (var spec in options.VenueSymbolSpecs) symbolRegistry.UpsertVenueSpec(spec);
+
         services.AddSingleton<ISymbolInfoRegistry>(_ => symbolRegistry);
 
         var crossRateStore = new CrossRateStore();

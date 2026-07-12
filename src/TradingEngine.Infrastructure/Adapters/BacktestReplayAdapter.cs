@@ -270,9 +270,11 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
     }
 
     // Match resting limit orders against the bar that just became current. A buy limit fills when the
-    // bar trades down to (or below) the limit; a sell limit when it trades up to it. Fill is at the
-    // limit price (no slippage). Orders that don't fill burn one bar of life and, once expired, emit a
-    // cancellation carrying ENTRY_EXPIRED so the engine journals the expiry instead of a phantom fill.
+    // bar trades down to (or below) the limit; a sell limit when it trades up to it.
+    // P4.3 (F43): the fill lands on the first O/H/L/C tick to breach the limit — at-or-BETTER than the
+    // limit price, not on the limit itself (VenueFillModel). Orders that don't fill burn one bar of life
+    // and, once expired, emit a cancellation carrying ENTRY_EXPIRED so the engine journals the expiry
+    // instead of a phantom fill.
     private void ProcessPendingLimits(Bar bar)
     {
         if (_pendingLimits.Count == 0) return;
@@ -281,18 +283,23 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
 
         foreach (var (orderId, limit) in _pendingLimits.ToList())
         {
-            // Buy limit: fills once the ASK (bid-low + spread) reaches it. Sell limit: fills once the
-            // raw bid-high reaches it (a sell-to-open trades at bid — no spread adjustment).
-            var reached = limit.Direction == TradeDirection.Long
-                ? SpreadConvention.AskPrice(bar.Low, spread) <= limit.LimitPrice
-                : bar.High >= limit.LimitPrice;
+            // A buy-to-open executes at the ASK, a sell-to-open at the raw BID. Shift the bar to the
+            // order's own side once, then both the trigger test and the fill read from it.
+            var isLong = limit.Direction == TradeDirection.Long;
+            var sideBar = isLong ? SpreadConvention.AskBar(bar, spread) : bar;
+
+            // A buy limit rests BELOW the market — price must fall to it; a sell limit rests above.
+            var reached = isLong
+                ? sideBar.Low <= limit.LimitPrice
+                : sideBar.High >= limit.LimitPrice;
 
             if (reached)
             {
                 _pendingLimits.Remove(orderId);
-                FillEntry(orderId, limit.Direction, limit.LimitPrice, limit.Lots, limit.StopLoss, limit.TakeProfit);
+                var fillPrice = VenueFillModel.FirstBreachingTick(sideBar, limit.LimitPrice, fallsToLevel: isLong);
+                FillEntry(orderId, limit.Direction, fillPrice, limit.Lots, limit.StopLoss, limit.TakeProfit);
                 _logger.LogDebug("BacktestReplay: limit fill {Id} at {Price:F5} dir={Dir}",
-                    orderId, limit.LimitPrice, limit.Direction);
+                    orderId, fillPrice, limit.Direction);
                 continue;
             }
 
@@ -355,24 +362,22 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
 
         foreach (var (orderId, stop) in _pendingStops.ToList())
         {
-            var reached = stop.Direction == TradeDirection.Long
-                ? SpreadConvention.AskPrice(bar.High, spread) >= stop.StopPrice
-                : bar.Low <= stop.StopPrice;
+            // A buy-to-open executes at the ASK, a sell-to-open at the raw BID. Shift the bar to the
+            // order's own side once, then both the trigger test and the fill read from it.
+            var isLong = stop.Direction == TradeDirection.Long;
+            var sideBar = isLong ? SpreadConvention.AskBar(bar, spread) : bar;
+
+            // A buy stop rests ABOVE the market — price must rise to it; a sell stop rests below.
+            var reached = isLong
+                ? sideBar.High >= stop.StopPrice
+                : sideBar.Low <= stop.StopPrice;
 
             if (reached)
             {
                 _pendingStops.Remove(orderId);
-                var fillPrice = stop.StopPrice;
-                if (stop.Direction == TradeDirection.Long)
-                {
-                    var askOpen = SpreadConvention.AskPrice(bar.Open, spread);
-                    if (askOpen >= stop.StopPrice) fillPrice = askOpen;
-                }
-                else if (bar.Open <= stop.StopPrice)
-                {
-                    fillPrice = bar.Open;
-                }
-
+                // P4.3 (F43): first breaching O/H/L/C tick — at-or-WORSE than the trigger. Subsumes the
+                // old gap-through case, which only covered the open.
+                var fillPrice = VenueFillModel.FirstBreachingTick(sideBar, stop.StopPrice, fallsToLevel: !isLong);
                 FillEntry(orderId, stop.Direction, fillPrice, stop.Lots, stop.StopLoss, stop.TakeProfit);
                 _logger.LogDebug("BacktestReplay: stop fill {Id} at {Price:F5} dir={Dir}",
                     orderId, fillPrice, stop.Direction);
@@ -412,48 +417,17 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
 
             if (reason is null) continue;
 
-            var fillPrice = reason == "TP" && trade.TakeProfit is { } tp
-                ? tp.Value
-                : trade.StopLoss.Value;
-
-            if (trade.Direction == TradeDirection.Short)
-                fillPrice = SpreadConvention.AskPrice(fillPrice, spread);
-
-            if (reason == "SL")
-            {
-                var gapThrough = false;
-                if (trade.Direction == TradeDirection.Long && checkBar.Open <= trade.StopLoss.Value)
-                {
-                    gapThrough = true;
-                    fillPrice = checkBar.Open;
-                }
-                else if (trade.Direction == TradeDirection.Short && checkBar.Open >= trade.StopLoss.Value)
-                {
-                    gapThrough = true;
-                    fillPrice = checkBar.Open;
-                }
-                else if (trade.Direction == TradeDirection.Long && checkBar.Close < trade.StopLoss.Value)
-                {
-                    gapThrough = true;
-                    fillPrice = checkBar.Close;
-                }
-                else if (trade.Direction == TradeDirection.Short && checkBar.Close > trade.StopLoss.Value)
-                {
-                    gapThrough = true;
-                    fillPrice = checkBar.Close;
-                }
-
-                if (!gapThrough)
-                {
-                    fillPrice = trade.Direction == TradeDirection.Short
-                        ? SpreadConvention.AskPrice(trade.StopLoss.Value, spread)
-                        : trade.StopLoss.Value;
-                }
-
-                _logger.LogDebug("BacktestReplay SL exit: {Dir} barOpen={Open} barClose={Close} stop={Stop} " +
-                    "gapThrough={Gap} fill={Price}", trade.Direction, bar.Open, bar.Close,
-                    trade.StopLoss.Value, gapThrough, fillPrice);
-            }
+            // P4.3 (F43): fill at the first O/H/L/C tick to breach the level, NOT at the level itself
+            // (VenueFillModel). checkBar is already on the exit side of the book, so its prices are the
+            // fill prices — the old code re-applied the spread here on top of the ask bar and counted it
+            // twice, and modelled the level itself as the fill, which no venue does.
+            //
+            // A long exits by SELLING: its stop is reached by price FALLING, its target by price RISING.
+            // A short exits by BUYING: mirrored.
+            var isLong = trade.Direction == TradeDirection.Long;
+            var level = reason == "TP" && trade.TakeProfit is { } tp ? tp.Value : trade.StopLoss.Value;
+            var fallsToLevel = reason == "SL" ? isLong : !isLong;
+            var fillPrice = VenueFillModel.FirstBreachingTick(checkBar, level, fallsToLevel);
 
             var costs = ComputeCosts(trade, fillPrice);
             _balance += costs.NetProfit - trade.EntryCommission;

@@ -198,6 +198,7 @@ public static class ServiceRegistration
         services.AddSingleton<TradingEngine.Application.CrossRateStore>();
         services.AddSingleton<Func<string, string, decimal>>(sp =>
             sp.GetRequiredService<TradingEngine.Application.CrossRateStore>().Convert);
+        services.AddSingleton<IVenueSymbolSpecStore, SqliteVenueSymbolSpecStore>();
         services.AddSingleton<ISymbolInfoRegistry>(sp =>
         {
             var solRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
@@ -206,6 +207,33 @@ public static class ServiceRegistration
             var catalog = new SymbolCatalog(solRoot, accountCurrency);
             var reg = new SymbolInfoRegistry();
             foreach (var si in catalog.GetAll()) reg.Register(si);
+
+            // P4.4 (F44): overlay the venue's OWN economics on top of the symbols.json defaults. Only the
+            // cTrader leg ever meets a cBot, so without this the TAPE leg prices commission and swap off
+            // symbols.json — which is fabricated (it has a EURUSD long EARNING 0.5/lot/night where the
+            // broker CHARGES 7.04). Persisted specs make the venue's numbers survive the process that
+            // learned them, so both legs of a compare-both are priced off the same source (D10).
+            try
+            {
+                var specs = sp.GetRequiredService<IVenueSymbolSpecStore>()
+                    .LoadAllAsync().GetAwaiter().GetResult();
+                foreach (var spec in specs) reg.UpsertVenueSpec(spec);
+
+                if (specs.Count > 0)
+                {
+                    sp.GetRequiredService<ILogger<SymbolInfoRegistry>>().LogInformation(
+                        "VENUE_SPECS_LOADED {Count} venue symbol spec(s) — commission/swap sourced from the broker, not symbols.json",
+                        specs.Count);
+                }
+            }
+            catch (Exception ex)
+            {
+                // A missing/locked spec table must not stop the app booting — the registry still has the
+                // symbols.json fallback, and SymbolInfoRegistry.Register already warns loudly (SYMBOL_FALLBACK).
+                sp.GetRequiredService<ILogger<SymbolInfoRegistry>>().LogWarning(ex,
+                    "Could not load persisted venue symbol specs — falling back to symbols.json economics");
+            }
+
             return reg;
         });
 

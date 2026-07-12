@@ -139,7 +139,7 @@ public sealed class BacktestReplaySpreadConventionTests
     }
 
     [Fact]
-    public async Task ShortStopLoss_FillsAtStopLevelPlusFullSpread()
+    public async Task ShortStopLoss_FillsAtTheAskHigh_NotTheStopPlusAnotherSpread()
     {
         var adapter = MakeAdapter();
         adapter.OnBarObserved(Bar(1.1000m, 1.1005m, 1.0995m, 1.1000m));
@@ -151,11 +151,15 @@ public sealed class BacktestReplaySpreadConventionTests
 
         var close = Drain(adapter).Single();
         close.CloseReason.Should().Be("SL");
-        close.FillPrice!.Value.Value.Should().Be(1.1052m, "short SL buys at ask = stop level(1.1050) + full spread(0.0002)");
+        // P4.3 (F43): the comment above already computes the ask high AS 1.1050 — the stop exactly. The
+        // old assertion then added the spread a SECOND time (1.1052), on a bar already shifted to the ask
+        // side. The venue refutes it: on run d64d9488 a short stop at 1.16254 filled at 1.16255 (the ask
+        // high), not at 1.16264 (stop + 1-pip spread).
+        close.FillPrice!.Value.Value.Should().Be(1.1050m, "the fill is the first ask tick to breach the stop — the stop is already an ask-side level");
     }
 
     [Fact]
-    public async Task ShortTakeProfit_FillsAtTargetLevelPlusFullSpread()
+    public async Task ShortTakeProfit_FillsAtTheAskLow_NotTheTargetPlusAnotherSpread()
     {
         var adapter = MakeAdapter();
         adapter.OnBarObserved(Bar(1.1000m, 1.1005m, 1.0995m, 1.1000m));
@@ -167,6 +171,6 @@ public sealed class BacktestReplaySpreadConventionTests
 
         var close = Drain(adapter).Single();
         close.CloseReason.Should().Be("TP");
-        close.FillPrice!.Value.Value.Should().Be(1.0902m, "short TP buys at ask = target level(1.0900) + full spread(0.0002)");
+        close.FillPrice!.Value.Value.Should().Be(1.0900m, "the fill is the first ask tick to breach the target — the target is already an ask-side level");
     }
 }
