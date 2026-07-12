@@ -171,6 +171,7 @@ public static class ServiceRegistration
         services.AddScoped<IReferenceScaleLookup, SqliteReferenceScaleLookup>();
         services.AddSingleton<SweepRunnerService>();
         services.AddScoped<Services.LedgerReconcileService>();
+        services.AddScoped<Services.ParityGateService>();
         services.AddScoped<Services.RunNarrativeService>();
         services.AddScoped<Services.PassProbabilityService>();
         services.AddScoped<Services.SetupScoreService>();
@@ -194,10 +195,12 @@ public static class ServiceRegistration
         services.AddSingleton<TradingEngine.Application.CrossRateStore>();
         services.AddSingleton<Func<string, string, decimal>>(sp =>
             sp.GetRequiredService<TradingEngine.Application.CrossRateStore>().Convert);
-        services.AddSingleton<ISymbolInfoRegistry>(_ =>
+        services.AddSingleton<ISymbolInfoRegistry>(sp =>
         {
             var solRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-            var catalog = new SymbolCatalog(solRoot);
+            var accountCurrency = sp.GetRequiredService<IConfiguration>()
+                .GetValue<string>("Account:Currency") is { Length: > 0 } c ? c.ToUpperInvariant() : "USD";
+            var catalog = new SymbolCatalog(solRoot, accountCurrency);
             var reg = new SymbolInfoRegistry();
             foreach (var si in catalog.GetAll()) reg.Register(si);
             return reg;

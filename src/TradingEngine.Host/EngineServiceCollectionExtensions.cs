@@ -107,7 +107,7 @@ public static class EngineServiceCollectionExtensions
 
     private static IServiceCollection AddMarketDataFromOptions(this IServiceCollection services, EngineHostOptions options)
     {
-        var catalog = new SymbolCatalog(options.SolutionRoot);
+        var catalog = new SymbolCatalog(options.SolutionRoot, options.AccountCurrency);
         var symbols = catalog.GetAll();
         services.AddSingleton(new EngineRunContext(options.RunId) { DiagnosticsEnabled = options.DiagnosticsEnabled, InitialBalance = options.InitialBalance });
         services.AddSingleton(options.AdapterFactory);
@@ -118,6 +118,9 @@ public static class EngineServiceCollectionExtensions
 
         var crossRateStore = new CrossRateStore();
         services.AddSingleton(crossRateStore);
+        services.AddSingleton(catalog);
+        if (options.CrossRateSeries is { Count: > 0 } rateSeries)
+            services.AddSingleton(new CrossRateFeed(crossRateStore, rateSeries));
         services.AddSingleton<Func<string, string, decimal>>(_ => crossRateStore.Convert);
 
         services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
@@ -212,6 +215,7 @@ public static class EngineServiceCollectionExtensions
                 Indicators = sp.GetRequiredService<IIndicatorService>(),
                 SymbolRegistry = sp.GetRequiredService<ISymbolInfoRegistry>(),
                 CrossRateStore = sp.GetRequiredService<CrossRateStore>(),
+                CrossRateFeed = sp.GetService<CrossRateFeed>(),
                 Clock = sp.GetRequiredService<IEngineClock>(),
                 EngineMode = options.Mode,
                 DataFeed = options.Mode == EngineMode.Backtest ? sp.GetService<DataFeedService>() : null,

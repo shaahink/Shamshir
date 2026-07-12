@@ -4,8 +4,14 @@ public sealed class SymbolCatalog
 {
     private readonly Dictionary<string, SymbolInfo> _byName;
 
-    public SymbolCatalog(string solutionRoot)
+    /// <param name="accountCurrency">The account denomination (F34) stamped onto every
+    /// <see cref="SymbolInfo"/>. Defaults to USD; a GBP account passes "GBP" and the pip-value maths
+    /// (which already reads <see cref="SymbolInfo.AccountCurrency"/>) follows without further change.</param>
+    public SymbolCatalog(string solutionRoot, string accountCurrency = "USD")
     {
+        if (string.IsNullOrWhiteSpace(accountCurrency))
+            throw new ArgumentException("Account currency required", nameof(accountCurrency));
+
         var path = Path.Combine(solutionRoot, "config", "symbols.json");
         if (!File.Exists(path))
             throw new FileNotFoundException($"Symbols catalog not found: {path}");
@@ -27,7 +33,7 @@ public sealed class SymbolCatalog
                 (decimal)e.PipSize, (decimal)e.TickSize, (decimal)e.ContractSize,
                 (decimal)e.MinLots, (decimal)e.MaxLots, (decimal)e.LotStep,
                 (decimal)e.MarginRate, (decimal)e.TypicalSpread,
-                AccountCurrency: "USD",
+                AccountCurrency: accountCurrency,
                 CommissionPerLotPerSide: (decimal)(e.CommissionPerLotPerSide ?? 0),
                 SwapLongPerLotPerNight: (decimal)(e.SwapLongPerLotPerNight ?? 0),
                 SwapShortPerLotPerNight: (decimal)(e.SwapShortPerLotPerNight ?? 0),

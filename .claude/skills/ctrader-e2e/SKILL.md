@@ -17,7 +17,7 @@ description: Run and reason about the Shamshir cTrader CLI end-to-end tests — 
 src/TradingEngine.Web/appsettings.Development.json → CTrader section
   CtId:    "seankiaa"
   PwdFile: "C:\\Users\\shahi\\Documents\\ctrader.pwd"
-  Account: "5834367"
+  Account: "5857867"
 ```
 
 The resolution chain (in `CtraderTestHelpers.ResolveCredential`):

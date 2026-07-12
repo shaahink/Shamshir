@@ -304,9 +304,19 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
             foreach (var ex in execs.EnumerateArray())
             {
                 count++;
-                if (TryHandleModifyConfirmation(ex)) { continue; }
-                var exec = ParseExecution(ex);
-                TryWriteExec(exec);
+                // F40: one unreadable exec must not take the batch down with it. This loop used to run
+                // unguarded inside the router's per-MESSAGE catch, so a single unparseable state (the
+                // cBot's "Pending", absent from OrderState) abandoned every sibling exec in the bar AND
+                // the account update below it. Isolate the failure to the exec that caused it.
+                try
+                {
+                    if (TryHandleModifyConfirmation(ex)) { continue; }
+                    TryWriteExec(ParseExecution(ex));
+                }
+                catch (Exception exParse)
+                {
+                    _logger.LogWarning(exParse, "CTRADER|EXEC_PARSE_ERR|{Json}", ex.ToString());
+                }
             }
             _execsReceived += count;
             _journal?.Write("EXEC_RECV", null, DateTime.UtcNow,

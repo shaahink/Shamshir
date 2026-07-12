@@ -14,6 +14,9 @@ public sealed record MarketServices
     public required IIndicatorService Indicators { get; init; }
     public required ISymbolInfoRegistry SymbolRegistry { get; init; }
     public required CrossRateStore CrossRateStore { get; init; }
+    /// <summary>Supplies the USD legs this run needs but never streams (account currency, untraded crosses).
+    /// Null only where a host builds no market data (unit harnesses).</summary>
+    public CrossRateFeed? CrossRateFeed { get; init; }
     public required IEngineClock Clock { get; init; }
     public required EngineMode EngineMode { get; init; }
     public DataFeedService? DataFeed { get; init; }

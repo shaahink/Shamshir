@@ -28,6 +28,19 @@ public sealed class LedgerReconcileService
         _journal = journal;
     }
 
+    /// <summary>The symbol a run traded — the parity gate needs it to size a "tick" for that instrument.</summary>
+    public async Task<string> GetRunSymbolAsync(string runId, CancellationToken ct)
+    {
+        var symbol = await _db.BacktestRuns.AsNoTracking()
+            .Where(r => r.RunId == runId)
+            .Select(r => r.Symbol)
+            .FirstOrDefaultAsync(ct);
+
+        return string.IsNullOrWhiteSpace(symbol)
+            ? throw new InvalidOperationException($"Run {runId} not found, or has no symbol.")
+            : symbol;
+    }
+
     public async Task<ReconcileLedger> BuildEngineLedgerAsync(string runId, CancellationToken ct)
     {
         var run = await _db.BacktestRuns.AsNoTracking()

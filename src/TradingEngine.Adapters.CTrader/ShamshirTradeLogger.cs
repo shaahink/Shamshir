@@ -84,9 +84,31 @@ public sealed class ShamshirTradeLogger
         public long timestamp { get; set; }
     }
 
+    private sealed class OrderSubmit
+    {
+        public string clientOrderId { get; set; } = "";
+        public string orderType { get; set; } = "";
+        public string direction { get; set; } = "";
+        public double requestedPrice { get; set; }
+        public double bid { get; set; }
+        public double ask { get; set; }
+        public long venueTime { get; set; }
+        /// <summary>"pending" (venue rested it), "immediate" (venue filled on submit), or "rejected".</summary>
+        public string outcome { get; set; } = "";
+        public string error { get; set; } = "";
+    }
+
     private readonly Dictionary<long, OpenInfo> _open = new();
     private readonly List<HistoryItem> _history = new();
     private readonly List<EventItem> _events = new();
+    private sealed class BarClock
+    {
+        public long barOpenTime { get; set; }
+        public long venueTime { get; set; }
+    }
+
+    private readonly List<OrderSubmit> _submits = new();
+    private readonly List<BarClock> _barClock = new();
     private readonly List<EquityPoint> _equity = new();
     private readonly object _gate = new();
     private int _serial;
@@ -109,6 +131,40 @@ public sealed class ShamshirTradeLogger
     /// <see cref="AccountCurrency"/> — the cBot's stdout does not survive the cTrader CLI.
     /// </summary>
     public int ProtectionMismatches { get; set; }
+
+    /// <summary>
+    /// F38: what the venue did with each entry order at the instant we submitted it — venue clock, the
+    /// bid/ask we were quoted, the price we asked for, and whether the venue took it as a resting order
+    /// or filled it on the spot. Without this the engine can only see the eventual position and has to
+    /// guess how it came about; a limit that fills THROUGH its own limit price (the F38 signature) is
+    /// only explicable from the submit-time quote, which lives nowhere else.
+    /// </summary>
+    public void RecordOrderSubmit(string clientOrderId, string orderType, string direction,
+        double requestedPrice, double bid, double ask, long venueTime, string outcome, string error)
+    {
+        lock (_gate)
+            _submits.Add(new OrderSubmit
+            {
+                clientOrderId = clientOrderId, orderType = orderType, direction = direction,
+                requestedPrice = requestedPrice, bid = bid, ask = ask,
+                venueTime = venueTime, outcome = outcome, error = error,
+            });
+    }
+
+    /// <summary>
+    /// F38: the venue clock at the moment we hand a bar to the engine, against that bar's own open time.
+    /// For an H4 bar the gap must be exactly one bar (we publish a bar when it closes). Two bars means we
+    /// are feeding the engine a stale bar and every order it returns is placed a bar late. Sampled (first
+    /// few bars) — this is a clock check, not a data feed.
+    /// </summary>
+    public void RecordBarClock(long barOpenTime, long venueTime)
+    {
+        lock (_gate)
+        {
+            if (_barClock.Count < 5)
+                _barClock.Add(new BarClock { barOpenTime = barOpenTime, venueTime = venueTime });
+        }
+    }
 
     public void RecordEquity(double balance, double equity, long time)
     {
@@ -230,6 +286,8 @@ public sealed class ShamshirTradeLogger
                 points = _equity,
             },
             history = new { items = _history },
+            orderSubmits = new { items = _submits },   // F38: see RecordOrderSubmit
+            barClock = new { items = _barClock },      // F38: see RecordBarClock
         };
     }
 

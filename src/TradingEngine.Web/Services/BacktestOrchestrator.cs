@@ -24,8 +24,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
 {
     // F34: the currency every money figure in this engine is denominated in — pip values, risk sizing,
     // FTMO limits and the whole tape. A venue account in any other currency is not comparable to a tape
-    // run, so the run says so instead of silently applying an FX factor to everything.
-    private const string ModelledAccountCurrency = "USD";
+    // run, so the run fails instead of silently applying an FX factor to everything. Configurable via
+    // Account:Currency: re-denominating to GBP is this value plus the GBPUSD data the rate feed loads.
+    private const string DefaultAccountCurrency = "USD";
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BacktestOrchestrator> _logger;
@@ -1203,6 +1204,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = "", ErrorMessage = "No combinations." };
         }
 
+        // F34: every currency this run touches must be priceable into the account denomination from real
+        // data. Resolved and loaded here, once, because this is where market data and the run window are
+        // both in scope — and it fails the run rather than falling back to a literal (a wrong cross rate
+        // is a wrong lot size). Costs nothing on the common case: a USD account trading USD pairs needs
+        // no legs at all.
+        var accountCurrency = ResolveAccountCurrency();
+        var crossRateSeries = await LoadCrossRateSeriesAsync(
+            accountCurrency, passes.Select(p => p.Sym).Distinct().ToList(), solutionRoot,
+            scope.ServiceProvider.GetService<IMarketDataStore>(), from, to, runId, logLines, cts.Token);
+
         // P2.1: pre-query actual bar counts so progress shows % of real bars, not calendar estimate.
         // The foreach loop below also sums bar counts, but this locks in barsTotal BEFORE the first pass
         // starts, so the progress bar climbs to 100% smoothly instead of stalling at ~70%.
@@ -1303,6 +1314,8 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                 SkipJournal = string.Equals(cfg.CustomParams.GetValueOrDefault("SkipJournal"), "true", StringComparison.OrdinalIgnoreCase),
                 PreloadedAuxBars = auxBars,
                 InitialBalance = cfg.Balance,
+                AccountCurrency = accountCurrency,
+                CrossRateSeries = crossRateSeries,
             });
             state.EngineHost = innerHost;
             EngineHostFactory.WireEventHandlers(innerHost);
@@ -1434,6 +1447,16 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             : loadedConfig.StrategyConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
         var runPlan = BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
 
+        var accountCurrency = ResolveAccountCurrency();
+        IReadOnlyDictionary<string, IReadOnlyList<CrossRatePoint>>? crossRateSeries;
+        using (var rateScope = _scopeFactory.CreateScope())
+        {
+            crossRateSeries = await LoadCrossRateSeriesAsync(
+                accountCurrency, cfg.Symbols.Select(Symbol.Parse).ToList(), solutionRoot,
+                rateScope.ServiceProvider.GetService<IMarketDataStore>(),
+                cfg.Start, cfg.End, runId, logLines, ct);
+        }
+
         var innerHost = EngineHostFactory.Create(new EngineHostOptions
         {
             RunId = runId,
@@ -1477,6 +1500,11 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
             DiagnosticsEnabled = _configuration.GetSection("Engine:Diagnostics").GetValue<bool>("Enabled"),
             RunDataCache = _runDataCache,
             InitialBalance = cfg.Balance,
+            // F34: the cTrader leg sizes orders in the engine exactly as the tape leg does, so it must model
+            // the SAME account denomination — otherwise the two venues size differently from identical
+            // signals and every per-trade lot comparison in the parity gate is meaningless.
+            AccountCurrency = accountCurrency,
+            CrossRateSeries = crossRateSeries,
         });
         EngineHostFactory.WireEventHandlers(innerHost);
         EngineHostFactory.WireRiskRules(innerHost);
@@ -1827,23 +1855,73 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
                     $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: {mismatches} position(s) had venue protection that did not match the engine's intent");
             }
 
+            var modelled = ResolveAccountCurrency();
             var venueCurrency = ccyEl.GetString();
             if (string.IsNullOrWhiteSpace(venueCurrency) ||
-                string.Equals(venueCurrency, ModelledAccountCurrency, StringComparison.OrdinalIgnoreCase))
+                string.Equals(venueCurrency, modelled, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
             AddTeardownWarning(runId, $"VENUE_CURRENCY_MISMATCH:{venueCurrency}",
-                $"venue account is denominated in {venueCurrency} but the engine models {ModelledAccountCurrency} — " +
+                $"venue account is denominated in {venueCurrency} but the engine models {modelled} — " +
                 "every money figure from this run is scaled by an FX rate and is NOT comparable to a tape run");
             EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: venue account currency is {venueCurrency}, engine models {ModelledAccountCurrency}");
+                $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: venue account currency is {venueCurrency}, engine models {modelled}");
         }
         catch (Exception ex)
         {
             AddTeardownWarning(runId, "VENUE_LEDGER_UNREADABLE", ex.Message);
         }
+    }
+
+    /// <summary>The account denomination (F34). One configured value; every symbol, cross rate and venue
+    /// check reads it, so a GBP account is a config edit rather than a code change.</summary>
+    private string ResolveAccountCurrency() =>
+        _configuration.GetValue<string>("Account:Currency") is { Length: > 0 } c
+            ? c.ToUpperInvariant()
+            : DefaultAccountCurrency;
+
+    /// <summary>
+    /// Load the USD-leg rate series this run needs (F34). Returns null when nothing needs converting — a
+    /// USD account trading only USD-legged symbols — so the common path stays free.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<CrossRatePoint>>?> LoadCrossRateSeriesAsync(
+        string accountCurrency,
+        IReadOnlyList<Symbol> tradedSymbols,
+        string solutionRoot,
+        IMarketDataStore? marketData,
+        DateTime fromUtc,
+        DateTime toUtc,
+        string runId,
+        ConcurrentQueue<string> logLines,
+        CancellationToken ct)
+    {
+        var catalog = new SymbolCatalog(solutionRoot, accountCurrency);
+        var book = catalog.GetAll();
+        var traded = tradedSymbols.Select(s => catalog.Resolve(s.Value)).ToList();
+
+        var required = CrossRateSeriesLoader.RequiredCurrencies(accountCurrency, traded);
+        if (required.Count == 0)
+        {
+            return null;
+        }
+
+        if (marketData is null)
+        {
+            throw new InvalidOperationException(
+                $"Run needs cross rates for {string.Join(", ", required)} but no market-data store is " +
+                "available to source them. A wrong cross rate is a wrong lot size, so the run stops here.");
+        }
+
+        var series = await CrossRateSeriesLoader.LoadAsync(
+            accountCurrency, traded, book, marketData, Timeframe.H1, fromUtc, toUtc, ct);
+
+        EnqueueLog(runId, logLines,
+            $"[{DateTime.UtcNow:HH:mm:ss}] Cross rates ({accountCurrency} account): " +
+            string.Join(", ", series.Select(kv => $"{kv.Key} {kv.Value.Count} obs")));
+
+        return series;
     }
 
     // backfills any lost trades from the journal and, on a shortfall, records a TRADES_LOST warning so the

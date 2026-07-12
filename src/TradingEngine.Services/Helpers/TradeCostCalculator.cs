@@ -96,27 +96,47 @@ public static class TradeCostCalculator
         // instead of $30 per million: the tape charged $106.80 round-turn on 1.78 EURUSD lots where
         // cTrader, given the identical --commission=30, charged $10.60.
         if (commissionPerMillion is { } perMillion)
-            return NotionalUsd(lots, symbol, price, getCrossRate) * perMillion / 1_000_000m;
+        {
+            return UsdToAccount(
+                NotionalUsd(lots, symbol, price, getCrossRate) * perMillion / 1_000_000m,
+                symbol, getCrossRate);
+        }
 
         var rate = symbol.CommissionPerLotPerSide;
 
         return symbol.CommissionType switch
         {
+            // The venue declares a per-lot fee in the ACCOUNT's own currency, so it needs no conversion.
             CommissionType.AbsolutePerLot or CommissionType.None or CommissionType.Unknown
                 => lots * rate,
 
+            // These three are all defined against USD notional, so they produce USD and must be
+            // converted into the account currency — otherwise a EUR/GBP account books a USD commission
+            // against EUR/GBP gross and the two don't add up. On a USD account the conversion is 1.
             CommissionType.UsdPerMillionUsdVolume
-                => NotionalUsd(lots, symbol, price, getCrossRate) * rate / 1_000_000m,
+                => UsdToAccount(NotionalUsd(lots, symbol, price, getCrossRate) * rate / 1_000_000m,
+                    symbol, getCrossRate),
 
             CommissionType.Pips
-                => lots * rate * (decimal)symbol.PipSize * BaseToUsd(symbol, price, getCrossRate),
+                => UsdToAccount(lots * rate * (decimal)symbol.PipSize * BaseToUsd(symbol, price, getCrossRate),
+                    symbol, getCrossRate),
 
             CommissionType.PercentOfNotionalValue
-                => NotionalUsd(lots, symbol, price, getCrossRate) * rate / 100m,
+                => UsdToAccount(NotionalUsd(lots, symbol, price, getCrossRate) * rate / 100m,
+                    symbol, getCrossRate),
 
             _ => lots * rate,
         };
     }
+
+    /// <summary>
+    /// F34: converts a USD-denominated cost into the account's denomination. Identity on a USD account.
+    /// Without it, an EUR account books commission in USD against gross in EUR — the tape over-billed a
+    /// EUR account by exactly the EURUSD rate (17% on the first live EUR compare-both).
+    /// </summary>
+    private static decimal UsdToAccount(
+        decimal amountUsd, SymbolInfo symbol, Func<string, string, decimal> getCrossRate)
+        => symbol.AccountCurrency == "USD" ? amountUsd : amountUsd * getCrossRate("USD", symbol.AccountCurrency);
 
     /// <summary>The position's notional value in USD: <c>lots × contractSize × baseToUsdRate</c>.</summary>
     private static decimal NotionalUsd(

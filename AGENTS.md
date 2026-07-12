@@ -24,7 +24,21 @@ At the start of every session:
 11. **`docs/audit/RECONCILE-FINDINGS.md`** — Fidelity gaps + run templates
 12. **`docs/CTRADER-TEST-POLICY.md`** — cTrader test triage
 
-**cTrader credentials are accessible to the agent.** The historic "needs creds" belief was from deadlock bugs (B1-B3, now fixed). Credentials: CtId=seankiaa, Account=5834367, PwdFile=ctrader.pwd. P7.2 proved this — the cTrader path is functional. See `docs/agents/ctrader-quickstart.md`.
+**cTrader credentials are accessible to the agent.** The historic "needs creds" belief was from deadlock bugs (B1-B3, now fixed). Credentials: CtId=seankiaa, **Account=5857867**, PwdFile=ctrader.pwd. The cTrader path is functional. See `docs/agents/ctrader-quickstart.md`.
+
+**Before any venue/parity investigation, read `docs/reference/INVESTIGATION-METHOD.md`.** It is normative,
+not advisory. It exists because four consecutive sessions — all with green gates — fixed real bugs and
+still missed the actual cause. Short version: *make the venue tell you what it did; do not infer it from
+what happened afterwards.* Green credential-free gates (Unit/Integration/Sim-fast) **never** support a
+claim about cTrader — none of them place an order at a venue.
+
+**cTrader is the oracle; the tape is a mimic of it.** When they disagree, the tape is what changes —
+unless the venue's behaviour is our own bug driving it (F38: we were feeding it stale bars).
+
+**Account currency is one config value** (`Account:Currency`, default USD). It stamps every `SymbolInfo`,
+decides which cross-rate legs a run loads, and is checked against the currency the venue declares — a
+mismatch is reported on the run. Cross rates are a USD-pivot table fed from market data; a missing leg
+fails the run rather than defaulting (a wrong cross rate is a wrong lot size).
 
 ## Build and test
 

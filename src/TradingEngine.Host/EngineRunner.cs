@@ -31,6 +31,7 @@ public sealed class EngineRunner
     private readonly ISymbolInfoRegistry _symbolRegistry;
     private readonly Func<string, string, decimal> _crossRate;
     private readonly CrossRateStore _crossRateStore;
+    private readonly CrossRateFeed? _crossRateFeed;
     private readonly IRiskProfileResolver _riskProfileResolver;
     private readonly SizingPolicyOptions _sizingPolicy;
     private readonly ISignalGate? _signalGate;
@@ -65,6 +66,7 @@ public sealed class EngineRunner
         _symbolRegistry = deps.Market.SymbolRegistry;
         _crossRate = deps.Risk.CrossRateProvider;
         _crossRateStore = deps.Market.CrossRateStore;
+        _crossRateFeed = deps.Market.CrossRateFeed;
         _riskProfileResolver = deps.Risk.RiskProfileResolver;
         _sizingPolicy = deps.Risk.SizingPolicy;
         _signalGate = deps.Strategies.SignalGate;
@@ -423,10 +425,15 @@ public sealed class EngineRunner
         };
     }
 
+    // A streamed bar is the freshest source for its own USD leg, so prefer it; CrossRateFeed supplies the
+    // legs this run never streams (the account currency, and any cross like EURJPY whose USDJPY leg is not
+    // itself traded). Both write into the same USD-pivot table.
     private void UpdateCrossRates(Bar bar)
     {
-        if (bar.Symbol.Value == "GBPUSD") _crossRateStore.GbpUsdRate = bar.Close;
-        else if (bar.Symbol.Value == "USDJPY") _crossRateStore.UsdJpyRate = bar.Close;
+        _crossRateFeed?.Advance(bar.OpenTimeUtc);
+
+        var si = _symbolRegistry.Get(bar.Symbol);
+        _crossRateStore.ObserveBar(si.BaseCurrency, si.QuoteCurrency, bar.Close);
     }
 
     private static PropFirmRuleSet DefaultRuleSet() => new(

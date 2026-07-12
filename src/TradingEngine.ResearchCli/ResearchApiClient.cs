@@ -42,6 +42,15 @@ public sealed class ResearchApiClient : IDisposable
         return await resp.Content.ReadAsStringAsync(ct);
     }
 
+    /// <summary>P4: the parity gate verdict for a tape run against its cTrader sibling.</summary>
+    public async Task<string> GetParityAsync(string tape, string ctrader, CancellationToken ct)
+    {
+        var url = $"api/backtest/analytics/parity?tape={Uri.EscapeDataString(tape)}&ctrader={Uri.EscapeDataString(ctrader)}";
+        using var resp = await _http.GetAsync(url, ct);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsStringAsync(ct);
+    }
+
     public async Task<string> GetInventoryAsync(CancellationToken ct)
     {
         using var resp = await _http.GetAsync("api/data-manager/inventory", ct);

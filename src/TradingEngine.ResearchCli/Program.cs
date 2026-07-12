@@ -27,6 +27,8 @@ try
             return await RunAwaitAsync(cli, baseUrl, timeout);
         case "reconcile":
             return await ReconcileAsync(cli, baseUrl, timeout);
+        case "parity":
+            return await ParityAsync(cli, baseUrl, timeout);
         case "exitlab eval":
             return await ExitLabEvalAsync(cli, baseUrl, timeout);
         case "walkforward":
@@ -163,6 +165,42 @@ static async Task<int> ReconcileAsync(CliArgs cli, string baseUrl, TimeSpan time
         VerdictField.Of("left", left),
         VerdictField.Of("right", right)).Render());
     return 0;
+}
+
+// P4 (D12): the parity gate. Scores a tape run against its cTrader sibling on the pre-registered tolerance
+// budget and exits non-zero on FAIL, so a caller (conductor, CI, a research session) cannot proceed on a
+// tape whose fills no longer match the venue we actually trade.
+static async Task<int> ParityAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var tape = cli.Option("tape");
+    var ctrader = cli.Option("ctrader");
+    if (string.IsNullOrWhiteSpace(tape) || string.IsNullOrWhiteSpace(ctrader))
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-tape-or-ctrader")).Render());
+        return 2;
+    }
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.GetParityAsync(tape, ctrader, CancellationToken.None);
+
+    using var doc = System.Text.Json.JsonDocument.Parse(json);
+    var root = doc.RootElement;
+
+    foreach (var c in root.GetProperty("checks").EnumerateArray())
+    {
+        Console.WriteLine(
+            $"  [{(c.GetProperty("pass").GetBoolean() ? "PASS" : "FAIL")}] " +
+            $"{c.GetProperty("quantity").GetString(),-12} " +
+            $"{c.GetProperty("tolerance").GetString(),-24} -> {c.GetProperty("measured").GetString()}");
+    }
+
+    foreach (var n in root.GetProperty("notes").EnumerateArray())
+        Console.WriteLine($"  note: {n.GetString()}");
+
+    if (cli.Flag("json")) Console.WriteLine(json);
+
+    Console.WriteLine(root.GetProperty("verdict").GetString());
+    return root.GetProperty("pass").GetBoolean() ? 0 : 1;
 }
 
 static async Task<int> DataEnsureAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
@@ -768,6 +806,9 @@ static void PrintUsage()
                                         [--forbid-warnings] [--forbid-warning-code TRADES_LOST] [--json]
           research run await    <runId> [--timeout 1800] [--poll-ms 2000]
           research reconcile    --left <runId> --right <runId> [--json]
+          research parity       --tape <runId> --ctrader <runId> [--json]
+                                (P4 gate: scores the tape against the venue we actually trade,
+                                 on the pre-registered tolerance budget. Exit 1 = FAIL.)
           research exitlab eval --grid grid.json [--json]
           research walkforward  --spec spec.json
           research pipeline run    <playbook.json> [--resume <id>] [--artifact-dir <dir>] [--poll-ms 2000]

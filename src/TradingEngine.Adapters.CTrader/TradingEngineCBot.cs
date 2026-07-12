@@ -266,7 +266,16 @@ public partial class TradingEngineCBot : Robot
 
         _barEventCount++;
         var bars = args.Bars;
-        var bar = bars.Last(1);
+
+        // F38: publish the bar that JUST closed — which, when BarClosed fires, is Last(0). This read was
+        // Last(1), i.e. the bar before it, so the engine was fed every bar one full bar stale: it decided
+        // on 4-hour-old prices and its orders reached the venue a bar late. Measured on the venue's own
+        // clock (report barClock): openTime→publish was a steady 8h on H4 where publishing at the close
+        // is 4h. That single bar of lag is what made a limit order arrive already marketable — cTrader
+        // filled it at market, THROUGH the limit price, while the tape rested it and filled at the limit.
+        // Not lookahead: this bar is complete and closed at the instant the event fires (a bar still
+        // forming would have shown a 0h gap, not 4h).
+        var bar = bars.Last(0);
         if (bar.Open == 0 && bar.High == 0) return;
 
         ProcessLimitExpiry(bars.SymbolName, bars.TimeFrame.ShortName);
@@ -283,6 +292,7 @@ public partial class TradingEngineCBot : Robot
 
         var openTimeUtc = DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc);
 
+        _tradeLog.RecordBarClock(EpochMs(openTimeUtc), EpochMs(Server.TimeInUtc));
         _tradeLog.RecordEquity(Account.Balance, Account.Equity, EpochMs(openTimeUtc));
         if (++_reportCheckpoint % ReportCheckpointEveryNBars == 0)
         {
@@ -465,6 +475,17 @@ public partial class TradingEngineCBot : Robot
                 ToProtectionPips(tp, reference, tradeType, isStopLoss: false, sym),
                 clientOrderId);
         }
+
+        // F38: record the venue's own account of this submit — its clock, its quote, and whether it
+        // rested the order or filled it on the spot. A resting order that later fills THROUGH its limit
+        // price is impossible; an order that was already marketable when it arrived explains it exactly.
+        // Only the submit-time quote can tell those apart, and it is recorded nowhere else.
+        _tradeLog.RecordOrderSubmit(clientOrderId, orderType ?? "Market", direction,
+            limitPrice, sym.Bid, sym.Ask, EpochMs(Server.TimeInUtc),
+            result?.IsSuccessful != true ? "rejected"
+                : result.Position is null ? "pending"
+                : "immediate",
+            result?.IsSuccessful != true ? (result?.Error.ToString() ?? "Null result") : "");
 
         if (result?.IsSuccessful == true)
         {

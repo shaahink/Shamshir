@@ -215,6 +215,15 @@ public sealed class PositionTracker(
 
     private async Task<IReadOnlyList<EngineEffect>?> OnExecutionCoreAsync(ExecutionEvent evt, IEnumerable<IStrategy> strategies)
     {
+        // F40: a venue acknowledgement that an entry order is RESTING — not an execution. The tape stays
+        // silent until such an order fills or expires, so the cTrader venue must too, or the two execution
+        // streams cannot be compared. Returned before the dedup bookkeeping below on purpose: marking the
+        // order as "processed" here would make its real fill look like a duplicate and drop it.
+        if (evt.NewState == OrderState.Pending)
+        {
+            return null;
+        }
+
         // F8: exact-duplicate guard. A resent identical fill on an Open position would otherwise be
         // fed to the reducer as (Open, OrderFilled) → an unintended close/reduce.
         var sig = (evt.NewState, evt.FillPrice?.Value, evt.FilledLots, evt.TimestampUtc);

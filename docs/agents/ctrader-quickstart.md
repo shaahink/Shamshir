@@ -11,7 +11,7 @@ All credentials live in `src/TradingEngine.Web/appsettings.Development.json` und
 | Key | Value | Source |
 |-----|-------|--------|
 | `CtId` | `seankiaa` | `CTrader:CtId` in appsettings |
-| `Account` | `5834367` | `CTrader:Account` in appsettings |
+| `Account` | `5857867` | `CTrader:Account` in appsettings |
 | `PwdFile` | `C:\Users\shahi\Documents\ctrader.pwd` | `CTrader:PwdFile` in appsettings |
 | CLI binary | Resolved automatically | `CTraderCliLocator` scans `%LOCALAPPDATA%\Spotware\cTrader\[hash]\` |
 

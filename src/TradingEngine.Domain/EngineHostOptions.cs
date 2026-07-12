@@ -38,6 +38,23 @@ public sealed record EngineHostOptions
     /// </summary>
     public decimal InitialBalance { get; init; }
 
+    /// <summary>
+    /// The currency the account is denominated in (F34). This is the ONE place the denomination is named:
+    /// it stamps every <see cref="SymbolInfo.AccountCurrency"/>, drives which cross-rate legs the run must
+    /// source, and is checked against the currency the venue declares — a mismatch fails the run rather
+    /// than silently scaling every money figure by an FX rate. Switching the live account to GBP is this
+    /// value plus the GBPUSD data the feed already loads.
+    /// </summary>
+    public string AccountCurrency { get; init; } = "USD";
+
+    /// <summary>
+    /// Pre-loaded USD-leg rate series (currency → observations), built by the caller that owns market data.
+    /// Supplies the legs a run needs but never streams — the account currency itself, and crosses like
+    /// EURJPY whose USDJPY leg is not traded. Null in hosts with no market data (unit harnesses), which
+    /// then rely on streamed bars alone.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<CrossRatePoint>>? CrossRateSeries { get; init; }
+
     public IRunDataCache? RunDataCache { get; init; }
 
     public IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? PreloadedAuxBars { get; init; }

@@ -79,6 +79,33 @@ public class BacktestAnalyticsController : ControllerBase
         return Ok(results);
     }
 
+    /// <summary>
+    /// P4: the parity gate. Scores a tape run against its cTrader sibling on the pre-registered tolerance
+    /// budget and returns ONE verdict line. cTrader is the venue we trade; this is the check that the tape
+    /// still mimics it closely enough for a search result on the tape to mean anything.
+    /// </summary>
+    [HttpGet("parity")]
+    public async Task<IActionResult> Parity(
+        [FromQuery] string tape,
+        [FromQuery] string ctrader,
+        [FromServices] ParityGateService? gate = null)
+    {
+        if (gate is null)
+            return Problem("Parity gate not available.");
+
+        var report = await gate.EvaluateAsync(tape, ctrader, budget: null, HttpContext.RequestAborted);
+        return Ok(new
+        {
+            verdict = report.Verdict,
+            pass = report.Pass,
+            report.Symbol,
+            report.TapeRunId,
+            report.CTraderRunId,
+            checks = report.Checks.Select(c => new { c.Quantity, c.Tolerance, c.Measured, c.Pass }),
+            notes = report.Notes,
+        });
+    }
+
     [HttpGet("reconcile")]
     public async Task<IActionResult> Reconcile([FromQuery] string left, [FromQuery] string right)
     {
