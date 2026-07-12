@@ -19,6 +19,9 @@ public static class ServiceRegistration
 {
     public static IServiceCollection AddShamshir(this IServiceCollection services, IConfiguration config)
     {
+        services.Configure<CTraderConnectionOptions>(
+            config.GetSection(CTraderConnectionOptions.Section));
+
         services.AddApi();
         services.AddPersistence(config);
         services.AddAppServices();

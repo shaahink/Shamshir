@@ -421,10 +421,38 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
 
             if (reason == "SL")
             {
+                var gapThrough = false;
                 if (trade.Direction == TradeDirection.Long && checkBar.Open <= trade.StopLoss.Value)
+                {
+                    gapThrough = true;
                     fillPrice = checkBar.Open;
+                }
                 else if (trade.Direction == TradeDirection.Short && checkBar.Open >= trade.StopLoss.Value)
+                {
+                    gapThrough = true;
                     fillPrice = checkBar.Open;
+                }
+                else if (trade.Direction == TradeDirection.Long && checkBar.Close < trade.StopLoss.Value)
+                {
+                    gapThrough = true;
+                    fillPrice = checkBar.Close;
+                }
+                else if (trade.Direction == TradeDirection.Short && checkBar.Close > trade.StopLoss.Value)
+                {
+                    gapThrough = true;
+                    fillPrice = checkBar.Close;
+                }
+
+                if (!gapThrough)
+                {
+                    fillPrice = trade.Direction == TradeDirection.Short
+                        ? SpreadConvention.AskPrice(trade.StopLoss.Value, spread)
+                        : trade.StopLoss.Value;
+                }
+
+                _logger.LogDebug("BacktestReplay SL exit: {Dir} barOpen={Open} barClose={Close} stop={Stop} " +
+                    "gapThrough={Gap} fill={Price}", trade.Direction, bar.Open, bar.Close,
+                    trade.StopLoss.Value, gapThrough, fillPrice);
             }
 
             var costs = ComputeCosts(trade, fillPrice);

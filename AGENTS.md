@@ -24,7 +24,7 @@ At the start of every session:
 11. **`docs/audit/RECONCILE-FINDINGS.md`** — Fidelity gaps + run templates
 12. **`docs/CTRADER-TEST-POLICY.md`** — cTrader test triage
 
-**cTrader credentials are accessible to the agent.** The historic "needs creds" belief was from deadlock bugs (B1-B3, now fixed). Credentials: CtId=seankiaa, **Account=5857867**, PwdFile=ctrader.pwd. The cTrader path is functional. See `docs/agents/ctrader-quickstart.md`.
+**cTrader credentials are accessible to the agent.** The historic "needs creds" belief was from deadlock bugs (B1-B3, now fixed). Credentials: CtId=seankiaa, **Account=5834367**, PwdFile=ctrader.pwd. The cTrader path is functional. See `docs/agents/ctrader-quickstart.md`.
 
 **Before any venue/parity investigation, read `docs/reference/INVESTIGATION-METHOD.md`.** It is normative,
 not advisory. It exists because four consecutive sessions — all with green gates — fixed real bugs and

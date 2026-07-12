@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using TradingEngine.CTraderRunner;
 using TradingEngine.Host;
 using TradingEngine.Infrastructure.Adapters;
@@ -20,19 +21,20 @@ using TradingEngine.Services;
 
 namespace TradingEngine.Web.Services;
 
-public sealed class BacktestOrchestrator : IBacktestCommandService
+    public sealed class BacktestOrchestrator : IBacktestCommandService
 {
     // F34: the currency every money figure in this engine is denominated in — pip values, risk sizing,
     // FTMO limits and the whole tape. A venue account in any other currency is not comparable to a tape
     // run, so the run fails instead of silently applying an FX factor to everything. Configurable via
     // Account:Currency: re-denominating to GBP is this value plus the GBPUSD data the rate feed loads.
-    private const string DefaultAccountCurrency = "USD";
+    private const string DefaultAccountCurrency = "EUR";
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BacktestOrchestrator> _logger;
     private readonly BacktestProgressStore _progressStore;
     private readonly BacktestJournal _journal;
     private readonly IConfiguration _configuration;
+    private readonly CTraderConnectionOptions _ctraderOptions;
     private readonly RunProgressBroadcaster _broadcaster;
     private readonly EffectiveConfigResolver _configResolver;
     private readonly IRunDataCache? _runDataCache;
@@ -141,6 +143,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         BacktestProgressStore progressStore,
         BacktestJournal journal,
         IConfiguration configuration,
+        IOptions<CTraderConnectionOptions> ctraderOptions,
         RunProgressBroadcaster broadcaster,
         EffectiveConfigResolver configResolver,
         ILogger<BacktestOrchestrator> logger,
@@ -151,6 +154,7 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
         _progressStore = progressStore;
         _journal = journal;
         _configuration = configuration;
+        _ctraderOptions = ctraderOptions.Value;
         _broadcaster = broadcaster;
         _configResolver = configResolver;
         _runDataCache = runDataCache;
@@ -1386,9 +1390,9 @@ public sealed class BacktestOrchestrator : IBacktestCommandService
     private async Task<BacktestResult> RunEngineNetMqAsync(
         string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines, CancellationToken ct)
     {
-        var ctid = _configuration["CTrader:CtId"];
-        var pwdFile = _configuration["CTrader:PwdFile"];
-        var account = _configuration["CTrader:Account"];
+        var ctid = _ctraderOptions.CtId;
+        var pwdFile = _ctraderOptions.PwdFile;
+        var account = _ctraderOptions.Account;
         var wallStart = DateTime.UtcNow;
         if (string.IsNullOrWhiteSpace(ctid) || string.IsNullOrWhiteSpace(pwdFile) || string.IsNullOrWhiteSpace(account))
         {

@@ -11,29 +11,10 @@ handoff.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **F38 was misdiagnosed; the real defect was bigger. See `PARITY-TRUTH-3.md`** (2026-07-12).
-  **F38 (MASTER):** the cBot published `bars.Last(1)` — the bar *before* the one that closed — so **every
-  cTrader bar was one bar stale** for the life of the path, and every order reached the venue a bar late.
-  A limit then arrives already marketable and cTrader fills it *through* the price we named. Measured on
-  the venue's own clock (new `barClock[]`: 8h gap on H4 where publishing-at-close is 4h), fixed to
-  `Last(0)`, re-measured at exactly 4h. NOT lookahead — a forming bar would read 0h. EURUSD entries went
-  from **18+ pips apart to 0.00–0.20 pips, open timestamps identical to the minute**.
-  **F40:** cTrader reports a rested order as `"Pending"`; `OrderState` had no such member → `Enum.Parse`
-  threw and the adapter **dropped the whole `bar_result` batch** (sibling fills + account update). 3 tests.
-  **Currency (F34):** `Account:Currency` is now ONE config value; `CrossRateStore` is a USD-pivot table fed
-  from market data (was 2 stale literals that mispriced EURGBP/EURJPY/GBPJPY on every run). Proved by
-  flipping to EUR live → found 2 more bugs (cTrader leg never got the currency; commission computed in USD,
-  booked in EUR = 17%). After: **lots identical on both venues** — that closes the old "F6 sizing divergence".
-stage: **P4 — gate BUILT and honest.** `research parity --tape <id> --ctrader <id>` (exit 1 on FAIL) +
-  `GET /api/backtest/analytics/parity`. Pre-registered budget UNTOUCHED per PLAN §P4.
+last: F38 (stale bar), F40 (rested order), F34 (currency) all shipped in prior session. **This session:** account reverted to 5834367, `Account:Currency`=EUR (venue-declared), `CTraderConnectionOptions` centralizes creds (no more raw `_config["CTrader:Account"]` in 4 places), gap-through extended to bar-close-through-stop in both `TapeReplayAdapter` and `BacktestReplayAdapter` with instrumentation.
+stage: **P4 — gate built, gap-through fix applied.** `research parity --tape <id> --ctrader <id>` (exit 1 on FAIL). Pre-registered budget UNTOUCHED per PLAN §P4. Short-exit spread mismatch (tape uses configured 1-pip spread, cTrader uses ~0.15-pip actual spread) still open — needs venue-declared spread propagated to tape.
 gate: build 0err/5warn · Unit 747/0/6 · Integration 121/0/0 · Sim-fast 144/0/0
-next / OWNER: (1) **cTrader account 5857867 still declares EUR** — is it actually USD, or is the backtest
-  deposit currency set in the cTrader desktop settings? Engine handles either; model and venue must agree.
-  (2) **The tape fills stops at exactly the stop; cTrader fills THROUGH it.** cTrader is the oracle, so the
-  TAPE is wrong — and optimistic, so every tape expectancy currently flatters. Fix `TapeReplayAdapter`'s
-  exit model; that is what P4's ExitPrice FAIL is reporting. (3) BTCUSD 6v9 — cTrader leg trade capture is
-  still lossy (`TRADES_LOST`), fix F36 before trusting it. **Read `docs/reference/INVESTIGATION-METHOD.md`
-  before any parity work** — it is why this session found in hours what four sessions missed.
+next: (1) Fix tape spread source for Short exits (use venue-declared spread, not configured 1 pip). (2) Run compare-both on XAUUSD 2026-05-11→2026-06-11 (96tape/44ctrader, the most trade-dense non-BTCUSD window). (3) BTCUSD TRADES_LOST — re-run after F38 stale-bar fix; trace TradePersistenceBarrier if still lossy.
 
 ## Checkpoints
 
@@ -74,6 +55,8 @@ phase (a code path is not evidence).
 | F40 | Rested order (`"Pending"`) unparseable → adapter dropped the whole `bar_result` batch; fallback arm would have booked it as a **zero-price fill** | DONE | (this commit) | `OrderState.Pending` + PositionTracker early-return before dedup; per-exec isolation in `HandleBarResult`; RestingOrderExecutionTests.cs (3 tests) |
 | F34 | **Currency as a config value** — `Account:Currency`; `CrossRateStore` → USD-pivot table fed from market data (was 2 stale literals); commission converted to account currency | DONE | (this commit) | PARITY-TRUTH-3.md §3; **proved by flipping to EUR live** → lots **identical** on both venues (closes old "F6 sizing divergence"); commission 17% → **0.5%**; CrossRateTests.cs (14 tests) |
 | P4 | **Parity as a permanent gate** — `research parity` verb + API + pre-registered tolerance budget + one VERDICT line, exit 1 on FAIL | DONE (gate built; reports FAIL, correctly) | (this commit) | ParityGateService.cs; PARITY-TRUTH-3.md §5. FAILs = EUR account (owner) + tape's optimistic stop fills. **Tolerances NOT widened** per PLAN §P4 |
+| P4.1 | Account centralized + reverted to 5834367; `Account:Currency`=EUR; `CTraderConnectionOptions` DI wiring | DONE | (this commit) | `CTraderConnectionOptions.cs`; wired into BacktestOrchestrator, DownloadJobService, BacktestRunner; docs updated |
+| P4.2 | Gap-through extended to bar-close-through-stop in both adapters + LogDebug instrumentation | DONE | (this commit) | `TapeReplayAdapter.cs:617-640`; `BacktestReplayAdapter.cs:422-454`; PARITY-TRUTH-3.md §4.2 updated |
 | — | **Investigation method** written up as a normative reference for future agents/models | DONE | (this commit) | `docs/reference/INVESTIGATION-METHOD.md` — R1–R9, derived from why 4 sessions missed F33/F38 |
 
 ## Quick commands

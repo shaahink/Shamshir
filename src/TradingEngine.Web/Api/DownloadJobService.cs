@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using TradingEngine.CTraderRunner;
+using TradingEngine.Domain;
 using TradingEngine.Infrastructure.MarketData;
 
 namespace TradingEngine.Web.Api;
@@ -10,12 +12,15 @@ public sealed class DownloadJobService
     private readonly ConcurrentDictionary<string, DownloadJob> _jobs = new();
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConfiguration _configuration;
+    private readonly CTraderConnectionOptions _ctraderOptions;
     private readonly ILogger<DownloadJobService> _logger;
 
-    public DownloadJobService(IServiceScopeFactory scopeFactory, IConfiguration configuration, ILogger<DownloadJobService> logger)
+    public DownloadJobService(IServiceScopeFactory scopeFactory, IConfiguration configuration,
+        IOptions<CTraderConnectionOptions> ctraderOptions, ILogger<DownloadJobService> logger)
     {
         _scopeFactory = scopeFactory;
         _configuration = configuration;
+        _ctraderOptions = ctraderOptions.Value;
         _logger = logger;
 
         var dataDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data"));
@@ -80,9 +85,9 @@ public sealed class DownloadJobService
         {
             Directory.CreateDirectory(shardsDir);
 
-            var ctId = _configuration.GetValue<string>("CTrader:CtId") ?? "";
-            var pwdFile = _configuration.GetValue<string>("CTrader:PwdFile") ?? "";
-            var account = _configuration.GetValue<string>("CTrader:Account") ?? "";
+            var ctId = _ctraderOptions.CtId;
+            var pwdFile = _ctraderOptions.PwdFile;
+            var account = _ctraderOptions.Account;
 
             if (string.IsNullOrWhiteSpace(ctId) || string.IsNullOrWhiteSpace(pwdFile))
             {

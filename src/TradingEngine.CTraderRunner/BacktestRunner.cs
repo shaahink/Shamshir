@@ -2,17 +2,21 @@ using System.Diagnostics;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
+using TradingEngine.Domain;
 
 namespace TradingEngine.CTraderRunner;
 
 public sealed class BacktestRunner
 {
     private readonly IConfiguration _config;
+    private readonly CTraderConnectionOptions _ctraderOptions;
     private readonly ILogger<BacktestRunner> _logger;
 
-    public BacktestRunner(IConfiguration config, ILogger<BacktestRunner> logger)
+    public BacktestRunner(IConfiguration config, IOptions<CTraderConnectionOptions> ctraderOptions, ILogger<BacktestRunner> logger)
     {
         _config = config;
+        _ctraderOptions = ctraderOptions.Value;
         _logger = logger;
     }
 
@@ -29,9 +33,9 @@ public sealed class BacktestRunner
         try { algoPath = ResolveAlgoPath(); } catch { algoPath = ""; }
         var algoHash = ComputeAlgoHash(algoPath);
 
-        var ctid = _config["CTrader:CtId"];
-        var pwdFile = _config["CTrader:PwdFile"];
-        var account = _config["CTrader:Account"];
+        var ctid = _ctraderOptions.CtId;
+        var pwdFile = _ctraderOptions.PwdFile;
+        var account = _ctraderOptions.Account;
         if (string.IsNullOrWhiteSpace(ctid) || string.IsNullOrWhiteSpace(pwdFile) || string.IsNullOrWhiteSpace(account))
         {
             return new BacktestResult
@@ -200,9 +204,9 @@ public sealed class BacktestRunner
         if (cfg.DataDir is not null) sb.Append($" --data-dir=\"{cfg.DataDir}\"");
         if (cfg.DataFile is not null) sb.Append($" --data-file=\"{cfg.DataFile}\"");
         sb.Append($" --report-json=\"{reportJsonPath}\"");
-        sb.Append($" --ctid={_config["CTrader:CtId"]}");
-        sb.Append($" --pwd-file=\"{_config["CTrader:PwdFile"]}\"");
-        sb.Append($" --account={_config["CTrader:Account"]}");
+        sb.Append($" --ctid={_ctraderOptions.CtId}");
+        sb.Append($" --pwd-file=\"{_ctraderOptions.PwdFile}\"");
+        sb.Append($" --account={_ctraderOptions.Account}");
         sb.Append($" --DataPort={dataPort}");
         sb.Append($" --CommandPort={commandPort}");
         sb.Append($" --SymbolString={string.Join(",", cfg.Symbols)}");

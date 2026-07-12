@@ -616,10 +616,36 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
 
             if (reason == "SL")
             {
+                var gapThrough = false;
                 if (trade.Direction == TradeDirection.Long && checkBar.Open <= trade.StopLoss.Value)
+                {
+                    gapThrough = true;
                     fillPrice = checkBar.Open;
+                }
                 else if (trade.Direction == TradeDirection.Short && checkBar.Open >= trade.StopLoss.Value)
+                {
+                    gapThrough = true;
                     fillPrice = checkBar.Open;
+                }
+                // When the bar CLOSED past the stop, the venue (cTrader) filled through it: the stop
+                // order triggered mid-bar, became a market order, and filled at a worse price. The
+                // close is the best bar-level proxy for where the market was when the fill executed.
+                else if (trade.Direction == TradeDirection.Long && checkBar.Close < trade.StopLoss.Value)
+                {
+                    gapThrough = true;
+                    fillPrice = checkBar.Close;
+                }
+                else if (trade.Direction == TradeDirection.Short && checkBar.Close > trade.StopLoss.Value)
+                {
+                    gapThrough = true;
+                    fillPrice = checkBar.Close;
+                }
+
+                _logger.LogDebug(
+                    "TapeReplay SL exit: {Dir} orderId={OrderId} barOpen={BarOpen} barClose={BarClose} " +
+                    "stop={Stop} spread={Spread} gapThrough={GapThrough} fillPrice={FillPrice}",
+                    trade.Direction, orderId, bar.Open, bar.Close,
+                    trade.StopLoss.Value, spread, gapThrough, fillPrice);
             }
             var costs = ComputeCosts(trade, fillPrice);
             _balance += costs.NetProfit - trade.EntryCommission;
