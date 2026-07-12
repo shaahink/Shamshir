@@ -295,33 +295,55 @@ the two agree destroys the only oracle we have.
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** iter-alpha-loop — **P0, P1, P2, P3 all DONE (2026-07-11). P4 next.**
-**Read first:** `docs/iterations/iter-alpha-loop/TRACKER.md`, then `PLAN.md` §3b (P4), then the
-evidence files (`evidence/p1-symbol-specs.md`, `p2-limit-entry-parity.md`, `p3-exit-spread-parity.md`)
-and `docs/reference/RESTING-ORDER-CONTRACT.md`.
+**Phase:** iter-alpha-loop — **P0–P4 ALL DONE (2026-07-12). PARITY IS LOCKED. Next up: X0.**
+**Read first:** `docs/iterations/iter-alpha-loop/PARITY-TRUTH-4.md` (what the venue actually does), then
+`TRACKER.md`, then `docs/reference/INVESTIGATION-METHOD.md` and `RESTING-ORDER-CONTRACT.md`.
 **Tracker:** `docs/iterations/iter-alpha-loop/TRACKER.md`
 **Branch:** `iter/alpha-loop`
-**Gate baseline:** build 0err/5warn · Unit 728/0/6 · Integration 121/0/0 · Sim-fast 144/0/0 · golden clean
-**What shipped:** D9 (cost sign), D10 (venue-declared specs), D11 (limit-entry default) all live.
-QA + live cTrader compare-both verification (not just credential-free gates) found and fixed FOUR
-live-only cross-venue defects this session — F24, F30, F31, F32 — each with the same "0 trades on
-cTrader, N on tape" signature but a different root cause each time. See
-[[feedback-ctrader-verification-recurring-failures]] equivalent in
-`evidence/p1-symbol-specs.md` §8 for the pattern and a checklist — **any future phase touching
-`CTraderBrokerAdapter`, `TradingEngineCBot.cs`, `SymbolInfoRegistry`, order-entry/expiry, or the
-cost/spread model MUST run a live compare-both before being called done, not just the
-credential-free gate battery.**
-**Known open gaps (not blocking, filed for later):** F25 (VenueSymbolSpecs DB table never written —
-in-memory only), F26 (PreTradeGate ignores CommissionType), F27 (no unit tests on notional
-commission math), F28 (SwapCalculationType captured but unused), F29 (reconcile per-trade matcher's
-5-min window too tight for real entry-latency, and doesn't compare entry price at all). The
-`ctrader-e2e` xUnit harness's `CtraderE2EHarnessSmokeTests` currently fail with 0 trades — confirmed
-PRE-EXISTING environmental cTrader Desktop CLI bug (reproduced on pre-P0 baseline), not a regression;
-do not spend time "fixing" this without first re-confirming it's still broken (may be a transient
-cTrader auto-update issue).
-**Next:** **P4 — parity as a permanent gate** [OWNER GATE after]. `research parity` verb + the
-pre-registered tolerance budget (PLAN.md table: trade count exact, entry price ≤1 tick, lots exact,
-exit price ≤1 tick/95%, commission ≤2%, swap ≤5%, net PnL ≤1% of gross). Fix F29 first (or the
-verb can't actually measure entry-price tolerance). Then R1' (one cell per run, needs P4 green).
+**Gate baseline:** build 0err/5warn · Unit 759/0/6 · Integration 121/0/0 · Sim-fast 144/0/0
+**Live parity:** **EURUSD `VERDICT: PASS`** (tape `a89d37b5` / ctrader `e497806d`) — TradeCount exact ·
+EntryPrice **0.0 ticks** · Lots exact · ExitPrice **100% within, 0.0 ticks** · Commission 0.53% ·
+Swap 0.44% · NetPnL 0.45%. **Tolerance budget UNTOUCHED.** XAUUSD (14 trades) green on everything
+except NetPnL (F48). Every trade matches cTrader byte-for-byte on entry, exit, stop, lots, timestamps.
+
+**What shipped (P4):** three defects, all found by making the venue TELL us rather than inferring.
+**F43** resting orders do NOT fill at their own price — cTrader replays M1 as four synthetic O/H/L/C
+ticks, so an order fills on the first tick to BREACH its level (stops fill THROUGH, limits fill BETTER);
+the short-exit spread was also counted TWICE. **F44** venue symbol specs were captured in memory and
+never persisted (this was the already-filed F25), so the tape — which never meets a cBot — priced off
+fabricated symbols.json. **F45** swap read as money (it's PIPS — the already-filed F28), negated (it's
+already signed), and weekends charged (they aren't). **F46** closing commission billed at the entry price.
+The previous session's "fill at the bar close" stop model was a number-fitting fudge and is REVERTED.
+
+**⚠ The fill and swap models are pinned against RECORDED VENUE OUTPUT** (`VenueFillModelTests` — six real
+cTrader fills; `VenueSwapModelTests` — three real swap charges). Every one of these bugs had been guarded
+by a GREEN test that asserted the *assumption* instead of the venue ("a limit fills at exactly the named
+price, never a better one"). **A test written from the same reasoning as the code cannot falsify that
+reasoning.** Do not "simplify" those two files.
+
+**Still true, and load-bearing:** any phase touching `CTraderBrokerAdapter`, `TradingEngineCBot.cs`,
+`SymbolInfoRegistry`, order-entry/expiry, or the cost/spread model **MUST run a live compare-both before
+being called done** — not just the credential-free gate battery. Capturing a venue spec for a new symbol
+requires ONE cTrader run on it; the tape then prices off the broker on every later run.
+
+**Owner decisions (2026-07-12):** (a) **F47 — cTrader prices backtest commission at ONE reference spot**
+(constant -20.67 EUR/lot across an 18% gold move): **ACCEPTED as the venue's artifact, deliberately NOT
+matched** — reproducing it would make a run's costs depend on when it ran. The gate exempts it only when
+the venue's own data proves the artifact (≥4 trades, per-lot charge flat <2% while prices moved >5%).
+(b) **M1 tick-synthesis realism bias: PARKED.** Limits/TPs fill BETTER than their level (an XAUUSD TP
+filled 27 pts through target). Parity is honest — both legs share the model — but the VENUE is not
+modelling reality. **X0's absolute PnL inherits this optimistic bias; relative strategy ranking is
+unaffected.** Revisit with tick data. PARITY-TRUTH-4 §5.
+
+**Known open (not blocking X0):** **F48** — the last parity divergence: XAUUSD gross differs 1.37% though
+prices and lots are IDENTICAL, so only the pip's *worth* differs. `PipCalculator.PipValuePerLot` uses the
+time-varying `getCrossRate("USD","EUR")` for XAUUSD vs the price-accurate `rawPipValue / currentPrice` for
+EURUSD; the per-trade ratio DRIFTS ⇒ a rate-*timing* issue, invisible on a USD account. Also F26
+(PreTradeGate ignores CommissionType), F29 (reconcile matcher's 5-min window), F36/BTCUSD `TRADES_LOST`
+(cTrader-leg trade capture still lossy — fix before BTCUSD parity means anything). The `ctrader-e2e`
+`CtraderE2EHarnessSmokeTests` fail with 0 trades — PRE-EXISTING environmental cTrader CLI bug, not a
+regression; re-confirm before spending time on it.
+
+**Next:** **X0 — start the alpha loop.** Parity is locked; the M1 bias above is documented, not a blocker.
 
 

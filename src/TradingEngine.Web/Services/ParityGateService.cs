@@ -109,18 +109,84 @@ public sealed class ParityGateService(LedgerReconcileService reconcile, ISymbolI
         }
 
         // --- costs: venue-declared spec + one formula ⇒ these should agree closely.
-        checks.Add(PctCheck("Commission", tape.Commission, venue.Commission, budget.CommissionMaxPct));
+        var commission = PctCheck("Commission", tape.Commission, venue.Commission, budget.CommissionMaxPct);
+
+        // P4 (F47), owner-accepted 2026-07-12: cTrader prices BACKTEST commission at a single reference
+        // spot, not against each trade's own notional — so identical lots at very different prices are
+        // charged identically. Ours scales with notional, which is the correct model: matching cTrader here
+        // would make a run's costs depend on WHEN it was run. The divergence is the venue's, and we accept
+        // it rather than reproduce it.
+        //
+        // The exemption is EARNED FROM THE VENUE'S OWN DATA, not granted by symbol or by widening a budget.
+        // A blanket commission exemption would hide a real commission bug forever — which is precisely the
+        // class of mistake this whole iteration exists to stop.
+        var commissionDelta = 0m;
+        if (!commission.Pass && VenueCommissionIsPriceIndependent(pairs))
+        {
+            commissionDelta = tape.Commission - venue.Commission;
+            commission = commission with
+            {
+                Pass = true,
+                Tolerance = $"EXEMPT (F47) — was ≤ {budget.CommissionMaxPct}%",
+            };
+            notes.Add(
+                "COMMISSION EXEMPT (F47): the venue charged a CONSTANT commission per lot across trades " +
+                "whose prices differ materially — i.e. it priced commission at one reference spot, not per " +
+                "trade. Our per-notional model is the correct one and is deliberately NOT matched. The " +
+                $"measured divergence ({commission.Measured}) is excluded from the verdict AND from NetPnL. " +
+                "See PARITY-TRUTH-4 §4b.");
+        }
+
+        checks.Add(commission);
         checks.Add(PctCheck("Swap", tape.Swap, venue.Swap, budget.SwapMaxPct));
 
         // --- net: falls out of everything above, expressed against gross so a near-flat run can't make a
-        // large absolute error look small.
+        // large absolute error look small. When commission is exempt (F47) its delta is backed out here too
+        // — otherwise NetPnL just re-reports the venue's own artifact as our failure.
         var grossBase = Math.Max(Math.Abs(venue.GrossProfit), 1m);
-        var netPct = (double)(Math.Abs(tape.NetProfit - venue.NetProfit) / grossBase * 100m);
-        checks.Add(new Check("NetPnL", $"≤ {budget.NetPnLMaxPctOfGross}% of gross",
+        var netDelta = Math.Abs(tape.NetProfit - venue.NetProfit - commissionDelta);
+        var netPct = (double)(netDelta / grossBase * 100m);
+        checks.Add(new Check("NetPnL",
+            commissionDelta == 0m
+                ? $"≤ {budget.NetPnLMaxPctOfGross}% of gross"
+                : $"≤ {budget.NetPnLMaxPctOfGross}% of gross (ex-F47 commission)",
             $"{netPct:F2}%", netPct <= budget.NetPnLMaxPctOfGross));
 
         return new ParityReport(tapeRunId, ctraderRunId, symbolName,
             checks.All(c => c.Pass), checks, notes);
+    }
+
+    /// <summary>
+    /// The F47 signature, read off the venue's own fills: commission per lot is CONSTANT while the trades'
+    /// prices are not. Commission scales with notional, and notional scales with price — so a venue whose
+    /// per-lot charge does not move when price moves 5%+ is not pricing per trade at all.
+    ///
+    /// Deliberately conservative: it needs several trades AND a real price spread to fire, so it can never
+    /// quietly excuse an ordinary commission bug on a range-bound run.
+    /// </summary>
+    private static bool VenueCommissionIsPriceIndependent(
+        IReadOnlyList<(ReconcileTrade Tape, ReconcileTrade Venue)> pairs)
+    {
+        var samples = pairs
+            .Select(p => p.Venue)
+            .Where(v => v.Lots > 0 && v.Commission != 0 && v.EntryPrice > 0)
+            .Select(v => (PerLot: Math.Abs(v.Commission) / v.Lots, v.EntryPrice))
+            .ToList();
+
+        if (samples.Count < 4) return false;
+
+        static decimal Spread(IEnumerable<decimal> xs)
+        {
+            var min = xs.Min();
+            var max = xs.Max();
+            return min <= 0 ? 0m : (max - min) / min;
+        }
+
+        // The prices must actually differ, or the test cannot discriminate between the two models.
+        if (Spread(samples.Select(s => s.EntryPrice)) < 0.05m) return false;
+
+        // ...and the per-lot charge must have stayed flat anyway.
+        return Spread(samples.Select(s => s.PerLot)) < 0.02m;
     }
 
     private static Check PctCheck(string name, decimal tapeVal, decimal venueVal, double maxPct)

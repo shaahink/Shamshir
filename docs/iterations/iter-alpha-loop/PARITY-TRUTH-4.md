@@ -227,6 +227,26 @@ per-trade values. The discriminating experiment, if we want certainty about the 
 same cell over a window with a very different closing price and see whether the implied $/oz moves with the
 window (last bar) or stays put (live spot).
 
+### F48 — the last divergence: PnL currency conversion (OPEN, small, well-localised)
+
+With commission exempted, XAUUSD still fails NetPnL at 1.37% — and it is not a fill or a cost bug. **Gross
+itself differs**: tape 6014.87 vs venue 6098.58. Entry prices, exit prices and lots are IDENTICAL, so the
+pip counts are identical. The only remaining term is what a pip is WORTH.
+
+`PipCalculator.PipValuePerLot` branches three ways, and the two symbols take different branches:
+
+| symbol (EUR account) | branch | conversion |
+|---|---|---|
+| EURUSD | `BaseCurrency == AccountCurrency` | `rawPipValue / currentPrice` — price-accurate. Residual **0.45%** |
+| XAUUSD | neither matches | `getCrossRate("USD","EUR")` — the **time-varying CrossRateStore**. Residual **1.37%** |
+
+The per-trade ratio *drifts* (1.0087 → 1.0167 across the XAUUSD run, 1.0045 on EURUSD), so this is not a
+flat FX offset — it is a **timing** difference. cTrader values each trade's PnL at its own rate at that
+moment; our USD→EUR leg is not advancing in lockstep with the run clock.
+
+Small, bounded, and the last one standing. It only bites symbols whose quote AND base both differ from the
+account currency — i.e. it is invisible on a USD account, and invisible on EURUSD even here.
+
 ---
 
 ## 5. What this does NOT fix — read before trusting a backtest number
