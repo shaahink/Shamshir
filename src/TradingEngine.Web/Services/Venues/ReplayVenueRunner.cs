@@ -269,13 +269,14 @@ public sealed class ReplayVenueRunner(
             var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
             await adapter.BarStream.Completion;
 
-            var barCount = (adapter as IReplayVenue)?.BarCount ?? 0;
+            var replayVenue = adapter as IReplayVenue;
+            var barCount = replayVenue?.BarCount ?? 0;
             totalBars += barCount;
             if (barCount > 0) anyBars = true;
 
-            if (adapter is TapeReplayAdapter tape && tape.ExitResolution is not null)
-                state.ExitResolution = tape.ExitResolution;
-            // BarsTotal is set by pre-query (line 832) — do NOT overwrite mid-loop
+            if (replayVenue?.ExitResolution is { } exitResolution)
+                state.ExitResolution = exitResolution;
+            // BarsTotal is set by pre-query above — do NOT overwrite mid-loop
             // or the display shows nonsense like "99.9% (816 / 400)" on multi-pass runs.
 
             equityCts.Cancel();
