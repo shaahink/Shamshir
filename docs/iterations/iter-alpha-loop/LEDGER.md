@@ -1139,3 +1139,66 @@ plan required (didn't exist), found and fixed one bug in it before using it on r
 out of scope), ran all 4 survivors + both contested knobs on the embargo window exactly once, and
 got a real, honest, non-improved-upon answer: safe, not yet challenge-ready. Handoff below points to
 R5.
+
+---
+
+## R5 — Final audit + owner pack — 2026-07-15
+
+**Method:** audited R0–R4 from artifacts, not from trusting TRACKER/LEDGER's own claims — read
+PLAN.md + TRACKER.md's full ~130-row checkpoint table + all of LEDGER.md (every prior session
+entry, not just the tail), then independently re-ran the fast gate (build: 0err/5warn, matches
+claim; Unit: 766/0/6, matches claim exactly) and queried the live `trading.db` directly for every
+number in this entry rather than repeating a prior session's printed count.
+
+**Stage-by-stage verdict: zero uncorrected DEVIATES.** Every stage that had a real gap (P1's
+VenueSymbolSpecs persistence claim being false until F44 landed two sessions later; X0/X1 both
+shipped once as "DONE, delivered, untested" before their own truth gate ran) was caught by a
+*later* session's mandatory QA step and fixed inside the iteration — never left broken, never
+silently glossed over. Full stage table: `R5-AUDIT.md` §1.
+
+**Empty-table fact reverified dead, live counts pasted (R3 of the research-integrity rules — the
+query, not the assertion):** `ExperimentRuns`=283, `Experiments`=5, `VenueSymbolSpecs`=14,
+`StrategyCellParks`=2, `WalkForwardJobs`=7 (37 window rows — 6 jobs×6 folds from the two formal R3
+walk-forward batches + 1 job×1 fold from the F61 fix's own smoke-test verification, which
+reconciles exactly against the ledger's "6 jobs / 36 results" narrative once you account for that
+smoke run), `BacktestRuns`=665, `TradeResults`=8773, `EquitySnapshots`=2,003,934.
+
+**Two new findings, both from this session's own queries, neither in any prior ledger entry:**
+- PLAN §6's own "no lies" invariant (`BacktestRuns.TotalTrades` must equal its `TradeResults`
+  count, always) returns **9**, not 0. All 9 trace cleanly to two known live-verification sessions
+  (3 from the 2026-07-12 P2/P3 QA live-cTrader runs, 6 from the 2026-07-15 X0/X1 concurrency-proof
+  runs) — orphaned test-artifact rows left in `Status=""`/`"running"` limbo, never finalized.
+  Harmless to every scored result so far (D13's `status=completed` gate already excludes them from
+  scoring), but the plan's own headline health-check query currently returns a false positive.
+- Both `baseline-sv1-prime` `Experiments` rows — `96fa9214` (the known orphan) **and `075d5240`,
+  the row actually adopted for R1'/R3/R4's entire ranking** — are permanently stuck at
+  `Status="Running"`. Both predate the F59 fix (same crash-and-leak bug, never retroactively
+  repaired). `ExperimentRuns` attachment is unaffected (verified: all 252 rows correctly hang off
+  `075d5240`), so this is cosmetic today, but it means the iteration's single most important
+  Experiment row would fail any future "is anything stuck?" check.
+
+**Bugfix queue, ≤5, ranked by actual impact (not recency):** (1) **F63** — `ComputeFtmoSurvival`'s
+25% composite weight has never reflected a real challenge simulation, for every ranking decision
+this entire iteration made; (2) **F48** — XAUUSD tape-vs-venue PnL divergence, directly relevant
+the moment candidate #1 (XAUUSD-class) is considered for anything beyond tape research; (3) the
+9-row invariant break, new this session; (4) the two stuck-`Running` Experiment rows, new this
+session; (5) the s2a anomaly (`trend-breakout/NZDUSD/H4`+`runner-aggressive`: MaxDD 0.01%→4.77%,
+trades +165%), flagged twice before and still unconfirmed. Full detail + why each ranked where it
+did: `R5-AUDIT.md` §3.
+
+**AGENTS.md RESUME corrected** — was stamped 2026-07-12, claiming "P0–P4 ALL DONE, next: X0," five
+whole stages (X0–X5, R1', R3, R4) out of date. Rewritten to point at the R5 owner gate.
+
+**Deliverable:** `docs/iterations/iter-alpha-loop/R5-AUDIT.md` — the full stage table, the printed
+row counts, the ranked bugfix queue, and a one-page owner-facing "what next" (§5) that reads
+`evidence/candidate-cards.md` (unchanged from R4 — R5 does not re-run or reinterpret those numbers)
+and recommends, if the owner wants to continue past this gate, chasing trade *frequency* rather
+than more pack/risk knob tuning on the same 4 cells — since the embargo failure mode was speed, not
+signal quality or risk control.
+
+**SESSION-RESULT:** R5 done in one session (plan allows 1). No code touched — pure audit +
+packaging, as scoped. Found the empty-table fact still dead, found zero uncorrected process
+failures across 20+ stages, and found two small-but-real new DB hygiene issues by actually running
+the plan's own verification queries instead of assuming they'd still pass. The iteration's
+machinery is now audited end-to-end; what remains is the owner's read of the candidate cards, not
+another agent-driven stage.

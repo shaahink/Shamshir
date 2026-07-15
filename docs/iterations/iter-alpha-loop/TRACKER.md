@@ -11,27 +11,26 @@ handoff.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **R4 CLOSED — FTMO dress rehearsal run, both #3/#4 carried (owner call executed).** Full
-writeup: LEDGER.md §"R4". Built new permanent infra (`ChallengeSimulator` +
-`ChallengeSimulationService` + `GET /api/runs/{id}/challenge-sim`, 14 new tests, gates green) since
-the plan's "3 rolling 30-day challenge sims" had no prior implementation — found along the way that
-`SetupScoreService.ComputeFtmoSurvival` (25% of every R1'/R3 composite) is a placeholder, filed as
-**F63**, not fixed (would retroactively rescore ~250 runs — out of R4 scope). Ran all 4 survivors
-on the embargo window (2026-05-06→2026-07-05, first and only touch): **0/4 candidates reached a
-30-day +10% target in any of 12 rolling windows; 0/12 breached daily/max-loss limits either.** 2 of
-4 (`ema-alignment/EURJPY/H1`, both knobs) are net NEGATIVE on the embargo window. Full detail +
-per-candidate tables: `evidence/candidate-cards.md`.
-stage: **R0–R2(as P4), P0–P4, X0–X5, R1', F59, F60, R3 (sessions 1+2, F61, F62), R4 (F63 filed) ALL
-DONE → R5 final audit + owner pack is next.**
-gate: build 0err, Unit 766/0/6, Integration 148/0/0, Sim-fast 144/0/0 — all up from R3's 759/759/141/144
-by exactly the new tests added (7+7). All 4 embargo runs completed clean, 0 warnings, ExitCode 0.
-next: (1) **R5** (PLAN.md §R5): audit R0–R4 against the plan (CONFORMS/CWF/DEVIATES), verify the
-empty-table fact stays dead, ≤5-item bugfix queue, hand `evidence/candidate-cards.md` + a one-page
-"what next" to the owner. The headline finding (safe but not challenge-ready by return velocity) IS
-the R4 deliverable — do not re-run or reinterpret the embargo window trying to make it look better.
-(2) Non-blocking follow-ups: **F63** (ComputeFtmoSurvival placeholder — rescore decision needed),
-F61b, `scalp-tight` mechanism, s2a outlier, orphan `96fa9214`, F48 (XAUUSD tape-vs-venue PnL —
-still open, still not exercised by R4 since R4 stayed on tape per D1).
+last: **R5 CLOSED — final audit + owner pack done. ITERATION AT THE OWNER GATE.** Full audit:
+`docs/iterations/iter-alpha-loop/R5-AUDIT.md`. Every R0–R4 stage audited against PLAN.md from
+artifacts (not the tracker's own claims): **zero uncorrected DEVIATES** — every gap found (P1's
+F24/F25, X0/X1's F49-F53, R1's F59/F60, R3's F61/F62) was self-corrected by a later session's own
+QA pass. Empty-table fact reverified dead with live counts (§2). Two NEW findings from this
+session's own DB queries: PLAN §6's "no lies" invariant returns **9**, not 0 (9 orphaned
+test/proof-run rows, harmless to scoring); both `baseline-sv1-prime` Experiment rows incl. the
+**adopted** `075d5240` are stuck `Status=Running` forever (pre-dates the F59 fix). AGENTS.md's
+RESUME block (stale since 2026-07-12, "next: X0") corrected.
+stage: **R0–R2(as P4), P0–P4, X0–X5, R1', F59, F60, R3, R4 (F63 filed), R5 ALL DONE. Owner review
+is the only remaining step — no more agent-driven stages in this plan.**
+gate: re-verified this session, unchanged from R4: build 0err/5warn, Unit 766/0/6 (live re-run,
+confirmed). candidate-cards.md unchanged (R5 does not re-run or reinterpret R4's numbers).
+next: **Owner reviews `evidence/candidate-cards.md` + `R5-AUDIT.md` §5 (one-page "what next").**
+Bugfix queue (ranked, ≤5, R5-AUDIT.md §3): (1) F63 ComputeFtmoSurvival's real 25%-weight impact on
+every composite — rescore decision needed, (2) F48 XAUUSD tape-vs-venue PnL (matters if candidate
+#1 goes live), (3) the 9-row invariant break [new], (4) the two stuck-Running Experiment rows
+[new], (5) s2a anomaly (DD 0.01%→4.77%, unconfirmed). None of these block the owner's read of the
+candidate cards. If the owner wants to continue past R5, R5-AUDIT.md §5 point 2 has the
+recommended next direction (trade-frequency, not more knob tuning on the same 4 cells).
 App was left running (port 5134) — kill before next build (see Gotchas).
 
 ## Checkpoints
@@ -127,7 +126,12 @@ phase (a code path is not evidence).
 | F63 | **`SetupScoreService.ComputeFtmoSurvival` is a placeholder** — no profit-target check, no ruleset-specific daily cap, no min-trading-days gate; just "did equity ever dip >10% from its own start within a naive 30-day slice". 25% weight in every R1'/R3 composite, all 4 R4 candidates show `FtmoSurvival:100` | **OPEN — filed, not fixed** | — | `SetupScoreService.cs:340-369`; fixing it means rescoring ~250 existing `ExperimentRuns` — out of R4 scope, flagged for a future session |
 | R4.1 | **4 candidates run on the EMBARGOED window** (2026-05-06→2026-07-05, first and only touch), tape venue, governor/prop-rules/HonestFills all default-ON, exploration default-OFF | DONE (live-verified) | (this commit) | RunIds `e319c25a` (v1a, 3 trades, +$401), `fdf0ae70` (s2l, 4 trades, +$109), `94090b6f` (v6a, 6 trades, −$1,921), `0dc27c9f` (v6b, 7 trades, −$810) — all completed, 0 warnings, ExitCode 0 |
 | R4.2 | **3 rolling 30-day challenge sims per candidate (12 total)** | DONE | (this commit) | 0/12 Pass, 0/12 Fail, 12/12 Incomplete (no 30-day window reached +10%; none breached 5%/10% loss caps either, worst single day 1.47%) |
-| **R4** | **CLOSED — headline: safe but not challenge-ready by return velocity on the one unseen window touched** | **DONE** | (this commit) | `evidence/candidate-cards.md` — full per-candidate tables, method, F63, owner bottom-line |
+| **R4** | **CLOSED — headline: safe but not challenge-ready by return velocity on the one unseen window touched** | **DONE** | e12622f | `evidence/candidate-cards.md` — full per-candidate tables, method, F63, owner bottom-line |
+| R5.1 | **Stage-by-stage audit R0–R4 vs PLAN.md** — CONFORMS/CWF/DEVIATES per stage, cross-checked against code/tests/commits (not the tracker table alone) | DONE | (this commit) | `R5-AUDIT.md` §1 — **zero uncorrected DEVIATES**; every gap found (F24/F25, F49-F53, F59/F60, F61/F62) was self-corrected by a later session's QA pass |
+| R5.2 | **Empty-table fact verification** — live row counts on every research table + PLAN §6's "no lies" invariant, printed not asserted | DONE | (this commit) | `R5-AUDIT.md` §2: ExperimentRuns 283, VenueSymbolSpecs 14, StrategyCellParks 2, WalkForwardJobs 7 (37 window rows), BacktestRuns 665, TradeResults 8773, EquitySnapshots 2,003,934 — all alive. **New finding:** the "no lies" invariant returns 9 (not 0) — 9 orphaned test/proof-run rows from prior live-verification sessions, harmless to scoring, filed as bugfix queue #3 |
+| R5.3 | **Bugfix queue, ≤5 items, ranked by impact** | DONE | (this commit) | `R5-AUDIT.md` §3: (1) F63 real weight in every composite, (2) F48 XAUUSD PnL, (3) 9-row invariant break [new], (4) both `baseline-sv1-prime` Experiment rows stuck `Status=Running` incl. the adopted `075d5240` [new], (5) s2a anomaly unconfirmed |
+| R5.4 | **AGENTS.md RESUME corrected** — was stamped 2026-07-12 "P0-P4 done, next X0", 5 sessions stale | DONE | (this commit) | `AGENTS.md` RESUME block rewritten to point at R5/owner gate |
+| **R5** | **CLOSED — owner gate: candidate cards + audit + bugfix queue ready for review** | **DONE** | (this commit) | `R5-AUDIT.md` — full audit, §5 is the one-page owner summary; `evidence/candidate-cards.md` unchanged from R4 |
 
 ## Quick commands
 

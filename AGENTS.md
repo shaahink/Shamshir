@@ -316,16 +316,31 @@ The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** iter-alpha-loop — **P0–P4 ALL DONE (2026-07-12). PARITY IS LOCKED. Next up: X0.**
-**Read first:** `docs/iterations/iter-alpha-loop/PARITY-TRUTH-4.md` (what the venue actually does), then
-`TRACKER.md`, then `docs/reference/INVESTIGATION-METHOD.md` and `RESTING-ORDER-CONTRACT.md`.
+**Phase:** iter-alpha-loop — **R0 THROUGH R5 ALL DONE (2026-07-15). Iteration is at the OWNER
+GATE.** No more agent-driven stages remain in this plan; the next action is the owner reviewing
+`evidence/candidate-cards.md` + `docs/iterations/iter-alpha-loop/R5-AUDIT.md` §5 (one-page "what
+next"). If work resumes past this gate, read `R5-AUDIT.md` first — it's the audited, current state
+of everything below, not this stale summary.
+**Read first:** `docs/iterations/iter-alpha-loop/R5-AUDIT.md` (full stage audit + bugfix queue),
+then `TRACKER.md` (checkpoint table + Handoff block), then `LEDGER.md` (append-only session log,
+read the tail for R3/R4/R5 narrative).
 **Tracker:** `docs/iterations/iter-alpha-loop/TRACKER.md`
 **Branch:** `iter/alpha-loop`
-**Gate baseline:** build 0err/5warn · Unit 759/0/6 · Integration 121/0/0 · Sim-fast 144/0/0
+**Gate baseline (re-verified live during R5, 2026-07-15):** build 0err/5warn · Unit 766/0/6 ·
+Integration 148/0/0 · Sim-fast 144/0/0.
 **Live parity:** **EURUSD `VERDICT: PASS`** (tape `a89d37b5` / ctrader `e497806d`) — TradeCount exact ·
 EntryPrice **0.0 ticks** · Lots exact · ExitPrice **100% within, 0.0 ticks** · Commission 0.53% ·
 Swap 0.44% · NetPnL 0.45%. **Tolerance budget UNTOUCHED.** XAUUSD (14 trades) green on everything
-except NetPnL (F48). Every trade matches cTrader byte-for-byte on entry, exit, stop, lots, timestamps.
+except NetPnL (**F48**, still open — see bugfix queue in R5-AUDIT.md §3). Every trade matches cTrader
+byte-for-byte on entry, exit, stop, lots, timestamps.
+
+**What shipped after P4 (summarized — R5-AUDIT.md has the audited detail):** X0-X5 (run queue,
+progress truth, Runs page rework, trade chart rework, data-manager auto-sync, god-class refactor —
+all live-verified), R1' (the valid 252-cell baseline census, D13-conformant), R3 (2 refinement
+sessions, 24 pre-registered variants, walk-forward + OOS-ratio cull, 2 cells parked on real
+evidence), R4 (FTMO dress rehearsal on the embargoed window — **headline: all 4 full-year survivors
+stalled or went net-negative on the one unseen 60-day window, a return-velocity failure, not a risk
+failure** — full numbers in `evidence/candidate-cards.md`), R5 (this audit).
 
 **What shipped (P4):** three defects, all found by making the venue TELL us rather than inferring.
 **F43** resting orders do NOT fill at their own price — cTrader replays M1 as four synthetic O/H/L/C
