@@ -376,8 +376,11 @@ cards + a one-page "what I'd do next" to the owner.
 -- the machine is eating:
 SELECT COUNT(*) FROM ExperimentRuns;            -- grows every R1/R3 session
 SELECT COUNT(*) FROM WalkForwardWindowResults;  -- grows in R3
--- no lies:
-SELECT COUNT(*) FROM BacktestRuns WHERE TotalTrades !=
+-- no lies (completed runs only — an interrupted/'running' run legitimately shows a stats-vs-trades
+-- skew because summary stats are written before trades settle; scope matches the D13 scoring gate,
+-- which only ever reads Status='completed'. Fixed R5: the unscoped query returned 9 false positives
+-- from stuck/pre-migration test-proof runs, all non-completed — see R5-AUDIT.md §3 item #3):
+SELECT COUNT(*) FROM BacktestRuns WHERE Status = 'completed' AND TotalTrades !=
   (SELECT COUNT(*) FROM TradeResults t WHERE t.RunId = BacktestRuns.RunId); -- always 0
 ```
 Plus: latest `evidence/scoreboard-sN.md` top-20, and the conductor REPORT.md cost/time lines.

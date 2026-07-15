@@ -11,27 +11,29 @@ handoff.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **R5 CLOSED — final audit + owner pack done. ITERATION AT THE OWNER GATE.** Full audit:
-`docs/iterations/iter-alpha-loop/R5-AUDIT.md`. Every R0–R4 stage audited against PLAN.md from
-artifacts (not the tracker's own claims): **zero uncorrected DEVIATES** — every gap found (P1's
-F24/F25, X0/X1's F49-F53, R1's F59/F60, R3's F61/F62) was self-corrected by a later session's own
-QA pass. Empty-table fact reverified dead with live counts (§2). Two NEW findings from this
-session's own DB queries: PLAN §6's "no lies" invariant returns **9**, not 0 (9 orphaned
-test/proof-run rows, harmless to scoring); both `baseline-sv1-prime` Experiment rows incl. the
-**adopted** `075d5240` are stuck `Status=Running` forever (pre-dates the F59 fix). AGENTS.md's
-RESUME block (stale since 2026-07-12, "next: X0") corrected.
-stage: **R0–R2(as P4), P0–P4, X0–X5, R1', F59, F60, R3, R4 (F63 filed), R5 ALL DONE. Owner review
-is the only remaining step — no more agent-driven stages in this plan.**
-gate: re-verified this session, unchanged from R4: build 0err/5warn, Unit 766/0/6 (live re-run,
-confirmed). candidate-cards.md unchanged (R5 does not re-run or reinterpret R4's numbers).
-next: **Owner reviews `evidence/candidate-cards.md` + `R5-AUDIT.md` §5 (one-page "what next").**
-Bugfix queue (ranked, ≤5, R5-AUDIT.md §3): (1) F63 ComputeFtmoSurvival's real 25%-weight impact on
-every composite — rescore decision needed, (2) F48 XAUUSD tape-vs-venue PnL (matters if candidate
-#1 goes live), (3) the 9-row invariant break [new], (4) the two stuck-Running Experiment rows
-[new], (5) s2a anomaly (DD 0.01%→4.77%, unconfirmed). None of these block the owner's read of the
-candidate cards. If the owner wants to continue past R5, R5-AUDIT.md §5 point 2 has the
-recommended next direction (trade-frequency, not more knob tuning on the same 4 cells).
-App was left running (port 5134) — kill before next build (see Gotchas).
+last: **ITERATION DONE — closed 2026-07-15.** R5's audit + owner pack shipped, and the two cheap
+DB-hygiene items from the bugfix queue (#3, #4) delivered this session — full close-out in
+`HANDOVER.md`. **#3:** PLAN §6's "no lies" invariant was returning 9 false positives (all
+non-completed test/proof runs — 3 pre-migration + 6 stuck-running); scoped the query to
+`Status='completed'` (matches the D13 scoring gate) → now returns 0 live, no rows deleted. **#4:**
+the two stuck-`Running` `baseline-sv1-prime` Experiment rows backfilled truthfully — adopted 252-run
+`075d5240` → `Completed` (at its last run's real completion time), F59 crash-leak orphan `96fa9214`
+(0 runs) → `Failed` (not a fake Complete). Both verified 0-remaining live. Tree touched: `PLAN.md` +
+`R5-AUDIT.md` only (the DB is a gitignored local research artifact).
+stage: **ALL AGENT-DRIVEN STAGES DONE (R0–R2→P4, P0–P4, X0–X5, R1', F59/F60, R3, R4, R5, R5-hygiene).**
+Remaining bugfix-queue items are all owner-decision / next-iteration scope — none block closing this
+iteration: (1) **F63** ComputeFtmoSurvival placeholder (25% composite weight, rescore ~250 rows is a
+decision not a bug), (2) **F48** XAUUSD tape-vs-venue PnL (only bites if candidate #1 goes to a live
+venue), (5) **s2a** anomaly (unconfirmed, one session's investigation).
+gate: unchanged from R4/R5 (build 0err/5warn, Unit 766/0/6). No product code changed this session —
+a doc-query scope edit + a one-time DB data backfill — so gates were not re-run (nothing to
+invalidate). App is NOT running (verified port 5134 free before the DB write).
+next: **DECIDED (owner call 2026-07-15, `HANDOVER.md` §0): close now, banking the negative result.**
+The follow-up, when opened, is a **portfolio-of-cells iteration** (aggregate the safe, walk-forward-
+survived, positive-expectancy edges to solve velocity — NOT a faster-setup hunt, NOT re-tuning the
+same 4 cells). Its **Phase 0 is an OOS-honesty gate**: re-prove the edges on a second unseen window
+(as data accrues past 2026-07-05) or paper-forward *before* building multi-cell machinery; if they
+don't hold, stop. F63 wired forward as that iteration's task #1 (no backfill of the 250 rows).
 
 ## Checkpoints
 
@@ -132,6 +134,9 @@ phase (a code path is not evidence).
 | R5.3 | **Bugfix queue, ≤5 items, ranked by impact** | DONE | (this commit) | `R5-AUDIT.md` §3: (1) F63 real weight in every composite, (2) F48 XAUUSD PnL, (3) 9-row invariant break [new], (4) both `baseline-sv1-prime` Experiment rows stuck `Status=Running` incl. the adopted `075d5240` [new], (5) s2a anomaly unconfirmed |
 | R5.4 | **AGENTS.md RESUME corrected** — was stamped 2026-07-12 "P0-P4 done, next X0", 5 sessions stale | DONE | (this commit) | `AGENTS.md` RESUME block rewritten to point at R5/owner gate |
 | **R5** | **CLOSED — owner gate: candidate cards + audit + bugfix queue ready for review** | **DONE** | (this commit) | `R5-AUDIT.md` — full audit, §5 is the one-page owner summary; `evidence/candidate-cards.md` unchanged from R4 |
+| R5.h3 | **Bugfix #3 — "no lies" invariant scoped to completed runs** — the 9 offenders were all non-completed (3 pre-migration empty-status + 6 `Status='running'` test/proof runs); scoping to `Status='completed'` (D13 gate parity) returns 0 without deleting rows. `research doctor` never ran this check, so doc-only edit | DONE | (this commit) | PLAN.md §6 query + comment; live-verified `SELECT COUNT(*) … Status='completed' AND TotalTrades != …` = **0** |
+| R5.h4 | **Bugfix #4 — two stuck-`Running` Experiment rows backfilled truthfully** — adopted 252-run `075d5240` → `Completed` @ last-run completion (2026-07-15 13:59:12); F59 crash-leak orphan `96fa9214` (0 runs) → `Failed:` (not a fake Complete). Root cause already fixed by F59 → one-time data backfill, no code change | DONE | (this commit) | live-verified `SELECT COUNT(*) FROM Experiments WHERE Status='Running'` = **0** |
+| **ITERATION** | **DONE / CLOSED 2026-07-15 — all agent stages complete, HANDOVER.md written; remaining queue (F63/F48/s2a) is owner-decision / next-iteration scope** | **DONE** | (this commit) | `HANDOVER.md` |
 
 ## Quick commands
 
