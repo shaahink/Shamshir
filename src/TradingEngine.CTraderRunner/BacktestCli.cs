@@ -6,7 +6,7 @@ namespace TradingEngine.CTraderRunner;
 public static class BacktestCli
 {
     public static async Task<BacktestCliResult> InvokeAsync(
-        BacktestCliRequest request, CancellationToken ct = default)
+        BacktestCliRequest request, CancellationToken ct = default, Action<int>? onStarted = null)
     {
         var effectiveCt = ct;
         var timeoutCts = (CancellationTokenSource?)null;
@@ -18,7 +18,7 @@ public static class BacktestCli
 
         try
         {
-            return await InvokeCoreAsync(request, effectiveCt);
+            return await InvokeCoreAsync(request, effectiveCt, onStarted);
         }
         catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true)
         {
@@ -32,7 +32,7 @@ public static class BacktestCli
     }
 
     private static async Task<BacktestCliResult> InvokeCoreAsync(
-        BacktestCliRequest request, CancellationToken ct)
+        BacktestCliRequest request, CancellationToken ct, Action<int>? onStarted = null)
     {
         ChildProcessReaper.EnsureCurrentProcessInKillOnCloseJob();
 
@@ -52,6 +52,9 @@ public static class BacktestCli
             UseShellExecute = false,
             CreateNoWindow = true,
         }) ?? throw new InvalidOperationException($"Failed to start ctrader-cli at {cliPath}");
+
+        // X4: hand the PID to the owner so it can tree-kill only what it launched (never by image name).
+        try { onStarted?.Invoke(process.Id); } catch { /* registration is best-effort */ }
 
         try
         {

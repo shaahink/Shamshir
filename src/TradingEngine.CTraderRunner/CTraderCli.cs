@@ -22,7 +22,8 @@ public sealed class CTraderCli
     public async Task<CTraderResult> BacktestAsync(
         string algoPath,
         string[] extraArgs,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Action<int>? onStarted = null)
     {
         // Arm the kill-on-close reaper before spawning, so ctrader-cli and any of its own
         // children die with this process even if the run is cancelled or the host crashes.
@@ -33,12 +34,18 @@ public sealed class CTraderCli
 
         var args = new[] { "backtest", algoPath }.Concat(extraArgs);
 
-        var result = await Cli.Wrap(_cliPath)
+        var task = Cli.Wrap(_cliPath)
             .WithArguments(args)
             .WithStandardOutputPipe(PipeTarget.ToStringBuilder(stdOut))
             .WithStandardErrorPipe(PipeTarget.ToStringBuilder(stdErr))
             .WithValidation(CommandResultValidation.None)
             .ExecuteAsync(ct);
+
+        // X4: hand the ctrader-cli PID to the owner so it can tree-kill only what it launched
+        // (owned-PID reaping, never by image name — parallel- and cross-process-safe).
+        try { onStarted?.Invoke(task.ProcessId); } catch { /* registration is best-effort */ }
+
+        var result = await task;
 
         var stdout = stdOut.ToString();
         var stderr = stdErr.ToString();
