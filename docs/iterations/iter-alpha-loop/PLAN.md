@@ -84,7 +84,7 @@ X3  Trade chart rework (1)              — context window, real entry/exit mark
 X4  Data manager auto-sync (1)          — coverage view, sync-to-latest, gap report
 
 R1' Baseline sweep, redone (2)          — one cell per run, null-with-reason persisted
-R3  Refinement loop (3–5)               — unchanged protocol, now on a trustworthy tape
+R3  Refinement loop (3–5)               — DONE (2 sessions; owner call to proceed to R4)
 R4  FTMO dress rehearsal (1–2)          — unchanged
 R5  Final audit + candidate cards (1)   — unchanged                                  [OWNER GATE]
 ```

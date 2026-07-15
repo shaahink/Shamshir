@@ -977,3 +977,59 @@ profitable, OOS ratio 1.58, composite 98.3 full `sv1`.
 Full census now (both sessions): 6 real full-`sv1` candidates (v6a 97.3, v1a 100, v6b 90.3, s2l
 98.3, plus s2c/s2j parked). Gate: 6 walk-forward jobs total, 36 WindowResults rows, 2
 `StrategyCellParks` rows.
+
+---
+
+## R3 CLOSED — 2 sessions run, owner call to proceed to R4 — 2026-07-15
+
+**Decision:** the plan allows 3–5 R3 sessions; owner elected to stop at 2 rather than run a 3rd,
+and move to R4. This is plan-conformant (the range is a ceiling, not a quota) — recorded here so a
+future session doesn't read "3–5" as unfinished work.
+
+**What R3 actually delivered, both sessions combined:**
+- 24 pre-registered variants run + scored (12 + 12), across 15 distinct R1' top-20 cells (of 20).
+- 6 walk-forward jobs (36 `WalkForwardWindowResultEntity` rows) run against the 6 best variants.
+- 2 real infrastructure fixes discovered and shipped in service of the protocol, not tangential to
+  it: **F61** (walk-forward silently validated the wrong config — no `PackId`/`RiskProfileId`
+  carry-through) and **F62** (the OOS-ratio cull scoring was a stub, `oosRatio` hardcoded `null`,
+  meaning no cell could ever reach full `sv1` before this session). Both are now load-bearing parts
+  of the scoring pipeline, not one-off patches — every future R3 session benefits from them.
+- 2 cells formally parked (`StrategyCellParks`) on real OOS-ratio evidence, not vibes: **s2c**
+  (trend-breakout/XAGUSD/H1+runner-aggressive) and **s2j** (mean-reversion/GBPUSD/H1+aggressive
+  risk) — both looked like winners pre-walk-forward, both scored OOS ratio 0.0.
+
+**Final candidate list — 4 full-`sv1`, walk-forward-validated survivors, ranked:**
+
+| Rank | Cell | Knob | Composite | OosRatio | Trades (single-window) |
+|---|---|---|---|---|---|
+| 1 | trend-breakout/XAUUSD/H4 | pack=runner-aggressive | 100 | 2.15 | 63 |
+| 2 | mean-reversion/AUDUSD/H1 | risk=conservative | 98.3 | 1.58 | 31 |
+| 3 | ema-alignment/EURJPY/H1 | pack=runner-aggressive | 97.3 | 4.32 | 58 |
+| 4 | ema-alignment/EURJPY/H1 | risk=aggressive | 90.3 | 3.23 | 39 |
+
+Note #3 and #4 are the SAME cell (ema-alignment/EURJPY/H1) under two different knobs — R4 needs an
+owner call on whether to carry both into the dress rehearsal or pick one (they are not
+independent; #4 tests whether #3's edge scales at 4x risk, and s2j's parking is a live warning that
+"looks robust on one window" isn't the same as "survives walk-forward" — worth re-confirming #4 on
+a rolling basis if it graduates).
+
+**Two patterns proven across the full 24-variant program, safe to reuse as priors in R4 or a future
+R3 session without re-testing:**
+- `runner-aggressive` (BE + relaxing ATR trail + partial-TP) raises raw edge on trend-following-
+  family strategies **8/8** times tried. The DD/consistency "free lunch" isn't guaranteed (~50% hit
+  rate), but the edge gain itself has never failed once across trend-breakout, ema-alignment,
+  mtf-trend, and super-trend.
+- `scalp-tight` (early BE + tight step trail) is **0/6** — universally bad in this system, not
+  thesis-dependent (tested on trend, momentum, AND genuine mean-reversion strategies). Do not
+  re-test; treat as a closed, dead pack for scored search.
+
+**Untested remainder of the R1' top-20** (5 cells never touched by either session, available for a
+future R3 session if the owner wants deeper coverage before R5): mean-reversion/GBPUSD/H4 (#13),
+mean-reversion/XAUUSD/H1 (#16), bb-squeeze/USDCAD/H4 (#17), super-trend/NZDUSD/H1 (#18),
+trend-breakout/AUDUSD/H1 (#20).
+
+**Carried-forward open items (none block R4):** F61b (display-only `effectiveConfigJson` bug,
+low priority), `scalp-tight`'s trade-count-drop mechanism (unconfirmed after 6 tries), s2a's DD/
+trade-count outlier (unconfirmed), F48 (tape-vs-venue PnL conversion on XAUUSD-class symbols — DOES
+matter for R4 since candidate #1 is XAUUSD; worth a fresh cTrader compare-both before or during R4,
+not a blocker to starting), the stale `completedAtUtc: null` display quirk, orphan `96fa9214` row.
