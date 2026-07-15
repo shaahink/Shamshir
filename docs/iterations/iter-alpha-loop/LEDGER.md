@@ -801,3 +801,62 @@ plausibly a DD-circuit-breaker interaction on a volatile symbol, but unconfirmed
 to get a real OOS ratio before calling any of them a candidate. Blocked on looking up each
 strategy's tunable indicator `ParamGrid` for `POST /api/walk-forward/start` (not covered by this
 session).
+
+---
+
+## R3.2 — walk-forward the best 3 — 2026-07-15 (same session, "carry on")
+
+Looked up indicator params: `ema-alignment` (v6a/v6b) = `fastPeriod:20, slowPeriod:50, atrPeriod:14`;
+`trend-breakout` (v1a) = `lookbackBars:20, maPeriod:50, atrPeriod:14`.
+
+**F61 (blocking, fixed) — `WalkForwardSpec`/`WalkForwardRequest` had no `PackId`/`RiskProfileId`
+field.** Every walk-forward would have silently reverted to each strategy's DEFAULT config —
+walk-forwarding v6a/v1a (won on a pack swap) or v6b (won on a risk-profile swap) would have quietly
+validated the WRONG variant and reported it as if it were the winning one. Fixed by adding optional
+`PackId`/`RiskProfileId` to `WalkForwardSpec` (`ExperimentTypes.cs`) and `WalkForwardRequest`
+(`WalkForwardController.cs`), threaded through `BuildSweepRequest` (train window) and
+`RunTestWindowAsync` (test window) via `CustomParams["UsePackId"]`/`["RiskProfileId"]` — the same
+mechanism every other run-starting path already uses. **Verified the override reaches REAL
+EXECUTION, not just the request**: a smoke-test run's `effectiveConfigJson` (the API's "what
+actually ran" audit field) showed the pack did NOT apply — alarming at first — but `TradeResults`
+inspection showed a position with 2 rows (the `PartialTp` two-close signature, `runner-aggressive`-
+only), proving the pack DID apply to actual trading behavior. The audit JSON was lying, not the
+execution. Traced to a second bug:
+
+**F61b (non-blocking, not fixed) — `RunConfigAssembler.ResolveEffectiveConfigJsonAsync` never
+applies `UsePackId`/`PerStrategyPackIds`/`StripAddOns`/per-row packs.** It's a separate method from
+`BuildLoadedConfigFromDbAsync` (the one venue runners actually execute against) that only stamps
+the risk profile and applies strategy overrides — it drifted from its sibling method and was never
+updated when pack support was added. Confirmed harmless to real trading behavior (see above), but
+means `GET /api/runs/{id}`'s `effectiveConfigJson` has been silently wrong for every run that used
+a pack via `UsePackId`/`PerStrategyPackIds` (row-based `Rows[].PackId` not checked — may or may not
+share the bug). Not fixed this session — audit-trail correctness only, no user-facing score/trading
+impact, and this session was already large.
+
+Gate re-verified after the code change: Unit 759/0/6.
+
+**Ran the real walk-forward** (6 folds, `TrainFraction=0.7`, window 2025-07-04→2026-05-05 — same
+non-embargoed range as baseline/R3.1) for all 3 candidates. Full per-window table:
+`evidence/scoreboard-s2-wf.md`. Headline: **all 3 candidates profitable in 5 of 6 out-of-sample test
+windows**, with positive cumulative test PnL (v6a +$7,682, v1a +$14,109 over 5 active windows, v6b
++$18,215). v6a and v6b share the same losing window (Feb 28–Mar 15) — same underlying
+strategy/symbol/signal timing, confirming it's a real market period, not a fluke of one config.
+
+**F62 (blocking, not fixed) — the plan's actual cull mechanism does not exist.**
+`SetupScoreService.ScoreRunAsync` line 105 hardcodes `double? oosRatio = null;` unconditionally,
+comment: *"OOS robustness: null until walk-forward runs in R3."* This is R3, and it was never
+wired up — `RobustnessOos`/`OosRatio` are ALWAYS null regardless of `FoldIndex`/`FoldRole` passed to
+`ScoreRunAsync`, so `VersionKind` can never become full `sv1`, and the plan's "OOS ratio < 0.5 →
+park" cull step (§R3 step 5) has no data to act on. **Not a from-scratch problem**:
+`WalkForwardWindowResultEntity` already stores `PlateauValue` (the winning train-cell's net profit)
+alongside `TestNetProfit` — a genuine Walk-Forward Efficiency ratio is computable from data already
+persisted; it needs a query from `ScoreRunAsync` to the matching window rows, a formula decision
+(per-fold average vs. sum-ratio), and wiring into the existing `oosRatio` variable. Deliberately NOT
+implemented this session — it's real, undecided scoring-design work, not a bolt-on fix, and this
+session was already large. The 18 raw window results are real and evidence-backed either way; only
+the formal numeric cull is blocked.
+
+**Session assessment (informal, not a formal score):** 5/6 win-window rate and positive cumulative
+OOS PnL on all 3 candidates is a genuinely encouraging signal that R3.1's wins were not pure
+in-sample curve-fitting — but this is a directional read, not the plan's designed gate, and should
+be labeled as such to the owner.

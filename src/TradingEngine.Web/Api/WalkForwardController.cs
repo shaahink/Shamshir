@@ -45,6 +45,8 @@ public sealed class WalkForwardController : ControllerBase
             To = req.To,
             ParamGrid = req.ParamGrid,
             Balance = req.Balance,
+            PackId = req.PackId,
+            RiskProfileId = req.RiskProfileId,
         };
 
         var job = new WalkForwardJobEntity
@@ -121,4 +123,9 @@ public sealed record WalkForwardRequest
     public required DateOnly To { get; init; }
     public required Dictionary<string, decimal[]> ParamGrid { get; init; }
     public decimal Balance { get; init; } = 100_000m;
+
+    // R3.2: carry a winning session's pack/risk-profile override into every train/test window.
+    // Omit for a plain strategy-default walk-forward (existing behavior, unaffected).
+    public string? PackId { get; init; }
+    public string? RiskProfileId { get; init; }
 }

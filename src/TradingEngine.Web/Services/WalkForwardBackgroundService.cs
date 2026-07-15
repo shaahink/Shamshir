@@ -169,6 +169,17 @@ public sealed class WalkForwardBackgroundService : BackgroundService
         // enough bars to cover the maximum indicators' warmup period (~200 bars).
         var warmupFrom = window.TestFromUtc.AddDays(-60); // generous — 2 months of daily data
 
+        var testCustomParams = new Dictionary<string, string>
+        {
+            ["Venue"] = "tape",
+            ["StrategyIds"] = window.StrategyId,
+            [paramKey] = paramValue.ToString("G", System.Globalization.CultureInfo.InvariantCulture),
+            ["SkipJournal"] = "true",
+            ["TestWindowRun"] = "true",
+        };
+        if (!string.IsNullOrWhiteSpace(spec.PackId)) testCustomParams["UsePackId"] = spec.PackId;
+        if (!string.IsNullOrWhiteSpace(spec.RiskProfileId)) testCustomParams["RiskProfileId"] = spec.RiskProfileId;
+
         var config = new BacktestConfig
         {
             Symbol = window.Symbol,
@@ -178,14 +189,7 @@ public sealed class WalkForwardBackgroundService : BackgroundService
             Balance = spec.Balance > 0 ? spec.Balance : 100_000m,
             Symbols = [window.Symbol],
             Periods = [window.Timeframe],
-            CustomParams = new Dictionary<string, string>
-            {
-                ["Venue"] = "tape",
-                ["StrategyIds"] = window.StrategyId,
-                [paramKey] = paramValue.ToString("G", System.Globalization.CultureInfo.InvariantCulture),
-                ["SkipJournal"] = "true",
-                ["TestWindowRun"] = "true",
-            },
+            CustomParams = testCustomParams,
         };
 
         var runId = await command.StartAsync(config, ct);
@@ -219,6 +223,10 @@ public sealed class WalkForwardBackgroundService : BackgroundService
 
     private static SweepRequest BuildSweepRequest(WalkForwardSpec spec, DateOnly from, DateOnly to)
     {
+        var customParams = new Dictionary<string, string> { ["RecordExcursions"] = "false" };
+        if (!string.IsNullOrWhiteSpace(spec.PackId)) customParams["UsePackId"] = spec.PackId;
+        if (!string.IsNullOrWhiteSpace(spec.RiskProfileId)) customParams["RiskProfileId"] = spec.RiskProfileId;
+
         return new SweepRequest
         {
             Strategies = spec.Strategies ?? [],
@@ -228,7 +236,7 @@ public sealed class WalkForwardBackgroundService : BackgroundService
             From = new DateTime(from, TimeOnly.MinValue),
             To = new DateTime(to, TimeOnly.MaxValue),
             Balance = spec.Balance > 0 ? spec.Balance : 100_000m,
-            CustomParams = new Dictionary<string, string> { ["RecordExcursions"] = "false" },
+            CustomParams = customParams,
         };
     }
 
