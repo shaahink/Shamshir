@@ -16,7 +16,7 @@ public sealed class SetupScorePersistenceTests : IDisposable
 
     private static BacktestRunEntity Run(
         string id, string venue = "tape", string? warnings = null, string status = "completed",
-        bool finished = true) => new()
+        bool finished = true, decimal maxDrawdownPct = 0.02m) => new()
     {
         RunId = id,
         StartedAtUtc = DateTime.UtcNow.AddHours(-2),
@@ -26,7 +26,7 @@ public sealed class SetupScorePersistenceTests : IDisposable
         WarningsJson = warnings,
         BacktestFrom = DateTime.UtcNow.AddDays(-90),
         BacktestTo = DateTime.UtcNow,
-        MaxDrawdownPct = 2m,
+        MaxDrawdownPct = maxDrawdownPct, // stored as a FRACTION (0.02 = 2%) — see F60
         Symbol = "EURUSD",
         Period = "H1",
     };
@@ -185,6 +185,36 @@ public sealed class SetupScorePersistenceTests : IDisposable
         board.ScoredRuns.Should().Be(1);
         board.NullRuns.Should().Be(1, "the R1' truth gate counts scored-or-null coverage");
         board.Top.Should().ContainSingle(e => e.BacktestRunId == "cell-a");
+    }
+
+    // F60: BacktestRuns.MaxDrawdownPct is a FRACTION, but ComputeDrawdownScore's thresholds
+    // (<=3 -> 100, >=10 -> 0) are percent-scaled. Before the fix, every real run's stored value
+    // (0.014..0.116) read as "<=3" and saturated Drawdown=100 regardless of actual risk taken.
+    [Fact]
+    public async Task DrawdownScore_ReadsStoredFractionAsPercent()
+    {
+        using (var ctx = _db.NewContext())
+        {
+            ctx.BacktestRuns.Add(Run("cell-low-dd", maxDrawdownPct: 0.014m)); // 1.4%
+            ctx.BacktestRuns.Add(Run("cell-high-dd", maxDrawdownPct: 0.116m)); // 11.6%
+            await ctx.SaveChangesAsync();
+        }
+        await SeedTradesAsync("cell-low-dd", 25);
+        await SeedTradesAsync("cell-high-dd", 25);
+
+        var low = await ScoreAsync("cell-low-dd");
+        var high = await ScoreAsync("cell-high-dd");
+
+        using var lowDoc = JsonDocument.Parse(low.ScoreJson);
+        using var highDoc = JsonDocument.Parse(high.ScoreJson);
+        var lowComponents = lowDoc.RootElement.GetProperty("Components");
+        var highComponents = highDoc.RootElement.GetProperty("Components");
+
+        lowComponents.GetProperty("Drawdown").GetDouble().Should().Be(100, "1.4% is well under the 3% ceiling");
+        highComponents.GetProperty("Drawdown").GetDouble().Should().Be(0, "11.6% is over the 10% floor");
+
+        lowComponents.GetProperty("DrawdownPct").GetDouble().Should().BeApproximately(1.4, 0.01);
+        highComponents.GetProperty("DrawdownPct").GetDouble().Should().BeApproximately(11.6, 0.01);
     }
 
     public void Dispose() => _db.Dispose();

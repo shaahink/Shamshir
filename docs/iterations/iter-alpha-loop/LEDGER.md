@@ -655,3 +655,62 @@ progress CSV. **250 cells in 1h42m wall (04:59→06:41), avg 68 s/run, zero run 
 retry-then-degrade, monitoring is poll-based (no held file handles); on resume the in-memory
 idempotency keys reattached all 3 in-flight runs to their original RunIds, which had completed
 server-side during the gap.
+
+---
+
+## R1'-cleanup — 2026-07-15 (fourth session) — refactor merge + F59/F60
+
+**`refactor/god-classes` merged into `iter/alpha-loop`** (clean merge, no conflicts — the R1' sweep
+commit only touched docs/evidence). Post-merge: Unit 759/6, Integration 134 (one transient test-host
+crash on first run, clean 134/134 on rerun — flake, not a regression), Architecture 6/8 (same 2
+pre-existing failures), Simulation 149/153 (the 1 pre-existing `NetMQBridgeTest` failure actually
+*improved* — the refactor's `Program.cs` scoped-seeder fix turned a crash into a clean handshake,
+same legacy-live-loop assertion still fails downstream). All match the refactor branch's own SURVEY
+baseline exactly.
+
+**Live cTrader compare-both smoke (the branch's own merge gate, run with `ASPNETCORE_ENVIRONMENT=
+Development` so the CTrader creds section loads — first launch without it failed instantly with
+"credentials not configured", a self-inflicted ops mistake, not a code bug):**
+- Attempt 1, `eurusd-h1-1d.json` (1 day, EURUSD H1): clean NetMQ handshake, 21 bars processed,
+  0 trades (window too short for any strategy to signal), hit `BAR_STREAM_TIMEOUT` at the tail
+  (documented gotcha — cBot's own backtest clock outruns ours on a window this tiny) →
+  `completed-with-warnings`. Inconclusive on the order-execution path by itself.
+- Attempt 2, `xauusd-h4-tb-2m.json` (2 months, XAUUSD H4 trend-breakout): tape leg `94434f42` =
+  14 trades / $5,952.99 net; cTrader leg `1ab467cd` = 14 trades / $6,030.94 net, 5 SL + 9 TP (real
+  venue exits, not all FORCE), 536 equity snapshots, 0 gate-limit rejections in the journal, clean
+  terminal write (`ExitCode=0`, `CompletedAtUtc` set — the live monitor endpoint showed a stale
+  `null` for `completedAtUtc` after the in-memory run state was evicted; the DB row itself is
+  correct, so this is a read-path display quirk, not a persistence bug — not chased further, out of
+  scope for a merge-gate smoke). Trade counts match tape exactly; PnL sits within the known F48
+  ~1.3% tape-vs-venue divergence band. **Verdict: the refactor's venue seam (`CTraderVenueRunner`)
+  is behaviorally identical to the pre-refactor `RunEngineNetMqAsync` it was extracted from.**
+
+**F59 fixed** — root cause was in `SqliteExperimentRepository.UpdateAsync`, not the caller:
+`CreateAsync`'s `Add()` leaves the entity tracked for the DbContext's lifetime (one per request
+scope), so a later `Update()` with a *new* instance of the same Id threw ("another instance with
+the same key value is already being tracked"). Fixed by fetching the tracked instance (`FindAsync`
+checks the change tracker first) and copying values onto it via `CurrentValues.SetValues`, restoring
+`CreatedUtc` afterward (the callers unconditionally recompute it to `DateTime.UtcNow`, which was a
+second, quieter bug in the same code path). This fixes both the completion path AND `MarkFailed` at
+once — no more orphaned "Running" rows on failure. Live-verified: `POST /api/experiments` with
+`variants: []` now returns `200 completed` (was a `500` throw). `ExperimentRepositoryTests` (new)
+pins the same-DbContext repro. The pre-existing orphan `96fa9214` row was left alone (0
+ExperimentRuns attached — harmless, and deleting DB rows wasn't asked for).
+
+**F60 fixed** — `SetupScoreService.ScoreRunAsync` now converts `MaxDrawdownPct` (a fraction) to a
+percent before both scoring (`ComputeDrawdownScore`) and storing (`Components.DrawdownPct`), so the
+persisted field matches its name and the component actually discriminates. New test
+`DrawdownScore_ReadsStoredFractionAsPercent` pins 1.4%→100 and 11.6%→0.
+
+**Rescored all 252 `baseline-sv1-prime` (075d5240) runs** via `POST /api/experiments/score` (the
+endpoint upserts by design — verified by the existing `Rescore_Upserts` test). Floor gate unchanged
+(74 PASS / 178 FAIL, identical split to the original census — F60 only touches the composite score
+of already-passing cells, not the D3 validity gate). 18/74 scored cells shifted by more than 0.05
+points; largest was `mtf-trend/BTCUSD/H1` (47.1→43.0, -4.1), within the ~3.5-point estimate from the
+original finding with one cell slightly over. **Top-20 ranking is unchanged** — every top-20 cell
+already had genuinely low drawdown, so the unit bug never touched them. `evidence/scoreboard-s1p.md`
+and `.csv` regenerated from the corrected `ScoreJson` (queried directly via `json_extract`, not the
+summarized scoreboard API, to recover `ExpectancyR` which the API endpoint doesn't expose).
+
+**Not done / out of scope:** the stale `completedAtUtc: null` on the live monitor endpoint for an
+evicted run (noted above, DB is correct); cleaning up the orphan `96fa9214` experiment row.

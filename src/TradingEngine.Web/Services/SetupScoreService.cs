@@ -95,7 +95,10 @@ public sealed class SetupScoreService
 
         // Components
         var expectancy = ComputeExpectancy(trades);
-        var drawdownScore = ComputeDrawdownScore(run.MaxDrawdownPct);
+        // F60: BacktestRuns.MaxDrawdownPct is stored as a FRACTION (0.014 = 1.40%), but
+        // ComputeDrawdownScore's thresholds (<=3 -> 100, >=10 -> 0) are percent-scaled.
+        var drawdownPctValue = run.MaxDrawdownPct * 100;
+        var drawdownScore = ComputeDrawdownScore(drawdownPctValue);
         var consistency = ComputeConsistency(trades);
         var ftmoSurvival = ComputeFtmoSurvival(equitySnaps, run.BacktestFrom, run.BacktestTo);
         // OOS robustness: null until walk-forward runs in R3
@@ -131,7 +134,7 @@ public sealed class SetupScoreService
                 Expectancy = expectancy,
                 FtmoSurvival = ftmoSurvival,
                 Drawdown = drawdownScore,
-                DrawdownPct = (double)run.MaxDrawdownPct,
+                DrawdownPct = (double)drawdownPctValue,
                 Consistency = consistency,
                 RobustnessOos = oosScore,
                 OosRatio = oosRatio,
