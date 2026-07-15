@@ -20,12 +20,12 @@ public sealed class VenueRoutingTests
     [InlineData("REPLAY")]
     [InlineData("nonsense")]
     public void Default_unknown_and_replay_route_to_replay(string? venue)
-        => BacktestOrchestrator.ResolveUseCtrader(venue).Should().BeFalse();
+        => VenueRouting.ResolveUseCtrader(venue).Should().BeFalse();
 
     [Theory]
     [InlineData("ctrader")]
     [InlineData("CTrader")]
     [InlineData("CTRADER")]
     public void Ctrader_is_explicit_opt_in(string venue)
-        => BacktestOrchestrator.ResolveUseCtrader(venue).Should().BeTrue();
+        => VenueRouting.ResolveUseCtrader(venue).Should().BeTrue();
 }
