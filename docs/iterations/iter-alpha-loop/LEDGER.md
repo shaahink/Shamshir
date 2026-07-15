@@ -603,3 +603,55 @@ spec when other specs exist — acceptable now that all 14 are captured; revisit
 grows (candidate: a `research doctor` check "spec exists for every sweep symbol"). The x4 worktree
 is merged and redundant; its marketdata.db carries the synced Jul-15 EURUSD tail (main's ends
 Jul-5) — trivially re-downloadable via auto-sync, so deletion is safe either way.
+
+---
+
+## R1' — the baseline sweep itself (2026-07-15, third session)
+
+**Housekeeping first:** pushed the 8 unpushed commits (`d3eaa66..3075584`), removed the merged
+`C:\code\shamshir-x4` worktree and deleted branch `iter/alpha-loop-x4` (Jul-15 EURUSD tail is
+outside the sweep window and re-downloadable).
+
+**The sweep:** experiment **`baseline-sv1-prime` (075d5240)**, 9 strategies × 14 symbols × {H1,H4}
+= 252 cells, ONE cell per run (D13), tape venue, defaults, window 2025-07-04→2026-05-05. Driven by
+a PowerShell loop over `POST /api/runs` (3 in flight through the X0 queue) + `POST
+/api/experiments/score` per terminal run, idempotency keys `r1p-<strat>-<sym>-<tf>`, resumable
+progress CSV. **250 cells in 1h42m wall (04:59→06:41), avg 68 s/run, zero run failures.**
+
+**Truth gate: PASS** — `VERDICT: PASS experimentId=075d5240… scored=74 null=178 total=252`;
+252/252 ExperimentRuns persisted (≥225 ✓), 100% scored-or-null (≥90% ✓), all 178 nulls are
+`trades=N below floor 20 (D3)` with N recorded. Artifacts: `evidence/scoreboard-s1p.{md,csv}`.
+
+**Census headlines (sv1-partial, see caveats in the artifact):**
+- **F5 vindicated by the numbers:** 74 cells clear the 20-trade floor when run one-per-account vs
+  R1's 4 — the commingled account really was starving every strategy.
+- #1 is again `trend-breakout/XAUUSD/H4` = 100.0 (39 trades) — and this time it survives real
+  venue-declared XAUUSD swap (a CHARGE, −2.0895 pips/night), so it's no longer the F3 carry
+  subsidy. Top-5: mean-reversion/GBPUSD/H1 96.5, mean-reversion/AUDUSD/H1 96.1,
+  rsi-divergence/AUDUSD/H1 92.0, mean-reversion/GBPJPY/H1 90.1.
+- H1 dominates scored cells 58:16 (H4 below-floor on a 10-month window is expected per plan).
+  Scored per strategy: trend-breakout 12, mean-reversion 10, session/rsi/bb 9 each, macd 8,
+  super-trend 7, ema-alignment 6, mtf-trend 4.
+
+**New findings (recorded, NOT fixed mid-census — it's a census, not a repair mission):**
+- **F59 — `POST /api/experiments` with zero variants crashes AND leaks:** `ExperimentRunner.RunAsync`
+  adds the entity in `CreateExperimentAsync` then calls `UpdateAsync` with a NEW instance of the
+  same Id → EF double-tracking exception; the experiment row is left behind in status "Running"
+  (and `MarkFailed` hits the same bug). Two `baseline-sv1-prime` rows were created this way —
+  `075d5240` adopted for the census, `96fa9214` is an orphan.
+- **F60 — the drawdown score component is DEAD (saturated at 100 for every cell):**
+  `BacktestRuns.MaxDrawdownPct` stores a FRACTION but `ComputeDrawdownScore` maps it as a PERCENT
+  (≤3 → 100). Proof: run `18621a31` is net-losing (−$376) yet stores 0.0140 — impossible as a
+  percent (a net loss from flat implies DD ≥ 0.38%), consistent as 1.40%. Observed stored range
+  across all 74 scored cells: 0.00014–0.0459 (= 0.014%–4.6% real) → every cell gets Drawdown=100.
+  Fix + re-score the same runs is mechanical (score upserts); worst-case composite shift ≈ 3.5 pts.
+- **Finalize race (1/252):** `mean-reversion/USDCHF/H1` (18621a31) hit `score` between in-memory
+  terminal and the end-record write → persisted-status gate correctly nulled it
+  (`run status 'running' is not completed`); re-scored after terminal → PASS 56.9. The D13
+  null→scored upsert transition worked exactly as the tests pin it.
+
+**Ops notes:** the driver was killed once by the session's own `tail -f` holding its log file
+(`Add-Content` throws under `$ErrorActionPreference=Stop`) — logging/recording are now
+retry-then-degrade, monitoring is poll-based (no held file handles); on resume the in-memory
+idempotency keys reattached all 3 in-flight runs to their original RunIds, which had completed
+server-side during the gap.
