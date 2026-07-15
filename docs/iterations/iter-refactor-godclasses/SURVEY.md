@@ -112,3 +112,43 @@ note from iter-27 is this bug.
 - **Before merging to `iter/alpha-loop`: one live cTrader compare-both smoke** (owner or the agent
   holding creds) because `RunEngineNetMqAsync` code MOVED. The move is mechanical, but per
   `docs/reference/INVESTIGATION-METHOD.md` a green credential-free gate never supports a cTrader claim.
+
+## Completion (executed 2026-07-16, branch `refactor/god-classes-finish`)
+
+The two items this survey left open were finished on branch `refactor/god-classes-finish`
+(worktree `.claude/worktrees/refactor-godclasses-finish`, branched from `main` @ c836886 — the
+post-merge state of everything above).
+
+| Phase | Commit | What |
+|---|---|---|
+| P6 | 250f52d | **Single finalize copy.** `RunCompareBothAsync`'s cTrader child leg shared `FinalizeRunAsync` with `RunAsync` (the hand-maintained duplicate — the drift smell in nomination #1 — is gone). Also fixes the two logged leaks/gaps: the child `BacktestRunState` is now removed from the run registry (was `Register`ed forever, one leaked state + broadcaster throttle entry per compare-both run), and the child leg writes a terminal end record on cancel/fail (was left at ExitCode=-1 forever). Deliberate behavior alignments, both truthward: the child's end record now persists its terminal `Status` (was NULL), and a live viewer of the child leg receives the terminal SignalR frame (`PublishDone`) + `MarkCompleted` on the run-data cache, mirroring the parent finalize. |
+| P7 | ff3a543 | **`RunQueryService` (684) split** into four cohesive query classes in `Runs/`: `RunListQuery` (list + healing overlays + 2s cache), `RunDetailQuery` (live-state vs DB detail), `RunDataQuery` (cache-first trades/equity/daily-PnL/analytics), `RunBarNarrativeQuery` (journal → bar narratives), plus `RunStatusOverlay` (shared stuck-threshold + persisted-terminal-status rule). All moves verbatim. `RunQueryService` is a 55-line composition facade with an unchanged constructor shape (tests compile untouched). The read side's dependency on the concrete `BacktestOrchestrator` — the last read↔write coupling smell — is replaced by the narrow `ILiveRunReader` port (orchestrator implements it; DI forwards). |
+
+**Verified (credential-free):** build 0 err · Unit 766/6 skip (one unnamed failure in ONE background
+run at 765/1, not reproduced across 4 subsequent runs — quiet logging swallowed the test name; treat
+as cold-start flake unless seen again) · Integration 148 · Architecture 6/8 (identical 2 pre-existing
+failures) · app smoke via run-shamshir driver **11/11**. Beyond the driver: a real **tape** run
+(EURUSD H1 2025-09, window covered by marketdata.db) was driven through the refactored path to
+`completed` — 11 trades, ExitCode 0, persisted `Status=completed` (the new unified-finalize status
+write), and all four split read paths served it live (list overlay, trades 11, equity 528 pts,
+analytics, daily-PnL, 559 bar narratives). The driver's own POSTed run fails with "No H1 market
+data" in a fresh worktree — environmental, the documented expected class.
+
+**Merge gate (same doctrine as the first branch):** one live cTrader **compare-both** smoke before
+merging — `RunCompareBothAsync`'s finalize/cleanup changed (mechanically, but the compare instrument
+itself moved, and the child-leg cleanup can only be OBSERVED live). No adapter/cBot/cost-model code
+was touched.
+
+**Still nominated, still deliberately untouched:** `TapeReplayAdapter` (806) and
+`CTraderBrokerAdapter` (719) — parity-guarded, refactor only with a fresh live compare-both gate
+budgeted; `ResearchCli/Program.cs` (828) / `HttpStepRunner` (765) — linear CLI wiring, low fan-in;
+kernel classes — size inherent. The 2 pre-existing Architecture failures
+(`Engine_has_no_ILogger_no_DateTimeNow`, `All_persistence_entities_implement_IAuditableEntity`)
+remain open and are NOT part of this survey's scope.
+
+**Logged, not fixed (pre-existing, observed during the smoke):** `EnqueueRun` writes a "queued"
+start record and `RunAsync` writes a second start record — `SqliteBacktestRunRepository.SaveAsync`
+INSERTs, so the second write hits `UNIQUE constraint failed: BacktestRuns.RunId` on every queued
+run. It is caught + warned ("Failed to write start record") and the end-record `UpdateAsync` lands
+fine, but the Status=running upgrade is silently lost and the log noise looks like a real failure.
+Cheap fix: make `SaveAsync` upsert (or route the second write through `UpdateAsync`).
