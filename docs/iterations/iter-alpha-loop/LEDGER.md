@@ -556,3 +556,50 @@ runs one tick on demand. Watchlist CRUD: `GET/POST /api/data-manager/watchlist(/
 Tailwind v4 CLI is a separate `@tailwindcss/cli` and its bin is absent until deps install with
 `--legacy-peer-deps` (matches the main worktree). The Web csproj's `EnsureAngularCurrent` guard only
 CHECKS wwwroot staleness (it does not build ng) — backend-only compile loops use `-p:NgProjectDir=__skip__`.
+
+---
+
+## X4 merge + R1' readiness (2026-07-15, second session)
+
+**Merge:** `iter/alpha-loop-x4` → `iter/alpha-loop` at 1c0f49f. Only conflicts: this iteration's
+TRACKER table (both sides appended rows — kept both) and the auto-generated `build-info.ts` stamp.
+Full battery green post-merge (Unit 759/0/6 · Integration 128/0/0 · Sim-fast 144/0/0). The stale
+`docs/cleanup-refs` branch pointer turned out to be an ancestor of the mainline — nothing to merge.
+Gotcha re-confirmed: `dotnet build` fails on a stale wwwroot after any web-ui merge — run
+`npm --prefix web-ui run build` first.
+
+**R1' readiness audit found TWO gaps, both fixed + live-verified:**
+
+**Gap 1 — D13 was not implemented (c4b4c1f).** `SetupScoreService.ScoreRunAsync` returned early on
+every validity failure without persisting anything — the literal F5 mechanism (R1 persisted 4 rows,
+gate needed ≥225). Now: below-floor / warnings / non-tape / not-completed all upsert an ExperimentRun
+row with `VersionKind=sv1-null`, `Composite=null`, `NullReason=<why>`; the scoreboard counts
+`nullRuns` separately (census coverage ≠ ranking) and no longer drops legitimate 0-composite cells;
+the §2 "run status completed" gate existed only on paper — added via `RunStatusResolver` (persisted
+F52 Status preferred, legacy resolution as fallback). `SetupScorePersistenceTests` ×6 pin the
+contract, including the null→scored upsert-no-duplicate transition.
+
+**Gap 2 — venue specs existed for only 2 of 14 sweep symbols.** P1 captured specs in-memory; F44's
+store landed later, and only EURUSD/XAUUSD had been through a live cTrader run since. Everything else
+would have priced the R1' census off fabricated symbols.json — SILENTLY, because the registry's
+SYMBOL_FALLBACK warning only fires when NO spec exists at all (`SymbolInfoRegistry.Register`,
+`!HasAnyVenueSpecs`). One 14-symbol cTrader run (6c1c5743, 83 s, 5 trades, only the known F23
+BAR_STREAM_TIMEOUT warning) captured all 14 — the cBot emits `symbol_spec` per subscribed symbol at
+handshake, so specs land even if a run later fails. Venue truth on display: XAUUSD long swap is a
+CHARGE (-2.0895 pips/night) where symbols.json fabricated a credit — the exact F3 lie that crowned
+R1's bogus #1 cell.
+
+**Live proof chain (merged code, main worktree, port 5134):** 14-symbol cTrader run through the
+merged `CTraderProcessOwner` (dynamic ports, 0 orphan cli) → `VenueSymbolSpecs` 2→14 → tape GBPJPY
+d81598b0 (previously spec-less): `VENUE_SPECS_LOADED 14`, 0 SYMBOL_FALLBACK, swap -146.90,
+commission -377.11, 31 trades → `score d81598b0` = PASS 25 persisted; `score 6c1c5743` (ctrader
+venue) = FAIL persisted as sv1-null with reason. Data coverage: 28/28 (sym×tf) cells span the sweep
+window.
+
+**Not done / notes:** R1' sweep itself is next (see handoff). F48 unchanged (XAUUSD-class PnL
+conversion, ~1.4%, tape-vs-venue only — the sweep ranks tape-vs-tape, so it biases levels not
+ordering; flagged for R3's realism pass). Registry still falls back SILENTLY for a symbol without a
+spec when other specs exist — acceptable now that all 14 are captured; revisit if the symbol set
+grows (candidate: a `research doctor` check "spec exists for every sweep symbol"). The x4 worktree
+is merged and redundant; its marketdata.db carries the synced Jul-15 EURUSD tail (main's ends
+Jul-5) — trivially re-downloadable via auto-sync, so deletion is safe either way.
