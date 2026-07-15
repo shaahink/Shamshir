@@ -8,7 +8,9 @@ namespace TradingEngine.Web.Services;
 /// <summary>
 /// SetupScore v1 (§2 of iter-alpha-loop/PLAN.md). Deterministic, versioned scorer that reads DB only
 /// — never starts a run. Computes a 0-100 composite from expectancy, drawdown, consistency, OOS
-/// robustness, and FTMO survival. Returns null (insufficient data) when validity gates fail.
+/// robustness, and FTMO survival. A failed validity gate persists an ExperimentRun row with a NULL
+/// score and the reason (D13) — a census sweep must be able to prove coverage from the DB alone
+/// (F5: 248 below-floor cells once left no trace, so the R1 gate could not be evaluated).
 /// </summary>
 public sealed class SetupScoreService
 {
@@ -33,11 +35,44 @@ public sealed class SetupScoreService
         if (run is null)
             return ScoreResult.Fail("backtest run not found");
 
-        if (string.IsNullOrEmpty(run.Venue) || !run.Venue.Equals("tape", StringComparison.OrdinalIgnoreCase))
-            return ScoreResult.Fail($"venue '{run.Venue ?? "null"}' is not tape — scored search requires tape venue (D1)");
+        // Gate booleans up front so a failed gate can persist the full snapshot alongside its reason.
+        var tapeVenue = !string.IsNullOrEmpty(run.Venue) && run.Venue.Equals("tape", StringComparison.OrdinalIgnoreCase);
+        var noWarnings = string.IsNullOrEmpty(run.WarningsJson) || run.WarningsJson == "[]";
+        var isFinished = run.CompletedAtUtc > DateTime.MinValue;
+        var status = !string.IsNullOrWhiteSpace(run.Status)
+            ? run.Status
+            : RunStatusResolver.Resolve(isFinished, run.ErrorMessage, run.WarningsJson);
+        var completed = status.Equals(RunStatusResolver.Completed, StringComparison.OrdinalIgnoreCase)
+            || status.Equals(RunStatusResolver.CompletedWithWarnings, StringComparison.OrdinalIgnoreCase);
 
-        if (!string.IsNullOrEmpty(run.WarningsJson) && run.WarningsJson != "[]")
-            return ScoreResult.Fail("run has warnings; only clean tape runs are scorable");
+        ValidityGates Gates(bool minTrades) => new()
+        {
+            MinTrades = minTrades,
+            NoWarnings = noWarnings,
+            TapeVenue = tapeVenue,
+            Completed = completed,
+        };
+
+        if (!tapeVenue)
+        {
+            return await PersistNullScoreAsync(backtestRunId,
+                $"venue '{run.Venue ?? "null"}' is not tape — scored search requires tape venue (D1)",
+                Gates(false), 0, experimentId, variantLabel, strategyId, foldIndex, foldRole, ct);
+        }
+
+        if (!noWarnings)
+        {
+            return await PersistNullScoreAsync(backtestRunId,
+                "run has warnings; only clean tape runs are scorable",
+                Gates(false), 0, experimentId, variantLabel, strategyId, foldIndex, foldRole, ct);
+        }
+
+        if (!completed)
+        {
+            return await PersistNullScoreAsync(backtestRunId,
+                $"run status '{status}' is not completed",
+                Gates(false), 0, experimentId, variantLabel, strategyId, foldIndex, foldRole, ct);
+        }
 
         var tradesQuery = _db.Trades.AsNoTracking()
             .Where(t => t.RunId == backtestRunId);
@@ -47,7 +82,11 @@ public sealed class SetupScoreService
         var trades = await tradesQuery.ToListAsync(ct);
 
         if (trades.Count < MinimumTrades)
-            return ScoreResult.Fail($"trades={trades.Count} below floor {MinimumTrades} (D3)");
+        {
+            return await PersistNullScoreAsync(backtestRunId,
+                $"trades={trades.Count} below floor {MinimumTrades} (D3)",
+                Gates(false), trades.Count, experimentId, variantLabel, strategyId, foldIndex, foldRole, ct);
+        }
 
         var equitySnaps = await _db.EquitySnapshots.AsNoTracking()
             .Where(e => e.RunId == backtestRunId)
@@ -97,19 +136,50 @@ public sealed class SetupScoreService
                 RobustnessOos = oosScore,
                 OosRatio = oosRatio,
             },
-            ValidityGates = new ValidityGates
-            {
-                MinTrades = trades.Count >= MinimumTrades,
-                NoWarnings = string.IsNullOrEmpty(run.WarningsJson) || run.WarningsJson == "[]",
-                TapeVenue = true,
-                Completed = true,
-            },
+            ValidityGates = Gates(true),
             Trades = trades.Count,
             TotalNetPnl = (double)trades.Sum(t => t.NetPnLAmount),
             ComputedAtUtc = DateTime.UtcNow,
         }, ScoreJsonOpts);
 
-        // Persist as ExperimentRun
+        await UpsertExperimentRunAsync(backtestRunId, scoreJson, experimentId, variantLabel, strategyId,
+            foldIndex, foldRole, ct);
+
+        _logger.LogInformation("SETUP_SCORE|run={RunId}|composite={Composite}|version={Version}|trades={Trades}",
+            backtestRunId, composite, hasOos ? "sv1" : "sv1-partial", trades.Count);
+
+        return ScoreResult.Pass(composite, hasOos ? "sv1" : "sv1-partial", scoreJson);
+    }
+
+    // D13: a validity-gate failure is still a census result. Persist the cell with a null score and
+    // the reason, so `scoreboard` can prove "scored-or-null with reasons" coverage from the DB alone.
+    private async Task<ScoreResult> PersistNullScoreAsync(
+        string backtestRunId, string reason, ValidityGates gates, int tradeCount,
+        Guid? experimentId, string? variantLabel, string? strategyId, int? foldIndex, string? foldRole,
+        CancellationToken ct)
+    {
+        var scoreJson = JsonSerializer.Serialize(new SetupScore
+        {
+            Version = "sv1",
+            VersionKind = "sv1-null",
+            Composite = null,
+            NullReason = reason,
+            ValidityGates = gates,
+            Trades = tradeCount,
+            ComputedAtUtc = DateTime.UtcNow,
+        }, ScoreJsonOpts);
+
+        await UpsertExperimentRunAsync(backtestRunId, scoreJson, experimentId, variantLabel, strategyId,
+            foldIndex, foldRole, ct);
+
+        _logger.LogInformation("SETUP_SCORE|run={RunId}|composite=null|reason={Reason}", backtestRunId, reason);
+        return ScoreResult.NullScore(reason, scoreJson);
+    }
+
+    private async Task UpsertExperimentRunAsync(
+        string backtestRunId, string scoreJson, Guid? experimentId, string? variantLabel, string? strategyId,
+        int? foldIndex, string? foldRole, CancellationToken ct)
+    {
         var effectiveVariant = variantLabel ?? strategyId ?? "";
         var targetExperimentId = experimentId ?? await GetOrCreateDefaultExperimentAsync(ct);
 
@@ -140,10 +210,6 @@ public sealed class SetupScoreService
         }
 
         await _db.SaveChangesAsync(ct);
-        _logger.LogInformation("SETUP_SCORE|run={RunId}|composite={Composite}|version={Version}|trades={Trades}",
-            backtestRunId, composite, hasOos ? "sv1" : "sv1-partial", trades.Count);
-
-        return ScoreResult.Pass(composite, hasOos ? "sv1" : "sv1-partial", scoreJson);
     }
 
     public async Task<ScoreboardResult> GetScoreboardAsync(Guid experimentId, int top, CancellationToken ct)
@@ -158,14 +224,21 @@ public sealed class SetupScoreService
             .ToListAsync(ct);
 
         var scored = new List<ScoreboardEntry>();
+        var nullRuns = 0;
         foreach (var run in runs)
         {
             if (string.IsNullOrEmpty(run.ScoreJson) || run.ScoreJson == "{}") continue;
             try
             {
                 var score = JsonSerializer.Deserialize<SetupScore>(run.ScoreJson);
-                if (score is not null && score.Composite > 0)
-                    scored.Add(new ScoreboardEntry(run.BacktestRunId, run.VariantLabel, score));
+                if (score is null) continue;
+                if (score.Composite is null)
+                {
+                    // D13 null cell — counts toward census coverage, never toward the ranking.
+                    nullRuns++;
+                    continue;
+                }
+                scored.Add(new ScoreboardEntry(run.BacktestRunId, run.VariantLabel, score));
             }
             catch (Exception ex)
             {
@@ -181,6 +254,7 @@ public sealed class SetupScoreService
             ExperimentName = experiment.Name,
             TotalRuns = runs.Count,
             ScoredRuns = scored.Count,
+            NullRuns = nullRuns,
             Top = topN,
         };
     }
@@ -273,6 +347,9 @@ public sealed record ScoreResult(bool Passed, double Composite, string Version, 
         new(true, composite, version, scoreJson, null);
     public static ScoreResult Fail(string reason) =>
         new(false, 0, "sv1", "{}", reason);
+    /// <summary>A validity-gate failure that DID persist a null-score ExperimentRun row (D13).</summary>
+    public static ScoreResult NullScore(string reason, string scoreJson) =>
+        new(false, 0, "sv1-null", scoreJson, reason);
 }
 
 public sealed record ScoreWeights(double Expectancy, double FtmoSurvival, double Drawdown, double Consistency, double Robustness)
@@ -284,7 +361,9 @@ public sealed record SetupScore
 {
     public string Version { get; init; } = "sv1";
     public string VersionKind { get; init; } = "sv1-partial";
-    public double Composite { get; init; }
+    /// <summary>Null when a validity gate failed — <see cref="NullReason"/> says which (D13).</summary>
+    public double? Composite { get; init; }
+    public string? NullReason { get; init; }
     public ScoreComponents Components { get; init; } = new();
     public ValidityGates ValidityGates { get; init; } = new();
     public int Trades { get; init; }
@@ -318,6 +397,8 @@ public sealed record ScoreboardResult
     public string ExperimentName { get; init; } = "";
     public int TotalRuns { get; init; }
     public int ScoredRuns { get; init; }
+    /// <summary>Cells persisted with a null score + reason (D13) — census coverage, not rankable.</summary>
+    public int NullRuns { get; init; }
     public List<ScoreboardEntry> Top { get; init; } = [];
     public string? Error { get; init; }
 }

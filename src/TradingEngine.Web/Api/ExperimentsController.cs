@@ -150,6 +150,7 @@ public sealed class ExperimentsController : ControllerBase
             experimentName = result.ExperimentName,
             totalRuns = result.TotalRuns,
             scoredRuns = result.ScoredRuns,
+            nullRuns = result.NullRuns,
             top = result.Top.Select(e => new
             {
                 e.BacktestRunId,

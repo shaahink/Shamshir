@@ -746,9 +746,11 @@ static async Task<int> ScoreboardAsync(CliArgs cli, string baseUrl, TimeSpan tim
 
     var totalRuns = root.TryGetProperty("totalRuns", out var tr) ? tr.GetInt32() : 0;
     var scoredRuns = root.TryGetProperty("scoredRuns", out var sr) ? sr.GetInt32() : 0;
+    var nullRuns = root.TryGetProperty("nullRuns", out var nr) ? nr.GetInt32() : 0;
     Console.WriteLine(Verdict.Passing(
         VerdictField.Of("experimentId", eid.ToString()),
         VerdictField.Of("scored", scoredRuns),
+        VerdictField.Of("null", nullRuns),
         VerdictField.Of("total", totalRuns)).Render());
     return 0;
 }
