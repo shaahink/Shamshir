@@ -14,6 +14,20 @@ interface MarketDataItem {
   barCount: number;
 }
 
+interface CoverageRow {
+  symbol: string;
+  timeframe: string;
+  barCount: number;
+  firstBarUtc: string | null;
+  lastBarUtc: string | null;
+  status: 'up-to-date' | 'stale' | 'missing' | 'disabled' | string;
+  inWatchlist: boolean;
+  enabled: boolean;
+  backfillFromUtc: string;
+  syncFromUtc: string | null;
+  syncToUtc: string | null;
+}
+
 interface DownloadJobResponse {
   jobId: string;
   symbol: string;
@@ -58,6 +72,71 @@ type DatePreset = '30d' | '90d' | '180d' | '1y' | '2y' | '5y' | '2020';
       <div class="flex items-center justify-between">
         <h1 class="text-xl font-semibold">Data Manager</h1>
         <div class="text-xs text-gray-500">Market data inventory for tape replay backtests</div>
+      </div>
+
+      <!-- X4: Coverage & Auto-Sync — the truthful per-cell state -->
+      <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-sm font-medium text-gray-300">Coverage &amp; Auto-Sync</h2>
+            <p class="text-xs text-gray-500 mt-0.5">
+              Watched cells are auto-synced to latest in the background. Toggle Watch to pin/unpin a cell.
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-gray-500">
+              {{ upToDateCount() }}/{{ coverage().length }} up to date
+              @if (staleCount() > 0) { <span class="text-amber-400">· {{ staleCount() }} behind</span> }
+            </span>
+            <button (click)="syncAll()" [disabled]="syncing()"
+              class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50">
+              {{ syncing() ? 'Syncing…' : 'Sync all → latest' }}
+            </button>
+          </div>
+        </div>
+        @if (coverage().length === 0) {
+          <p class="text-xs text-gray-500">No coverage yet — download data below, then pin cells to keep them synced.</p>
+        } @else {
+          <div class="overflow-x-auto rounded border border-gray-800">
+            <table class="min-w-full text-sm">
+              <thead class="bg-gray-900/50">
+                <tr>
+                  <th class="px-3 py-1.5 text-center text-xs font-medium uppercase tracking-wide text-gray-500">Watch</th>
+                  <th class="px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Symbol</th>
+                  <th class="px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">TF</th>
+                  <th class="px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Status</th>
+                  <th class="px-3 py-1.5 text-right text-xs font-medium uppercase tracking-wide text-gray-500"># Bars</th>
+                  <th class="px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">First</th>
+                  <th class="px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Last</th>
+                  <th class="px-3 py-1.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Needs fill</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-800">
+                @for (c of coverage(); track c.symbol + c.timeframe) {
+                  <tr class="hover:bg-gray-800/30">
+                    <td class="px-3 py-1.5 text-center">
+                      <input type="checkbox" [checked]="c.inWatchlist && c.enabled"
+                        (change)="toggleWatch(c)" class="rounded" title="Auto-sync this cell to latest" />
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-gray-300">{{ c.symbol }}</td>
+                    <td class="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-gray-400">{{ c.timeframe }}</td>
+                    <td class="whitespace-nowrap px-3 py-1.5"><span [class]="statusBadge(c.status)">{{ c.status }}</span></td>
+                    <td class="whitespace-nowrap px-3 py-1.5 text-right font-mono text-xs tabular-nums text-gray-300">{{ c.barCount.toLocaleString() }}</td>
+                    <td class="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-gray-400">{{ c.firstBarUtc ? (c.firstBarUtc | date:'yyyy-MM-dd') : '—' }}</td>
+                    <td class="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-gray-400">{{ c.lastBarUtc ? (c.lastBarUtc | date:'yyyy-MM-dd HH:mm') : '—' }}</td>
+                    <td class="whitespace-nowrap px-3 py-1.5 text-xs">
+                      @if (c.syncFromUtc) {
+                        <span class="text-amber-400/80">{{ c.syncFromUtc | date:'yyyy-MM-dd' }} → {{ c.syncToUtc | date:'MM-dd' }}</span>
+                      } @else {
+                        <span class="text-emerald-500/70">—</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
       </div>
 
       <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
@@ -261,6 +340,12 @@ export class DataManagerComponent implements OnInit {
   error = signal<string | null>(null);
   deletingKey = signal<string | null>(null);
 
+  // X4: coverage + auto-sync
+  coverage = signal<CoverageRow[]>([]);
+  syncing = signal(false);
+  upToDateCount = computed(() => this.coverage().filter(c => c.status === 'up-to-date').length);
+  staleCount = computed(() => this.coverage().filter(c => c.status === 'stale' || c.status === 'missing').length);
+
   perSymbol = computed(() => {
     const by = new Map<string, { symbol: string; bars: number; tfs: number }>();
     for (const i of this.inventory()) {
@@ -308,9 +393,48 @@ export class DataManagerComponent implements OnInit {
   ngOnInit(): void {
     this.loadInventory();
     this.loadPendingShards();
+    this.loadCoverage();
     interval(2000)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.pollActiveJobs());
+    // Coverage/status is server-truth; refresh it on a slower cadence so the grid never lies.
+    interval(5000)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.loadCoverage());
+  }
+
+  private loadCoverage(): void {
+    this.http.get<CoverageRow[]>('/api/data-manager/coverage').subscribe({
+      next: (d) => this.coverage.set(d ?? []),
+      error: () => { /* endpoint may not exist yet */ },
+    });
+  }
+
+  statusBadge(status: string): string {
+    const base = 'rounded px-1.5 py-0.5 text-xs ';
+    switch (status) {
+      case 'up-to-date': return base + 'bg-emerald-900/60 text-emerald-400';
+      case 'stale': return base + 'bg-amber-900/60 text-amber-400';
+      case 'missing': return base + 'bg-red-900/60 text-red-400';
+      case 'disabled': return base + 'bg-gray-700 text-gray-400';
+      default: return base + 'bg-gray-700 text-gray-300';
+    }
+  }
+
+  toggleWatch(c: CoverageRow): void {
+    const enable = !(c.inWatchlist && c.enabled);
+    const req = c.inWatchlist
+      ? this.http.post('/api/data-manager/watchlist/toggle', { symbol: c.symbol, timeframe: c.timeframe, enabled: enable })
+      : this.http.post('/api/data-manager/watchlist', { symbol: c.symbol, timeframe: c.timeframe });
+    req.subscribe({ next: () => this.loadCoverage(), error: () => { /* ignore */ } });
+  }
+
+  syncAll(): void {
+    this.syncing.set(true);
+    this.http.post<{ started: number }>('/api/data-manager/sync-now', {}).subscribe({
+      next: () => { this.syncing.set(false); this.loadCoverage(); this.loadPendingShards(); },
+      error: () => this.syncing.set(false),
+    });
   }
 
   toggleSymbol(s: string): void {

@@ -6,6 +6,7 @@ using TradingEngine.Domain.Interfaces;
 using TradingEngine.Host;
 using TradingEngine.Infrastructure.Indicators;
 using TradingEngine.Infrastructure.MarketData;
+using TradingEngine.Infrastructure.MarketData.Sync;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Infrastructure.Persistence.Reporting;
@@ -108,12 +109,16 @@ public static class ServiceRegistration
         });
         services.AddSingleton<SqliteMarketDataStore>();
         services.AddSingleton<IMarketDataStore>(sp => new BootstrapMarketDataStore(sp.GetRequiredService<SqliteMarketDataStore>()));
+        services.AddSingleton<MarketDataSyncStore>();
+        services.AddSingleton<MarketDataCoverageService>();
         // Create the file + schema once; WAL persists in the file header for every later connection.
         using (var mdInit = new MarketDataDbContext(
             new DbContextOptionsBuilder<MarketDataDbContext>().UseSqlite(mdCs).Options))
         {
             mdInit.Database.EnsureCreated();
             SqliteMarketDataStore.EnsureSpreadColumnAsync(mdInit).GetAwaiter().GetResult();
+            // X4: idempotently add the auto-sync watchlist table on an existing (multi-GB) DB.
+            MarketDataSyncStore.EnsureSchemaAsync(mdInit).GetAwaiter().GetResult();
         }
         using (var mdWal = new SqliteConnection($"Data Source={mdPath};Mode=ReadWriteCreate"))
         {
@@ -158,9 +163,17 @@ public static class ServiceRegistration
         services.AddSingleton<BacktestJournal>();
         services.AddSingleton<RunProjection>();
         services.AddSingleton<EffectiveConfigResolver>();
+        // X4: single owner of every cTrader-cli invocation (backtest + download) — dynamic ports,
+        // one shared bounded lane, owned-PID reaping. Bound from CTrader:ProcessOwner (default max 2).
+        services.AddOptions<CTraderProcessOwnerOptions>().BindConfiguration("CTrader:ProcessOwner");
+        services.AddSingleton<CTraderProcessOwner>();
         services.AddSingleton<BacktestOrchestrator>();
         services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
         services.AddSingleton<DownloadJobService>();
+        // X4: on-by-default background auto-sync loop (inert until the watchlist has cells).
+        services.AddOptions<AutoSyncOptions>().BindConfiguration("MarketData:AutoSync");
+        services.AddSingleton<AutoSyncService>();
+        services.AddHostedService(sp => sp.GetRequiredService<AutoSyncService>());
         services.AddSingleton<ReferenceScalePopulator>();
         services.AddSingleton<DataQualityValidator>();
         // P1.2 (F9): propagate config/strategies + config/risk-profiles JSON edits into the DB on startup

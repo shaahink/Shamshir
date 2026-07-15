@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using TradingEngine.Infrastructure.MarketData;
+using TradingEngine.Infrastructure.MarketData.Sync;
+using TradingEngine.Web.Services;
 
 namespace TradingEngine.Web.Api;
 
@@ -11,6 +13,9 @@ public sealed class DataManagerController : ControllerBase
     private readonly DownloadJobService? _downloadJobs;
     private readonly ReferenceScalePopulator? _referenceScales;
     private readonly DataQualityValidator? _qualityValidator;
+    private readonly MarketDataCoverageService? _coverage;
+    private readonly MarketDataSyncStore? _watchlist;
+    private readonly AutoSyncService? _autoSync;
     private readonly ILogger<DataManagerController> _logger;
 
     public DataManagerController(
@@ -18,13 +23,90 @@ public sealed class DataManagerController : ControllerBase
         DownloadJobService? downloadJobs = null,
         ReferenceScalePopulator? referenceScales = null,
         DataQualityValidator? qualityValidator = null,
+        MarketDataCoverageService? coverage = null,
+        MarketDataSyncStore? watchlist = null,
+        AutoSyncService? autoSync = null,
         ILogger<DataManagerController>? logger = null)
     {
         _marketDataStore = marketDataStore;
         _downloadJobs = downloadJobs;
         _referenceScales = referenceScales;
         _qualityValidator = qualityValidator;
+        _coverage = coverage;
+        _watchlist = watchlist;
+        _autoSync = autoSync;
         _logger = logger!;
+    }
+
+    // ── X4: coverage view + auto-sync watchlist ──────────────────────────────────────────────────
+
+    [HttpGet("coverage")]
+    public async Task<IActionResult> GetCoverage(CancellationToken ct)
+    {
+        if (_coverage is null) return Ok(Array.Empty<object>());
+        var rows = await _coverage.GetCoverageAsync(ct);
+        return Ok(rows);
+    }
+
+    [HttpGet("watchlist")]
+    public async Task<IActionResult> GetWatchlist(CancellationToken ct)
+    {
+        if (_watchlist is null) return Ok(Array.Empty<object>());
+        var cells = await _watchlist.ListAsync(ct);
+        return Ok(cells);
+    }
+
+    [HttpPost("watchlist")]
+    public async Task<IActionResult> UpsertWatchlist([FromBody] WatchlistUpsertRequest req, CancellationToken ct)
+    {
+        if (_watchlist is null) return Problem("Sync store not registered.");
+        if (string.IsNullOrWhiteSpace(req.Symbol) || string.IsNullOrWhiteSpace(req.Timeframe))
+            return BadRequest(new { error = "Symbol and timeframe required." });
+
+        var from = req.BackfillFromUtc is { } f
+            ? DateTime.SpecifyKind(f, DateTimeKind.Utc)
+            : new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await _watchlist.UpsertAsync(req.Symbol, req.Timeframe, from, req.Enabled ?? true, ct);
+        return Ok(new { ok = true });
+    }
+
+    [HttpPost("watchlist/toggle")]
+    public async Task<IActionResult> ToggleWatchlist([FromBody] WatchlistToggleRequest req, CancellationToken ct)
+    {
+        if (_watchlist is null) return Problem("Sync store not registered.");
+        await _watchlist.SetEnabledAsync(req.Symbol, req.Timeframe, req.Enabled, ct);
+        return Ok(new { ok = true });
+    }
+
+    [HttpPost("watchlist/remove")]
+    public async Task<IActionResult> RemoveWatchlist([FromBody] WatchlistToggleRequest req, CancellationToken ct)
+    {
+        if (_watchlist is null) return Problem("Sync store not registered.");
+        await _watchlist.RemoveAsync(req.Symbol, req.Timeframe, ct);
+        return Ok(new { ok = true });
+    }
+
+    [HttpPost("sync-now")]
+    public async Task<IActionResult> SyncNow(CancellationToken ct)
+    {
+        if (_autoSync is null) return Problem("Auto-sync service not registered.");
+        var started = await _autoSync.TickAsync(ct);
+        return Ok(new { started });
+    }
+
+    public sealed record WatchlistUpsertRequest
+    {
+        public string Symbol { get; init; } = "";
+        public string Timeframe { get; init; } = "";
+        public DateTime? BackfillFromUtc { get; init; }
+        public bool? Enabled { get; init; }
+    }
+
+    public sealed record WatchlistToggleRequest
+    {
+        public string Symbol { get; init; } = "";
+        public string Timeframe { get; init; } = "";
+        public bool Enabled { get; init; }
     }
 
     [HttpGet("inventory")]

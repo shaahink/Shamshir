@@ -49,7 +49,9 @@ namespace TradingEngine.Web.Services;
 
     private readonly int _maxTapeConcurrency;
     private readonly SemaphoreSlim _tapeSemaphore;
-    private readonly SemaphoreSlim _ctraderSemaphore = new(1, 1);
+    // X4: cTrader work no longer has a private serial semaphore here — it shares the one
+    // CTraderProcessOwner lane (bounded parallel, shared with market-data downloads).
+    private readonly CTraderProcessOwner _owner;
     private readonly ConcurrentQueue<(string RunId, BacktestConfig Config)> _queue = new();
     private readonly CancellationTokenSource _dequeueCts = new();
     private readonly Task? _dequeueTask;
@@ -170,6 +172,7 @@ namespace TradingEngine.Web.Services;
         RunProgressBroadcaster broadcaster,
         EffectiveConfigResolver configResolver,
         ILogger<BacktestOrchestrator> logger,
+        CTraderProcessOwner owner,
         IRunDataCache? runDataCache = null,
         IMemoryCache? memoryCache = null)
     {
@@ -180,6 +183,7 @@ namespace TradingEngine.Web.Services;
         _ctraderOptions = ctraderOptions.Value;
         _broadcaster = broadcaster;
         _configResolver = configResolver;
+        _owner = owner;
         _runDataCache = runDataCache;
         _memoryCache = memoryCache;
         _logger = logger;
@@ -388,8 +392,10 @@ namespace TradingEngine.Web.Services;
         if (state.Status != RunStateMachine.Queued) return;
 
         var isCtrader = ResolveUseCtrader(cfg.CustomParams.GetValueOrDefault("Venue"));
-        var semaphore = isCtrader ? _ctraderSemaphore : _tapeSemaphore;
-        if (semaphore.CurrentCount == 0) return;
+        // X4: cTrader admission goes through the shared owner lane (parallel with downloads, bounded);
+        // tape keeps its own semaphore.
+        var availableSlots = isCtrader ? _owner.AvailableSlots : _tapeSemaphore.CurrentCount;
+        if (availableSlots == 0) return;
 
         if (!_queue.TryDequeue(out var dequeued)) return;
         if (!_runs.TryGetValue(dequeued.RunId, out state)) return;
@@ -401,18 +407,19 @@ namespace TradingEngine.Web.Services;
 
         state.RunTask = Task.Run(async () =>
         {
-            var acquired = false;
+            IDisposable? lease = null;
             try
             {
                 // Honor the run's own token while waiting for a slot: cancelling a run that is still
                 // queued behind others must take effect immediately, not only once a slot frees up
                 // (found live in the X0 cancel-mid-queue smoke test — WaitAsync(CancellationToken.None)
                 // made a queued cancel invisible until the run would have started anyway).
-                await semaphore.WaitAsync(state.CancellationSource!.Token);
-                acquired = true;
+                lease = isCtrader
+                    ? await _owner.AcquireAsync(state.CancellationSource!.Token)
+                    : await AcquireTapeLaneAsync(state.CancellationSource!.Token);
                 await RunAsync(dequeued.RunId, dequeued.Config, state.CancellationSource!.Token);
             }
-            catch (OperationCanceledException) when (!acquired)
+            catch (OperationCanceledException) when (lease is null)
             {
                 TransitionRun(state, RunStateMachine.Cancelled);
                 EnqueueLog(state.RunId, state.LogLines,
@@ -423,7 +430,7 @@ namespace TradingEngine.Web.Services;
             }
             finally
             {
-                if (acquired) semaphore.Release();
+                lease?.Dispose();
                 TryDequeueNext();
             }
         });
@@ -581,7 +588,12 @@ namespace TradingEngine.Web.Services;
         state.CancellationSource?.Cancel();
 
         if (string.Equals(state.Venue, "ctrader", StringComparison.OrdinalIgnoreCase))
-            _ = KillCtraderProcessTreeAsync(runId, "cancel");
+        {
+            // The run's token was just cancelled, which makes CliWrap tree-kill the owned ctrader-cli.
+            // This is the prompt, owned-PID backstop: reap ONLY this run's process (never by image name),
+            // so a cancel of one run cannot touch a sibling parallel run/download or another worktree.
+            _ = Task.Run(() => _owner.ReapByTag($"run:{runId}", "cancel"));
+        }
     }
 
     /// <summary>
@@ -1787,7 +1799,8 @@ namespace TradingEngine.Web.Services;
         int ctraderBarCount = 0;
         try
         {
-            cliResult = await cli.BacktestAsync(algoPath, args, cts.Token);
+            cliResult = await cli.BacktestAsync(algoPath, args, cts.Token,
+                onStarted: pid => _owner.Register(pid, $"run:{runId}"));
         }
         finally
         {
@@ -1817,12 +1830,11 @@ namespace TradingEngine.Web.Services;
             await SafeTeardownStepAsync(runId, "HOST_DISPOSE", () => DisposeHostAsync(innerHost));
         }
 
-        // iter-redesign-ctrader P6.3 / P2.1: after the engine has disposed and the run is done, kill any
-        // remaining ctrader-cli child processes. The ChildProcessReaper arms a job object that kills
-        // on parent-exit, but for a persistent web app the parent lives on — we need explicit cleanup.
-        // The cli.BacktestAsync may have returned but left grandchild processes alive. P2.1 reuses the
-        // same routine on the cancel path so a cancelled cTrader run stops promptly (no orphan tree).
-        await KillCtraderProcessTreeAsync(runId, "reap");
+        // iter-redesign-ctrader P6.3 / P2.1 → X4: after the engine has disposed and the run is done, reap
+        // any remaining ctrader-cli process THIS run owns. The ChildProcessReaper job object kills on
+        // parent-exit, but the persistent web app lives on. X4 makes this owned-PID (by run tag) instead
+        // of by image name, so it is safe under parallel cTrader and never touches another worktree's cli.
+        _owner.ReapByTag($"run:{runId}", "reap");
 
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] CLI exit code: {cliResult.ExitCode}");
@@ -1939,6 +1951,23 @@ namespace TradingEngine.Web.Services;
         };
     }
 
+    /// <summary>Acquire a tape-lane slot as an <see cref="IDisposable"/> lease, mirroring the owner lane
+    /// so the dequeue loop treats both venues uniformly.</summary>
+    private async Task<IDisposable> AcquireTapeLaneAsync(CancellationToken ct)
+    {
+        await _tapeSemaphore.WaitAsync(ct);
+        return new SemaphoreLease(_tapeSemaphore);
+    }
+
+    private sealed class SemaphoreLease(SemaphoreSlim sem) : IDisposable
+    {
+        private int _released;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0) sem.Release();
+        }
+    }
+
     private static (int dataPort, int commandPort) AllocatePorts()
     {
         using var a = new TcpListener(IPAddress.Loopback, 0);
@@ -1950,63 +1979,11 @@ namespace TradingEngine.Web.Services;
         return (p1, p2);
     }
 
-    /// <summary>
-    /// P2.1 (F8) — kill any live ctrader-cli / cTrader.Automate process trees. Reused by the post-run
-    /// reaper AND the cancel path (Q2: at most one cTrader run at a time, so killing by image name is
-    /// safe under the serialized queue). Best-effort + fully isolated: a failure to reap must never
-    /// propagate (it would otherwise fault a cancel or a finalize). Each kill is journalled to
-    /// VenueSessions so an orphan-kill is auditable rather than silent.
-    ///
-    /// The synchronous enumerate+kill work is offloaded to the thread pool so the cancel path (which
-    /// invokes this fire-and-forget from the Cancel API/web-request thread) is never blocked on a slow
-    /// <c>Process.Kill(entireProcessTree)</c>; the reaper simply awaits the same offloaded work.
-    /// </summary>
-    private Task KillCtraderProcessTreeAsync(string runId, string reason) => Task.Run(() =>
-    {
-        foreach (var image in new[] { "ctrader-cli", "cTrader.Automate" })
-        {
-            System.Diagnostics.Process[] procs;
-            try { procs = System.Diagnostics.Process.GetProcessesByName(image); }
-            catch (Exception ex) { _logger.LogWarning(ex, "CTRADER|REAP_ERR|image={Image}", image); continue; }
-
-            foreach (var proc in procs)
-            {
-                try
-                {
-                    if (!proc.HasExited)
-                    {
-                        _logger.LogInformation("CTRADER|REAP|pid={Pid}|reason={Reason}|killing {Image}", proc.Id, reason, image);
-                        proc.Kill(entireProcessTree: true);
-                        RecordReap(runId, image, proc.Id, reason);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "CTRADER|REAP_FAIL|pid={Pid}", proc.Id);
-                }
-                finally { proc.Dispose(); }
-            }
-        }
-    });
-
-    private void RecordReap(string runId, string image, int pid, string reason)
-    {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-                db.VenueSessions.Add(new TradingEngine.Infrastructure.Persistence.Entities.VenueSessionEntity
-                {
-                    RunId = runId, Event = "CTRADER|REAP",
-                    Detail = $"killed {image} pid={pid} reason={reason}", OccurredAtUtc = DateTime.UtcNow
-                });
-                await db.SaveChangesAsync();
-            }
-            catch (Exception ex) { _logger.LogWarning(ex, "CTRADER|REAP_PERSIST_FAIL|pid={Pid}", pid); }
-        });
-    }
+    // X4: the P2.1 image-name reaper (KillCtraderProcessTreeAsync + RecordReap) was removed. Killing
+    // every ctrader-cli/cTrader.Automate by image name was safe only under the strict serial queue; it
+    // cross-kills siblings under parallel cTrader and kills another worktree's cli. Reaping is now
+    // owned-PID by run tag via CTraderProcessOwner.ReapByTag; the ChildProcessReaper Job Object remains
+    // the crash/app-exit net.
 
     private string ResolveAlgoPath()
     {

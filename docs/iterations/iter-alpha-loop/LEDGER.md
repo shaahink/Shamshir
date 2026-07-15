@@ -508,3 +508,51 @@ cTrader Desktop this pass) — rendering verified with a synthetic pair tag inst
 still-RUNNING run's report page show empty until completion (the live detail path is deliberately
 zero-DB-read; the save itself works). F48 (XAUUSD PnL currency conversion) remains open. X4 (data
 manager auto-sync) not started.
+
+---
+
+## X4 — Data-manager auto-sync + cTrader consolidation (2026-07-15)
+
+**Worktree/coordination:** delivered in a SEPARATE worktree `C:\code\shamshir-x4`, branch
+`iter/alpha-loop-x4`, fast-forwarded onto `c1a7477` (X2/X3) after confirming ZERO file overlap with
+that change-set (X4 touches DataManager/DownloadJobService/MarketData/*; X2/X3 touched Runs/Trades/
+chart). Own 1.2 GB `marketdata.db` snapshot copied in; runs on port 5135. Merge back is trivial.
+
+**cTrader consolidation (X4.0):** the three cTrader code paths ran on THREE hardcoded port pairs
+(15555/6 listen, 15562/3 download, orchestrator dynamic) with a private serial lane in the
+orchestrator only. New `CTraderProcessOwner` singleton consolidates them: dynamic loopback ports
+(reuses the existing `AllocatePorts`), one shared bounded lane (`SemaphoreSlim`, `CTrader:ProcessOwner:
+MaxConcurrency` default 2, 1=serial) shared by backtest + download, and **owned-PID reaping**.
+
+**Load-bearing finding — image-name reaper is a cross-kill hazard.** `KillCtraderProcessTreeAsync`
+killed every `ctrader-cli`/`cTrader.Automate` by IMAGE NAME, documented safe only because "at most one
+cTrader run at a time." Under parallel cTrader (owner's pick) OR alongside a second worktree's
+ctrader-cli it cross-kills siblings. Replaced by `CTraderProcessOwner.ReapByTag($"run:{id}")` /
+`ReapByTag($"download:{id}")` — both launchers already tree-kill their own process on cancel (CliWrap
+ct / `Process.Kill`), the Job Object (`ChildProcessReaper`) is the crash/app-exit net. Removed the
+image-name reaper + its VenueSessions reap-audit (audit-only nicety).
+
+**Persistence (X4.1):** only the watchlist (`MarketDataSyncCells`) is durable — in `MarketDataDbContext`
+(EnsureCreated, no EF migrations) via idempotent `CREATE TABLE IF NOT EXISTS` at startup, since
+EnsureCreated is a no-op on the existing multi-GB DB. Deliberately NOT a trading-DB migration (would
+touch `TradingDbContextModelSnapshot.cs` that X2/X3's M53 also touched). The work each tick is DERIVED
+from live coverage (durable truth) + idempotent `INSERT OR IGNORE` ingest, so a restart mid-sync just
+recomputes the still-missing range — self-healing, no stuck-job states.
+
+**Coverage/gap (X4.2):** `MarketDataCoverageService` aggregates inventory across sources per (symbol,
+tf), overlays the watchlist, and computes a market-hours-aware status (up-to-date/stale/missing/
+disabled) + missing tail. `MarketHours` treats the FX weekend closure (~Fri 21:00→Sun 21:00 UTC) and
+crypto 24/7 so a weekend is never a false "stale". `GET /api/data-manager/coverage`.
+
+**Auto-sync (X4.3):** `AutoSyncService` (BackgroundService, on by default, inert until the watchlist has
+cells) reconciles each tick: for each enabled cell behind, it drives the existing consolidated download
+path (`DownloadJobService.Start` → owner lane) for [lastBar,now]. `POST /api/data-manager/sync-now`
+runs one tick on demand. Watchlist CRUD: `GET/POST /api/data-manager/watchlist(/toggle|/remove)`.
+
+**UI (X4.4):** Data Manager gains a Coverage & Auto-Sync grid — per-cell status badge, Watch toggle
+(pin/unpin), "Sync all → latest", server-truth refresh every 5 s.
+
+**Worktree env gotcha:** fresh worktree `npm ci` fails (lockfile) and `npm install` hits ERESOLVE;
+Tailwind v4 CLI is a separate `@tailwindcss/cli` and its bin is absent until deps install with
+`--legacy-peer-deps` (matches the main worktree). The Web csproj's `EnsureAngularCurrent` guard only
+CHECKS wwwroot staleness (it does not build ng) — backend-only compile loops use `-p:NgProjectDir=__skip__`.

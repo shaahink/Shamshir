@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using TradingEngine.CTraderRunner;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.MarketData;
+using TradingEngine.Web.Services;
 
 namespace TradingEngine.Web.Api;
 
@@ -13,14 +14,17 @@ public sealed class DownloadJobService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConfiguration _configuration;
     private readonly CTraderConnectionOptions _ctraderOptions;
+    private readonly CTraderProcessOwner _owner;
     private readonly ILogger<DownloadJobService> _logger;
 
     public DownloadJobService(IServiceScopeFactory scopeFactory, IConfiguration configuration,
-        IOptions<CTraderConnectionOptions> ctraderOptions, ILogger<DownloadJobService> logger)
+        IOptions<CTraderConnectionOptions> ctraderOptions, CTraderProcessOwner owner,
+        ILogger<DownloadJobService> logger)
     {
         _scopeFactory = scopeFactory;
         _configuration = configuration;
         _ctraderOptions = ctraderOptions.Value;
+        _owner = owner;
         _logger = logger;
 
         var dataDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data"));
@@ -110,6 +114,9 @@ public sealed class DownloadJobService
             var periodsStr = string.Join(",", job.Timeframes);
 
             job.Status = "recording";
+            // X4: dynamic ports (no more hardcoded 15562/15563 collision when downloads run in parallel
+            // or alongside a backtest / another worktree). Ports are allocated per invocation.
+            var (dataPort, commandPort) = CTraderProcessOwner.AllocatePorts();
             var cliReq = new BacktestCliRequest
             {
                 AlgoPath = algoPath,
@@ -127,19 +134,58 @@ public sealed class DownloadJobService
                 Record = true,
                 Symbols = [job.Symbol],
                 Periods = [periodsStr],
-                DataPort = 15562,
-                CommandPort = 15563,
+                DataPort = dataPort,
+                CommandPort = commandPort,
                 TimeoutSeconds = job.TimeoutSeconds,
             };
 
-            _logger.LogInformation("Download job {JobId}: starting cTrader CLI for {Symbol} {Tfs}", job.Id, job.Symbol, periodsStr);
-            var result = await BacktestCli.InvokeAsync(cliReq, CancellationToken.None);
+            _logger.LogInformation("Download job {JobId}: starting cTrader CLI for {Symbol} {Tfs} on ports {DataPort}/{CommandPort}",
+                job.Id, job.Symbol, periodsStr, dataPort, commandPort);
 
-            if (result.ExitCode != 0)
+            // X4: the cTrader invocation runs under the shared owner lane (bounded parallelism, shared
+            // with backtests). We register the PID so the owner can tree-kill only what it launched, and
+            // run an idle-watchdog: ctrader-cli is known to HANG on exit after a complete record, so once
+            // the shard stops growing we reap it rather than wait out the full timeout. The lane is
+            // released the moment the CLI returns — ingest (below) touches only the DB.
+            BacktestCliResult result;
+            int? ctraderPid = null;
+            using var recordCts = new CancellationTokenSource();
+            var watchdog = RunRecordWatchdogAsync(job.Id, shardsDir, recordCts);
+            try
+            {
+                using (await _owner.AcquireAsync(CancellationToken.None))
+                {
+                    result = await BacktestCli.InvokeAsync(cliReq, recordCts.Token,
+                        onStarted: pid => { ctraderPid = pid; _owner.Register(pid, $"download:{job.Id}"); });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Watchdog reaped a hung CLI after the record went idle — its data is on disk, so this is
+                // a normal completion, not a failure.
+                result = new BacktestCliResult { ExitCode = 0, StdErr = "record complete; CLI reaped after idle" };
+                _logger.LogInformation("Download job {JobId}: CLI reaped after idle record", job.Id);
+            }
+            finally
+            {
+                recordCts.Cancel();
+                if (ctraderPid is int startedPid) _owner.Unregister(startedPid);
+            }
+
+            // X4: ingest whatever was recorded, REGARDLESS of exit code. Recording writes bars to disk as
+            // it goes and finishes well before the hang; a non-zero exit (timeout/reap) must not throw
+            // that data away. Only fail if nothing at all was recorded.
+            var shardFiles = Directory.Exists(shardsDir)
+                ? Directory.GetFiles(shardsDir, "*.ndjson")
+                : [];
+
+            if (shardFiles.Length == 0)
             {
                 job.Status = "failed";
-                job.Error = $"cTrader CLI exited with code {result.ExitCode}";
-                _logger.LogWarning("Download job {JobId}: cTrader CLI failed with exit code {ExitCode}", job.Id, result.ExitCode);
+                job.Error = result.ExitCode != 0
+                    ? $"cTrader CLI exited with code {result.ExitCode} and recorded no data"
+                    : "cTrader CLI produced no shards";
+                _logger.LogWarning("Download job {JobId}: no shards recorded (exit {ExitCode})", job.Id, result.ExitCode);
                 return;
             }
 
@@ -149,7 +195,7 @@ public sealed class DownloadJobService
             job.Status = "ingesting";
             var ingester = new MarketDataIngester(store, scope.ServiceProvider.GetService<ILogger<MarketDataIngester>>());
             int total = 0;
-            foreach (var shard in Directory.GetFiles(shardsDir, "*.ndjson"))
+            foreach (var shard in shardFiles)
             {
                 var ir = await ingester.IngestFileAsync(shard, "ctrader", CancellationToken.None);
                 total += ir.BarsInserted;
@@ -158,7 +204,8 @@ public sealed class DownloadJobService
             job.BarsRecorded = total;
             job.Status = "done";
             job.CompletedAtUtc = DateTime.UtcNow;
-            _logger.LogInformation("Download job {JobId}: complete — {Bars} bars ingested", job.Id, total);
+            _logger.LogInformation("Download job {JobId}: complete — {Bars} bars ingested (exit {ExitCode})",
+                job.Id, total, result.ExitCode);
         }
         catch (Exception ex)
         {
@@ -202,6 +249,35 @@ public sealed class DownloadJobService
                 _logger.LogWarning("Download job {JobId}: shards retained at {Dir} (status={Status})", job.Id, shardsDir, job.Status);
             }
         }
+    }
+
+    /// <summary>
+    /// ctrader-cli hangs on exit after a complete record. Once at least one shard exists and none has
+    /// grown for <c>IdleReapSeconds</c>, the record is done — cancel the record token so the CLI is
+    /// tree-killed and the job proceeds straight to ingest instead of waiting out the full timeout. It
+    /// never reaps before a shard appears, so a slow-to-connect record is not cut short.
+    /// </summary>
+    private async Task RunRecordWatchdogAsync(string jobId, string shardsDir, CancellationTokenSource recordCts)
+    {
+        const int idleReapSeconds = 45;
+        try
+        {
+            while (!recordCts.IsCancellationRequested)
+            {
+                await Task.Delay(5000, recordCts.Token);
+                if (!Directory.Exists(shardsDir)) continue;
+                var files = Directory.GetFiles(shardsDir, "*.ndjson");
+                if (files.Length == 0) continue;
+                var lastWrite = files.Max(File.GetLastWriteTimeUtc);
+                if (DateTime.UtcNow - lastWrite > TimeSpan.FromSeconds(idleReapSeconds))
+                {
+                    _logger.LogInformation("Download job {JobId}: record idle {Idle}s — reaping CLI", jobId, idleReapSeconds);
+                    recordCts.Cancel();
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* record finished; token cancelled by the caller */ }
     }
 
     private async Task ExecuteIngestAsync(DownloadJob job, string? symbol)
