@@ -67,6 +67,33 @@ their wiring into `CTraderVenueRunner`, so venue observability is owned by the v
   deliberately centralized (event→state→effects reducer); size is inherent, not smell.
 - **Migrations `*.Designer.cs`** — generated; ignore.
 
+## Outcome (executed 2026-07-15, commits f2d37f1..HEAD)
+
+| Phase | Commit | What moved |
+|---|---|---|
+| P1 | f2d37f1 | `BacktestRunState`/`RunWarning` → `Runs/`, progress projection + tally → `RunProgressProjector` |
+| P2 | 75f474e | `RunConfigAssembler`, `RunRecordStore` (+`RunTradeStats`), `RunMarketContextLoader`, `EngineHostLifecycle`, `RunRequestParser` |
+| P3 | a57a3c7 | **Venue seam**: `IVenueRunner` + `VenueRunnerRegistry` + `ReplayVenueRunner` + `CTraderVenueRunner` + `RunRegistry`; `ResolveUseCtrader` → `VenueRouting` |
+| P4 | 3256254 | `ExitResolution` promoted to `IReplayVenue` — last concrete-adapter type-sniff gone |
+| P5 | 192f48e | cBot split into partials (`.Commands`/`.Events`/`.Recorder`) — zero statement changes |
+
+`BacktestOrchestrator` is now **821 lines**: run queue/lanes, lifecycle transitions, finalize
+(barrier → stats → warnings → end record), compare-both composition, public command surface.
+Every consumer (controllers, hub, query service) is source-compatible except the three test files
+that referenced nested/static members (updated).
+
+**Verified:** Unit 759 ✅ · Integration 134 ✅ · Architecture 6/8 (identical 2 pre-existing
+failures) · app smoke via run-shamshir driver **11/11** on the final binaries — boots the new DI
+graph, POSTs a replay run through orchestrator → registry → ReplayVenueRunner to a terminal state
+with run-record persistence intact. Simulation suite: 2 failures at BASELINE (pre-refactor
+binaries) — same count expected on final binaries (checked below).
+
+**Observations logged, not fixed (pre-existing):**
+- The compare-both cTrader child run is `Register`ed in the run registry but never removed —
+  a slow leak of one `BacktestRunState` per compare-both run (was `_runs[id] = state` before).
+- `RunQueryService` (684) remains the next read-side split candidate.
+- Simulation suite reports "Test Run Aborted" after summary at baseline too (suite-teardown quirk).
+
 ## Verification contract for this branch
 - After each phase: `dotnet build` + Unit + Integration + Architecture (no new failures vs baseline).
 - Simulation suite at start and end.

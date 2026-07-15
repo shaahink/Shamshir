@@ -2,6 +2,17 @@
 
 **Last updated**: 2026-06-18 (post iter-31/32)
 
+> **2026-07-15 (branch refactor/god-classes):** the orchestrator was decomposed. Venue execution
+> now lives behind the `IVenueRunner` seam in `TradingEngine.Web/Services/Venues/` —
+> `ReplayVenueRunner` (replay + tape) and `CTraderVenueRunner` (NetMQ + ctrader-cli) — resolved
+> per run by `VenueRunnerRegistry` from the run's `Venue` custom param (**not** the old
+> `CTrader:UseForBacktest` flag; ports are dynamic, not 15555/15556). Run-scoped services live in
+> `TradingEngine.Web/Services/Runs/` (RunRegistry, RunRecordStore, RunConfigAssembler,
+> RunMarketContextLoader, RunProgressProjector, EngineHostLifecycle). Method names below such as
+> `RunEngineReplayAsync`/`RunEngineNetMqAsync` refer to code that moved verbatim into those
+> runners; the flows themselves are unchanged. See
+> `docs/iterations/iter-refactor-godclasses/SURVEY.md`.
+
 This document explains how backtesting actually works — both venue paths, data flow,
 cost computation, limit orders, and journal capture. Read this before touching any
 backtest-related code.

@@ -33,7 +33,7 @@ Find a feature → see which files implement it.
 |---------|-----------|
 | **Account state sync** | `TradingEngine.Host/EngineWorker.cs` (live path), `TradingEngine.Infrastructure/Adapters/NetMQBrokerAdapter.cs` |
 | **API endpoints** | `TradingEngine.Web/Api/BacktestController.cs`, `...Web/Api/*Controller.cs` |
-| **Backtest orchestration** | `TradingEngine.Web/Services/BacktestOrchestrator.cs`, `...Web/Services/BacktestProgressStore.cs`, `...Web/Pages/Backtests/Run.cshtml(.cs)` |
+| **Backtest orchestration** | `TradingEngine.Web/Services/BacktestOrchestrator.cs` (queue/lifecycle/finalize), `...Web/Services/Runs/*` (state, records, config assembly, market context), `...Web/Services/Venues/*` (IVenueRunner seam: ReplayVenueRunner, CTraderVenueRunner — refactor/god-classes 2026-07-15), `...Web/Services/BacktestProgressStore.cs` |
 | **BacktestReplayAdapter (venue)** | `TradingEngine.Infrastructure/Adapters/BacktestReplayAdapter.cs` |
 | **Bar accumulation** | `TradingEngine.Host/EngineWorker.cs` (live), `TradingEngine.Host/TradingLoop.cs` |
 | **Bar evaluation persistence** | `TradingEngine.Host/BarEvaluationHandler.cs`, `TradingEngine.Infrastructure/Persistence/TradingDbContext.cs` |
