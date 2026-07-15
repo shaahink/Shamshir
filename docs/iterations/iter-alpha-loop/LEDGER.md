@@ -714,3 +714,90 @@ summarized scoreboard API, to recover `ExpectancyR` which the API endpoint doesn
 
 **Not done / out of scope:** the stale `completedAtUtc: null` on the live monitor endpoint for an
 evicted run (noted above, DB is correct); cleaning up the orphan `96fa9214` experiment row.
+
+---
+
+## R3.1 — session 1 — 2026-07-15 (fifth session) — pre-registration
+
+**Knob inventory correction to PLAN.md §R3 before pre-registering anything** (source: fork
+research this session, verified against actual controllers/DTOs, not the plan's aspirational
+wording):
+- **AddOnPacks are 3 fixed presets, not tunable numerics**: `breakeven-only` (BE only, auto
+  trigger 1R), `scalp-tight` (BE + `StepPips` trail, tight/fast), `runner-aggressive` (BE +
+  `AtrMultiple` trail that relaxes via Ride while ADX≥25 + 50%-close PartialTp at 1R). A "pack
+  tweak" is choosing a different preset per row (`RunRowRequest.PackId`), or omitting it (falls
+  back to the strategy's own baked-in `PositionManagement`, which is what R1' "defaults" used).
+- **Risk profiles** (`GET /api/risk-profiles`): `standard` (0.5% risk/trade, maxSL 100p — R1'
+  default), `conservative` (0.25%, maxSL 50p), `aggressive` (2%, maxSL 150p), `raw` (5%,
+  unprotected — not used here).
+- **"Session filters via VenueSessions data" (PLAN.md §R3) does not exist as an independent
+  knob.** `VenueSessions` is cTrader connection-event logging, unrelated to trading sessions. The
+  real session mechanism is `ExitLabEvaluateRequest.Regime` (Asian/London/NewYork/etc.) — a
+  sub-parameter of exit-lab calibration, not a standalone backtest variant. Exit-lab itself
+  (`POST /api/exit-lab/evaluate`) grid-sweeps SL/TP/BE/trail multiples against **already-recorded
+  excursion paths** (needs a prior `RecordExcursions:true` run) — a calibration tool, not itself
+  scoreable into sv1. Deferred to a later R3 session once session 1's pack/risk read is in.
+- **Walk-forward** (`POST /api/walk-forward/start`) grid-searches each strategy's own indicator
+  params (`ParamGrid`), not packs/risk — this is the step-4 "walk-forward the best 3" tool, run
+  after session 1's variants are scored.
+
+**Session 1 pre-registration — 12 variants, 6 cells from the R1' top-20, one knob changed at a
+time against each cell's own R1' baseline (`baseline-sv1-prime` defaults = `standard` risk, no
+pack override).** Same window as the baseline (2025-07-04→2026-05-05), tape venue, one cell per
+run (D13 still applies — pre-registration is not an excuse to re-commingle).
+
+| Variant | Cell | Knob changed | Hypothesis |
+|---|---|---|---|
+| v1a | trend-breakout/XAUUSD/H4 (rank 1, 100.0) | pack=`runner-aggressive` | Baseline DD is already ~0.03% — a relaxing ATR trail + partial-TP should raise ExpectancyR further without meaningfully raising DD, since there's almost no DD budget being spent today. |
+| v1b | trend-breakout/XAUUSD/H4 | risk=`aggressive` | Tests whether the #1 cell's edge holds at 4× standard risk (2% vs 0.5%/trade) — the real question before proposing it for R4 sizing. |
+| v2a | rsi-divergence/AUDUSD/H1 (rank 4, 92.0) | pack=`scalp-tight` | Consistency is only 54.5 despite ExpR 0.642 — an early tight trail should convert more marginal wins into locked gains, raising Consistency without giving back much ExpectancyR. |
+| v2b | rsi-divergence/AUDUSD/H1 | risk=`conservative` | Lower risk/trade (0.25% vs 0.5%) should shrink the 1.94% MaxDD roughly proportionally; if ExpectancyR mostly survives, risk-adjusted return improves. |
+| v3a | macd-momentum/XAGUSD/H1 (rank 12, 78.4) | pack=`scalp-tight` | Highest trade count (92) + worst Consistency (45.5) + highest DD (3.63%) in the top 20 — the best-powered cell to test whether tighter stop management raises consistency. |
+| v3b | macd-momentum/XAGUSD/H1 | risk=`conservative` | Direct test of whether smaller risk/trade tames the 3.63% DD disproportionately more than it costs ExpectancyR. |
+| v4a | rsi-divergence/BTCUSD/H1 (rank 11, 80.8) | pack=`runner-aggressive` | Crypto trends run further than FX pairs typically do — letting winners ride via the relaxing ATR trail should capture more of that. |
+| v4b | rsi-divergence/BTCUSD/H1 | risk=`aggressive` | Tests edge-at-scale on the highest-trade-count crypto cell (56 trades — good statistical power for this question). |
+| v5a | bb-squeeze/XAGUSD/H4 (rank 10, 81.2) | pack=`scalp-tight` | Squeeze breakouts are typically fast-then-mean-revert; an early tight trail should raise the low 54.5 Consistency by locking gains before reversion. |
+| v5b | bb-squeeze/XAGUSD/H4 | risk=`conservative` | Modest ExpectancyR (0.347) — test whether reduced risk improves the risk-adjusted picture on a thinner edge. |
+| v6a | ema-alignment/EURJPY/H1 (rank 6, 88.6) | pack=`runner-aggressive` | Already-high Consistency (81.8) — test whether letting winners run adds ExpectancyR without eroding that consistency. |
+| v6b | ema-alignment/EURJPY/H1 | risk=`aggressive` | Tests whether the cleanest top-20 cell (high consistency, near-zero DD) holds up at 4× size — the strongest R4 sizing candidate if it does. |
+
+**Idempotency keys:** `r3-s1-<variant>` (e.g. `r3-s1-v1a`). **Truth gate (per plan §R3):**
+ExperimentRuns grows by exactly 12; every pre-registered variant has a scored-or-null result;
+scoreboard artifact `evidence/scoreboard-s2.md` committed. **Next:** run + score these 12, then
+walk-forward the session's best 3 (needs each winning strategy's indicator `ParamGrid` — separate
+lookup before that step), then cull anything with OOS ratio < 0.5.
+
+**Results — all 12 run + scored, gate PASS.** 11/12 scored, 1 null (v2b, `rsi-divergence/AUDUSD/H1`
++ `conservative` risk, fell to 14 trades — below the 20-trade floor). Full comparison table +
+analysis: `evidence/scoreboard-s2.md`.
+
+**Two real wins, both `runner-aggressive`:** `ema-alignment/EURJPY/H1` (v6a) — raw `ExpectancyR`
+0.384→0.698 (+82%), `MaxDD%` and Consistency held exactly flat (0.75%/0.748%, 81.8/81.8). And the
+#1 cell `trend-breakout/XAUUSD/H4` (v1a) — `ExpectancyR` 0.689→0.912 (+32%), DD/Consistency again
+untouched. Both are trend-style strategies; letting winners run via the relaxing ATR trail +
+partial-TP fits their own thesis, and neither was spending its DD budget under baseline SL/TP
+anyway.
+
+**`scalp-tight` lost on all 3 cells it was tried on** (v2a rsi-divergence/AUDUSD/H1 -94% edge, v3a
+macd-momentum/XAGUSD/H1 edge went net-negative, v5a bb-squeeze/XAGUSD/H4 -74% edge) — consistent,
+not cherry-picked. All three strategies' theses need room for the trade to develop; an early tight
+trail cuts them off before that happens.
+
+**`aggressive` risk (4x standard) was scale-invariant on `ema-alignment/EURJPY/H1`** (v6b:
+`ExpectancyR` and Consistency both IDENTICAL at 4x size, DD roughly doubled not quadrupled) — a
+real, useful result for R4 sizing. It degraded on the other two cells tried (v1b, v4b).
+**`conservative` risk never produced a clean risk-adjusted win**: it cut DD more than expectancy on
+`bb-squeeze/XAGUSD/H4` (v5b, mild win) but cut expectancy MORE than DD on `macd-momentum/XAGUSD/H1`
+(v3b), and dropped `rsi-divergence/AUDUSD/H1` below the trade floor entirely (v2b).
+
+**Two open, unchased observations** (in `evidence/scoreboard-s2.md` Caveats, not investigated
+further this session): `runner-aggressive`'s trade-count jumps are explained by `PartialTp` posting
+two `TradeResult` rows per position (not a new signal-count change) — but `scalp-tight`'s
+trade-count *drops* (macd-momentum 92→48, rsi-divergence 47→26, bb-squeeze 42→35) have no confirmed
+mechanism yet. v4b's trade collapse (rsi-divergence/BTCUSD/H1, 56→23 under `aggressive` risk) is
+plausibly a DD-circuit-breaker interaction on a volatile symbol, but unconfirmed.
+
+**Next (R3.2):** walk-forward the best 3 (v6a, v1a, v6b) — 6 rolling windows, train 60d/test 30d —
+to get a real OOS ratio before calling any of them a candidate. Blocked on looking up each
+strategy's tunable indicator `ParamGrid` for `POST /api/walk-forward/start` (not covered by this
+session).
