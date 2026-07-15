@@ -27,4 +27,15 @@ public sealed record RunListResponse
     public string? ComparePairId { get; init; }
     public int? QueuePosition { get; init; }
     public string? PersistedStatus { get; init; }
+
+    // X2: richer runs table — duration, note, latest SetupScore composite, and the distinct
+    // strategy ids derived from the persisted run plan.
+    public long WallElapsedMs { get; init; }
+    public string? Notes { get; init; }
+    public double? Score { get; init; }
+    public string? Strategies { get; init; }
+
+    /// <summary>Projection-only carrier for deriving <see cref="Strategies"/>; never serialized.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? RunPlanJson { get; init; }
 }

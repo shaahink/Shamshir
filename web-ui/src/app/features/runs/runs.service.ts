@@ -70,6 +70,11 @@ export class RunsApiService {
     return firstValueFrom(this.http.patch<{ runId: string }>(`/api/runs/${runId}`, { speed }));
   }
 
+  // X2: run note. Empty string clears it (null would mean "no change" on the PATCH).
+  updateNotes(runId: string, notes: string): Promise<{ runId: string }> {
+    return firstValueFrom(this.http.patch<{ runId: string }>(`/api/runs/${runId}`, { notes }));
+  }
+
   async getRunTrades(runId: string): Promise<TradeSummary[]> {
     const r = await firstValueFrom(this.http.get<TradeListResponse>(`/api/runs/${runId}/trades`));
     return r.trades;

@@ -53,7 +53,10 @@ public sealed record BacktestRunSummary(
     // X0: persisted run status so the queue survives restarts.
     string? Status = null,
     // X0: position in the queue while waiting for a slot. Null once running.
-    int? QueuePosition = null);
+    int? QueuePosition = null,
+    // X2: owner's note. READ-ONLY through this record — Save/Update never write it (a run's
+    // end-record update must not clobber a note typed mid-run). Write via SetNotesAsync only.
+    string? Notes = null);
 
 public interface IBacktestRunRepository
 {
@@ -63,4 +66,7 @@ public interface IBacktestRunRepository
     Task<BacktestRunSummary?> GetByIdAsync(string runId, CancellationToken ct);
     Task DeleteAsync(string runId, CancellationToken ct);
     Task<int> DeleteRunsAsync(IReadOnlyCollection<string> runIds, CancellationToken ct);
+
+    // X2: the ONLY write path for a run's note (see BacktestRunSummary.Notes).
+    Task SetNotesAsync(string runId, string? notes, CancellationToken ct);
 }

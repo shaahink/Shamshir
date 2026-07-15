@@ -24,6 +24,11 @@ export interface RunSummary {
   comparePairId?: string | null;
   queuePosition?: number | null;
   persistedStatus?: string | null;
+  // X2: richer runs table.
+  wallElapsedMs?: number;
+  notes?: string | null;
+  score?: number | null;
+  strategies?: string | null;
 }
 
 export interface RunDetail {
@@ -70,6 +75,8 @@ export interface RunDetail {
   // P4.1 (F11): whether excursion paths were recorded.
   recordExcursions?: boolean;
   comparePairId?: string | null;
+  // X2: owner's note (editable from Runs page + report page).
+  notes?: string | null;
 }
 
 export interface TradeListResponse {
@@ -143,6 +150,12 @@ export interface TradeDetail {
   entryRegime?: string;
   entrySnapshotJson?: string;
   exitDetailJson?: string;
+  // X3: prev/next navigation within the trade's run.
+  runId?: string | null;
+  prevTradeId?: string | null;
+  nextTradeId?: string | null;
+  tradeIndex?: number;
+  tradeCount?: number;
 }
 
 // iter-36 K5: the journal is now the lossless StepRecord stream (GET /api/runs/{id}/journal). eventKind
@@ -364,6 +377,13 @@ export interface ChartMarker {
   kind: string; // Entry | Exit | StopLoss | TakeProfit
 }
 
+// X3: the stop's journey — initial SL plus every journaled BREAKEVEN/TRAIL move.
+export interface StopPathPoint {
+  time: number; // unix seconds
+  price: number;
+  kind: string; // SL | BREAKEVEN | TRAIL
+}
+
 export interface TradeChartResponse {
   tradeId: string;
   symbol: string;
@@ -371,6 +391,7 @@ export interface TradeChartResponse {
   direction: string;
   bars: BarData[];
   markers: ChartMarker[];
+  stopPath: StopPathPoint[];
 }
 
 // iter-redesign P5: per-bar decision narrative (GET /api/runs/{id}/bars).

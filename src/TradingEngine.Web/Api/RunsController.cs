@@ -249,10 +249,20 @@ public sealed class RunsController : ControllerBase
     }
 
     [HttpPatch("{runId}")]
-    public IActionResult PatchRun(string runId, [FromBody] PatchRunRequest req)
+    public async Task<IActionResult> PatchRun(string runId, [FromBody] PatchRunRequest req, CancellationToken ct)
     {
         if (req.Speed is { } speed)
             _orchestrator.SetSpeed(runId, speed);
+
+        // X2: notes — dedicated write path so the run-lifecycle writers can never clobber a note.
+        if (req.Notes is not null)
+        {
+            var run = await _runRepo.GetByIdAsync(runId, ct);
+            if (run is null) return NotFound(new { error = $"Run {runId} not found" });
+            await _runRepo.SetNotesAsync(runId, req.Notes, ct);
+            _query.InvalidateRunsCache();
+        }
+
         return Ok(new { runId });
     }
 
@@ -565,5 +575,8 @@ public sealed class RunsController : ControllerBase
 public sealed record PatchRunRequest
 {
     public float? Speed { get; init; }
+
+    // X2: run note. Empty string clears the note; null = "no change" (this is a PATCH).
+    public string? Notes { get; init; }
 }
 

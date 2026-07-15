@@ -1,19 +1,32 @@
-import { Component, inject, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { Component, inject, OnInit, OnDestroy, signal, ChangeDetectionStrategy } from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
+import type { Subscription } from 'rxjs';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { TradeChartCardComponent } from '../../../shared/trade-chart-card.component';
-import type { TradeDetail, TradeExcursionResponse } from '../../../models/api.types';
+import type { TradeDetail } from '../../../models/api.types';
 import { TradesApiService } from '../trades.service';
 import { formatDuration } from '../../../shared/format.helper';
 
 @Component({
   selector: 'app-trade-detail',
   standalone: true,
-  imports: [DatePipe, StatTileComponent, TradeChartCardComponent],
+  imports: [DatePipe, StatTileComponent, TradeChartCardComponent, RouterLink],
   template: `
     <div class="space-y-6">
-      <h1 class="text-xl font-semibold">Trade Detail</h1>
+      <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">
+          Trade Detail
+          @if (trade()?.tradeCount) {
+            <span class="ml-2 text-sm font-normal text-gray-500">{{ trade()?.tradeIndex }} of {{ trade()?.tradeCount }}</span>
+          }
+        </h1>
+        @if (trade()?.runId; as rid) {
+          <a [routerLink]="['/runs', rid]" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">
+            &larr; Run {{ rid.slice(0, 8) }}
+          </a>
+        }
+      </div>
       @if (trade(); as t) {
         <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
           <app-stat-tile label="Symbol" [value]="t.symbol" />
@@ -48,7 +61,7 @@ import { formatDuration } from '../../../shared/format.helper';
           <p class="text-xs text-gray-500">Strategy: {{ t.strategyId }}</p>
         </div>
 
-        <app-trade-chart-card [tradeId]="t.id" />
+        <app-trade-chart-card [tradeId]="t.id" [showNav]="true" (navigate)="goToTrade($event)" />
 
         @if (excursionPoints().length > 0) {
           <div class="rounded-lg border border-gray-800 bg-gray-900/50 p-4">
@@ -84,16 +97,33 @@ import { formatDuration } from '../../../shared/format.helper';
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class TradeDetailComponent implements OnInit {
+export class TradeDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private api = inject(TradesApiService);
   trade = signal<TradeDetail | null>(null);
   excursionPoints = signal<{ t: number; hi: number; lo: number }[]>([]);
   range = signal<number>(0.01);
+  private paramSub: Subscription | null = null;
 
-  async ngOnInit(): Promise<void> {
-    const id = this.route.snapshot.paramMap.get('id');
-    if (!id) return;
+  // X3: subscribe (not snapshot) so prev/next navigation re-loads in place — Angular reuses the
+  // component instance on a same-route param change, which keeps the chart mounted.
+  ngOnInit(): void {
+    this.paramSub = this.route.paramMap.subscribe((params) => {
+      const id = params.get('id');
+      if (id) void this.load(id);
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.paramSub?.unsubscribe();
+  }
+
+  goToTrade(id: string): void {
+    void this.router.navigate(['/trades', id]);
+  }
+
+  private async load(id: string): Promise<void> {
     try {
       const t = await this.api.getById(id);
       this.trade.set(t);

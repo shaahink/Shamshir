@@ -16,8 +16,10 @@ export class TradesApiService {
     return firstValueFrom(this.http.get<TradeDetail>(`/api/trades/${id}`));
   }
 
-  getChart(id: string): Promise<TradeChartResponse> {
-    return firstValueFrom(this.http.get<TradeChartResponse>(`/api/trades/${id}/chart`));
+  // X3: padBars = context bars before entry / after exit (server default 20).
+  getChart(id: string, padBars?: number): Promise<TradeChartResponse> {
+    const q = padBars ? `?padBars=${padBars}` : '';
+    return firstValueFrom(this.http.get<TradeChartResponse>(`/api/trades/${id}/chart${q}`));
   }
 
   // P3.5: per-bar MAE/MFE excursion path for one trade.

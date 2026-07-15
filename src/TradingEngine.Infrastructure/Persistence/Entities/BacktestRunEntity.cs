@@ -67,4 +67,8 @@ public sealed class BacktestRunEntity : IAuditableEntity
     // run-report exploration banner survives run completion.
     public bool ExplorationMode { get; set; }
     public bool RecordExcursions { get; set; }
+
+    // X2: owner's free-text note on a run. Written ONLY via SetNotesAsync — the run-lifecycle
+    // writers (start/end records) never touch it, so a note survives the run completing.
+    public string? Notes { get; set; }
 }

@@ -420,3 +420,91 @@ phase per PLAN.md's own ordering; X3/X4 are untouched.
 
 **Gate battery, final:** build 0err/5warn · Unit 759/0/6 · Integration 121/0/0 (3x consecutive,
 confirmed non-flaky) · Sim-fast 144/0/0.
+---
+
+## Session 2026-07-15 — X2 + X3 delivered, live-verified (numbering note: no F54 row exists; the prior handoff's "F49-F54" counted the EF-pin environment fix, so this session continues at F55)
+
+**X2 — Runs page, notes, copy-run (PLAN §3c).**
+- **Notes:** `BacktestRuns.Notes` (migration M53) with a deliberately narrow write path —
+  `IBacktestRunRepository.SetNotesAsync` is the ONLY writer; `SaveAsync`/`UpdateAsync` never touch
+  the column, so the end-record write cannot clobber a note typed mid-run (pinned by
+  `RunNotesTests.EndRecordUpdate_DoesNotClobber_ANoteTypedMidRun`). PATCH `/api/runs/{id}` takes
+  `notes` (empty string clears; null = no change). Editable inline on the Runs page and from a
+  Notes card on the report page. Live-verified round-trip.
+- **Richer table:** Status(+queue pos, +live %), Venue, Strategy (derived server-side from
+  RunPlanJson), Symbol, TF, Net, MaxDD, Trades, Win%, **Score** (latest ExperimentRuns ScoreJson
+  `Composite` per run, joined in `RunQueryService.AttachLatestScores` — decoration, never fails the
+  list), **Duration** (WallElapsedMs), Created, Notes, copy button, plus a client-side filter box.
+  Live-verified: a fresh 4-month tape run (875b390b, 39 trades) scored 57.1 via
+  `POST /api/experiments/score` and the list row showed `strategies=trend-breakout score=57.1
+  wallMs=35463` immediately.
+- **F55 — duplicated runs VANISHED from the Runs page:** the old `groupedRuns` suppressed every run
+  with a `parentRunId` and only re-emitted them inside a compare-pair group. A `/duplicate` run has
+  lineage but no `comparePairId` → it was silently never rendered; same for a compare child whose
+  parent aged out of the 50-run window. Rewritten: emit in list order; a pair's later siblings render
+  indented under the first visible member; anything whose pair/parent isn't visible renders as a
+  normal top-level row. Live-verified both ways: duplicate 7c94c235 visible (e2e-pinned), and with
+  the two session runs temporarily tagged as a pair (DB tag, reverted after), the child rendered
+  indented (↳) directly under its parent — structurally the same rendering the cTrader compare child
+  uses (no cTrader Desktop in this pass to exercise a real pair end-to-end).
+- **Liveness:** the Runs page now joins the SignalR group of every visible active run (progress %
+  in the Status cell), reloads on `completed$` (debounced 1s), and slow-polls every 15s as a
+  fallback for CLI-started runs. The iter-cache-reads-2 prerequisites (B1 snapshot freeze,
+  B2 MarkCompleted/Evict never called) were verified ALREADY FIXED in the current tree
+  (invalidate-on-append + orchestrator MarkCompleted + CacheEvictionSweeper) before claiming
+  liveness. Live-verified: with the page open and untouched, a slow tape run (5b148b30) appeared
+  without reload, showed `running NN%`, and flipped to `completed` on its own.
+- **Copy-run / reuse-last-params:** `?copyFrom=<id>` (and the legacy `?sourceRunId`) now rebuild the
+  FULL setup from the persisted run: dates, balance, commission, spread, risk profile, venue,
+  governor/regime/exploration/excursions, and the exact run plan rows (strategy×symbol×TF×pack,
+  row-level disables) from RunPlanJson — the old prefill only copied dates/balance/symbols/periods.
+  "⟲ Reuse last params" prefills from the most recent run without leaving the builder.
+- **F56 — copy-run appeared DEAD on a cold cache:** the builder's ngOnInit awaited four lookups
+  sequentially before prefilling, and `/api/data-manager/inventory` is the F49 full-table scan
+  (>10s cold). The prefill (which depends on none of them) now runs first and the lookups load in
+  parallel; the prefill catch also logs instead of swallowing. Found because the e2e copy-run test
+  timed out at 15s while the API-level flow was provably fine.
+
+**X3 — Trade chart rework (PLAN §3c).**
+- **F57 — why every trade chart showed "meaningless lines" (three stacked defects):**
+  (a) `markerFor()` dropped the API's `time` field, so Entry/Exit could never be time-anchored and
+  fell through to full-width horizontal lines; (b) lightweight-charts v5 REMOVED
+  `series.setMarkers()` — the call threw and killed the rest of `updateChart()`; (c) the vertical
+  open/close "lines" were 2-point series with IDENTICAL timestamps, which the library rejects.
+  Rebuilt: v5 `createSeriesMarkers` plugin with directional entry/exit arrows (side follows
+  direction, text carries price), SL/TP as trade-window level lines (not full-width), and no
+  same-timestamp series.
+- **Stop path:** `/api/trades/{id}/chart` now returns `stopPath` — the initial stop plus every
+  journaled BREAKEVEN/TRAIL move for that position (PascalCase `StopLossModifyRequested` EventJson,
+  contract pinned by `StopPathParsingTests`), rendered as a stepped dashed line walking from entry
+  to exit. Live-verified on a USDCAD short with 20 TRAIL/BE moves (run efb77acf): 21-point path.
+- **F58 — the "initial SL" painted at entry was the FINAL stop:** `TradeResults.StopLoss` is
+  post-BE/trail; for the trailed short above it sat BELOW the entry, i.e. an instant-stop-out lie.
+  The chart now uses `InitialStopLoss` (M34) with fallback to the final stop for pre-M34 rows.
+  Live-verified: initial stop 1.41081 (above the 1.40656 short entry), path walks down to the exit.
+- **Context window:** server default `padBars` 50→20 (N bars before entry / after exit, per PLAN);
+  card has a 20/50/100 selector that refetches (e2e-pinned via request assertion).
+- **Prev/next navigation:** trade detail responses carry `runId`, `prevTradeId`, `nextTradeId`,
+  `tradeIndex`/`tradeCount` (OpenedAtUtc order within the run). The trade-detail page subscribes to
+  route params (was a one-shot snapshot), so prev/next re-loads in place with the chart card
+  mounted; the report page's expanded trade card gets the same nav by swapping `expandedTradeId`.
+  Back-to-run link added. E2e-pinned: next-click navigates and the canvas survives.
+
+**E2E baseline discipline:** the full Playwright suite showed 17 failures on the new tree; before
+explaining anything away, the SPA changes were stashed and the two pre-existing spec files re-run on
+the baseline SPA → the SAME 15 failures (12 ui-smoke + 3 live-monitor; stale iter-37/38 selectors +
+live tests needing bars/cTrader) — zero regressions from X2/X3. The remaining 2 were bugs in the new
+x2-x3 spec itself (one bad selector; one real finding → F56). Final: x2-x3 spec 8/8 green;
+ui-smoke re-run on the final SPA reproduces exactly the baseline's 12. New spec:
+`web-ui/tests/e2e/x2-x3.spec.ts`. Housekeeping: `web-ui/tests/e2e/output/` was partially TRACKED in
+git (failure screenshots/error-contexts churned every run) → now gitignored and untracked.
+
+**Gate battery, final:** build 0err/5warn · Unit 759/0/6 · Integration **128**/0/0 (7 new tests:
+RunNotesTests ×3, StopPathParsingTests ×4) · Sim-fast 144/0/0. Golden untouched by
+construction (no kernel/adapter/decision-path files in the diff).
+
+**Not done / deferred:** compare-both pair grouping not exercised against a REAL cTrader child (no
+cTrader Desktop this pass) — rendering verified with a synthetic pair tag instead. Notes on a
+still-RUNNING run's report page show empty until completion (the live detail path is deliberately
+zero-DB-read; the save itself works). F48 (XAUUSD PnL currency conversion) remains open. X4 (data
+manager auto-sync) not started.

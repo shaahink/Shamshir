@@ -264,7 +264,20 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             e.CommissionPerMillion, e.SpreadPips,
             e.WallElapsedMs, e.BarsPerSec, e.TotalBars, e.WarningsJson, e.ComparePairId,
             e.ExplorationMode, e.RecordExcursions,
-            e.Status, e.QueuePosition);
+            e.Status, e.QueuePosition, e.Notes);
+    }
+
+    // X2: notes are deliberately NOT in MapToEntity/UpdateAsync — the end-record update rebuilds the
+    // summary from run state and would clobber a note typed while the run was still going.
+    public async Task SetNotesAsync(string runId, string? notes, CancellationToken ct)
+    {
+        await RetryOnBusyAsync(async () =>
+        {
+            var entity = await db.BacktestRuns.FindAsync([runId], ct);
+            if (entity is null) return;
+            entity.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+            await db.SaveChangesAsync(ct);
+        }, ct);
     }
 
     public async Task DeleteAsync(string runId, CancellationToken ct)

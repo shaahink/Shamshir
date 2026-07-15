@@ -52,4 +52,7 @@ public sealed record RunDetailResponse
     // P5.1 (F16): parent and compare-pair linkage for child runs and compare-both grouping.
     public string? ParentRunId { get; init; }
     public string? ComparePairId { get; init; }
+
+    // X2: owner's note, editable from the Runs page and the report page.
+    public string? Notes { get; init; }
 }

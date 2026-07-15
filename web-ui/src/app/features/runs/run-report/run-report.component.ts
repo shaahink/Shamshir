@@ -68,6 +68,11 @@ type JournalRow = JournalEntry & { outcome?: string | null };
               </p>
             </div>
             <div class="flex gap-2">
+              <button (click)="copyRun(d.runId)"
+                class="rounded-md border border-emerald-700 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-900/30"
+                title="Prefill the backtest builder with this run's full parameter set">
+                Copy run
+              </button>
               <button (click)="openDuplicate(d.runId)" [disabled]="duplicating()"
                 class="rounded-md border border-emerald-700 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-50">
                 {{ duplicating() ? 'Duplicating&hellip;' : 'Duplicate' }}
@@ -96,6 +101,24 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                  class="ml-2 text-emerald-400 hover:underline font-medium">Open Exit Lab (pre-filtered)</a>
             </div>
           }
+
+          <!-- X2: run notes — editable here, displayed on the Runs page. -->
+          <div class="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+            <div class="flex items-start gap-2">
+              <span class="mt-1 text-xs font-medium uppercase tracking-wide text-gray-500">Notes</span>
+              <textarea
+                [ngModel]="notesDraft()"
+                (ngModelChange)="notesDraft.set($event)"
+                rows="2"
+                placeholder="Add a note about this run..."
+                class="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-gray-100 placeholder-gray-600 focus:border-emerald-500 focus:outline-none"
+              ></textarea>
+              <button (click)="saveNotes(d.runId)" [disabled]="savingNotes() || notesDraft() === (d.notes ?? '')"
+                class="rounded-md border border-emerald-700 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-900/20 disabled:opacity-40">
+                {{ savingNotes() ? 'Saving...' : 'Save' }}
+              </button>
+            </div>
+          </div>
 
           <!-- Tab bar -->
           <nav class="flex gap-1 border-b border-gray-800 pb-2">
@@ -217,7 +240,9 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                 </div>
                 <app-data-table [columns]="activeTradeColumns()" [data]="trades()" trackKey="id" (rowClick)="onTradeClick($event)" />
                 @if (expandedTradeId()) {
-                  <div class="mt-4"><app-trade-chart-card [tradeId]="expandedTradeId()!" /></div>
+                  <div class="mt-4">
+                    <app-trade-chart-card [tradeId]="expandedTradeId()!" [showNav]="true" (navigate)="expandedTradeId.set($event)" />
+                  </div>
                 }
               </div>
             } @else {
@@ -398,6 +423,8 @@ export class RunReportComponent implements OnInit {
 
   trades = signal<TradeSummary[]>([]);
   expandedTradeId = signal<string | null>(null);
+  notesDraft = signal('');
+  savingNotes = signal(false);
   journal = signal<JournalEntry[]>([]);
   barDecisions = signal<JournalEntry[]>([]);
   runBars = signal<BarNarrative[]>([]);
@@ -786,6 +813,23 @@ export class RunReportComponent implements OnInit {
 
   symbolsDisplay = () => formatSymbols(this.store.selectedRun() ?? { symbols: '', symbol: '' });
 
+  // X2: full-prefill copy — the builder reads ?copyFrom and reconstructs the run plan.
+  copyRun(runId: string): void {
+    void this.router.navigate(['/runs/new'], { queryParams: { copyFrom: runId } });
+  }
+
+  async saveNotes(runId: string): Promise<void> {
+    if (this.savingNotes()) return;
+    this.savingNotes.set(true);
+    try {
+      await this.api.updateNotes(runId, this.notesDraft());
+      const cur = this.store.selectedRun();
+      if (cur && cur.runId === runId) this.store.selectedRun.set({ ...cur, notes: this.notesDraft() || null });
+    } finally {
+      this.savingNotes.set(false);
+    }
+  }
+
   async openDuplicate(runId: string): Promise<void> {
     this.dupRunId.set(runId);
     this.dupPackId.set('');
@@ -871,6 +915,7 @@ export class RunReportComponent implements OnInit {
     const runId = this.route.snapshot.paramMap.get('runId');
     if (!runId) return;
     await this.store.loadRun(runId);
+    this.notesDraft.set(this.store.selectedRun()?.notes ?? '');
     try {
       this.trades.set(await this.api.getRunTrades(runId));
     } catch {

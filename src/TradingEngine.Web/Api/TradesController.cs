@@ -83,9 +83,35 @@ public sealed class TradesController : ControllerBase
             .Select(r => r.Period)
             .FirstOrDefaultAsync(ct);
 
+        // X3: prev/next within the run, in OpenedAtUtc order (Id tiebreak), for chart navigation.
+        Guid? prevId = null, nextId = null;
+        int tradeIndex = 0, tradeCount = 0;
+        if (t.RunId is not null)
+        {
+            var runTradeIds = await _db.Trades
+                .AsNoTracking()
+                .Where(x => x.RunId == t.RunId)
+                .OrderBy(x => x.OpenedAtUtc).ThenBy(x => x.Id)
+                .Select(x => x.Id)
+                .ToListAsync(ct);
+            tradeCount = runTradeIds.Count;
+            var idx = runTradeIds.IndexOf(t.Id);
+            if (idx >= 0)
+            {
+                tradeIndex = idx + 1;
+                if (idx > 0) prevId = runTradeIds[idx - 1];
+                if (idx < runTradeIds.Count - 1) nextId = runTradeIds[idx + 1];
+            }
+        }
+
         return Ok(new TradeDetailResponse
         {
             Timeframe = string.IsNullOrWhiteSpace(timeframe) ? "H1" : timeframe.ToUpperInvariant(),
+            RunId = t.RunId,
+            PrevTradeId = prevId,
+            NextTradeId = nextId,
+            TradeIndex = tradeIndex,
+            TradeCount = tradeCount,
             Id = t.Id,
             PositionId = t.PositionId,
             OrderId = t.OrderId,
@@ -118,10 +144,11 @@ public sealed class TradesController : ControllerBase
         });
     }
 
-    // iter-redesign P6.2: candlestick window around a trade + entry/exit/SL/TP markers, so the UI can
-    // render one trade's detail chart. Bars come from the run's timeframe (resolved from BacktestRuns).
+    // iter-redesign P6.2 / X3: candlestick context window around a trade (N bars before entry through
+    // N bars after exit, default 20) + entry/exit/SL/TP markers + the stop's BREAKEVEN/TRAIL path from
+    // the journal. Bars come from the run's timeframe (resolved from BacktestRuns).
     [HttpGet("{id:guid}/chart")]
-    public async Task<IActionResult> GetChart(Guid id, [FromQuery] int padBars = 50, CancellationToken ct = default)
+    public async Task<IActionResult> GetChart(Guid id, [FromQuery] int padBars = 20, CancellationToken ct = default)
     {
         var t = await _db.Trades.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (t is null) return NotFound(new { error = $"Trade {id} not found" });
@@ -138,14 +165,21 @@ public sealed class TradesController : ControllerBase
 
         var bars = await _bars.GetBarsAsync(t.Symbol, timeframe, from, to, ct);
 
+        // X3: TradeResults.StopLoss is the FINAL stop (post-BE/trail) — painting it at entry time is a
+        // lie (for a trailed short it sits below the entry). The stop at entry is InitialStopLoss (M34);
+        // pre-M34 rows fall back to the final stop, which is then at least honest for unmanaged trades.
+        var entrySl = t.InitialStopLoss is { } isl && isl > 0m ? isl : t.StopLoss;
+
         var markers = new List<ChartMarker>
         {
             new() { Time = Unix(t.OpenedAtUtc), Price = t.EntryPrice, Kind = "Entry" },
             new() { Time = Unix(t.ClosedAtUtc), Price = t.ExitPrice, Kind = "Exit" },
-            new() { Time = Unix(t.OpenedAtUtc), Price = t.StopLoss, Kind = "StopLoss" },
+            new() { Time = Unix(t.OpenedAtUtc), Price = entrySl, Kind = "StopLoss" },
         };
         if (t.TakeProfit is { } tp && tp > 0m)
             markers.Add(new ChartMarker { Time = Unix(t.OpenedAtUtc), Price = tp, Kind = "TakeProfit" });
+
+        var stopPath = await BuildStopPathAsync(t.RunId, t.PositionId, t.OpenedAtUtc, t.ClosedAtUtc, entrySl, ct);
 
         return Ok(new TradeChartResponse
         {
@@ -155,7 +189,67 @@ public sealed class TradesController : ControllerBase
             Direction = t.Direction,
             Bars = bars.ToList(),
             Markers = markers,
+            StopPath = stopPath,
         });
+    }
+
+    // X3: replay the stop's movement for one position from the journal. BREAKEVEN/TRAIL StepRecords
+    // carry a PascalCase StopLossModifyRequested event: {"PositionId":..,"NewStopLoss":{"Value":..},..}.
+    private async Task<List<StopPathPoint>> BuildStopPathAsync(
+        string? runId, Guid positionId, DateTime openedAtUtc, DateTime closedAtUtc, decimal initialSl, CancellationToken ct)
+    {
+        var path = new List<StopPathPoint>();
+        if (initialSl > 0m)
+            path.Add(new StopPathPoint { Time = Unix(openedAtUtc), Price = initialSl, Kind = "SL" });
+        if (runId is null) return path;
+
+        var entries = await _db.JournalEntries
+            .AsNoTracking()
+            .Where(j => j.RunId == runId
+                && (j.EventKind == "BREAKEVEN" || j.EventKind == "TRAIL")
+                && j.SimTimeUtc >= openedAtUtc && j.SimTimeUtc <= closedAtUtc)
+            .OrderBy(j => j.Seq)
+            .Select(j => new { j.SimTimeUtc, j.EventKind, j.EventJson })
+            .ToListAsync(ct);
+
+        foreach (var e in entries)
+        {
+            var move = ParseStopMove(e.EventJson, positionId);
+            if (move is { } price)
+                path.Add(new StopPathPoint { Time = Unix(e.SimTimeUtc), Price = price, Kind = e.EventKind });
+        }
+        return path;
+    }
+
+    internal static decimal? ParseStopMove(string eventJson, Guid positionId)
+    {
+        if (string.IsNullOrEmpty(eventJson)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(eventJson);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("PositionId", out var pid) && !root.TryGetProperty("positionId", out pid))
+                return null;
+            if (!Guid.TryParse(pid.GetString(), out var parsed) || parsed != positionId)
+                return null;
+            if (!root.TryGetProperty("NewStopLoss", out var sl) && !root.TryGetProperty("newStopLoss", out sl))
+                return null;
+            // Price is a value object — serialized as {"Value":1.2345}; tolerate a bare number too.
+            if (sl.ValueKind == System.Text.Json.JsonValueKind.Object
+                && (sl.TryGetProperty("Value", out var v) || sl.TryGetProperty("value", out v))
+                && v.ValueKind == System.Text.Json.JsonValueKind.Number)
+            {
+                return v.GetDecimal();
+            }
+
+            if (sl.ValueKind == System.Text.Json.JsonValueKind.Number)
+                return sl.GetDecimal();
+            return null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
     }
 
     private static long Unix(DateTime dt) =>

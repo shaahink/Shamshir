@@ -43,3 +43,6 @@ Thumbs.db
 
 # Generated CSS
 src/styles.generated.css
+
+# Playwright e2e artifacts (screenshots, error contexts, last-run) — never commit
+tests/e2e/output/

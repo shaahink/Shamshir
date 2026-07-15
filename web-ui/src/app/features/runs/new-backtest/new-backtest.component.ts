@@ -42,6 +42,16 @@ interface CoverageInfo {
       <div class="flex items-center justify-between">
         <h1 class="text-xl font-semibold">New Backtest</h1>
         <div class="flex items-center gap-2">
+          <button (click)="reuseLastParams()" [disabled]="prefilling()"
+            class="rounded border border-emerald-800 px-2 py-0.5 text-xs text-emerald-400 hover:bg-emerald-900/20 disabled:opacity-50"
+            title="Prefill the form with the most recent run's parameters">
+            {{ prefilling() ? 'Loading…' : '⟲ Reuse last params' }}
+          </button>
+          @if (copiedFrom()) {
+            <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-400">
+              copied from {{ copiedFrom()!.slice(0, 8) }}
+            </span>
+          }
           @for (s of savedSetups; track s.name + s.savedAt; let i = $index) {
             <button (click)="loadSetup(i)"
               class="text-xs text-gray-400 hover:text-gray-200 rounded border border-gray-700 px-2 py-0.5"
@@ -527,45 +537,128 @@ export class NewBacktestComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
-    try { this.strategies.set(await this.strategiesApi.getAll()); } catch { /* */ }
-    try {
-      const profiles = await this.profilesApi.getAll();
-      if (profiles.length > 0) {
-        this.riskProfiles.set(profiles);
-        if (!profiles.some((p) => p.id === this.riskProfile())) this.riskProfile.set(profiles[0].id);
-      }
-    } catch { /* */ }
-    try {
-      const pks = await this.packsApi.getAll();
-      this.packs.set(pks.map((p) => ({ id: p.id, name: p.name })));
-    } catch { /* */ }
-    try {
-      this.inventory.set(await firstValueFrom(this.http.get<InventoryItem[]>('/api/data-manager/inventory')));
-    } catch { /* */ }
+    // X2: prefill FIRST — it depends on none of the lookups below, and the inventory endpoint can
+    // take >10s on a cold cache (F49 scan); the old sequential order made copy-run appear dead.
+    const copyFrom = this.route.snapshot.queryParamMap.get('copyFrom')
+      ?? this.route.snapshot.queryParamMap.get('sourceRunId');
+    const prefillDone = copyFrom ? this.prefillFromRun(copyFrom).then(() => {
+      // Legacy duplicate-modal overrides land on top of the copied plan.
+      const usePackId = this.route.snapshot.queryParamMap.get('usePackId');
+      if (usePackId) this.rows.update((rs) => rs.map((r) => ({ ...r, packId: usePackId })));
+      if (this.route.snapshot.queryParamMap.get('disableRegime') === 'true') this.regimeEnabled.set(false);
+    }) : Promise.resolve();
 
-    const sourceRunId = this.route.snapshot.queryParamMap.get('sourceRunId');
-    if (sourceRunId) {
-      try {
-        const src = await this.runsApi.getRun(sourceRunId);
-        if (src) {
-          this.startDate.set((src.backtestFrom || '').slice(0, 10));
-          this.endDate.set((src.backtestTo || '').slice(0, 10));
-          this.balance.set(src.initialBalance || 100000);
-          const parse = (v: unknown): string[] => {
-            try { const a = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(a) ? a : []; } catch { return []; }
-          };
-          const syms = parse(src.symbols);
-          const pers = parse(src.periods);
-          if (syms.length) this.selectedSymbols.set(new Set(syms));
-          if (pers.length) this.selectedPeriods.set(new Set(pers.map((p) => p.toLowerCase())));
-          this.regenerate();
-        }
-      } catch { /* */ }
-    }
+    // Lookups load in parallel; each failure stays isolated.
+    await Promise.all([
+      (async () => {
+        try { this.strategies.set(await this.strategiesApi.getAll()); } catch { /* */ }
+      })(),
+      (async () => {
+        try {
+          const profiles = await this.profilesApi.getAll();
+          if (profiles.length > 0) {
+            this.riskProfiles.set(profiles);
+            if (!profiles.some((p) => p.id === this.riskProfile()) && !this.copiedFrom()) this.riskProfile.set(profiles[0].id);
+          }
+        } catch { /* */ }
+      })(),
+      (async () => {
+        try {
+          const pks = await this.packsApi.getAll();
+          this.packs.set(pks.map((p) => ({ id: p.id, name: p.name })));
+        } catch { /* */ }
+      })(),
+      (async () => {
+        try {
+          this.inventory.set(await firstValueFrom(this.http.get<InventoryItem[]>('/api/data-manager/inventory')));
+        } catch { /* */ }
+      })(),
+      prefillDone,
+    ]);
 
     const preset = this.route.snapshot.queryParamMap.get('preset');
     if (preset === 'exploration' && !this.explorationMode()) {
       this.applyExplorationPreset();
+    }
+  }
+
+  prefilling = signal(false);
+  copiedFrom = signal<string | null>(null);
+
+  // X2: "reuse last params" — prefill from the most recent run without leaving the page.
+  async reuseLastParams(): Promise<void> {
+    if (this.prefilling()) return;
+    this.prefilling.set(true);
+    try {
+      const runs = await this.runsApi.getRuns();
+      if (runs.length > 0) await this.prefillFromRun(runs[0].runId);
+    } finally {
+      this.prefilling.set(false);
+    }
+  }
+
+  private async prefillFromRun(runId: string): Promise<void> {
+    try {
+      const src = await this.runsApi.getRun(runId);
+      if (!src) return;
+
+      this.startDate.set((src.backtestFrom || '').slice(0, 10));
+      this.endDate.set((src.backtestTo || '').slice(0, 10));
+      this.balance.set(src.initialBalance || 100_000);
+      if (src.commissionPerMillion != null) this.commission.set(src.commissionPerMillion);
+      if (src.spreadPips != null) this.spread.set(src.spreadPips);
+      if (src.riskProfileId) this.riskProfile.set(src.riskProfileId);
+      if (src.venue) this.venue.set(src.venue);
+      this.governorEnabled.set(src.governorEnabled !== false);
+      this.regimeEnabled.set(src.regimeEnabled !== false);
+      this.explorationMode.set(!!src.explorationMode);
+      this.recordExcursions.set(!!src.recordExcursions);
+
+      // Rebuild the exact run plan (strategy × symbol × TF × pack, incl. row-level disables) from
+      // the persisted RunPlanJson; fall back to symbols/periods for pre-plan runs.
+      const plan = this.parsePlan(src.runPlanJson);
+      if (plan.length > 0) {
+        this.selectedStrategyIds.set(new Set(plan.map((p) => p.strategyId)));
+        this.selectedSymbols.set(new Set(plan.map((p) => p.symbol.toUpperCase())));
+        this.selectedPeriods.set(new Set(plan.map((p) => p.timeframe.toLowerCase())));
+        this.regenerate();
+        const byKey = new Map(plan.map((p) => [rowKey(p.strategyId, p.symbol.toUpperCase(), p.timeframe.toUpperCase()), p]));
+        this.rows.update((rs) => rs.map((r) => {
+          const p = byKey.get(this.rowKeyOf(r));
+          return p ? { ...r, enabled: true, packId: p.packId ?? '' } : { ...r, enabled: false };
+        }));
+      } else {
+        const parse = (v: unknown): string[] => {
+          try { const a = typeof v === 'string' ? JSON.parse(v) : v; return Array.isArray(a) ? a : []; } catch { return []; }
+        };
+        const syms = parse(src.symbols);
+        const pers = parse(src.periods);
+        if (syms.length) this.selectedSymbols.set(new Set(syms));
+        if (pers.length) this.selectedPeriods.set(new Set(pers.map((p) => p.toLowerCase())));
+        this.regenerate();
+      }
+      this.copiedFrom.set(runId);
+    } catch (e) {
+      // Source run gone or malformed — leave the form usable, but never hide the why.
+      console.warn('copy-run prefill failed for', runId, e);
+    }
+  }
+
+  private parsePlan(raw: string | undefined): { strategyId: string; symbol: string; timeframe: string; packId: string | null }[] {
+    if (!raw) return [];
+    try {
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .map((e: Record<string, unknown>) => ({
+          strategyId: (e['StrategyId'] ?? e['strategyId'] ?? '') as string,
+          symbol: (e['Symbol'] ?? e['symbol'] ?? '') as string,
+          timeframe: (e['Timeframe'] ?? e['timeframe'] ?? '') as string,
+          packId: (e['PackId'] ?? e['packId'] ?? null) as string | null,
+        }))
+        .filter((p) => p.strategyId && p.symbol && p.timeframe);
+    } catch {
+      return [];
     }
   }
 

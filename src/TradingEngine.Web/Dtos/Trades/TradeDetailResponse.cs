@@ -35,4 +35,11 @@ public sealed record TradeDetailResponse
     public string? EntryRegime { get; init; }
     public string? EntrySnapshotJson { get; init; }
     public string? ExitDetailJson { get; init; }
+
+    // X3: prev/next navigation within the trade's run (ordered by OpenedAtUtc, then Id).
+    public string? RunId { get; init; }
+    public Guid? PrevTradeId { get; init; }
+    public Guid? NextTradeId { get; init; }
+    public int TradeIndex { get; init; }     // 1-based position within the run
+    public int TradeCount { get; init; }
 }

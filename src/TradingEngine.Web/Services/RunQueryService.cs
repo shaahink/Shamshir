@@ -77,6 +77,9 @@ public sealed class RunQueryService : IRunQueryService
                 ComparePairId = r.ComparePairId,
                 QueuePosition = r.QueuePosition,
                 PersistedStatus = r.Status,
+                WallElapsedMs = r.WallElapsedMs,
+                Notes = r.Notes,
+                RunPlanJson = r.RunPlanJson,
             })
             .ToListAsync(ct);
 
@@ -84,6 +87,8 @@ public sealed class RunQueryService : IRunQueryService
         await FixStaleTradeCounts(runs, ct);
         FixStuckRunStatuses(runs);
         OverlayLiveRunStatuses(runs);
+        DeriveStrategies(runs);
+        await AttachLatestScores(runs, ct);
 
         _memoryCache?.Set(RunsListCacheKey, runs, RunsListCacheDuration);
         return runs;
@@ -124,6 +129,80 @@ public sealed class RunQueryService : IRunQueryService
     }
 
     public void InvalidateRunsCache() => _memoryCache?.Remove(RunsListCacheKey);
+
+    // X2: distinct strategy ids from the persisted run plan, for the runs-table Strategy column.
+    // RunPlanJson entries are PascalCase (persisted server-side), but tolerate camelCase too.
+    private static void DeriveStrategies(List<RunListResponse> runs)
+    {
+        for (var i = 0; i < runs.Count; i++)
+        {
+            var raw = runs[i].RunPlanJson;
+            if (string.IsNullOrEmpty(raw) || raw == "[]") continue;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(raw);
+                if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) continue;
+                var ids = new List<string>();
+                foreach (var entry in doc.RootElement.EnumerateArray())
+                {
+                    if (entry.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+                    if (entry.TryGetProperty("StrategyId", out var sid) || entry.TryGetProperty("strategyId", out sid))
+                    {
+                        var id = sid.GetString();
+                        if (!string.IsNullOrEmpty(id) && !ids.Contains(id)) ids.Add(id);
+                    }
+                }
+                if (ids.Count > 0)
+                    runs[i] = runs[i] with { Strategies = string.Join(", ", ids) };
+            }
+            catch (System.Text.Json.JsonException) { /* malformed plan — leave Strategies null */ }
+        }
+    }
+
+    // X2: latest SetupScore composite per run (ExperimentRuns.ScoreJson, PascalCase "Composite").
+    private async Task AttachLatestScores(List<RunListResponse> runs, CancellationToken ct)
+    {
+        if (runs.Count == 0) return;
+        var ids = runs.Select(r => r.RunId).ToHashSet();
+
+        List<(string RunId, string ScoreJson)> scored;
+        try
+        {
+            scored = (await _db.ExperimentRuns
+                .AsNoTracking()
+                .Where(er => ids.Contains(er.BacktestRunId))
+                .OrderBy(er => er.UpdatedAtUtc)
+                .Select(er => new { er.BacktestRunId, er.ScoreJson })
+                .ToListAsync(ct))
+                .Select(x => (x.BacktestRunId, x.ScoreJson))
+                .ToList();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return; // scores are decoration on this page — never fail the list for them
+        }
+
+        // OrderBy UpdatedAtUtc ASC + dictionary overwrite ⇒ the latest score wins per run.
+        var latest = new Dictionary<string, double>();
+        foreach (var (runId, scoreJson) in scored)
+        {
+            if (string.IsNullOrEmpty(scoreJson) || scoreJson == "{}") continue;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(scoreJson);
+                if (doc.RootElement.TryGetProperty("Composite", out var comp) && comp.ValueKind == System.Text.Json.JsonValueKind.Number)
+                    latest[runId] = comp.GetDouble();
+            }
+            catch (System.Text.Json.JsonException) { /* skip malformed */ }
+        }
+
+        if (latest.Count == 0) return;
+        for (var i = 0; i < runs.Count; i++)
+        {
+            if (latest.TryGetValue(runs[i].RunId, out var score))
+                runs[i] = runs[i] with { Score = score };
+        }
+    }
 
     public async Task<RunDetailResponse?> GetRunAsync(string runId, CancellationToken ct)
     {
@@ -179,6 +258,7 @@ public sealed class RunQueryService : IRunQueryService
             ComparePairId = r.ComparePairId,
             ExplorationMode = r.ExplorationMode,
             RecordExcursions = r.RecordExcursions,
+            Notes = r.Notes,
         };
     }
 
