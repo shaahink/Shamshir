@@ -24,12 +24,6 @@ namespace TradingEngine.Web.Services;
 
     public sealed class BacktestOrchestrator : IBacktestCommandService
 {
-    // F34: the currency every money figure in this engine is denominated in — pip values, risk sizing,
-    // FTMO limits and the whole tape. A venue account in any other currency is not comparable to a tape
-    // run, so the run fails instead of silently applying an FX factor to everything. Configurable via
-    // Account:Currency: re-denominating to GBP is this value plus the GBPUSD data the rate feed loads.
-    private const string DefaultAccountCurrency = "EUR";
-
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BacktestOrchestrator> _logger;
     private readonly BacktestProgressStore _progressStore;
@@ -52,6 +46,9 @@ namespace TradingEngine.Web.Services;
     // X4: cTrader work no longer has a private serial semaphore here — it shares the one
     // CTraderProcessOwner lane (bounded parallel, shared with market-data downloads).
     private readonly CTraderProcessOwner _owner;
+    private readonly RunConfigAssembler _configAssembler;
+    private readonly RunRecordStore _records;
+    private readonly RunMarketContextLoader _marketContext;
     private readonly ConcurrentQueue<(string RunId, BacktestConfig Config)> _queue = new();
     private readonly CancellationTokenSource _dequeueCts = new();
     private readonly Task? _dequeueTask;
@@ -71,7 +68,7 @@ namespace TradingEngine.Web.Services;
         return null;
     }
 
-    private sealed record TradeStats(decimal NetProfit, decimal GrossPnL, decimal CommissionTotal, decimal SwapTotal, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
+
 
     // BacktestRunState + RunWarning live in Runs/BacktestRunState.cs; progress projection + the
     // funnel tally live in Runs/RunProgressProjector.cs (both were nested here pre-refactor).
@@ -85,6 +82,9 @@ namespace TradingEngine.Web.Services;
         EffectiveConfigResolver configResolver,
         ILogger<BacktestOrchestrator> logger,
         CTraderProcessOwner owner,
+        RunConfigAssembler configAssembler,
+        RunRecordStore records,
+        RunMarketContextLoader marketContext,
         IRunDataCache? runDataCache = null,
         IMemoryCache? memoryCache = null)
     {
@@ -96,6 +96,9 @@ namespace TradingEngine.Web.Services;
         _broadcaster = broadcaster;
         _configResolver = configResolver;
         _owner = owner;
+        _configAssembler = configAssembler;
+        _records = records;
+        _marketContext = marketContext;
         _runDataCache = runDataCache;
         _memoryCache = memoryCache;
         _logger = logger;
@@ -112,55 +115,6 @@ namespace TradingEngine.Web.Services;
         _journal.Write(runId, "LOG", msg, queue);
     }
 
-    // The New-Backtest strategy picker arrives as a comma-separated "StrategyIds" custom param
-    // (empty/absent = run all configured strategies).
-    private static string[] ParseStrategyIds(BacktestConfig cfg) =>
-        cfg.CustomParams.TryGetValue("StrategyIds", out var ids) && !string.IsNullOrWhiteSpace(ids)
-            ? ids.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            : Array.Empty<string>();
-
-    // iter-strategy-system P1 (D3): the row-based builder serializes its enabled rows (as RunPlanEntry, incl.
-    // per-row PackId) into CustomParams["RunRows"]. Absent/blank ⇒ legacy cross-product path.
-    private static List<RunPlanEntry> ParseRunPlanEntries(BacktestConfig cfg)
-    {
-        if (!cfg.CustomParams.TryGetValue("RunRows", out var json) || string.IsNullOrWhiteSpace(json))
-            return [];
-        try { return JsonSerializer.Deserialize<List<RunPlanEntry>>(json) ?? []; }
-        catch (Exception ex)
-        {
-            // A malformed RunRows must not silently run an empty plan that looks like "all strategies".
-            throw new InvalidOperationException("Invalid RunRows payload.", ex);
-        }
-    }
-
-    private static RunPlan BuildRunPlan(string[] strategyIds, string[] symbols, string[] periods)
-    {
-        var entries = new List<RunPlanEntry>();
-        foreach (var sid in strategyIds)
-        {
-            foreach (var sym in symbols)
-            {
-                foreach (var pf in periods)
-                {
-                    entries.Add(new RunPlanEntry(sid, sym, pf));
-                }
-            }
-        }
-        return new RunPlan(entries);
-    }
-
-    private static Timeframe ParseTimeframe(string period) => period.ToUpperInvariant() switch
-    {
-        "M1" => Timeframe.M1,
-        "M5" => Timeframe.M5,
-        "M15" => Timeframe.M15,
-        "M30" => Timeframe.M30,
-        "H1" => Timeframe.H1,
-        "H4" => Timeframe.H4,
-        "D1" => Timeframe.D1,
-        _ => Timeframe.H1,
-    };
-
     public BacktestRunState Start(BacktestConfig cfg)
     {
         var runId = Guid.NewGuid().ToString("N")[..8];
@@ -170,7 +124,7 @@ namespace TradingEngine.Web.Services;
             RunId = runId,
             Symbol = cfg.Symbol,
             Period = cfg.Period,
-            BarsTotal = EstimateBarCount(cfg.Start, cfg.End, cfg.Period),
+            BarsTotal = RunRequestParser.EstimateBarCount(cfg.Start, cfg.End, cfg.Period),
             Venue = cfg.CustomParams.GetValueOrDefault("Venue") ?? "replay",
             GovernorEnabled = cfg.CustomParams.GetValueOrDefault("GovernorEnabled") != "false",
             RegimeEnabled = cfg.CustomParams.GetValueOrDefault("DisableRegime") != "true",
@@ -211,7 +165,7 @@ namespace TradingEngine.Web.Services;
         {
             try
             {
-                await WriteStartRecordAsync(runId, cfg, state.StartedAt, effectiveConfigJson: null,
+                await _records.WriteStartRecordAsync(runId, cfg, state.StartedAt, effectiveConfigJson: null,
                     status: RunStateMachine.Queued, queuePosition: _queue.Count);
             }
             catch (Exception ex)
@@ -274,9 +228,9 @@ namespace TradingEngine.Web.Services;
                 TransitionRun(state, RunStateMachine.Cancelled);
                 EnqueueLog(state.RunId, state.LogLines,
                     $"[{DateTime.UtcNow:HH:mm:ss}] Cancelled (was waiting for a concurrency slot).");
-                _ = WriteEndRecordAsync(dequeued.RunId, dequeued.Config, state.StartedAt,
+                _ = _records.WriteEndRecordAsync(dequeued.RunId, dequeued.Config, state.StartedAt,
                     new BacktestResult { RunId = dequeued.RunId, ExitCode = 0, ErrorMessage = "Cancelled while waiting in queue." },
-                    new TradeStats(0, 0, 0, 0, 0, 0, 0, 0), effectiveConfigJson: null, status: state.Status);
+                    RunTradeStats.Empty, effectiveConfigJson: null, status: state.Status);
             }
             finally
             {
@@ -301,14 +255,14 @@ namespace TradingEngine.Web.Services;
             var store = scope.ServiceProvider.GetService<IMarketDataStore>();
             if (store is not null)
             {
-                var tf = ParseTimeframe(cfg.Period);
+                var tf = RunRequestParser.ParseTimeframe(cfg.Period);
                 var count = await store.CountBarsAsync(new Symbol(cfg.Symbol), tf, cfg.Start, cfg.End, ct);
                 if (count > 0) return count;
             }
         }
         catch { }
 
-        return EstimateBarCount(cfg.Start, cfg.End, cfg.Period);
+        return RunRequestParser.EstimateBarCount(cfg.Start, cfg.End, cfg.Period);
     }
 
     /// <summary>Fire-and-forget upgrade of a just-registered run's placeholder BarsTotal (the calendar
@@ -329,23 +283,6 @@ namespace TradingEngine.Web.Services;
                 _logger.LogWarning(ex, "Failed to resolve real bar count for run {RunId}", state.RunId);
             }
         });
-    }
-
-    private static int EstimateBarCount(DateTime start, DateTime end, string period)
-    {
-        var duration = end - start;
-        var minutes = period.ToUpperInvariant() switch
-        {
-            "M1" => 1.0,
-            "M5" => 5.0,
-            "M15" => 15.0,
-            "M30" => 30.0,
-            "H1" => 60.0,
-            "H4" => 240.0,
-            "D1" => 1440.0,
-            _ => 60.0,
-        };
-        return (int)(duration.TotalMinutes / minutes);
     }
 
     /// <summary>
@@ -498,9 +435,9 @@ namespace TradingEngine.Web.Services;
                 TransitionRun(qs, RunStateMachine.Cancelled);
                 qs.CancellationSource?.Cancel();
                 EnqueueLog(queued.RunId, qs.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Cancelled (shutdown).");
-                _ = WriteEndRecordAsync(queued.RunId, queued.Config, qs.StartedAt,
+                _ = _records.WriteEndRecordAsync(queued.RunId, queued.Config, qs.StartedAt,
                     new BacktestResult { RunId = queued.RunId, ExitCode = 0, ErrorMessage = "Cancelled (shutdown)." },
-                    new TradeStats(0, 0, 0, 0, 0, 0, 0, 0), effectiveConfigJson: null, status: qs.Status);
+                    RunTradeStats.Empty, effectiveConfigJson: null, status: qs.Status);
             }
         }
 
@@ -528,8 +465,8 @@ namespace TradingEngine.Web.Services;
 
         try
         {
-            effectiveConfigJson = await ResolveEffectiveConfigJsonAsync(cfg);
-            await WriteStartRecordAsync(runId, cfg, startedAt, effectiveConfigJson, status: RunStateMachine.Running);
+            effectiveConfigJson = await _configAssembler.ResolveEffectiveConfigJsonAsync(cfg);
+            await _records.WriteStartRecordAsync(runId, cfg, startedAt, effectiveConfigJson, status: RunStateMachine.Running);
 
             state.EffectiveConfigJson = effectiveConfigJson;
             state.RunPlanJson = cfg.CustomParams.GetValueOrDefault("RunRows") ?? "[]";
@@ -574,7 +511,7 @@ namespace TradingEngine.Web.Services;
             if (result.Success && string.Equals(state.Venue, "ctrader", StringComparison.OrdinalIgnoreCase))
                 await RunTradePersistenceBarrierAsync(runId, state, ct);
 
-            var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
+            var tradeStats = await _records.GetTradeStatsAsync(runId, cfg.Balance);
 
             result = result with
             {
@@ -587,7 +524,7 @@ namespace TradingEngine.Web.Services;
             // P0.2 (F5, Q5): fold any teardown/persistence warnings collected during the run (e.g. the
             // in-process cTrader leg's transport teardown) into the result. A run that produced a
             // complete result but hit a teardown fault is `completed-with-warnings`, never `failed`.
-            var warningsJson = MergeWarningsJson(state, result.WarningsJson);
+            var warningsJson = RunRecordStore.MergeWarningsJson(state, result.WarningsJson);
             result = result with { WarningsJson = warningsJson };
 
             state.Result = result;
@@ -601,14 +538,14 @@ namespace TradingEngine.Web.Services;
             EnqueueLog(runId, state.LogLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] Done. Status={state.Status} Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1} Gross={tradeStats.GrossPnL:N2} Comm={tradeStats.CommissionTotal:N2} Swap={tradeStats.SwapTotal:N2}");
 
-            finalized = await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson, status: state.Status);
+            finalized = await _records.WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson, status: state.Status);
         }
         catch (OperationCanceledException)
         {
             // T9: the run was cancelled (user Cancel, the 30-min linked timeout, or host/stream teardown
             // at/near completion). Trades were persisted during the run, so this is NOT a failure — finalize
             // with the trades-so-far and an info log instead of scaring the user with a "failed" + error.
-            var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
+            var tradeStats = await _records.GetTradeStatsAsync(runId, cfg.Balance);
             var userCancelled = state.CancelRequested;
             TransitionRun(state, RunStateMachine.Finalizing);
             TransitionRun(state, userCancelled ? RunStateMachine.Cancelled : RunStateMachine.Completed);
@@ -628,7 +565,7 @@ namespace TradingEngine.Web.Services;
                 $"[{DateTime.UtcNow:HH:mm:ss}] Run {state.Status} ({tradeStats.TotalTrades} trades saved).");
             _logger.LogInformation("Backtest {RunId} ended via cancellation; status={Status} trades={Trades}",
                 runId, state.Status, tradeStats.TotalTrades);
-            finalized = await WriteEndRecordAsync(runId, cfg, startedAt, cancelResult, tradeStats, effectiveConfigJson, status: state.Status);
+            finalized = await _records.WriteEndRecordAsync(runId, cfg, startedAt, cancelResult, tradeStats, effectiveConfigJson, status: state.Status);
         }
         catch (Exception ex)
         {
@@ -637,9 +574,9 @@ namespace TradingEngine.Web.Services;
             EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Error: {ex.Message}");
             _logger.LogError(ex, "Backtest {RunId} failed", runId);
 
-            var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
+            var tradeStats = await _records.GetTradeStatsAsync(runId, cfg.Balance);
 
-            finalized = await WriteEndRecordAsync(runId, cfg, startedAt,
+            finalized = await _records.WriteEndRecordAsync(runId, cfg, startedAt,
                 new BacktestResult { RunId = runId, ExitCode = 1, ErrorMessage = ex.Message },
                 tradeStats, effectiveConfigJson, status: state.Status);
         }
@@ -656,14 +593,14 @@ namespace TradingEngine.Web.Services;
             {
                 try
                 {
-                    var tradeStats = await GetTradeStatsAsync(runId, cfg.Balance);
+                    var tradeStats = await _records.GetTradeStatsAsync(runId, cfg.Balance);
                     var terminalResult = state.Result ?? new BacktestResult
                     {
                         RunId = runId,
                         ExitCode = state.Status switch { "failed" => 1, _ => 0 },
                         ErrorMessage = state.Error,
                     };
-                    await WriteEndRecordAsync(runId, cfg, startedAt, terminalResult, tradeStats, effectiveConfigJson);
+                    await _records.WriteEndRecordAsync(runId, cfg, startedAt, terminalResult, tradeStats, effectiveConfigJson);
                 }
                 catch (Exception finalEx)
                 {
@@ -692,142 +629,6 @@ namespace TradingEngine.Web.Services;
         }
     }
 
-    private async Task WriteStartRecordAsync(string runId, BacktestConfig cfg, DateTime startedAt, string? effectiveConfigJson,
-        string? status = null, int? queuePosition = null)
-    {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var repo = scope.ServiceProvider.GetRequiredService<IBacktestRunRepository>();
-            // iter-36 K6: content-address the run. DatasetId = hash of the data window spec (symbols/periods/
-            // range); ConfigSetId = hash of the resolved effective config. Identical (DatasetId, ConfigSetId,
-            // Seed) ⇒ a deterministic re-run; a duplicate keeps DatasetId, gets a new ConfigSetId + ParentRunId.
-            var datasetSpec = $"{SymbolsJson(cfg.Symbols)}|{PeriodsJson(cfg.Periods)}|{cfg.Start:O}|{cfg.End:O}";
-            var datasetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(datasetSpec);
-            // ConfigSetId = hash of EVERYTHING that determines behavior (ReplayModel): the resolved strategy
-            // effective config PLUS the run's risk profile / strategy selection / per-strategy overrides — so
-            // a duplicate that changes the risk profile gets a genuinely different ConfigSetId (K6).
-            var configIdentity = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                effective = effectiveConfigJson ?? "{}",
-                riskProfileId = cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
-                strategyIds = cfg.CustomParams.GetValueOrDefault("StrategyIds"),
-                overrides = cfg.CustomParams.GetValueOrDefault("StrategyOverrides"),
-                // iter-38 PK3/R1: a pack or the regime-master change the run's behaviour, so they participate
-                // in the ConfigSetId identity (different pack/regime ⇒ a genuinely different run, K6).
-                usePackId = cfg.CustomParams.GetValueOrDefault("UsePackId"),
-                perStrategyPacks = cfg.CustomParams.GetValueOrDefault("PerStrategyPackIds"),
-                disableRegime = cfg.CustomParams.GetValueOrDefault("DisableRegime"),
-                stripAddOns = cfg.CustomParams.GetValueOrDefault("StripAddOns"),
-                // iter-strategy-system P1/P2: the row plan (per-row packs) + governor toggle change behaviour,
-                // so they belong in the run's content address.
-                runRows = cfg.CustomParams.GetValueOrDefault("RunRows"),
-                governorEnabled = cfg.CustomParams.GetValueOrDefault("GovernorEnabled"),
-                // iter-redesign P2.2: per-run protection toggle overrides change behaviour (a "Raw" run is a
-                // genuinely different run from a guarded one), so they participate in the content address.
-                dailyDdEnabled = cfg.CustomParams.GetValueOrDefault("DailyDdEnabled"),
-                maxDdEnabled = cfg.CustomParams.GetValueOrDefault("MaxDdEnabled"),
-                forceCloseOnBreachEnabled = cfg.CustomParams.GetValueOrDefault("ForceCloseOnBreachEnabled"),
-                exposureEnabled = cfg.CustomParams.GetValueOrDefault("ExposureEnabled"),
-                budgetEnabled = cfg.CustomParams.GetValueOrDefault("BudgetEnabled"),
-                maxPositionsEnabled = cfg.CustomParams.GetValueOrDefault("MaxPositionsEnabled"),
-                honestFills = cfg.CustomParams.GetValueOrDefault("HonestFills"),
-                recordExcursions = cfg.CustomParams.GetValueOrDefault("RecordExcursions"),
-                exitTimeframe = cfg.CustomParams.GetValueOrDefault("ExitTimeframe"),
-            });
-            var configSetId = TradingEngine.Infrastructure.ConfigSetHash.Compute(configIdentity);
-            var parentRunId = cfg.CustomParams.GetValueOrDefault("ParentRunId");
-            var summary = new BacktestRunSummary(
-                runId, startedAt, DateTime.MinValue,
-                cfg.Symbol, cfg.Period, SymbolsJson(cfg.Symbols), PeriodsJson(cfg.Periods), cfg.Start, cfg.End,
-                cfg.Balance, "", effectiveConfigJson ?? "{}", effectiveConfigJson,
-                0, 0, 0, 0, 0, 0, 0, 0, -1, null,
-                ReportJsonPath: null, DatasetId: datasetId, ConfigSetId: configSetId, Seed: 42,
-                ParentRunId: string.IsNullOrWhiteSpace(parentRunId) ? null : parentRunId,
-                RunPlanJson: cfg.CustomParams.GetValueOrDefault("RunRows") ?? "[]",
-                Venue: cfg.CustomParams.GetValueOrDefault("Venue") ?? "replay",
-                RiskProfileId: cfg.CustomParams.GetValueOrDefault("RiskProfileId"),
-                GovernorEnabled: cfg.CustomParams.GetValueOrDefault("GovernorEnabled") != "false",
-                RegimeEnabled: cfg.CustomParams.GetValueOrDefault("DisableRegime") != "true",
-                CommissionPerMillion: cfg.CommissionPerMillion,
-                SpreadPips: cfg.SpreadPips,
-                ExplorationMode: cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
-                RecordExcursions: cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true",
-                Status: status,
-                QueuePosition: queuePosition);
-            await repo.SaveAsync(summary, CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to write start record for {RunId}", runId);
-        }
-    }
-
-    private async Task<bool> WriteEndRecordAsync(
-        string runId, BacktestConfig cfg, DateTime startedAt,
-        BacktestResult result, TradeStats stats, string? effectiveConfigJson, string? status = null)
-    {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var repo = scope.ServiceProvider.GetRequiredService<IBacktestRunRepository>();
-            var wallElapsedMs = result.WallElapsedMs > 0
-                ? result.WallElapsedMs
-                : (long)(DateTime.UtcNow - startedAt).TotalMilliseconds;
-            var totalBars = result.TotalBars;
-            var barsPerSec = result.BarsPerSec > 0
-                ? result.BarsPerSec
-                : wallElapsedMs > 0 ? totalBars / (wallElapsedMs / 1000.0) : 0;
-            var summary = new BacktestRunSummary(
-                runId, startedAt, DateTime.UtcNow,
-                cfg.Symbol, cfg.Period, SymbolsJson(cfg.Symbols), PeriodsJson(cfg.Periods), cfg.Start, cfg.End,
-                cfg.Balance, result.AlgoHash, effectiveConfigJson ?? "{}", effectiveConfigJson,
-                stats.NetProfit, stats.GrossPnL, stats.CommissionTotal, stats.SwapTotal, stats.MaxDrawdownPct,
-                stats.TotalTrades, stats.WinningTrades, stats.WinRatePct,
-                result.ExitCode, result.ErrorMessage,
-                result.ReportJsonPath,
-                WallElapsedMs: wallElapsedMs,
-                BarsPerSec: barsPerSec,
-                TotalBars: totalBars,
-                WarningsJson: result.WarningsJson,
-                ComparePairId: cfg.CustomParams.GetValueOrDefault("ComparePairId"),
-                ParentRunId: cfg.CustomParams.GetValueOrDefault("ParentRunId"),
-                ExplorationMode: cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
-                RecordExcursions: cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true",
-                Status: status);
-            await repo.UpdateAsync(summary, CancellationToken.None);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to write end record for {RunId}", runId);
-            return false;
-        }
-    }
-
-    // P0.2 (F5, Q5): serialize the run's collected teardown/persistence warnings into a JSON array,
-    // merging any warnings already carried on the result (e.g. from the cTrader leg). Returns null when
-    // there are none, so a clean run keeps WarningsJson NULL and resolves to plain `completed`.
-    private static string? MergeWarningsJson(BacktestRunState state, string? existingJson)
-    {
-        var warnings = new List<RunWarning>();
-
-        if (RunStatusResolver.HasWarnings(existingJson))
-        {
-            try
-            {
-                var parsed = JsonSerializer.Deserialize<List<RunWarning>>(existingJson!);
-                if (parsed is not null) warnings.AddRange(parsed);
-            }
-            catch { /* malformed prior warnings must never break finalization */ }
-        }
-
-        while (state.Warnings.TryDequeue(out var w))
-            warnings.Add(w);
-
-        return warnings.Count == 0 ? null : JsonSerializer.Serialize(warnings);
-    }
-
     // P0.2 (F5, Q5): record a teardown/persistence anomaly against the run without failing it.
     private void AddTeardownWarning(string runId, string code, string detail)
     {
@@ -842,194 +643,6 @@ namespace TradingEngine.Web.Services;
     {
         try { await step(); }
         catch (Exception ex) { AddTeardownWarning(runId, code, ex.Message); }
-    }
-
-    // Builds the engine's LoadedConfig from the DATABASE (canonical config source) rather than letting
-    // the inner host re-read config/strategies/*.json. Strategy parameters, symbols, timeframe, regime
-    // filter, order-entry and position-management all come from the seeded DB store, so what the New-
-    // Backtest UI shows/edits is exactly what the engine evaluates. Risk profiles, prop-firm rules,
-    // governor and sizing are also loaded from DB stores (seeded from JSON at startup).
-    // iter-strategy-system P1: <paramref name="perPassPacks"/> drives per-row add-on packs (D3). When non-null
-    // (the row-based builder), it is the strategy→packId map for ONE execution pass: each listed strategy is
-    // force-enabled for the run (the user put it in a row, so a DB Enabled=false must not silently drop it)
-    // and gets that row's pack — so the SAME strategy can carry DIFFERENT packs on different (symbol,tf) passes.
-    // When null, the legacy global pack logic (UsePackId / PerStrategyPackIds) applies. The governor toggle
-    // (D4) is honoured for both paths via CustomParams["GovernorEnabled"].
-    private async Task<LoadedConfig> BuildLoadedConfigFromDbAsync(
-        BacktestConfig cfg, IReadOnlyDictionary<string, string?>? perPassPacks = null)
-    {
-        var solutionRoot = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var baseConfig = new ConfigLoader(solutionRoot).LoadBase();
-
-        using var scope = _scopeFactory.CreateScope();
-        var store = scope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
-        var dbConfigs = await store.GetAllAsync(CancellationToken.None);
-
-        // iter-redesign-ctrader P3.2: load DB risk profiles early so profileIsKnown checks BOTH the JSON
-        // base config AND the DB store. Before this fix, only baseConfig.RiskProfiles was checked; a
-        // "raw" profile seeded into the DB was invisible, so the strategy kept its stored (standard)
-        // profile and the raw prop-firm toggles never loaded.
-        var rpStore = scope.ServiceProvider.GetRequiredService<IRiskProfileStore>();
-        var dbRiskProfiles = await rpStore.GetAllAsync(CancellationToken.None);
-        var riskProfiles = dbRiskProfiles.Count > 0 ? dbRiskProfiles : baseConfig.RiskProfiles;
-
-        var chosenProfile = cfg.CustomParams.GetValueOrDefault("RiskProfileId");
-        var profileIsKnown = !string.IsNullOrWhiteSpace(chosenProfile)
-            && riskProfiles.Any(r => r.Id == chosenProfile);
-
-        var strategyConfigs = new List<StrategyConfigEntry>();
-        {
-            // iter-38 PK3 / D1: apply a named add-on pack over each strategy's own add-ons (per-strategy pack
-            // wins over the global UsePackId; the pack REPLACES enrichments, baseline SL/TP stays — D4).
-            var usePackId = cfg.CustomParams.GetValueOrDefault("UsePackId");
-            var disableRegime = cfg.CustomParams.GetValueOrDefault("DisableRegime") == "true";   // iter-38 R1 run-master
-            // iter-redesign P3.2 (D2): "no add-ons (raw)" mode — strip every add-on so the strategy runs its
-            // baseline SL/TP only, with no breakeven/trailing/partial/ride/dynamic enrichment. Wins over any
-            // pack so the owner can A/B raw vs add-on'd and watch the unmasked drawdown.
-            var stripAddOns = cfg.CustomParams.GetValueOrDefault("StripAddOns") == "true";
-            Dictionary<string, string>? perStrategyPacks = null;
-            if (perPassPacks is null
-                && cfg.CustomParams.TryGetValue("PerStrategyPackIds", out var ppJson) && !string.IsNullOrWhiteSpace(ppJson))
-            {
-                try { perStrategyPacks = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(ppJson); }
-                catch (Exception ex) { _logger.LogWarning(ex, "Bad PerStrategyPackIds JSON — ignoring"); }
-            }
-
-            var packStore = scope.ServiceProvider.GetRequiredService<IAddOnPackStore>();
-            var packCache = new Dictionary<string, AddOnPack?>();
-
-            foreach (var c0 in dbConfigs)
-            {
-                var c = profileIsKnown ? c0 with { RiskProfileId = chosenProfile! } : c0;
-
-                // iter-strategy-system P1 (D3): a row-selected strategy runs for this pass regardless of its
-                // stored Enabled flag; routing to the right pass is the RunPlan's job (StrategyBankService).
-                if (perPassPacks is not null && perPassPacks.ContainsKey(c.Id))
-                    c = c with { Enabled = true };
-
-                var packId = perPassPacks is not null
-                    ? perPassPacks.GetValueOrDefault(c.Id)
-                    : perStrategyPacks?.GetValueOrDefault(c.Id) ?? usePackId;
-                if (!string.IsNullOrWhiteSpace(packId))
-                {
-                    if (!packCache.TryGetValue(packId, out var pack))
-                    {
-                        pack = await packStore.GetByIdAsync(packId, CancellationToken.None);
-                        packCache[packId] = pack;
-                    }
-                    if (pack is not null)
-                    {
-                        c = c with {
-                            PositionManagement = _configResolver.ApplyPack(c.PositionManagement, pack),
-                            RegimeFilter = (c.RegimeFilter ?? new RegimeFilterOptions()) with {
-                                DetectionEnabled = pack.RegimeDetectionEnabled
-                            }
-                        };
-                    }
-                }
-                // iter-38 R1 run-master: force regime detection OFF for every strategy this run. The existing
-                // per-strategy mechanism (RegimeFilterOptions.DetectionEnabled=false ⇒ Allows allow-all) then
-                // lets the strategy trade in any regime — no engine-path change needed.
-                if (disableRegime)
-                    c = c with { RegimeFilter = (c.RegimeFilter ?? new RegimeFilterOptions()) with { DetectionEnabled = false } };
-
-                // iter-redesign P3.2 (D2): strip add-ons last so it overrides both the strategy's stored
-                // enrichments AND any applied pack — a "raw" run is provably free of breakeven/trailing/
-                // partial/ride/dynamic-SL/TP (baseline SL/TP preserved).
-                if (stripAddOns)
-                    c = c with { PositionManagement = EffectiveConfigResolver.StripAddOns(c.PositionManagement) };
-
-                // P3.2 exploration mode: after stripping add-ons (if requested), force every strategy
-                // to the exploration preset — SL=ATR×4, TP=none, zero enrichments — so the entry signal
-                // runs bare. The recorded excursion paths (RecordExcursions=true) are the raw measure of
-                // entry quality that the P3.3 ExitReplayer calibrates exits from.
-                if (cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true")
-                    c = c with { PositionManagement = EffectiveConfigResolver.ApplyExplorationPreset(c.PositionManagement) };
-
-                strategyConfigs.Add(c);
-            }
-
-            var runOverrides = ParseOverrides(cfg);
-            if (runOverrides.Count > 0)
-            {
-                for (var i = 0; i < strategyConfigs.Count; i++)
-                {
-                    var c = strategyConfigs[i];
-                    if (runOverrides.TryGetValue(c.Id, out var ovr))
-                    {
-                        var resolved = _configResolver.Resolve(c, ovr);
-                        strategyConfigs[i] = c with
-                        {
-                            Parameters = resolved.Parameters,
-                            PositionManagement = resolved.PositionManagement,
-                            OrderEntry = resolved.OrderEntry,
-                            RegimeFilter = resolved.RegimeFilter,
-                            Reentry = resolved.Reentry,
-                        };
-                    }
-                }
-            }
-        }
-
-        var pfStore = scope.ServiceProvider.GetRequiredService<IPropFirmRuleSetStore>();
-        var dbPropFirms = await pfStore.GetAllAsync(CancellationToken.None);
-        var propFirms = dbPropFirms.Count > 0 ? dbPropFirms : baseConfig.PropFirms;
-
-        GovernorOptions governor;
-        try
-        {
-            var govStore = scope.ServiceProvider.GetRequiredService<IGovernorOptionsStore>();
-            governor = await govStore.GetAsync(CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load governor options from DB — falling back to JSON config defaults (M19 fix)");
-            governor = baseConfig.Governor;
-        }
-
-        // iter-strategy-system P1 (D4): run-level governor toggle. Default (absent/"true") keeps the stored
-        // governor; "false" disables it for the whole run.
-        if (cfg.CustomParams.GetValueOrDefault("GovernorEnabled") == "false")
-            governor = governor with { Enabled = false };
-
-        // iter-strategy-system P5: run-level protection toggle overrides. Default (absent/"true") keeps
-        // the ruleset defaults. "false" forces the corresponding protection OFF by ANDing into every
-        // ruleset's ProtectionToggles, regardless of which ruleset gets selected later.
-        var perRunDailyDd = cfg.CustomParams.GetValueOrDefault("DailyDdEnabled") != "false";
-        var perRunMaxDd = cfg.CustomParams.GetValueOrDefault("MaxDdEnabled") != "false";
-        var perRunForceClose = cfg.CustomParams.GetValueOrDefault("ForceCloseOnBreachEnabled") != "false";
-        // iter-redesign P2.2: exposure / daily-budget+heat / position-count limiters are now per-run
-        // overridable too, so a "Raw" run can provably disable every limiter (not just the DD set).
-        var perRunExposure = cfg.CustomParams.GetValueOrDefault("ExposureEnabled") != "false";
-        var perRunBudget = cfg.CustomParams.GetValueOrDefault("BudgetEnabled") != "false";
-        var perRunMaxPositions = cfg.CustomParams.GetValueOrDefault("MaxPositionsEnabled") != "false";
-        if (!perRunDailyDd || !perRunMaxDd || !perRunForceClose
-            || !perRunExposure || !perRunBudget || !perRunMaxPositions)
-        {
-            propFirms = propFirms.Select(pf => pf with
-            {
-                Toggles = pf.Toggles with
-                {
-                    DailyDdEnabled = pf.Toggles.DailyDdEnabled && perRunDailyDd,
-                    MaxDdEnabled = pf.Toggles.MaxDdEnabled && perRunMaxDd,
-                    ForceCloseOnBreachEnabled = pf.Toggles.ForceCloseOnBreachEnabled && perRunForceClose,
-                    ExposureEnabled = pf.Toggles.ExposureEnabled && perRunExposure,
-                    BudgetEnabled = pf.Toggles.BudgetEnabled && perRunBudget,
-                    MaxPositionsEnabled = pf.Toggles.MaxPositionsEnabled && perRunMaxPositions,
-                }
-            }).ToList();
-        }
-
-        return new LoadedConfig(propFirms, riskProfiles)
-        {
-            StrategyConfigs = strategyConfigs,
-            NewsWindows = baseConfig.NewsWindows,
-            StrategyRotation = baseConfig.StrategyRotation,
-            Governor = governor,
-            SizingPolicy = baseConfig.SizingPolicy,
-            Regime = baseConfig.Regime,
-        };
     }
 
     private async Task<BacktestResult> RunCompareBothAsync(
@@ -1097,7 +710,7 @@ namespace TradingEngine.Web.Services;
 
         // F18 (R0.1): write a start record to DB immediately so the child run is visible from spawn
         // moment, even if a crash prevents WriteEndRecordAsync from running later.
-        await WriteStartRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, null);
+        await _records.WriteStartRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, null);
 
         EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] Compare mode — running cTrader leg {ctraderRunId}...");
 
@@ -1118,8 +731,8 @@ namespace TradingEngine.Web.Services;
             if (ctraderResult.Success)
                 await RunTradePersistenceBarrierAsync(ctraderRunId, ctraderState, ct);
 
-            var tradeStats = await GetTradeStatsAsync(ctraderRunId, cfg.Balance);
-            var ctraderWarnings = MergeWarningsJson(ctraderState, ctraderResult.WarningsJson);
+            var tradeStats = await _records.GetTradeStatsAsync(ctraderRunId, cfg.Balance);
+            var ctraderWarnings = RunRecordStore.MergeWarningsJson(ctraderState, ctraderResult.WarningsJson);
             ctraderResult = ctraderResult with
             {
                 NetProfit = tradeStats.NetProfit,
@@ -1138,7 +751,7 @@ namespace TradingEngine.Web.Services;
                     : RunStateMachine.Completed)
                 : RunStateMachine.Failed);
 
-            await WriteEndRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, ctraderResult, tradeStats, null);
+            await _records.WriteEndRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, ctraderResult, tradeStats, null);
 
             EnqueueLog(runId, logLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] Compare complete. Tape={runId} ({tapeResult.TotalBars} bars) / cTrader={ctraderRunId} ({ctraderResult.TotalBars} bars / {ctraderResult.TotalTrades}t) — reconcile: GET /api/backtest/analytics/reconcile?left={runId}&right={ctraderRunId}");
@@ -1180,7 +793,7 @@ namespace TradingEngine.Web.Services;
         var useTape = string.Equals(cfg.CustomParams.GetValueOrDefault("Venue"), "tape", StringComparison.OrdinalIgnoreCase);
         var to = useTape ? cfg.End.Date.AddDays(1) : cfg.End;
         var marketDataStore = useTape ? scope.ServiceProvider.GetService<IMarketDataStore>() : null;
-        var exitTf = ParseTimeframe(cfg.CustomParams.GetValueOrDefault("ExitTimeframe") ?? "M1");
+        var exitTf = RunRequestParser.ParseTimeframe(cfg.CustomParams.GetValueOrDefault("ExitTimeframe") ?? "M1");
 
         var solutionRoot = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
@@ -1214,7 +827,7 @@ namespace TradingEngine.Web.Services;
         // (strategy × symbol × timeframe × pack), built per-pass so the same strategy can carry a different
         // pack on different passes. Otherwise fall back to the legacy Symbols×Periods×Strategies cross-product
         // with one shared config for every pass (behaviour unchanged).
-        var rowEntries = ParseRunPlanEntries(cfg);
+        var rowEntries = RunRequestParser.ParseRunPlanEntries(cfg);
         var perRow = rowEntries.Count > 0;
 
         RunPlan runPlan;
@@ -1227,21 +840,21 @@ namespace TradingEngine.Web.Services;
             runPlan = new RunPlan(rowEntries);
             activeStrategyIds = rowEntries.Select(e => e.StrategyId).Distinct().ToArray();
             passes = RunPlanBuilder.IntoPasses(runPlan)
-                .Select(p => (Symbol.Parse(p.Symbol), ParseTimeframe(p.Timeframe),
+                .Select(p => (Symbol.Parse(p.Symbol), RunRequestParser.ParseTimeframe(p.Timeframe),
                     (IReadOnlyDictionary<string, string?>?)p.StrategyPacks))
                 .ToList();
         }
         else
         {
-            var strategyIds = ParseStrategyIds(cfg);
-            sharedConfig = await BuildLoadedConfigFromDbAsync(cfg);
+            var strategyIds = RunRequestParser.ParseStrategyIds(cfg);
+            sharedConfig = await _configAssembler.BuildLoadedConfigFromDbAsync(cfg);
             var effectiveStrategyIds = strategyIds.Length > 0
                 ? strategyIds
                 : sharedConfig.StrategyConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
-            runPlan = BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
+            runPlan = RunRequestParser.BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
             activeStrategyIds = strategyIds;
             passes = runPlan.Entries
-                .Select(e => (Sym: Symbol.Parse(e.Symbol), Tf: ParseTimeframe(e.Timeframe)))
+                .Select(e => (Sym: Symbol.Parse(e.Symbol), Tf: RunRequestParser.ParseTimeframe(e.Timeframe)))
                 .Distinct()
                 .Select(c => (c.Sym, c.Tf, (IReadOnlyDictionary<string, string?>?)null))
                 .ToList();
@@ -1259,11 +872,11 @@ namespace TradingEngine.Web.Services;
         // both in scope — and it fails the run rather than falling back to a literal (a wrong cross rate
         // is a wrong lot size). Costs nothing on the common case: a USD account trading USD pairs needs
         // no legs at all.
-        var accountCurrency = ResolveAccountCurrency();
-        var crossRateSeries = await LoadCrossRateSeriesAsync(
+        var accountCurrency = _marketContext.ResolveAccountCurrency();
+        var crossRateSeries = await _marketContext.LoadCrossRateSeriesAsync(
             accountCurrency, passes.Select(p => p.Sym).Distinct().ToList(), solutionRoot,
             scope.ServiceProvider.GetService<IMarketDataStore>(), from, to, runId, logLines, cts.Token);
-        var venueSymbolSpecs = await LoadVenueSymbolSpecsAsync(cts.Token);
+        var venueSymbolSpecs = await _marketContext.LoadVenueSymbolSpecsAsync(cts.Token);
 
         // P2.1: pre-query actual bar counts so progress shows % of real bars, not calendar estimate.
         // The foreach loop below also sums bar counts, but this locks in barsTotal BEFORE the first pass
@@ -1294,7 +907,7 @@ namespace TradingEngine.Web.Services;
             passIndex++;
             // Per-row runs build a fresh config per pass so the SAME strategy can carry a DIFFERENT pack on
             // each (symbol,tf). Legacy runs reuse one shared config (cheaper, behaviour byte-identical).
-            var passConfig = perRow ? await BuildLoadedConfigFromDbAsync(cfg, packs) : sharedConfig!;
+            var passConfig = perRow ? await _configAssembler.BuildLoadedConfigFromDbAsync(cfg, packs) : sharedConfig!;
             state.CurrentPass = $"{sym}/{tf}";
             state.PassIndex = passIndex;
             state.PassTotal = passes.Count;
@@ -1381,7 +994,7 @@ namespace TradingEngine.Web.Services;
                 $"[{DateTime.UtcNow:HH:mm:ss}] Pass {passIndex}/{passes.Count} {sym}/{tf} started...");
 
             using var equityCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
-            _ = StartEquityPollingAsync(innerHost, state, runId, equityCts.Token);
+            _ = EngineHostLifecycle.StartEquityPollingAsync(innerHost, state, runId, equityCts.Token);
 
             var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
             await adapter.BarStream.Completion;
@@ -1396,10 +1009,10 @@ namespace TradingEngine.Web.Services;
             // or the display shows nonsense like "99.9% (816 / 400)" on multi-pass runs.
 
             equityCts.Cancel();
-            await FlushRunPersistenceAsync(innerHost);
-            CaptureFinalEquity(state, innerHost, runId);
+            await EngineHostLifecycle.FlushRunPersistenceAsync(innerHost);
+            EngineHostLifecycle.CaptureFinalEquity(state, innerHost, runId);
             await innerHost.StopAsync(CancellationToken.None);
-            await DisposeHostAsync(innerHost);
+            await EngineHostLifecycle.DisposeHostAsync(innerHost);
 
             EnqueueLog(runId, logLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] Pass {passIndex}/{passes.Count} {sym}/{tf} complete ({barCount} bars).");
@@ -1458,7 +1071,7 @@ namespace TradingEngine.Web.Services;
         var algoHash = ComputeAlgoHash(algoPath);
 
         var symbol = Symbol.Parse(cfg.Symbol);
-        var timeframe = ParseTimeframe(cfg.Period);
+        var timeframe = RunRequestParser.ParseTimeframe(cfg.Period);
 
         var (dataPort, commandPort) = AllocatePorts();
 
@@ -1492,18 +1105,18 @@ namespace TradingEngine.Web.Services;
             _broadcaster.Publish(RunProgressProjector.Build(runState, "running"), force: evt.EventType == "BREACH");
         });
 
-        var strategyIds = ParseStrategyIds(cfg);
-        var loadedConfig = await BuildLoadedConfigFromDbAsync(cfg);
+        var strategyIds = RunRequestParser.ParseStrategyIds(cfg);
+        var loadedConfig = await _configAssembler.BuildLoadedConfigFromDbAsync(cfg);
         var effectiveStrategyIds = strategyIds.Length > 0
             ? strategyIds
             : loadedConfig.StrategyConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
-        var runPlan = BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
+        var runPlan = RunRequestParser.BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
 
-        var accountCurrency = ResolveAccountCurrency();
+        var accountCurrency = _marketContext.ResolveAccountCurrency();
         IReadOnlyDictionary<string, IReadOnlyList<CrossRatePoint>>? crossRateSeries;
         using (var rateScope = _scopeFactory.CreateScope())
         {
-            crossRateSeries = await LoadCrossRateSeriesAsync(
+            crossRateSeries = await _marketContext.LoadCrossRateSeriesAsync(
                 accountCurrency, cfg.Symbols.Select(Symbol.Parse).ToList(), solutionRoot,
                 rateScope.ServiceProvider.GetService<IMarketDataStore>(),
                 cfg.Start, cfg.End, runId, logLines, ct);
@@ -1581,7 +1194,7 @@ namespace TradingEngine.Web.Services;
             AccountCurrency = accountCurrency,
             CrossRateSeries = crossRateSeries,
             // ...and, for the same reason, the SAME venue-declared economics (F44).
-            VenueSymbolSpecs = await LoadVenueSymbolSpecsAsync(ct),
+            VenueSymbolSpecs = await _marketContext.LoadVenueSymbolSpecsAsync(ct),
         });
         EngineHostFactory.WireEventHandlers(innerHost);
         EngineHostFactory.WireRiskRules(innerHost);
@@ -1595,7 +1208,7 @@ namespace TradingEngine.Web.Services;
         }
         catch (Exception ex)
         {
-            await DisposeHostAsync(innerHost);
+            await EngineHostLifecycle.DisposeHostAsync(innerHost);
             EnqueueLog(runId, logLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] Engine start failed: {ex.Message}");
             return new BacktestResult
@@ -1610,7 +1223,7 @@ namespace TradingEngine.Web.Services;
         EnqueueLog(runId, logLines,
             $"[{DateTime.UtcNow:HH:mm:ss}] Engine started (in-process NetMQ). Ports={dataPort}/{commandPort}");
 
-        _ = StartEquityPollingAsync(innerHost, _runs[runId], runId, cts.Token);
+        _ = EngineHostLifecycle.StartEquityPollingAsync(innerHost, _runs[runId], runId, cts.Token);
 
         var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
         Directory.CreateDirectory(resultsDir);
@@ -1673,11 +1286,11 @@ namespace TradingEngine.Web.Services;
                 try { await barDone; } catch { }
             }
             ctraderBarCount = _runs.TryGetValue(runId, out var rs) ? rs.BarCount : 0;
-            await SafeTeardownStepAsync(runId, "FLUSH_PERSISTENCE", () => FlushRunPersistenceAsync(innerHost));
-            try { CaptureFinalEquity(_runs[runId], innerHost, runId); }
+            await SafeTeardownStepAsync(runId, "FLUSH_PERSISTENCE", () => EngineHostLifecycle.FlushRunPersistenceAsync(innerHost));
+            try { EngineHostLifecycle.CaptureFinalEquity(_runs[runId], innerHost, runId); }
             catch (Exception ex) { AddTeardownWarning(runId, "CAPTURE_EQUITY", ex.Message); }
             await SafeTeardownStepAsync(runId, "HOST_STOP", () => innerHost.StopAsync(CancellationToken.None));
-            await SafeTeardownStepAsync(runId, "HOST_DISPOSE", () => DisposeHostAsync(innerHost));
+            await SafeTeardownStepAsync(runId, "HOST_DISPOSE", () => EngineHostLifecycle.DisposeHostAsync(innerHost));
         }
 
         // iter-redesign-ctrader P6.3 / P2.1 → X4: after the engine has disposed and the run is done, reap
@@ -1897,7 +1510,7 @@ namespace TradingEngine.Web.Services;
                     $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: {mismatches} position(s) had venue protection that did not match the engine's intent");
             }
 
-            var modelled = ResolveAccountCurrency();
+            var modelled = _marketContext.ResolveAccountCurrency();
             var venueCurrency = ccyEl.GetString();
             if (string.IsNullOrWhiteSpace(venueCurrency) ||
                 string.Equals(venueCurrency, modelled, StringComparison.OrdinalIgnoreCase))
@@ -1915,77 +1528,6 @@ namespace TradingEngine.Web.Services;
         {
             AddTeardownWarning(runId, "VENUE_LEDGER_UNREADABLE", ex.Message);
         }
-    }
-
-    /// <summary>The account denomination (F34). One configured value; every symbol, cross rate and venue
-    /// check reads it, so a GBP account is a config edit rather than a code change.</summary>
-    private string ResolveAccountCurrency() =>
-        _configuration.GetValue<string>("Account:Currency") is { Length: > 0 } c
-            ? c.ToUpperInvariant()
-            : DefaultAccountCurrency;
-
-    /// <summary>
-    /// P4.4 (F44): the broker's own commission/swap/contract economics, captured from a live cTrader
-    /// session and persisted. EVERY EngineHostOptions built here must carry them — the engine host seeds
-    /// its registry from symbols.json, which is fabricated, and only the cTrader leg can learn the real
-    /// numbers for itself. Miss a site and that leg silently prices off fiction, which is precisely how
-    /// F34 (currency) shipped: two of three option sites never received it.
-    /// Never throws — an empty list just means "no venue session captured yet" and the registry warns.
-    /// </summary>
-    private async Task<IReadOnlyList<VenueSymbolSpec>> LoadVenueSymbolSpecsAsync(CancellationToken ct)
-    {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            return await scope.ServiceProvider.GetRequiredService<IVenueSymbolSpecStore>().LoadAllAsync(ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Could not load venue symbol specs — pricing falls back to symbols.json");
-            return [];
-        }
-    }
-
-    /// <summary>
-    /// Load the USD-leg rate series this run needs (F34). Returns null when nothing needs converting — a
-    /// USD account trading only USD-legged symbols — so the common path stays free.
-    /// </summary>
-    private async Task<IReadOnlyDictionary<string, IReadOnlyList<CrossRatePoint>>?> LoadCrossRateSeriesAsync(
-        string accountCurrency,
-        IReadOnlyList<Symbol> tradedSymbols,
-        string solutionRoot,
-        IMarketDataStore? marketData,
-        DateTime fromUtc,
-        DateTime toUtc,
-        string runId,
-        ConcurrentQueue<string> logLines,
-        CancellationToken ct)
-    {
-        var catalog = new SymbolCatalog(solutionRoot, accountCurrency);
-        var book = catalog.GetAll();
-        var traded = tradedSymbols.Select(s => catalog.Resolve(s.Value)).ToList();
-
-        var required = CrossRateSeriesLoader.RequiredCurrencies(accountCurrency, traded);
-        if (required.Count == 0)
-        {
-            return null;
-        }
-
-        if (marketData is null)
-        {
-            throw new InvalidOperationException(
-                $"Run needs cross rates for {string.Join(", ", required)} but no market-data store is " +
-                "available to source them. A wrong cross rate is a wrong lot size, so the run stops here.");
-        }
-
-        var series = await CrossRateSeriesLoader.LoadAsync(
-            accountCurrency, traded, book, marketData, Timeframe.H1, fromUtc, toUtc, ct);
-
-        EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] Cross rates ({accountCurrency} account): " +
-            string.Join(", ", series.Select(kv => $"{kv.Key} {kv.Value.Count} obs")));
-
-        return series;
     }
 
     // backfills any lost trades from the journal and, on a shortfall, records a TRADES_LOST warning so the
@@ -2038,200 +1580,4 @@ namespace TradingEngine.Web.Services;
         }
     }
 
-    private async Task<TradeStats> GetTradeStatsAsync(string runId, decimal initialBalance)
-    {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-            var trades = await db.Trades
-                .Where(t => t.RunId == runId)
-                .OrderBy(t => t.ClosedAtUtc)
-                .ToListAsync();
-
-            if (trades.Count == 0) return new(0, 0, 0, 0, 0, 0, 0, 0);
-
-            var netPnL = trades.Sum(t => t.NetPnLAmount);
-            var grossPnL = trades.Sum(t => t.GrossPnLAmount);
-            var commissionTotal = trades.Sum(t => t.CommissionAmount);
-            var swapTotal = trades.Sum(t => t.SwapAmount);
-            var wins = trades.Count(t => t.NetPnLAmount > 0);
-            var winRate = (double)wins / trades.Count;
-
-            // Max drawdown from the engine's per-bar equity snapshots. Materialize first
-            // then compute max to avoid EF Core translation issues with DefaultIfEmpty on nullable.
-            var snapshotDds = await db.EquitySnapshots
-                .Where(s => s.RunId == runId)
-                .Select(s => (decimal?)s.CurrentMaxDrawdown)
-                .ToListAsync();
-            var snapshotDd = snapshotDds.Count > 0 ? snapshotDds.Max().GetValueOrDefault() : 0m;
-
-            var equity = initialBalance;
-            var peak = initialBalance;
-            var tradeDd = 0m;
-            foreach (var t in trades)
-            {
-                equity += t.NetPnLAmount;
-                if (equity > peak) peak = equity;
-                if (peak > 0)
-                {
-                    var dd = (peak - equity) / peak;
-                    if (dd > tradeDd) tradeDd = dd;
-                }
-            }
-
-            return new(netPnL, grossPnL, commissionTotal, swapTotal, snapshotDd > 0 ? snapshotDd : tradeDd, trades.Count, wins, winRate);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to query trade stats for {RunId}", runId);
-            return new(0, 0, 0, 0, 0, 0, 0, 0);
-        }
-    }
-
-    // Live equity/DD for the Monitor. Reads the engine's in-memory AccountSnapshotStore (which moves
-    // as the run progresses), NOT IBrokerAdapter.GetAccountStateAsync — the replay adapter's
-    // GetAccountStateAsync returns the INITIAL balance forever, which left the Monitor's equity/DD
-    // frozen and the page feeling "stuck".
-    private static async Task StartEquityPollingAsync(
-        IHost innerHost, BacktestRunState state, string runId, CancellationToken ct)
-    {
-        var store = innerHost.Services.GetService<IAccountSnapshotStore>();
-        if (store is null) return;
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                await Task.Delay(500, ct);
-                ApplySnapshot(state, await store.GetByRunIdAsync(runId, ct));
-            }
-        }
-        catch (OperationCanceledException) { }
-    }
-
-    // Capture the final snapshot onto the run state BEFORE the inner host (and its in-memory store)
-    // is disposed, so the terminal RunProgress frame and the saved run summary show real equity/DD.
-    private static void CaptureFinalEquity(BacktestRunState state, IHost innerHost, string runId)
-    {
-        var store = innerHost.Services.GetService<IAccountSnapshotStore>();
-        if (store is null) return;
-        try { ApplySnapshot(state, store.GetByRunIdAsync(runId, CancellationToken.None).GetAwaiter().GetResult()); }
-        catch { /* best effort */ }
-    }
-
-    // Drain the buffered DB writers while the inner host's provider is still fully alive, so a short
-    // run's equity curve and the tail of its bars are persisted (otherwise the 5s equity flush window
-    // and the 500-bar batch threshold drop the run's data — the empty equity chart / "no bars" bugs).
-    private static async Task FlushRunPersistenceAsync(IHost host)
-    {
-        try { await host.Services.GetRequiredService<EquityPersistenceHandler>().FlushAsync(); }
-        catch { /* best effort */ }
-        try { await host.Services.GetRequiredService<BufferedBarWriter>().FlushAsync(); }
-        catch { /* best effort */ }
-        // iter-36 K5: the StepRecord journal drains via ChannelJournalWriter.FlushAsync on engine dispose
-        // (Wait-mode, lossless) — the old PipelineEventWriter/BarEvaluationHandler force-drains are gone.
-    }
-
-    private static async Task DisposeHostAsync(IHost host)
-    {
-        // Several engine singletons (BufferedBarWriter, EquityPersistenceHandler) are IAsyncDisposable;
-        // sync Dispose() can't run their async teardown. Dispose the host asynchronously.
-        if (host is IAsyncDisposable ad) await ad.DisposeAsync();
-        else host.Dispose();
-    }
-
-    private static void ApplySnapshot(BacktestRunState state, IReadOnlyList<AccountSnapshot> snaps)
-    {
-        if (snaps.Count == 0) return;
-        var latest = snaps[^1];
-        state.Equity = latest.Equity;
-        state.Balance = latest.Balance;
-        state.HasEquityObservation = true;
-        state.DailyDdPct = latest.DailyDrawdown;
-        state.MaxDdPct = latest.MaxDrawdown;
-        state.OpenPositions = latest.OpenPositions;
-        // iter-38 W-A7: the governor band/reason + distance-to-daily-limit are sourced from the
-        // authoritative kernel EngineState (via KernelEquitySnapshot.From), so the Monitor no longer
-        // shows a blank governor.
-        state.GovernorState = latest.GovernorState;
-        state.GovernorReason = latest.GovernorReason;
-        state.DistanceToDailyLimit = latest.DistanceToDailyLimit;
-    }
-
-    private async Task<string?> ResolveEffectiveConfigJsonAsync(BacktestConfig cfg)
-    {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var store = scope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
-            var storedConfigs = await store.GetAllAsync(CancellationToken.None);
-
-            // iter-redesign-ctrader P3.1: include the resolved risk profile name in the audit config
-            // so the stored EffectiveConfigJson reflects what actually ran — not just strategy overrides.
-            var chosenProfile = cfg.CustomParams.GetValueOrDefault("RiskProfileId");
-            var profileIsKnown = !string.IsNullOrWhiteSpace(chosenProfile)
-                && (await scope.ServiceProvider.GetRequiredService<IRiskProfileStore>()
-                    .GetAllAsync(CancellationToken.None) is { Count: > 0 } dbProf
-                    ? dbProf
-                    : new ConfigLoader(Path.GetFullPath(Path.Combine(
-                        AppContext.BaseDirectory, "..", "..", "..", "..", ".."))).LoadBase().RiskProfiles)
-                .Any(r => r.Id == chosenProfile);
-
-            var overrides = ParseOverrides(cfg);
-            var resolvedEntries = new List<EffectiveConfigEntry>();
-
-            var strategyIds = ParseStrategyIds(cfg);
-            if (strategyIds.Length == 0)
-                strategyIds = storedConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
-
-            foreach (var sid in strategyIds)
-            {
-                var stored = storedConfigs.FirstOrDefault(s => s.Id == sid);
-                if (stored is null) continue;
-                var ovr = overrides.GetValueOrDefault(sid);
-
-                // Stamp the chosen risk profile onto the stored config so the audit JSON reflects it.
-                var stamped = profileIsKnown ? stored with { RiskProfileId = chosenProfile! } : stored;
-                resolvedEntries.Add(_configResolver.Resolve(stamped, ovr));
-            }
-
-            if (resolvedEntries.Count == 0) return null;
-
-            return JsonSerializer.Serialize(resolvedEntries, new JsonSerializerOptions
-            {
-                WriteIndented = false,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to resolve effective config for run {RunId}", cfg.RunId);
-            return null;
-        }
-    }
-
-    private static Dictionary<string, StrategyOverride> ParseOverrides(BacktestConfig cfg)
-    {
-        if (!cfg.CustomParams.TryGetValue("StrategyOverrides", out var json) ||
-            string.IsNullOrWhiteSpace(json))
-        {
-            return [];
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<Dictionary<string, StrategyOverride>>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
-    private static string SymbolsJson(IReadOnlyList<string> symbols) =>
-        JsonSerializer.Serialize(symbols ?? []);
-
-    private static string PeriodsJson(IReadOnlyList<string> periods) =>
-        JsonSerializer.Serialize(periods ?? []);
 }
