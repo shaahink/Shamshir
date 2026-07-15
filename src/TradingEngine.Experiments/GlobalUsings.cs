@@ -1,0 +1,14 @@
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Hosting;
+global using Microsoft.Extensions.Logging;
+global using System.Text.Json;
+global using TradingEngine.Application;
+global using TradingEngine.Application.Experiments;
+global using TradingEngine.Domain;
+global using TradingEngine.Domain.Experiments;
+global using TradingEngine.Infrastructure;
+global using TradingEngine.Infrastructure.Adapters;
+global using TradingEngine.Infrastructure.Configuration;
+global using TradingEngine.Infrastructure.Persistence;
+global using TradingEngine.Infrastructure.Persistence.Entities;
+global using TradingEngine.Infrastructure.Persistence.Repositories;

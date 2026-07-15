@@ -1,10 +1,10 @@
+using TradingEngine.Engine;
 using TradingEngine.Risk.Compliance;
 using TradingEngine.Risk.Sizing;
 
 namespace TradingEngine.Risk;
 
 public sealed class RiskManager(
-    DrawdownTracker drawdownTracker,
     ISymbolInfoRegistry symbolRegistry,
     Func<string, string, decimal> getCrossRate,
     INewsFilter newsFilter,
@@ -15,8 +15,20 @@ public sealed class RiskManager(
     SizingPolicyOptions sizingPolicy) : IRiskManager
 {
     private readonly ICurrencyExposureTracker _currencyExposure = currencyExposure;
+    public DrawdownState Drawdown { get; private set; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "Fixed");
 
-    public decimal InitialBalance => drawdownTracker.InitialAccountBalance;
+    public decimal InitialBalance => Drawdown.InitialAccountBalance;
+
+    public void InitializeDrawdown(decimal initialBalance, string drawdownType = "Fixed")
+    {
+        Drawdown = DrawdownReducer.CreateInitial(initialBalance, drawdownType);
+    }
+
+    public void InitializeDrawdownIfNeeded(decimal initialBalance, string drawdownType = "Fixed")
+    {
+        if (!Drawdown.IsInitialized)
+            InitializeDrawdown(initialBalance, drawdownType);
+    }
 
     public ExtendedRiskState CurrentState { get; private set; } = new()
     {
@@ -26,16 +38,16 @@ public sealed class RiskManager(
     };
 
     public PropFirmRuleSet? ActiveRuleSet { get; private set; }
+    public ConstraintSet? Constraints { get; private set; }
     private IPropFirmComplianceService? _complianceService;
     private SizeModifierPipeline? _sizePipeline;
     private ProtectionCause _protectionCause = ProtectionCause.None;
-    private bool _forceClosePending;
     private readonly Dictionary<Guid, (string StrategyId, decimal Risk)> _openPositionRisk = new();
 
     public void SetActiveRuleSet(PropFirmRuleSet ruleSet)
     {
         ActiveRuleSet = ruleSet;
-        drawdownTracker.DailyDdBaseMode = ruleSet.DailyDdBase;
+        Drawdown = Drawdown with { DailyDdBaseMode = ruleSet.DailyDdBase.ToString() };
     }
 
     public void SetComplianceService(IPropFirmComplianceService svc)
@@ -48,19 +60,32 @@ public sealed class RiskManager(
         _sizePipeline = pipeline;
     }
 
+    public void SetConstraints(ConstraintSet constraints)
+    {
+        Constraints = constraints;
+    }
+
     public void EnterProtectionMode(string reason, ProtectionCause cause)
     {
         _protectionCause = cause;
-        CurrentState = CurrentState with { InProtectionMode = true, ProtectionReason = reason, TradingAllowed = false };
-
-        if (ActiveRuleSet?.ForceCloseOnBreach == true
-            && (cause == ProtectionCause.MaxDrawdown || cause == ProtectionCause.DailyDrawdown))
-        {
-            _forceClosePending = true;
-        }
+        CurrentState = CurrentState with { InProtectionMode = true, ProtectionReason = reason, ProtectionCause = cause, TradingAllowed = false };
     }
 
-    public bool ConsumeForceClosePending() => Interlocked.Exchange(ref _forceClosePending, false);
+    public void ExitProtectionMode()
+    {
+        _protectionCause = ProtectionCause.None;
+        CurrentState = CurrentState with { InProtectionMode = false, ProtectionReason = null, ProtectionCause = ProtectionCause.None, TradingAllowed = true };
+    }
+
+    public string? CheckComplianceBlock(TradeIntent intent, RiskProfile profile)
+    {
+        if (_complianceService is null)
+        {
+            return null;
+        }
+        var result = _complianceService.ValidateSignal(intent, CurrentState, profile);
+        return result.Severity == ComplianceSeverity.Block ? string.Join("; ", result.Violations) : null;
+    }
 
     public void RegisterPosition(Guid positionId, string strategyId, decimal openRiskAmount)
         => _openPositionRisk[positionId] = (strategyId, openRiskAmount);
@@ -73,9 +98,11 @@ public sealed class RiskManager(
 
         if (governor is not null)
         {
+            var dayStart = Drawdown.DailyStartEquity;
+            var dayPnLFraction = dayStart > 0 ? (equity.Equity - dayStart) / dayStart : 0m;
             var governorCtx = new GovernorContext(
-                equity.CurrentDailyDrawdown,
-                equity.DailyStartEquity,
+                dayPnLFraction,
+                dayStart,
                 equity.Equity,
                 0,
                 ActiveRuleSet ?? new PropFirmRuleSet("none", "None", "Fixed", 0.05, 0.10, 0.10, 0,
@@ -89,11 +116,11 @@ public sealed class RiskManager(
         if (CurrentState.InProtectionMode)
             violations.Add(new("PROTECTION_MODE_ACTIVE", "Trading suspended: protection mode"));
 
-        if (ActiveRuleSet != null)
+        if (Constraints != null)
         {
-            if (equity.CurrentDailyDrawdown >= (decimal)ActiveRuleSet.MaxDailyLossPercent)
+            if (equity.CurrentDailyDrawdown >= Constraints.MaxDailyLoss)
                 violations.Add(new("DAILY_DD_LIMIT", "Daily drawdown limit reached"));
-            if (equity.CurrentMaxDrawdown >= (decimal)ActiveRuleSet.MaxTotalLossPercent)
+            if (equity.CurrentMaxDrawdown >= Constraints.MaxTotalLoss)
                 violations.Add(new("MAX_DD_LIMIT", "Maximum drawdown limit reached"));
         }
 
@@ -113,12 +140,9 @@ public sealed class RiskManager(
         }
         else
         {
-            var entryPrice = intent.LimitPrice ?? new Price(currentMid);
-            var slPips = PipCalculator.Distance(entryPrice, intent.StopLoss, symbolInfo);
-            var pipValue = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, getCrossRate);
-            var newPositionRisk = (decimal)slPips.Value * pipValue * (decimal)symbolInfo.MaxLots;
+            var newPositionRisk = equity.Equity * (Constraints?.RiskPerTrade ?? (decimal)profile.RiskPerTradePercent);
 
-            if ((totalOpenRisk + newPositionRisk) / equity.Equity > (decimal)profile.MaxExposurePercent)
+            if ((totalOpenRisk + newPositionRisk) / equity.Equity > (Constraints?.MaxExposure ?? (decimal)profile.MaxExposurePercent))
                 violations.Add(new("MAX_EXPOSURE", "Max total exposure exceeded"));
         }
 
@@ -141,6 +165,79 @@ public sealed class RiskManager(
         return violations;
     }
 
+    public IReadOnlyList<RiskViolation> ValidateOrder(
+        TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid,
+        SymbolInfo symbolInfo, decimal slPips, decimal pipValuePerLot, decimal lots,
+        IReadOnlyList<ProjectedPosition> openPositions, out decimal downsizedLots)
+    {
+        downsizedLots = lots;
+        var violations = new List<RiskViolation>(Validate(intent, equity, profile, currentMid));
+        if (violations.Count > 0) return violations;
+
+        // --- Worst-case projection ---
+        var candidateLoss = slPips * pipValuePerLot * lots;
+        var openLosses = 0m;
+        foreach (var p in openPositions)
+            openLosses += p.SlPips * p.PipValuePerLot * p.Lots;
+
+        var totalWorstCaseLoss = candidateLoss + openLosses;
+        var projectedEquity = equity.Equity - totalWorstCaseLoss;
+
+        // Daily floor must use the SAME base as the breach detector (DrawdownReducer.Apply /
+        // breach watchdog), which keys off DailyDdBase. Using DailyStartEquity unconditionally
+        // diverged from the watchdog whenever the day did not start at the initial balance:
+        // for an InitialBalance-mode rule set with a below-initial day-start, the gate would wave
+        // through an order whose worst case already breaches the (initial-balance) daily limit.
+        var maxDailyLoss = Constraints?.MaxDailyLoss ?? (decimal)profile.MaxDailyDrawdownPercent;
+        var dailyBaseEquity = (Constraints?.DailyDdBase ?? DailyDdBase.InitialBalance) == DailyDdBase.DailyStart
+            ? equity.DailyStartEquity
+            : Drawdown.InitialAccountBalance;
+        var dailyFloor = dailyBaseEquity * (1m - maxDailyLoss);
+        if (projectedEquity < dailyFloor)
+        {
+            violations.Add(new("WorstCaseDDWouldBreachDaily", "Worst-case projected equity breaches daily drawdown floor"));
+            return violations;
+        }
+
+        var drawdownBase = Drawdown.DrawdownType == "Trailing" ? equity.Equity : equity.Balance;
+        var maxFloor = drawdownBase * (1m - (Constraints?.MaxTotalLoss ?? (decimal)profile.MaxTotalDrawdownPercent));
+        if (projectedEquity < maxFloor)
+        {
+            violations.Add(new("WorstCaseDDWouldBreachOverall", "Worst-case projected equity breaches max drawdown floor"));
+            return violations;
+        }
+
+        // --- Budget validation with downsizing ---
+        var riskAmount = slPips * pipValuePerLot * lots;
+        var perTradeRiskAmount = equity.Equity * (Constraints?.RiskPerTrade ?? (decimal)profile.RiskPerTradePercent);
+
+        if (!ValidateBudgetEntry(riskAmount, equity, perTradeRiskAmount))
+        {
+            while (lots > symbolInfo.MinLots)
+            {
+                lots = Math.Max(lots * 0.5m, symbolInfo.MinLots);
+                lots = Math.Floor(lots / symbolInfo.LotStep) * symbolInfo.LotStep;
+                if (lots < symbolInfo.MinLots) break;
+                riskAmount = slPips * pipValuePerLot * lots;
+                if (ValidateBudgetEntry(riskAmount, equity, perTradeRiskAmount))
+                {
+                    downsizedLots = lots;
+                    break;
+                }
+            }
+            if (lots < symbolInfo.MinLots || !ValidateBudgetEntry(riskAmount, equity, perTradeRiskAmount))
+            {
+                violations.Add(new("BudgetBlocked", $"Budget exceeded after downsizing: lots={lots:F4} risk={riskAmount:F2}"));
+            }
+            else
+            {
+                downsizedLots = lots;
+            }
+        }
+
+        return violations;
+    }
+
     public decimal CalculateLotSize(TradeIntent intent, EquitySnapshot equity, RiskProfile profile, decimal currentMid)
     {
         var symbolInfo = symbolRegistry.Get(intent.Symbol);
@@ -155,34 +252,33 @@ public sealed class RiskManager(
                 Profile = profile,
                 Intent = intent,
             })
-            : (decimal)DrawdownScaler.ComputeScaleFactor(
-                equity.CurrentMaxDrawdown, (decimal)profile.MaxTotalDrawdownPercent,
+            : (decimal)KernelSizing.ComputeScaleFactor(
+                equity.CurrentMaxDrawdown, Constraints?.MaxTotalLoss ?? (decimal)profile.MaxTotalDrawdownPercent,
                 profile.DrawdownScaleThreshold, profile.DrawdownScaleFloor);
 
-        return PositionSizer.Calculate(
-            equity.Equity, RiskPercent.Parse(profile.RiskPerTradePercent),
-            slDistance, pipValue, drawdownScale,
+        return KernelSizing.Calculate(
+            equity.Equity, profile, (decimal)slDistance.Value, pipValue, drawdownScale,
             (decimal)symbolInfo.MaxLots, symbolInfo.MinLots, symbolInfo.LotStep);
     }
 
     public bool ValidateBudgetEntry(decimal newRiskAmount, EquitySnapshot equity, decimal perTradeRiskAmount)
     {
-        var ruleSet = ActiveRuleSet;
-        if (ruleSet is null) return true;
+        var constraints = Constraints;
+        if (constraints is null) return true;
 
         var totalOpenRisk = _openPositionRisk.Values.Sum(v => v.Risk);
 
-        var dailyDdBase = ruleSet.DailyDdBase == DailyDdBase.DailyStart
-            ? drawdownTracker.DailyStartEquity
-            : drawdownTracker.InitialAccountBalance;
+        var dailyDdBase = constraints.DailyDdBase == DailyDdBase.DailyStart
+            ? Drawdown.DailyStartEquity
+            : Drawdown.InitialAccountBalance;
 
         if (dailyDdBase <= 0) return false;
 
-        var dailyDdUsedFraction = (decimal)ruleSet.MaxDailyLossPercent > 0
-            ? CurrentState.DailyDrawdownUsed / (decimal)ruleSet.MaxDailyLossPercent
+        var dailyDdUsedFraction = constraints.MaxDailyLoss > 0
+            ? CurrentState.DailyDrawdownUsed / constraints.MaxDailyLoss
             : 1m;
 
-        var remainingDailyBudget = (1m - Math.Min(dailyDdUsedFraction, 1m)) * (decimal)ruleSet.MaxDailyLossPercent * dailyDdBase;
+        var remainingDailyBudget = (1m - Math.Min(dailyDdUsedFraction, 1m)) * constraints.MaxDailyLoss * dailyDdBase;
         var budgetCap = remainingDailyBudget * (decimal)sizingPolicy.BudgetUseFraction;
 
         if (totalOpenRisk + newRiskAmount > budgetCap)
@@ -200,21 +296,21 @@ public sealed class RiskManager(
 
     public void UpdateEquityLevels(decimal rawEquity)
     {
-        drawdownTracker.OnEquityUpdate(rawEquity);
+        Drawdown = DrawdownReducer.Apply(Drawdown, rawEquity);
         CurrentState = CurrentState with
         {
-            DailyDrawdownUsed = drawdownTracker.CurrentDailyDrawdown,
-            WeeklyDrawdownUsed = drawdownTracker.CurrentWeeklyDrawdown,
-            MonthlyDrawdownUsed = drawdownTracker.CurrentMonthlyDrawdown,
-            MaxDrawdownUsed = drawdownTracker.CurrentMaxDrawdown,
-            DrawdownVelocity = drawdownTracker.DrawdownVelocity,
-            IsDrawdownAccelerating = drawdownTracker.IsAccelerating,
+            DailyDrawdownUsed = Drawdown.CurrentDailyDrawdown,
+            WeeklyDrawdownUsed = Drawdown.CurrentWeeklyDrawdown,
+            MonthlyDrawdownUsed = Drawdown.CurrentMonthlyDrawdown,
+            MaxDrawdownUsed = Drawdown.CurrentMaxDrawdown,
+            DrawdownVelocity = Drawdown.DrawdownVelocity,
+            IsDrawdownAccelerating = Drawdown.IsAccelerating,
         };
     }
 
     public void OnDailyReset(decimal currentEquity)
     {
-        drawdownTracker.OnDailyReset(currentEquity);
+        Drawdown = DrawdownReducer.ApplyDailyReset(Drawdown, currentEquity);
         if (CurrentState.InProtectionMode && _protectionCause == ProtectionCause.DailyDrawdown)
         {
             _protectionCause = ProtectionCause.None;
@@ -224,13 +320,13 @@ public sealed class RiskManager(
 
     public void OnWeeklyReset(decimal currentEquity)
     {
-        drawdownTracker.OnWeeklyReset(currentEquity);
+        Drawdown = DrawdownReducer.ApplyWeeklyReset(Drawdown, currentEquity);
         _complianceService?.OnWeeklyReset(clock.UtcNow, currentEquity);
     }
 
     public void OnMonthlyReset(decimal currentEquity)
     {
-        drawdownTracker.OnMonthlyReset(currentEquity);
+        Drawdown = DrawdownReducer.ApplyMonthlyReset(Drawdown, currentEquity);
         _complianceService?.OnMonthlyReset(clock.UtcNow, currentEquity);
     }
 }

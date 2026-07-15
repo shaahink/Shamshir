@@ -13,7 +13,7 @@ The plan drives the agent. The handover is the audit trail.
 ```
 Human/Opus writes PLAN.md
         ↓
-Implementing agent reads PLAN.md + docs/agents/HOW-TO-WORK.md
+Implementing agent reads PLAN.md + docs/agents/HOW-TO-WORK.md + AGENTS.md
         ↓
 Agent implements phases, runs verification steps
         ↓
@@ -21,7 +21,7 @@ Agent writes HANDOVER.md
         ↓
 Human reviews HANDOVER.md + checks DB state
         ↓
-Commit + merge → move to completed/
+Commit + merge
 ```
 
 ---
@@ -32,38 +32,39 @@ Commit + merge → move to completed/
 |------|-------|--------|--------|
 | 01–09 | Prior iterations | ✅ Completed | (see git log) |
 | 10 | Observability, metadata, bar tracing | ✅ Completed | `phase/8b-bar-tracing` |
-| 11 | Replay adapter + E2E test | 📋 Planned | — |
-| 12 | Wire replay to UI + correct metrics | 📋 Planned | — |
-| 13 | Observability pass | 📋 Planned | — |
-| 14 | UI rewrite (Blazor Server) | 📋 Planned | — |
-| 15 | Architecture cleanup | 📋 Parallel with 14 | — |
-| 16 | cTrader in-process engine | ⚠ Implemented — orders never reach cBot from UI path (diagnosed in iter-17 PLAN) | `iter/16-ctrader-inproc` |
-| 17 | Deterministic pipeline: transport fix, lock-step protocol, single composition root, journal observability, multi-symbol | ✅ Completed | `iter/17-deterministic-pipeline` |
+| 11 | Replay adapter + E2E test | ✅ Completed | — |
+| 12 | Wire replay to UI + correct metrics | ✅ Completed | — |
+| 13 | Observability pass | ✅ Completed | — |
+| 14 | Engine core architecture (kernel) | ✅ Completed | — |
+| 15 | Architecture cleanup | ✅ Completed | — |
+| 16 | cTrader in-process engine | ✅ Completed | `iter/16-ctrader-inproc` |
+| 17 | Deterministic pipeline (NetMQ, lock-step) | ✅ Completed | `iter/17-deterministic-pipeline` |
+| 18 | EF migrations, schema cleanup | ✅ Completed | — |
+| 19 | Audit, fixes, breach watchdog | ✅ Completed | — |
+| 20 | Kernel: EngineState, EngineReducer | ✅ Completed | — |
+| 21 | Kernel: PositionLifecycle | ✅ Completed | — |
+| 22 | Kernel: DrawdownReducer | ✅ Completed | — |
+| 23 | Kernel: GovernorMachine | ✅ Completed | — |
+| 24 | Unify: concurrency, venue decoupling | ✅ Completed | — |
+| 25–27 | Web UI fixes, Monitor, signal fixes | ✅ Completed | — |
+| 28 | Trade metrics (MAE/MFE, R-multiple) | ✅ Completed | — |
+| 29 | Indicator/regime correctness | ✅ Completed | — |
+| 30 | Breakeven/trailing wiring | ✅ Completed | — |
+| 31 | Costs + Journal + Limit orders | ✅ Completed | `iter/31-costs-journal` |
+| 32 | Config as editable data (in-progress) | 🟡 Partial | `iter/31-costs-journal` |
 
 ---
 
-## Completed iteration handovers (pre-folder-structure era)
+## Old iteration files (pre-folder-structure era)
 
-These exist at `docs/ITERATION-N-HANDOVER.md` (old location, kept for reference):
-- `docs/ITERATION-6-HANDOVER.md`
-- `docs/ITERATION-8-HANDOVER.md`
-- `docs/ITERATION-9-HANDOVER.md`
-- `docs/ITERATION-10-HANDOVER.md`
+Archived in `docs/iterations/archive/`:
+- `ITERATION-2.md` through `ITERATION-10.md` (root-level iteration specs)
+- `ITERATION-*-HANDOVER.md` (old handovers from docs/)
+- `ITERATION-10-REFACTOR-PLAN.md`
+- Old handovers moved from `docs/`
 
 ---
 
-## Dependency graph
+## Active handover
 
-```
-iter-11 (fix replay adapter + E2E test)
-    ↓
-iter-12 (wire to UI + metrics)
-    ↓
-iter-13 (observability)
-    ↓ ↓ (can fan out here)
-iter-14  iter-15
-(UI)     (cleanup)
-```
-
-Iter-14 and iter-15 are independent of each other and can run in parallel worktrees.
-Iters 11→12→13 must be sequential — each one's E2E test is the gate for the next.
+Current: `docs/iterations/iter-31-32-combined/HANDOVER.md` — lists what shipped and what's carried forward.

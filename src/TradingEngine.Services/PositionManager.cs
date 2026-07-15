@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using TradingEngine.Engine;
 
 namespace TradingEngine.Services;
 
@@ -7,16 +8,24 @@ public sealed class PositionManager(
     IIndicatorService indicatorService,
     ILogger<PositionManager> logger) : IPositionManager
 {
-    private readonly Dictionary<Guid, (Position Pos, PositionManagementConfig Config, PositionLifecycleState State)> _tracked = new();
+    private const string StateActive = "Active";
+    private const string StateBreakevenSet = "BreakevenSet";
+    private const string StateTrailing = "Trailing";
+    private const string StateClosed = "Closed";
+
+    private readonly Dictionary<Guid, (Position Pos, PositionManagementConfig Config, string State)> _tracked = new();
     private readonly HashSet<Guid> _beApplied = new();
+    private readonly HashSet<Guid> _partialApplied = new();
     private readonly Dictionary<Guid, decimal> _highWaterBid = new();
     private readonly Dictionary<Guid, decimal> _lowWaterAsk = new();
+    private readonly Dictionary<Guid, decimal> _initialSlDistance = new();
 
     public void RegisterPosition(Position position, PositionManagementConfig config)
     {
-        _tracked[position.Id] = (position, config, PositionLifecycleState.Active);
+        _tracked[position.Id] = (position, config, StateActive);
         _highWaterBid[position.Id] = position.EntryPrice.Value;
         _lowWaterAsk[position.Id] = position.EntryPrice.Value;
+        _initialSlDistance[position.Id] = Math.Abs(position.EntryPrice.Value - position.CurrentStopLoss.Value);
         logger.LogInformation("Position state changed. Id={Id} From=None To=Active", position.Id);
     }
 
@@ -24,143 +33,243 @@ public sealed class PositionManager(
     {
         if (_tracked.TryGetValue(positionId, out var entry))
         {
-            var prevState = entry.State;
-            logger.LogInformation("Position state changed. Id={Id} From={From} To=Closed", positionId, prevState);
+            logger.LogInformation("Position state changed. Id={Id} From={From} To=Closed", positionId, entry.State);
         }
         _tracked.Remove(positionId);
         _beApplied.Remove(positionId);
+        _partialApplied.Remove(positionId);
         _highWaterBid.Remove(positionId);
         _lowWaterAsk.Remove(positionId);
+        _initialSlDistance.Remove(positionId);
     }
 
+    /// <summary>
+    /// Per-bar position management. Breakeven and trailing now COEXIST: each computes a candidate stop
+    /// and the single MOST-FAVOURABLE one (highest for long / lowest for short) that beats the current
+    /// stop is emitted. The old code guarded every trailing branch with <c>!_beApplied</c>, so enabling
+    /// breakeven permanently DISABLED trailing ("BE then trail" never trailed); and it could emit two
+    /// mods for the same bar, which — applied in arbitrary order via a non-monotonic write-back — could
+    /// move the stop backwards. The underlying <see cref="PositionLifecycle"/> helpers are monotonic, so
+    /// taking the most-favourable candidate is correct.
+    /// </summary>
     public IReadOnlyList<PositionModification> Evaluate(
         Position position, Tick currentTick, IReadOnlyList<Bar> recentBars)
     {
         if (!_tracked.TryGetValue(position.Id, out var entry)) return [];
         var (_, config, state) = entry;
-        if (state == PositionLifecycleState.Closed) return [];
+        if (state == StateClosed) return [];
 
-        var mods = new List<PositionModification>();
         var symbolInfo = symbolRegistry.Get(position.Symbol);
+        var ps = ToPositionState(position);
 
         _highWaterBid[position.Id] = Math.Max(
             _highWaterBid.GetValueOrDefault(position.Id, position.EntryPrice.Value), currentTick.Bid);
         _lowWaterAsk[position.Id] = Math.Min(
             _lowWaterAsk.GetValueOrDefault(position.Id, position.EntryPrice.Value), currentTick.Ask);
 
-        var newState = state;
+        var mods = new List<PositionModification>();
 
+        // iter-38 A4 (PartialTp): close a fraction of the position ONCE when it first reaches the trigger
+        // R-multiple. The remainder stays open and keeps trailing. Off (default) ⇒ no partial.
+        if (config.PartialTpEnabled && !_partialApplied.Contains(position.Id))
+        {
+            var initialSlDist = _initialSlDistance.GetValueOrDefault(position.Id);
+            var favorable = position.Direction == TradeDirection.Long
+                ? currentTick.Bid - position.EntryPrice.Value
+                : position.EntryPrice.Value - currentTick.Ask;
+            var currentR = initialSlDist > 0 ? (double)(favorable / initialSlDist) : 0;
+            if (currentR >= config.PartialTpTriggerR)
+            {
+                var step = symbolInfo.LotStep > 0 ? symbolInfo.LotStep : 0.01m;
+                var closeLots = Math.Floor(position.Lots * (decimal)config.PartialTpCloseFraction / step) * step;
+                if (closeLots > 0 && closeLots < position.Lots)
+                {
+                    mods.Add(new PartialClose(position.Id, closeLots, "PARTIAL"));
+                    _partialApplied.Add(position.Id);
+                }
+            }
+        }
+
+        Price? candidate = null;
+        var reason = "TRAIL";
+        var breakevenTriggered = false;
+
+        // Breakeven floor (once).
         if (config.UseBreakeven && !_beApplied.Contains(position.Id))
         {
-            var newBeSl = TrailingHelpers.Breakeven(
-                position, currentTick.Bid, currentTick.Ask,
+            var beSl = PositionLifecycle.TryBreakeven(
+                ps, currentTick.Bid, currentTick.Ask,
                 config.BreakevenTriggerR, config.BreakevenBufferPips, symbolInfo);
-            if (newBeSl.HasValue)
+            if (beSl.HasValue)
             {
-                _beApplied.Add(position.Id);
-                mods.Add(new MoveStopLoss(position.Id, newBeSl.Value));
-                newState = PositionLifecycleState.BreakevenSet;
-                logger.LogDebug("Breakeven applied. Id={Id} NewSl={Sl:F5}", position.Id, newBeSl.Value.Value);
+                candidate = beSl.Value;
+                reason = "BREAKEVEN";
+                breakevenTriggered = true;
             }
         }
 
-        if (config.TrailingStop.Method == TrailingMethod.StepPips && !_beApplied.Contains(position.Id) && state != PositionLifecycleState.BreakevenSet)
+        // Trailing (every bar; independent of breakeven — the monotonic guard ratchets the stop up).
+        var trail = ComputeTrail(config, ps, currentTick, recentBars, symbolInfo);
+        if (trail.HasValue && (candidate is null || Improves(trail.Value, candidate.Value, position.Direction)))
         {
-            var trailingSl = TrailingHelpers.StepTrail(
-                position, currentTick.Bid, currentTick.Ask,
-                new Pips(config.TrailingStop.StepPips), symbolInfo);
-            if (trailingSl.HasValue)
-            {
-                mods.Add(new MoveStopLoss(position.Id, trailingSl.Value));
-                newState = PositionLifecycleState.Trailing;
-            }
+            candidate = trail.Value;
+            // iter-38 A7c: tag RIDE when the relaxed ATR trail is active this bar, else TRAIL.
+            reason = RideActiveFor(config, recentBars) ? "RIDE" : "TRAIL";
         }
 
-        if (config.TrailingStop.Method == TrailingMethod.AtrMultiple && !_beApplied.Contains(position.Id))
+        if (candidate is not null && Improves(candidate.Value, position.CurrentStopLoss, position.Direction))
         {
-            var atrValue = ComputeAtr(recentBars, config);
-            var atrMultiple = GetEffectiveAtrMultiple(config);
-
-            var atrTrail = TrailingHelpers.AtrTrail(
-                position,
-                _highWaterBid.GetValueOrDefault(position.Id, position.EntryPrice.Value),
-                _lowWaterAsk.GetValueOrDefault(position.Id, position.EntryPrice.Value),
-                atrValue, atrMultiple, symbolInfo);
-            if (atrTrail.HasValue)
+            if (breakevenTriggered) _beApplied.Add(position.Id);
+            var newState = state == StateActive ? (breakevenTriggered ? StateBreakevenSet : StateTrailing) : state;
+            if (newState != state)
             {
-                mods.Add(new MoveStopLoss(position.Id, atrTrail.Value));
-                newState = PositionLifecycleState.Trailing;
+                _tracked[position.Id] = (position, config, newState);
+                logger.LogInformation("Position state changed. Id={Id} From={From} To={To}", position.Id, state, newState);
             }
-        }
-
-        if (config.TrailingStop.Method == TrailingMethod.Structure && !_beApplied.Contains(position.Id))
-        {
-            var lookback = config.TrailingStop.StructureLookbackBars > 0
-                ? config.TrailingStop.StructureLookbackBars
-                : 10;
-            var atrValue = ComputeAtr(recentBars, config);
-            var atrMultiple = GetEffectiveAtrMultiple(config);
-
-            var structureSl = TrailingHelpers.StructureTrail(
-                position, recentBars, lookback, atrValue, atrMultiple, symbolInfo);
-            if (structureSl.HasValue)
-            {
-                mods.Add(new MoveStopLoss(position.Id, structureSl.Value));
-                newState = PositionLifecycleState.Trailing;
-            }
-        }
-
-        if (config.TrailingStop.Method == TrailingMethod.SteppedR && !_beApplied.Contains(position.Id))
-        {
-            var steppedRLevels = config.TrailingStop.SteppedRLevels is { Length: > 0 }
-                ? config.TrailingStop.SteppedRLevels
-                : new[] { 1.0, 2.0, 3.0 };
-
-            var steppedSl = TrailingHelpers.SteppedRTrail(
-                position, currentTick.Bid, currentTick.Ask, steppedRLevels, symbolInfo);
-            if (steppedSl.HasValue)
-            {
-                mods.Add(new MoveStopLoss(position.Id, steppedSl.Value));
-                newState = PositionLifecycleState.Trailing;
-            }
-        }
-
-        if (config.TrailingStop.Method == TrailingMethod.BreakevenThenTrail && !_beApplied.Contains(position.Id))
-        {
-            var beTrail = TrailingHelpers.Breakeven(
-                position, currentTick.Bid, currentTick.Ask,
-                config.TrailingStop.BreakevenTriggerR, new Pips(1), symbolInfo);
-            if (beTrail.HasValue)
-            {
-                _beApplied.Add(position.Id);
-                mods.Add(new MoveStopLoss(position.Id, beTrail.Value));
-                newState = PositionLifecycleState.BreakevenSet;
-            }
-        }
-
-        if (newState != state)
-        {
-            _tracked[position.Id] = (position, config, newState);
-            logger.LogInformation("Position state changed. Id={Id} From={From} To={To}", position.Id, state, newState);
+            mods.Add(new MoveStopLoss(position.Id, candidate.Value, reason));
         }
 
         return mods;
     }
 
-    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config)
+    private Price? ComputeTrail(
+        PositionManagementConfig config, PositionState ps, Tick tick,
+        IReadOnlyList<Bar> recentBars, SymbolInfo symbolInfo)
     {
-        if (recentBars.Count == 0) return config.TrailingStop.AtrMultiple * 0.0001;
-        var atrValue = indicatorService.Atr(recentBars, Math.Min(14, recentBars.Count));
-        if (atrValue <= 0) atrValue = config.TrailingStop.AtrMultiple * 0.0001;
-        return atrValue;
+        var t = config.TrailingStop;
+        switch (t.Method)
+        {
+            case TrailingMethod.StepPips:
+                return PositionLifecycle.TrailStepPips(ps, tick.Bid, tick.Ask, new Pips(t.StepPips), symbolInfo);
+
+            case TrailingMethod.AtrMultiple:
+                return PositionLifecycle.TrailAtr(ps,
+                    _highWaterBid.GetValueOrDefault(ps.PositionId, ps.EntryPrice.Value),
+                    _lowWaterAsk.GetValueOrDefault(ps.PositionId, ps.EntryPrice.Value),
+                    ComputeAtr(recentBars, config, symbolInfo), EffectiveAtrMultiple(t, recentBars), symbolInfo);
+
+            case TrailingMethod.Structure:
+                return PositionLifecycle.TrailStructure(ps, recentBars,
+                    t.StructureLookbackBars > 0 ? t.StructureLookbackBars : 10,
+                    ComputeAtr(recentBars, config, symbolInfo), EffectiveAtrMultiple(t, recentBars), symbolInfo);
+
+            case TrailingMethod.SteppedR:
+            {
+                var levels = t.SteppedRLevels is { Length: > 0 } ? t.SteppedRLevels : [1.0, 2.0, 3.0];
+                var initialSl = _initialSlDistance.GetValueOrDefault(ps.PositionId);
+                if (initialSl <= 0)
+                {
+                    initialSl = Math.Abs(ps.EntryPrice.Value - ps.CurrentStopLoss.Value);
+                    _initialSlDistance[ps.PositionId] = initialSl;
+                }
+                return PositionLifecycle.TrailSteppedR(
+                    ps with { InitialSlDistance = initialSl }, tick.Bid, tick.Ask, levels, symbolInfo);
+            }
+
+            // BreakevenThenTrail is a breakeven-trigger method (kept for back-compat). For genuine
+            // "breakeven then trail", set UseBreakeven=true AND Trailing.Method=AtrMultiple/Structure.
+            case TrailingMethod.BreakevenThenTrail:
+                return PositionLifecycle.TryBreakeven(ps, tick.Bid, tick.Ask,
+                    config.TrailingStop.BreakevenTriggerR, new Pips(1), symbolInfo);
+
+            default: // TrailingMethod.None
+                return null;
+        }
     }
 
-    private double GetEffectiveAtrMultiple(PositionManagementConfig config)
+    private static Price MoreFavorable(Price? current, Price candidate, TradeDirection dir)
     {
-        if (!config.TrailingStop.RideEnabled) return config.TrailingStop.AtrMultiple;
+        if (current is null) return candidate;
+        var keepCandidate = dir == TradeDirection.Long
+            ? candidate.Value > current.Value.Value
+            : candidate.Value < current.Value.Value;
+        return keepCandidate ? candidate : current.Value;
+    }
 
-        return config.TrailingStop.AtrMultiple > 0
-            ? config.TrailingStop.RideRelaxedAtrMultiple
-            : config.TrailingStop.AtrMultiple;
+    private static bool Improves(Price candidate, Price currentStop, TradeDirection dir)
+        => dir == TradeDirection.Long
+            ? candidate.Value > currentStop.Value
+            : candidate.Value < currentStop.Value;
+
+    /// <summary>
+    /// Maps a strategy's declarative <see cref="PositionManagementOptions"/> (from its JSON) onto the
+    /// runtime <see cref="PositionManagementConfig"/> the manager consumes. Previously the registration
+    /// sites hard-coded an ATR-trail + BE@1R for every position and ignored the per-strategy JSON.
+    /// </summary>
+    public static PositionManagementConfig BuildConfig(
+        string strategyId, PositionManagementOptions opts, decimal initialRiskAmount)
+    {
+        var tr = opts.Trailing;
+        // iter-38 A1: the Trailing add-on is gated by its universal Enabled toggle (consistent with Breakeven
+        // and every other add-on). A configured Method WITHOUT Enabled is treated as OFF, so the UI / pack
+        // toggle is the single source of truth rather than a Method side-channel. Strategies that should trail
+        // set trailing.enabled=true (Mode=Custom keeps their stored numbers; Mode=Auto ⇒ AddOnResolver tunes).
+        var trailingMethod = tr.Enabled ? ParseTrailingMethod(tr.Method) : TrailingMethod.None;
+        var trailing = new TrailingConfig(
+            trailingMethod, tr.StepPips, tr.AtrMultiple, opts.Breakeven.TriggerRMultiple)
+        {
+            StructureLookbackBars = tr.StructureLookbackBars,
+            SteppedRLevels = tr.SteppedRLevels,
+            // iter-38 A5: Ride relaxes the ATR trail while ADX is strong. opts.Ride is already add-on-resolved
+            // (Auto ⇒ tuner numbers) by the time BuildConfig runs at registration.
+            RideEnabled = opts.Ride?.Enabled ?? false,
+            RideAdxFloor = opts.Ride?.AdxFloor ?? 25,
+            RideRelaxedAtrMultiple = opts.Ride?.RelaxedAtrMultiple ?? tr.AtrMultiple,
+        };
+        return new PositionManagementConfig(
+            strategyId, trailing,
+            opts.Breakeven.Enabled, opts.Breakeven.TriggerRMultiple, new Pips(opts.Breakeven.OffsetPips),
+            new Money(initialRiskAmount, "USD"))
+        {
+            // iter-38 A4: opts.PartialTp is already add-on-resolved (Auto ⇒ tuner) at registration.
+            PartialTpEnabled = opts.PartialTp?.Enabled ?? false,
+            PartialTpTriggerR = opts.PartialTp?.TriggerRMultiple ?? 1.0,
+            PartialTpCloseFraction = opts.PartialTp?.CloseFraction ?? 0.5,
+        };
+    }
+
+    private static TrailingMethod ParseTrailingMethod(string method) => method switch
+    {
+        "StepPips" => TrailingMethod.StepPips,
+        "AtrMultiple" => TrailingMethod.AtrMultiple,
+        "Structure" => TrailingMethod.Structure,
+        "SteppedR" => TrailingMethod.SteppedR,
+        "BreakevenThenTrail" => TrailingMethod.BreakevenThenTrail,
+        _ => TrailingMethod.None,
+    };
+
+    private static PositionState ToPositionState(Position p)
+    {
+        return new PositionState(
+            p.Id, p.OrderId, p.Symbol, p.Direction, p.Lots,
+            p.EntryPrice, p.CurrentStopLoss, p.TakeProfit,
+            p.OpenedAtUtc, p.StrategyId, PositionPhase.Open, p.Lots);
+    }
+
+    /// <summary>iter-38 A5 (Ride): while the add-on is enabled and ADX shows a strong trend, widen the ATR
+    /// trailing multiple to the relaxed value so a runner is given more room; otherwise the configured
+    /// multiple stands. Off (RideEnabled=false) ⇒ always the configured multiple ⇒ golden byte-identical.</summary>
+    private double EffectiveAtrMultiple(TrailingConfig t, IReadOnlyList<Bar> recentBars)
+    {
+        if (!t.RideEnabled || recentBars.Count < 2) return t.AtrMultiple;
+        var adx = indicatorService.Adx(recentBars, Math.Min(14, recentBars.Count));
+        return adx > t.RideAdxFloor ? t.RideRelaxedAtrMultiple : t.AtrMultiple;
+    }
+
+    // iter-38 A7c: was the Ride relaxation in effect this bar? Used only to tag the journal kind (RIDE vs
+    // TRAIL); the stop value itself is computed by EffectiveAtrMultiple inside ComputeTrail.
+    private bool RideActiveFor(PositionManagementConfig config, IReadOnlyList<Bar> recentBars)
+    {
+        var t = config.TrailingStop;
+        if (!t.RideEnabled || recentBars.Count < 2) return false;
+        return indicatorService.Adx(recentBars, Math.Min(14, recentBars.Count)) > t.RideAdxFloor;
+    }
+
+    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config, SymbolInfo symbolInfo)    {
+        var fallback = (double)symbolInfo.PipSize;
+        if (recentBars.Count == 0) return config.TrailingStop.AtrMultiple * fallback;
+        var atrValue = indicatorService.Atr(recentBars, Math.Min(14, recentBars.Count));
+        if (atrValue <= 0) atrValue = config.TrailingStop.AtrMultiple * fallback;
+        return atrValue;
     }
 }

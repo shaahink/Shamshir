@@ -1,0 +1,104 @@
+{
+  "name": "triage-sweep",
+  "description": "P7.3 canonical triage-sweep: cell sweep over strategies x symbols x TFs -> scoreboard snapshot -> kill/park/keep report. Runs each combination as a short exploration backtest, then aggregates results into a scoreboard for triage decisions. Pairs with the P3.4 triage pipeline (StrategyCellPark rows).",
+  "steps": [
+    {
+      "kind": "ensure-data",
+      "symbols": "EURUSD,GBPUSD",
+      "tfs": "H1,M15",
+      "from": "2026-01-01",
+      "to": "2026-04-01"
+    },
+    {
+      "kind": "start-run",
+      "as": "tb_eu_H1",
+      "venue": "tape",
+      "symbols": ["EURUSD"],
+      "periods": ["H1"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-04-01T00:00:00Z",
+      "balance": 100000,
+      "explore": true
+    },
+    {
+      "kind": "start-run",
+      "as": "tb_eu_M15",
+      "venue": "tape",
+      "symbols": ["EURUSD"],
+      "periods": ["M15"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-04-01T00:00:00Z",
+      "balance": 100000,
+      "explore": true
+    },
+    {
+      "kind": "start-run",
+      "as": "tb_gu_H1",
+      "venue": "tape",
+      "symbols": ["GBPUSD"],
+      "periods": ["H1"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-04-01T00:00:00Z",
+      "balance": 100000,
+      "explore": true
+    },
+    {
+      "kind": "start-run",
+      "as": "tb_gu_M15",
+      "venue": "tape",
+      "symbols": ["GBPUSD"],
+      "periods": ["M15"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-04-01T00:00:00Z",
+      "balance": 100000,
+      "explore": true
+    },
+    {
+      "kind": "await-run",
+      "runId": "tb_eu_H1",
+      "timeout": 3600
+    },
+    {
+      "kind": "await-run",
+      "runId": "tb_eu_M15",
+      "timeout": 3600
+    },
+    {
+      "kind": "await-run",
+      "runId": "tb_gu_H1",
+      "timeout": 3600
+    },
+    {
+      "kind": "await-run",
+      "runId": "tb_gu_M15",
+      "timeout": 3600
+    },
+    {
+      "kind": "assert-gates",
+      "runId": "tb_eu_H1",
+      "requireStatus": "completed",
+      "minTrades": 1
+    },
+    {
+      "kind": "assert-gates",
+      "runId": "tb_eu_M15",
+      "requireStatus": "completed",
+      "minTrades": 1
+    },
+    {
+      "kind": "assert-gates",
+      "runId": "tb_gu_H1",
+      "requireStatus": "completed",
+      "minTrades": 1
+    },
+    {
+      "kind": "assert-gates",
+      "runId": "tb_gu_M15",
+      "requireStatus": "completed",
+      "minTrades": 1
+    },
+    {
+      "kind": "report"
+    }
+  ]
+}

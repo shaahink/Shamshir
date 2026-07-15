@@ -1,0 +1,15 @@
+{
+  "start": "2025-08-01T00:00:00Z",
+  "end": "2025-10-01T00:00:00Z",
+  "balance": 100000,
+  "commissionPerMillion": 30,
+  "spreadPips": 1,
+  "symbols": ["XAUUSD"],
+  "periods": ["H4"],
+  "strategyIds": ["trend-breakout"],
+  "venue": "tape",
+  "governorEnabled": false,
+  "stripAddOns": true,
+  "honestFills": true,
+  "speed": 10
+}

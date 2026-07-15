@@ -21,13 +21,27 @@ public sealed class PersistenceService(
         }
     }
 
-    public async Task SaveEquitySnapshotAsync(EquitySnapshot snapshot, CancellationToken ct)
+    public async Task SaveExcursionAsync(string runId, Guid positionId, string pathJson, string? sessionLabel, CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IExcursionRepository>();
+            await repo.SaveAsync(runId, positionId, pathJson, sessionLabel, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to save trade excursion. RunId={RunId} PositionId={PositionId}", runId, positionId);
+        }
+    }
+
+    public async Task SaveEquitySnapshotAsync(EquitySnapshot snapshot, string? runId, CancellationToken ct)
     {
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var repo = scope.ServiceProvider.GetRequiredService<IEquityRepository>();
-            await repo.SaveAsync(snapshot, ct);
+            await repo.SaveAsync(snapshot, runId, ct);
         }
         catch (Exception ex)
         {
@@ -35,13 +49,13 @@ public sealed class PersistenceService(
         }
     }
 
-    public async Task SaveEquitySnapshotsBatchAsync(IReadOnlyList<EquitySnapshot> snapshots, CancellationToken ct)
+    public async Task SaveEquitySnapshotsBatchAsync(IReadOnlyList<EquitySnapshot> snapshots, string? runId, CancellationToken ct)
     {
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var repo = scope.ServiceProvider.GetRequiredService<IEquityRepository>();
-            await repo.SaveBatchAsync(snapshots, ct);
+            await repo.SaveBatchAsync(snapshots, runId, ct);
         }
         catch (Exception ex)
         {

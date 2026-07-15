@@ -422,3 +422,32 @@ Quick reference:
  | D67 | Pipe name coordinated via Aspire env vars | ✅ A — AppHost sets `Engine__Broker__PipeName` on both engine and web; BacktestRunner reads `_config["Engine:Broker:PipeName"]`; no hardcoded strings |
  | D68 | Engine state reset on new pipe connection | ✅ A — `NamedPipeBrokerAdapter.OnClientConnected` callback; `EngineWorker.ResetState()` clears bars, indicators, equity, counters on every new cBot connection |
  | D69 | WebSmokeTests won't spawn engine subprocesses | ✅ A — `WebApplicationFactory` overrides `CTrader:StartEngineSubprocess=false`; fire-and-forget BacktestRunner never starts engine subprocess in tests |
+ | D70 | NetMQ transport for cBot↔engine | ✅ Final — Named pipes abandoned. ctrader-cli sandbox intercepts .NET managed sockets; NetMQ uses native P/Invoke (ZeroMQ) which bypasses. PUB/SUB + ROUTER/DEALER. |
+ | D71 | Strategy evaluation on bar close | ✅ Final — Indicators only change on bar close. `ProcessBarsAsync` evaluates once per bar. `ProcessTicksAsync` handles fills/risk only. |
+ | D72 | World ACL pipe security | ✅ Superseded by D70 |
+ | D73 | bars.BarClosed event for bar data | ✅ Final — cBot uses `MarketData.GetBars().BarClosed` instead of `OnBar()`. |
+ | D74 | Fixed ports 15555/15556 for NetMQ | ⚠️ Tech debt — hardcoded, fine for single-user, log for future dynamic allocation |
+ | D75 | TickEveryN = 10 throttling | ✅ Final — Ticks published 1 in 10. Used for fills/SL/TP only, not strategy signals. |
+ | D76 | --full-access required | ✅ Confirmed — Both .NET managed sockets AND NetMQ native sockets intercepted without it. |
+ | D77 | No 3-arg GetBars overload | ✅ Accepted — `MarketData.GetBars(tf, symbol, count)` doesn't exist. 34-bar default is platform limit. |
+ | D78 | bar.OpenTime must be UTC | ✅ Final — `DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc)` before serialization. |
+ | D79 | diag PUB topic for observability | ✅ Final — cBot publishes trace lines on `diag` topic; engine logs as `CBOT|…`. |
+ | D80 | Multi-symbol via cBot parameters | ✅ Final — Comma-separated `SymbolString` parameter. `SubscribeAll()` for `(symbol, tf, barClosed)`. Dedup via `HashSet<(symbol, tf, openTime)>`. |
+
+ | D81 | K4 twins relocated to a test-support assembly, not deleted | Final - OrderDispatcher/KernelOrderGate/AccountProcessor moved to tests/TradingEngine.Tests.Support (golden oracle home); grep->0 in src is the gate, "absent from production wiring" is the intent. TradingLoop/PositionTracker stay (not gated). |
+ | D82 | Golden oracle stays realized-equity; no MtM re-baseline | Final - KernelLoopHarness/golden use FakeVenue realized equity (the oracle). Production uses mark-to-market; its floating-DD is validated by in-host BacktestReplayTests + cTrader e2e, not the golden snapshot. No re-baseline. |
+ | D83 | One journal = StepRecord; legacy writers deleted | Final - PipelineEventWriter + BarEvaluationHandler (DropOldest) deleted; ChannelJournalWriter (Wait) is the single journal. Legacy IDecisionJournal/IPipelineJournal consumers bind to NullDecisionJournal/NullPipelineJournal. |
+ | D84 | EF migrations regenerated from scratch for ParentRunId | Final - recreate/regen-init (delete migrations + single fresh InitialCreate); dev DB recreated, app migrates + re-seeds from JSON on boot. Pre-release: no data to preserve. |
+ | D85 | Download ports hardcoded 15562/3 — no port manager exists yet | Final - iter-tape-trust T1. No port allocator anywhere in codebase. Documented as known limitation; must be built before concurrent downloads/backtests. |
+ | D86 | EmitExecutionEvent helper added per-adapter, not shared static | Final - Both adapters are sealed in same namespace. Per-adapter helpers keep scope small; no shared dependency needed. |
+ | D87 | GetAccountStateAsync returns _balance for both balance+equity | Final - Called at startup only (no open positions). Computing floating PnL adds risk without value. |
+ | D88 | cBot shards append:true (not .partial/rename) | Final - Simpler. Ingester dedupe absorbs overlaps. No rename-on-close coordination needed. |
+ | D89 | LedgerReconcileService is Scoped (needs TradingDbContext) | Final - Scoped to match DB context lifetime. |
+ | D90 | F1 spread on fills — directional spread on entry + exit; ask-bar detection for shorts | Final - Actually applied in T3. Changed all fill prices in both adapters. Golden 63/63 survived (kernel-vs-imperative both use same adapter). |
+ | D91 | RunPlanJson sourced from cfg.CustomParams[RunRows] | Final - Same source as WriteStartRecordAsync line 566. Consistent with DB path; no new serialization needed. |
+ | D92 | F1 halfSpread sourced from SymbolInfo.TypicalSpread / 2 | Final - `GetHalfSpread()` helper in both adapters; fallback 0.00005m if registry lookup fails. Per-bar spread (Q3) is future refinement. |
+ | D93 | ProcessPendingLimits decrementExpiry param | Final - Boolean param, default true (backward compat). Fine-bar calls pass false so limit expiry counts decision bars. |
+ | D94 | ComparePairId stored in CustomParams, not a DB column | Final - Avoids schema migration for T4. Both tape + cTrader runs share the same ComparePairId in their params dict. |
+ | D95 | SweepRunnerService is Singleton, uses IServiceScopeFactory | Final - Must be singleton (holds sweep job state). Scoped deps (IBacktestCommandService, IRunQueryService) created per-cell via factory scope. |
+ | D96 | Sweep cell execution uses 300 × 500ms polling (2.5min timeout) | Final - Simple polling loop; no event-driven completion. Adequate for tape venue (<1s per cell). |
+ | D97 | P3.6 Proposal Ledger + Entry-Tactic Lab deferred to next iteration | Final (2026-07-07) - Owner not confident about engine/backtest hook-point mechanics (KernelBacktestLoop.PumpAsync, DecisionRecord.OrderId threading, venue expiry flow). Wants P6.1 compare-both reconcile evidence before building instrumentation that sits inside these paths. Full implementable plan (32 files, all hooks code-trace-verified) at `docs/iterations/iter-quant-model/P3.6-HANDOVER.md`. |

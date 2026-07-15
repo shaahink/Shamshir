@@ -3,7 +3,7 @@ namespace TradingEngine.Risk.Compliance;
 public sealed class PropFirmComplianceService : IPropFirmComplianceService
 {
     private readonly PropFirmRuleSet _ruleSet;
-    private readonly DrawdownTracker _drawdownTracker;
+    private readonly IRiskManager _riskManager;
     private readonly IEngineClock _clock;
     private readonly IPassProbabilityEstimator _estimator;
     private int _tradingDaysMet;
@@ -11,12 +11,12 @@ public sealed class PropFirmComplianceService : IPropFirmComplianceService
 
     public PropFirmComplianceService(
         PropFirmRuleSet ruleSet,
-        DrawdownTracker drawdownTracker,
+        IRiskManager riskManager,
         IEngineClock clock,
         IPassProbabilityEstimator estimator)
     {
         _ruleSet = ruleSet;
-        _drawdownTracker = drawdownTracker;
+        _riskManager = riskManager;
         _clock = clock;
         _estimator = estimator;
     }
@@ -79,9 +79,10 @@ public sealed class PropFirmComplianceService : IPropFirmComplianceService
 
     public ComplianceSummary GetSummary()
     {
-        var targetEquity = _drawdownTracker.InitialAccountBalance * (1m + (decimal)_ruleSet.ProfitTargetPercent);
-        var maxDD = _drawdownTracker.GetMaxDrawdownFloor((decimal)_ruleSet.MaxTotalLossPercent);
-        var equity = _drawdownTracker.PeakEquity;
+        var dd = _riskManager.Drawdown;
+        var targetEquity = dd.InitialAccountBalance * (1m + (decimal)_ruleSet.ProfitTargetPercent);
+        var maxDD = dd.GetMaxDrawdownFloor((decimal)_ruleSet.MaxTotalLossPercent);
+        var equity = dd.PeakEquity;
 
         return new ComplianceSummary
         {
@@ -92,7 +93,7 @@ public sealed class PropFirmComplianceService : IPropFirmComplianceService
             TradingDaysMet = _tradingDaysMet,
             TradingDaysRequired = _ruleSet.MinTradingDays,
             Status = equity >= targetEquity ? "OnTrack"
-                : _drawdownTracker.CurrentMaxDrawdown > (decimal)(_ruleSet.MaxTotalLossPercent * 0.8) ? "AtRisk"
+                : dd.CurrentMaxDrawdown > (decimal)(_ruleSet.MaxTotalLossPercent * 0.8) ? "AtRisk"
                 : "OnTrack",
         };
     }

@@ -13,7 +13,22 @@ public sealed class SqliteExperimentRepository(TradingDbContext db) : IExperimen
 
     public async Task UpdateAsync(ExperimentEntity experiment, CancellationToken ct)
     {
-        db.Experiments.Update(experiment);
+        // F59: CreateAsync's Add() leaves the original instance tracked for the life of this
+        // DbContext (one per request scope). Calling db.Experiments.Update() with a second,
+        // detached instance carrying the same Id throws ("another instance with the same key
+        // value is already being tracked"). Fetch (FindAsync checks the tracker first, so this
+        // is free when already tracked) and copy values onto the tracked instance instead.
+        var existing = await db.Experiments.FindAsync([experiment.Id], ct);
+        if (existing is null)
+        {
+            db.Experiments.Update(experiment);
+        }
+        else
+        {
+            var createdUtc = existing.CreatedUtc;
+            db.Entry(existing).CurrentValues.SetValues(experiment);
+            existing.CreatedUtc = createdUtc;
+        }
         await db.SaveChangesAsync(ct);
     }
 

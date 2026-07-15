@@ -1,7 +1,10 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Strategies.MeanReversion;
 
+[StrategyId("mean-reversion")]
 public sealed class MeanReversionStrategy : IStrategy
 {
     private readonly MeanReversionConfig _config;
@@ -10,16 +13,17 @@ public sealed class MeanReversionStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => Math.Max(_config.Parameters.BbPeriod, _config.Parameters.AtrPeriod) + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats { get; private set; } = new(0, 0, 0, 0);
 
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod),
-        new($"BB_{_config.Parameters.BbPeriod}_{_config.Parameters.BbStdDev}", IndicatorType.BollingerBands, _config.Parameters.BbPeriod, _config.Parameters.BbStdDev),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"RSI_{_config.Parameters.RsiPeriod}", IndicatorType.Rsi, _config.Parameters.RsiPeriod, Timeframe: _config.EntryTimeframe),
+        new($"BB_{_config.Parameters.BbPeriod}_{_config.Parameters.BbStdDev}", IndicatorType.BollingerBands, _config.Parameters.BbPeriod, _config.Parameters.BbStdDev, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
 
     public MeanReversionStrategy(MeanReversionConfig config, ISymbolInfoRegistry symbolRegistry, ILogger<MeanReversionStrategy> logger)
@@ -33,16 +37,10 @@ public sealed class MeanReversionStrategy : IStrategy
     {
         try
         {
-            if (!_config.Symbols.Contains(context.Symbol.Value))
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
+            if (bars is null || bars.Count < RequiredBarCount)
             {
-                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
-                return null;
-            }
-
-            var h1Bars = context.Bars.GetValueOrDefault(_config.Timeframe);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
-            {
-                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
@@ -52,11 +50,16 @@ public sealed class MeanReversionStrategy : IStrategy
             if (rsi <= 0 || atr <= 0) return null;
 
             var currentPrice = context.LatestTick.Mid;
-            var latestBar = h1Bars[^1];
+            var latestBar = bars[^1];
             TradeDirection? dir = null;
 
-            var nearLow = (latestBar.Close - latestBar.Low) / latestBar.Close < 0.002m;
-            var nearHigh = (latestBar.High - latestBar.Close) / latestBar.Close < 0.002m;
+            // Close must sit in the lower (long) / upper (short) fraction of the bar's own range —
+            // a rejection wick — rather than within a fixed 0.2% of price (which on H1 majors is
+            // ~20+ pips and almost always satisfied, i.e. effectively no filter).
+            var range = latestBar.High - latestBar.Low;
+            var frac = (decimal)p.ProximityToExtremeFraction;
+            var nearLow = range > 0 && (latestBar.Close - latestBar.Low) <= range * frac;
+            var nearHigh = range > 0 && (latestBar.High - latestBar.Close) <= range * frac;
 
             if (rsi < p.RsiOversold && nearLow)
                 dir = TradeDirection.Long;
@@ -99,4 +102,22 @@ public sealed class MeanReversionStrategy : IStrategy
     }
 
     public void Reset() => Stats = new StrategyStats(0, 0, 0, 0);
+
+    public static MeanReversionStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new MeanReversionConfig(
+            entry.Id, entry.DisplayName, entry.Enabled,
+            entry.RiskProfileId,
+            StrategyFactoryHelper.DeserializeParams<MeanReversionParameters>(entry.Parameters))
+        {
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
+        };
+        return new MeanReversionStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<MeanReversionStrategy>>());
+    }
 }

@@ -5,7 +5,7 @@ public sealed class TrendBreakoutScenarios
     [Fact]
     public async Task TrendBreakout_BullishData_GeneratesAtLeastOneTrade()
     {
-        var config = new TrendBreakoutConfig { Symbols = ["EURUSD"] };
+        var config = new TrendBreakoutConfig();
 
         var registry = new SymbolInfoRegistry();
         registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",

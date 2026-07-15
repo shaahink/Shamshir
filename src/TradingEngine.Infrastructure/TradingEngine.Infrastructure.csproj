@@ -4,12 +4,13 @@
     <ProjectReference Include="..\TradingEngine.Domain\TradingEngine.Domain.csproj" />
     <ProjectReference Include="..\TradingEngine.Application\TradingEngine.Application.csproj" />
     <ProjectReference Include="..\TradingEngine.Risk\TradingEngine.Risk.csproj" />
+    <ProjectReference Include="..\TradingEngine.Services\TradingEngine.Services.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.*">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
@@ -25,5 +26,13 @@
     <Nullable>enable</Nullable>
     <NoWarn>CA1416</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- P4.3 (F43): VenueFillModel is the venue's resting-order fill rule, shared by both replay
+         adapters. It is pinned directly against real cTrader fills (VenueFillModelTests) rather than
+         only through an adapter, so the unit suite needs to see it. It stays internal — this is a
+         venue implementation detail, not public API. -->
+    <InternalsVisibleTo Include="TradingEngine.Tests.Unit" />
+  </ItemGroup>
 
 </Project>

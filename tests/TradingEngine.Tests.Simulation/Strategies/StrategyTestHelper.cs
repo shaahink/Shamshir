@@ -62,11 +62,39 @@ public static class StrategyTestHelper
         return values;
     }
 
-    public static MarketContext MakeContext(Bar bar, string symbol, List<Bar> bars, IReadOnlyDictionary<string, double> indicatorValues)
+    public static MarketContext MakeContext(Bar bar, string symbol, List<Bar> bars, IReadOnlyDictionary<string, double> indicatorValues,
+        IReadOnlyDictionary<string, IReadOnlyList<double>>? series = null)
     {
         var tick = new Tick(Symbol.Parse(symbol), bar.Close, bar.Close, bar.OpenTimeUtc);
         return new MarketContext(Symbol.Parse(symbol), tick,
-            new Dictionary<Timeframe, IReadOnlyList<Bar>> { [Timeframe.H1] = bars },
-            indicatorValues, bar.OpenTimeUtc);
+            new Dictionary<Timeframe, IReadOnlyList<Bar>> { [bar.Timeframe] = bars },
+            indicatorValues, bar.OpenTimeUtc, series);
+    }
+
+    /// <summary>
+    /// P2.1: recomputes indicators at every bar count from <paramref name="fromCount"/> to
+    /// <paramref name="bars"/>.Count, building a genuine growing per-key series (oldest first) — the same
+    /// shape IndicatorSnapshotService's ring buffer produces in production, just recomputed from scratch
+    /// each step instead of incrementally. Needed by scenario tests for strategies whose logic depends on
+    /// a real accumulating window (e.g. bb-squeeze's prior-width average), not just a 2-point lookback.
+    /// </summary>
+    public static Dictionary<string, List<double>> BuildFullSeries(
+        List<Bar> bars, IReadOnlyList<IndicatorRequest> requests, int fromCount)
+    {
+        var series = new Dictionary<string, List<double>>();
+        for (var count = fromCount; count <= bars.Count; count++)
+        {
+            var values = ComputeIndicators(bars.Take(count).ToList(), requests);
+            foreach (var (key, value) in values)
+            {
+                if (!series.TryGetValue(key, out var list))
+                {
+                    list = [];
+                    series[key] = list;
+                }
+                list.Add(value);
+            }
+        }
+        return series;
     }
 }

@@ -1,0 +1,29 @@
+{
+  "id": "raw",
+  "displayName": "Raw / Unprotected",
+  "riskPerTradePercent": 0.05,
+  "maxDailyDrawdownPercent": 1.0,
+  "maxTotalDrawdownPercent": 1.0,
+  "maxSlPips": 500.0,
+  "maxSlAtrMultiple": 25.0,
+  "maxExposurePercent": 0.50,
+  "maxExposurePerCurrencyPercent": 0.50,
+  "drawdownScaleThreshold": 1.0,
+  "drawdownScaleFloor": 1.0,
+  "maxConcurrentPositions": 20,
+  "allowHedging": true,
+  "propFirmRuleSetId": "raw",
+  "lotSizingMethod": "PercentRisk",
+  "fixedLots": 0.1,
+  "fixedDollarRisk": 0,
+  "kellyFraction": 0.25,
+  "antiMartingaleMultiplier": 1.5,
+  "antiMartingaleMaxSteps": 3,
+  "sizeModifiers": {
+    "minCombinedScale": 1.0,
+    "maxCombinedScale": 1.0,
+    "atrRegime": { "enabled": false },
+    "timeOfDay": { "enabled": false },
+    "confidence": { "enabled": false }
+  }
+}

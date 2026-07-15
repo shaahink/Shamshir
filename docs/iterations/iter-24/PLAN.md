@@ -1,0 +1,279 @@
+# Iter-24 Plan — One Strong Core, Provable Against FTMO
+
+Context: see `SYSTEM-MODEL.md`. The engine has a clean pure kernel but only the
+position-lifecycle slice is wired; the backtest path is a stale fork that places **0
+trades** and enforces **0 constraints**. This iteration collapses the two trading loops
+into one, makes one source of truth per concept, and proves FTMO constraints with
+deterministic tests over a backtest that actually trades.
+
+Working style: failing-test-first; build + full test suite green at **every** commit;
+small phases with machine-checkable gates. Branch off `iter/23-close-gap`.
+
+Baseline note: the full-solution build fails on an unrelated `aspire/AppHost` NuGet
+vuln-as-error (`NU1903 MessagePack`). Build/test the test projects directly, e.g.
+`dotnet test tests/TradingEngine.Tests.Simulation` — do not "fix" AppHost here.
+
+---
+
+## Decisions (resolving agent blockers — authoritative)
+
+**Q1 — Harness path: DIRECT TradingLoop, not IHost.** The skeleton's old IHost/ServiceCollection
+TODO was stale (now fixed in `EngineHarnessBuilder`). Build collaborators in-process (real
+`RiskManager` + `WireRiskRules`, real `OrderDispatcher`/`PositionTracker`/`IndicatorSnapshotService`,
+minimal fake venue) and drive `TradingLoop.ProcessBarAsync` synchronously per bar (account-pump →
+process → drain fills → SL/TP exits). ~1s, deterministic, reuses `TradingLoopDirectTests` wiring.
+`WaitForQuiescenceAsync` is then unneeded for the direct path (keep it only if a future async-feed
+harness wants it). Rationale: this is the whole point of the Phase 0c seam — don't re-import the
+IHost 60s floor we just escaped.
+
+**Q2 — Kernel: do NOT delete; quarantine + single owner.** Deleting the unwired reducer branches is
+irreversible and closes the door on the intentional iter-20 decision-kernel. Instead: (a) keep
+`RiskManager` as the documented single runtime owner of drawdown/governor (already the case); (b) keep
+the pure reducers/types (`DrawdownReducer`, `GovernorMachine`, `PositionLifecycle`, `EngineState`) —
+they're reusable and partly used; (c) add an **architecture test** asserting which `EngineEvent` types
+are actually reduced today, and mark the unwired branches (`HandleEquityObserved`/`HandleTickReceived`/
+`HandleDayRolled`/`HandleWeekRolled` + the governor/SL-TP parts of `HandleBarClosed`,
+`EngineState.Drawdown`/`Governor`) with an `// UNWIRED — RiskManager is authoritative; see §3.2` banner.
+This kills the double-systeming *risk* (only one path is live, and the test prevents accidental
+double-wiring) without the irreversible delete. Full "kernelization" stays a separate, explicit future
+decision. *(If the user later wants to commit to deleting, that's a one-line follow-up.)*
+
+**Q3 — ConstraintSet: resolved record (option C via A).** Keep `RiskProfile` and `PropFirmRuleSet` as
+deserialization types (they map to different config files and a profile is reused across firms — reject
+option B's embedding). Introduce a resolved `ConstraintSet` record, projected from both **at startup in
+`WireRiskRules`**, with DD limits normalized to `decimal`. `RiskManager` consumes only `ConstraintSet`
+for the gate, the worst-case projection, and the watchdog — one number per limit, no `(decimal)double`
+casts. Config types never reach the engine logic.
+
+**Q4 — Orphan test: collection fixture + helper, not a standalone test.** Add a `CtraderProcessGuard`
+static (`KillStrays()` via `Get-Process ctrader-cli`), and an xUnit collection fixture
+(`[CollectionDefinition("ctrader")]` + `ICollectionFixture<CtraderTestFixture>`) that ALL cTrader-
+launching classes join: ctor kills pre-existing strays (setup), `DisposeAsync` asserts zero remain
+(teardown). `ChildProcessReaper` is the primary defense; the fixture is the assertion. A standalone
+"no orphans" `[Fact]` is too ordering-fragile.
+
+**Design notes:** D1 in-memory `IBarRepository` — yes, tiny, in the harness. D2 fake venue — minimal
+`FakeVenue : IBrokerAdapter` (SubmitOrder→enqueue fill, ClosePosition→enqueue close); do not reuse
+`BacktestReplayAdapter`'s async feed. D3 `Position→ProjectedPosition` — add a mapper (`SlPips =
+|entry−sl|/pipSize`, `PipValuePerLot` from registry); approved for Phase 4. D4 `IEnginePacer` — two
+impls (async-stream for Live/Paper, bar-stepped for Backtest); mode picks the pacer at composition,
+the run logic becomes one path — must keep the live `Task.WhenAll` path byte-for-byte. D5
+DataFeedService sniff — defer (low priority). D6 golden bars — assert on `RiskManager.Drawdown`
+**crossing** the threshold (read state after each bar), not a hard-coded bar index; provide a
+close-delta bar generator.
+
+---
+
+## Phase 0 — Test infrastructure (do this FIRST; it unblocks proving everything else)
+
+The current tests can't actually validate money/risk behaviour, and they leak processes.
+Two design problems and one seam:
+
+### 0a. Deterministic FTMO harness — `EngineHarnessBuilder` (skeleton landed, compiles)
+`ReplayTestHarness` is unusable as an assertion vehicle: it **mocks `IRiskManager`** (so it
+can't assert real drawdown/limits) and it blocks on `BarStream.Completion` + a hardcoded
+`Task.Delay(5_000)` + host shutdown (~60s floor that times out any real-work test).
+
+A skeleton `tests/.../Harness/EngineHarnessBuilder.cs` + `EngineHarness` is in place. The
+reusable **`WaitForQuiescenceAsync`** (stop on "all fed bars consumed and settled", no
+wall-clock delay) is implemented. **AGENT TODO:**
+- Implement `BuildAsync`: compose via the real `AddRisk` / `AddPersistence` / `AddStrategies`
+  / `AddEventInfrastructure` / `AddEngineWorker` extensions, swap in a deterministic in-memory
+  broker (real in-memory `IBarRepository` → `BacktestReplayAdapter` is fine), call
+  `WireRiskRules` so the prop-firm rule set is active, subscribe the persistence handlers.
+- Expose `barsConsumed`/`barsFed` from the fake broker so `WaitForQuiescenceAsync` works.
+- Move `BacktestActuallyTradesTests` onto this harness and **un-skip it** (RED→GREEN).
+
+**Gate:** `BacktestActuallyTradesTests` green in <10s with a real `RiskManager`.
+
+### 0b. Process-leak fix — `ChildProcessReaper` (landed) + sweep (TODO)
+Root cause of the recurring orphan: `CTraderCli` launched `ctrader-cli` via CliWrap; on
+cancel/crash only the direct child was killed, so the CLI's own children survived (one was
+found alive for **2 days**). Fixed with `src/TradingEngine.CTraderRunner/ChildProcessReaper.cs`
+— a Windows Job Object (`KILL_ON_JOB_CLOSE`) the current process joins, so every descendant
+dies when the launcher exits. `CTraderCli.BacktestAsync` now arms it before spawning.
+**AGENT TODO:** verify `CtraderTestHarness` exits leave no `ctrader-cli` (assert via a
+collection-fixture teardown that `Get-Process ctrader-cli` is empty), and add a defensive
+sweep helper for CI.
+
+**Gate:** running the full cTrader test suite twice leaves zero `ctrader-cli` processes.
+
+### 0c. Testability seam — extract `TradingLoop` (DONE)
+`src/TradingEngine.Host/TradingLoop.cs` is the per-bar body as a standalone unit taking
+explicit collaborators; `EngineWorker` constructs one and delegates from both the live and
+backtest loops (`_tradingLoop.ProcessBarAsync(bar, ct)`). `BarCount`/`Reset` moved onto it.
+Behaviour-preserving (Unit 163, Goldens 7 green). It can now be driven directly with a fake
+broker + the real risk pipeline, no IHost.
+
+Done: `TradingLoopDirectTests.TradingLoop_DrivenDirectly_ProducesAnOrder` constructs
+`TradingLoop` with a fake broker + real `OrderDispatcher`/`PositionTracker`/
+`IndicatorSnapshotService` (NSubstitute for the rest), drives 8 bars, asserts an order is
+submitted — green in ~1s, no IHost. **This is the template the FTMO suite reuses.**
+
+**AGENT TODO:**
+- Point `EngineHarnessBuilder` at `TradingLoop` directly for the deterministic FTMO tests:
+  reuse the `TradingLoopDirectTests` wiring but swap the substitute `IRiskManager` for a
+  **real `RiskManager`** (with an active prop-firm rule set via `WireRiskRules`) and a real
+  persistence path, drive bars synchronously, and assert on `RiskManager.Drawdown` / the
+  journal. This sidesteps the IHost entirely — the preferred path over booting `EngineWorker`.
+
+**Gate:** ✅ the direct `TradingLoop` unit test is green and runs in <1s.
+
+### 0d. De-god the worker (DONE)
+`EngineWorker` was a 300-line `BackgroundService` holding ~28 injected fields (five dead:
+`_riskProfileResolver`, `_crossRateProvider`, `_persistence`, `_governor`, `_loggerFactory`).
+Split into `EngineRunner` (plain class, all run logic, `RunAsync(ct)`, 17 fields, no hosting
+dependency) and a ~16-line `EngineWorker : BackgroundService` that just delegates. Dead fields
+and the unused `ILoggerFactory` ctor dependency removed (3 construction sites updated).
+Behaviour-preserving (Unit 163, Golden+Loop 8 green).
+
+### 0e. Live-path concurrency + lean tick hot path (DONE)
+Fixed the `PositionTracker` race documented in `SYSTEM-MODEL.md §3.4`:
+- `ProcessTicksAsync` is now a lean hot path — translate ticks only, never touch `PositionTracker`.
+- One serialized live execution consumer (`MarketEventSource.ConsumeExecutionsAsync`, single reader)
+  pairs with the single-writer `ProcessExecutionEventsAsync`; `TradingLoop` no longer drains
+  executions (backtest caller drains explicitly; `marketEvents`/`strategies` dropped from its ctor).
+- `PositionTracker` serializes its three mutators with a `SemaphoreSlim(1,1)`.
+Behaviour-preserving (Unit 163, Golden+Loop 8 green).
+
+**AGENT TODO:** add a live-path concurrency stress test (many fills + force-close racing TrackOrder)
+to lock the invariant in; consider draining remaining executions on shutdown.
+
+### 0f. Decouple the engine from concrete venues (DONE; deeper part queued)
+`EngineRunner` no longer type-sniffs `CTraderBrokerAdapter` / `SimulatedBrokerAdapter` /
+`BacktestReplayAdapter`. The four sniffed behaviours are now default-no-op `IBrokerAdapter` methods
+(`RegisterConnectedHandler`, `OnTickObserved`, `OnBarObserved`, `CompleteBarAsync(ct)`) overridden by
+the venue that needs them (see `SYSTEM-MODEL §3.4b`). Behaviour-preserving (Unit 163, Golden+Loop 8).
+
+**AGENT TODO (architecture):** remove the last backtest branch — `if (_engineMode == Backtest)` still
+forks `EngineRunner` into two top-level loops. Introduce an `IEnginePacer` (or venue-drive) abstraction
+that owns pacing (bar-stepped+synchronous-fills vs async streams) so the engine runs ONE path. Then
+`EngineMode` leaves the run logic entirely (it only stamps `EquitySnapshot.Mode` via `AccountProcessor`).
+Also de-sniff `DataFeedService` (3× `SimulatedBrokerAdapter`). Related core review the user flagged —
+queue as separate findings: **journaling** (`IPipelineJournal` + `IDecisionJournal` both map to
+`PipelineEventWriter` — confirm one writer, no double-write; ensure `RecordDecisionEvent` effects and
+`OrderDispatcher`'s journal entries don't duplicate), **account sizing** (`RiskManager.CalculateLotSize`
++ `SizeModifierPipeline` — verify one sizing path, decimal money math per §3.5), **closing** (SL/TP exit
+reason determined in 3 places per §3.3 — unify), and **venue state syncing** (reconnect → `ResetState`
+now via `RegisterConnectedHandler`; verify startup reconciliation + mid-session reconnect replays open
+positions correctly).
+
+---
+
+## Phase 1 — One trading loop (the core fix)
+**(P1 loop unification + delete BacktestDriver is DONE in commit iter24-p1; remaining items below)**
+
+**Goal:** a single `TradingLoop` used by both live and backtest; delete `BacktestDriver`;
+backtest actually trades and enforces constraints.
+
+1. **RED:** Add `tests/.../Simulation/Ftmo/BacktestTradesAndHaltsTests.cs`:
+   - Fixture: FTMO-standard ruleset, `AlwaysSignalStrategy` (or a deterministic SL/TP
+     strategy), ~200 H1 bars on EURUSD with a monotonic down-leg.
+   - Assert (currently fails): `db.Trades.Count > 0`; at least one trade has a real
+     entry+exit; once daily DD crosses `MaxDailyLossPercent·FlattenAtFraction`, a
+     `RequestForceCloseAll` fires and no new orders open afterward that day.
+2. Extract `TradingLoop` (new file in `TradingEngine.Host`) containing the per-bar body
+   currently in `EngineWorker.ProcessBarsAsync:204-335`: indicator recompute → bar
+   snapshot → regime → active strategies → evaluate → signal gate → dispatch →
+   `TrackOrder` → drain executions. It takes the collaborators via a small deps struct
+   (reuse `IndicatorSnapshotService`, `OrderDispatcher`, `PositionTracker`, `SignalGate`,
+   `StrategyBank`, `RegimeDetector`, `EventBus`, journal, progress, clock).
+3. Live path: `EngineWorker` calls `TradingLoop.ProcessBarAsync(bar)` from its
+   `BarStream` loop. Behavior-preserving; suite stays green.
+4. Backtest path: `RunBacktestLoopAsync` drives the **same** `TradingLoop`, plus:
+   - feed **every** account update through `AccountProcessor.HandleAsync` (not just init)
+     so equity, the breach watchdog, and daily/weekly/monthly resets run in backtest;
+   - move SL/TP fill simulation into the replay/simulated adapter (a live broker does it
+     server-side), or into a single shared `SimulatedExitChecker` the adapter owns.
+5. **Delete `BacktestDriver.cs`.** Migrate `ReplayTestHarness` + `CtraderTestHarness` to
+   the unified loop.
+6. Fix the vacuous assertion in `BacktestReplayTests` (it loops over `trades` which is
+   empty when 0 trades) to assert `trades.Count > 0`.
+
+**Gates:** `grep -rc "class BacktestDriver" src` = 0; new FTMO test green; full suite
+green; backtest run produces `Trades.Count > 0`.
+
+---
+
+## Phase 2 — One source of truth for drawdown & governor
+
+**DECIDED (Q2): quarantine, do NOT delete.** `RiskManager` is the single documented runtime owner
+of drawdown/governor (already true). Do **not** delete the unwired kernel branches — that's
+irreversible and forecloses the iter-20 decision-kernel direction.
+
+- Mark the unwired reducer code with an `// UNWIRED — RiskManager is authoritative (§3.2)` banner:
+  `HandleEquityObserved`, `HandleTickReceived`, `HandleBarClosed`'s `GovernorMachine.ApplyBar` +
+  `DetectSlTpExit`, `HandleDayRolled`/`HandleWeekRolled`, `EngineState.Drawdown`/`Governor`.
+- Add an **architecture test** that pins the set of `EngineEvent` types actually reduced today, so a
+  branch can't silently become double-wired (the real double-systeming hazard).
+- Collapse the runtime drawdown representations to one mirror: `EquitySnapshot` carries the numbers,
+  `ExtendedRiskState` mirrors; remove other duplication.
+
+**Gates:** architecture test green (pins reduced-event set; asserts no double-wiring); a single class
+owns the live `DrawdownState`. Full kernelization remains a separate, explicit future decision.
+
+---
+
+## Phase 3 — One limit config
+
+- Collapse `RiskProfile` (DD percents, exposure, max positions) and `PropFirmRuleSet`
+  (loss percents, daily base) into one resolved `ConstraintSet` consumed identically by
+  the pre-trade gate, the worst-case projection, and the watchdog.
+- Normalize `MaxDailyDrawdownPercent`/`MaxTotalDrawdownPercent` to `decimal` (kill the
+  `(decimal)double` casts on money math).
+
+**Gates:** one type holds each limit; `grep` finds no `(decimal)profile.Max*DrawdownPercent`.
+
+---
+
+## Phase 4 — Correctness fixes surfaced while modeling
+
+- Pass real open positions (not `[]`) into `OrderDispatcher.DispatchAsync` →
+  `RiskManager.ValidateOrder` worst-case projection sees portfolio risk.
+- Add `MonthRolled` path or remove `ApplyMonthlyReset` dead method.
+
+**Gates:** a portfolio test where N open positions' combined worst-case blocks the N+1th.
+
+---
+
+## Phase 5 — Prove FTMO with deterministic golden journeys
+
+- One canonical FTMO journey fixture: equity walks into (a) the daily-loss line → halt +
+  flatten + next-day reset re-enables; (b) the max-loss line → permanent halt; (c) the
+  profit target. Lock as a golden over `DrawdownState` + decision journal.
+- Constraint matrix tests: lot sizing == risk-%, daily/total DD halt thresholds,
+  exposure cap, max-concurrent, weekend/news — each a focused deterministic test
+  asserting on state/journal, not log strings.
+
+**Gates:** golden journey stable across runs; each constraint has ≥1 asserting test.
+
+---
+
+## Phase 6 — Venue / account / PnL integrity (findings backlog from the iter-24 audit)
+Full prioritized list with file:line in `SYSTEM-MODEL.md §3.6`. These are correctness/money risks
+in how the engine talks to cTrader and keeps positions in sync with venue-confirmed state. Suggested
+order (highest money/data risk first), each its own small phase with a test:
+
+1. **M1 — use venue-authoritative PnL. ✅ DONE (iter-24).** `PublishTradeClosed` carries optional
+   `GrossProfit/NetProfit/Commission/Swap`; `PositionTracker` enriches the close effect from the
+   `ExecutionEvent`; `EffectExecutor` prefers venue net/commission/swap, recomputing only when null
+   (simulated venue). **AGENT TODO:** add the asserting test (a close exec with commission/swap →
+   `TradeResult.NetPnL ≠ GrossPnL` and equals the venue figure) — needs the live/fake-transport harness.
+2. **V1 — startup/reconnect position reconciliation.** Implement `GetAccountStateAsync` for cTrader and
+   seed `PositionTracker` from venue-open positions on connect; add a resync on reconnect. Gate: engine
+   restarted with an open venue position can force-close it.
+3. **V2 — durable Guid↔venue-position-id mapping** that survives reconnect (engine or cBot side).
+4. **V4 ✅ DONE (iter-24)** — exec dedup is now a bounded LRU (single-oldest eviction). **V5 TODO** —
+   don't drop `_bufferedCommands` on mid-bar disconnect (re-queue them like `_pendingCommands`).
+5. **M2 — disconnected-close synthetic `Price(1.0)` fill** must not enter the PnL ledger.
+6. **V3 — write venue-confirmed SL back to `PositionState.CurrentStopLoss`** after a modify (trailing).
+7. **A1–A4 — account/reset edges:** key resets on the update timestamp (not `_clock.UtcNow`); honor
+   `DailyDdBase` in `OnDailyReset`; guard Balance==0 init; unify FloatingPnL definition.
+
+**Gate:** each item has a focused test asserting on `TradeResult` / `DrawdownState` / position state.
+
+---
+
+## Out of scope (carry-forward)
+- Strategy-bank / regime tuning, Blazor UI, Scrutor assembly scanning, retiring
+  `TradingGovernorService` (tracked in iter-23 handover deferred list).

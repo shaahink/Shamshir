@@ -1,0 +1,10 @@
+{
+  "atrPeriod": 14,
+  "adxPeriod": 14,
+  "minBars": 100,
+  "baselineLookback": 100,
+  "highVolatilityAtrRatio": 2.5,
+  "lowVolatilityAtrRatio": 0.4,
+  "trendingAdxThreshold": 25.0,
+  "rangingAdxThreshold": 18.0
+}

@@ -1,0 +1,159 @@
+using Microsoft.Extensions.Logging;
+using TradingEngine.Domain.Events;
+using TradingEngine.Services.Helpers;
+
+namespace TradingEngine.Host;
+
+public sealed class EffectExecutor : IEffectExecutor
+{
+    private readonly IBrokerAdapter _broker;
+    private readonly IEventBus _eventBus;
+    private readonly IDecisionJournal? _decisionJournal;
+    private readonly IEquitySink? _equitySink;
+    private readonly IProgress<BacktestProgressEvent>? _progress;
+    private readonly string _runId;
+    private readonly IEngineClock _clock;
+    private readonly ILogger<EffectExecutor> _logger;
+    private readonly ISymbolInfoRegistry _symbolRegistry;
+    private readonly Func<string, string, decimal> _crossRateProvider;
+    private readonly IReadOnlyList<IStrategy> _strategies;
+    private readonly ITradingGovernor? _governor;
+    private readonly ISignalGate? _signalGate;
+    private readonly IRiskManager _riskManager;
+    private readonly IPositionManager _positionManager;
+
+    public EffectExecutor(
+        IBrokerAdapter broker,
+        IEventBus eventBus,
+        IDecisionJournal decisionJournal,
+        IEquitySink? equitySink,
+        IProgress<BacktestProgressEvent>? progress,
+        EngineRunContext runContext,
+        IEngineClock clock,
+        ILogger<EffectExecutor> logger,
+        ISymbolInfoRegistry symbolRegistry,
+        Func<string, string, decimal> crossRateProvider,
+        IReadOnlyList<IStrategy> strategies,
+        IRiskManager riskManager,
+        IPositionManager positionManager,
+        ITradingGovernor? governor = null,
+        ISignalGate? signalGate = null)
+    {
+        _broker = broker;
+        _eventBus = eventBus;
+        _decisionJournal = decisionJournal;
+        _equitySink = equitySink;
+        _progress = progress;
+        _runId = runContext.RunId;
+        _clock = clock;
+        _logger = logger;
+        _symbolRegistry = symbolRegistry;
+        _crossRateProvider = crossRateProvider;
+        _strategies = strategies;
+        _governor = governor;
+        _signalGate = signalGate;
+        _riskManager = riskManager;
+        _positionManager = positionManager;
+    }
+
+    public async Task ExecuteAsync(EngineEffect effect, CancellationToken ct)
+    {
+        switch (effect)
+        {
+            case SubmitOrder submit:
+                // P2.7: OrderType now travels on the effect itself (set by the kernel from the proposal),
+                // not re-derived from LimitPrice presence — that derivation couldn't distinguish Stop from
+                // Limit (both carry a resting trigger price on LimitPrice).
+                var intent = new TradeIntent(submit.Symbol, submit.Direction, submit.OrderType,
+                    submit.LimitPrice, submit.StopLoss, submit.TakeProfit,
+                    submit.StrategyId, "standard", "", _clock.UtcNow)
+                { Entry = submit.Entry };
+                var orderReq = new OrderRequest(intent, submit.Lots, submit.Symbol, submit.Direction,
+                    submit.OrderType, submit.LimitPrice,
+                    // Submit under the kernel's order id (= PositionId) so the venue fill/close + the
+                    // feedback bridge all key off ONE id — no venue-id↔kernel-id translation (K2).
+                    ClientOrderId: submit.OrderId);
+                await _broker.SubmitOrderAsync(orderReq, ct);
+                break;
+
+            case ModifyStopLoss modSl:
+                await _broker.ModifyOrderAsync(modSl.PositionId, modSl.NewStopLoss, modSl.TakeProfit, ct);
+                break;
+
+            case ModifyTakeProfit modTp:
+                await _broker.ModifyOrderAsync(modTp.PositionId, new Price(0), modTp.NewTakeProfit, ct);
+                break;
+
+            case CloseOpenPosition closePos:
+                // A close REQUEST — not a completed close. The funnel "Closes" counter is incremented
+                // on PublishTradeClosed (the actual fill), so we don't emit a "CLOSE" progress here
+                // (doing so double-counted force-closes, which emit both this and PublishTradeClosed).
+                // An engine-detected SL/TP carries the stop/target price so the close fills there (K2);
+                // a force-close (no price) routes to the normal market close.
+                if (closePos.ExitPrice is { } exitPx)
+                    await _broker.ClosePositionAtAsync(closePos.OrderId, exitPx, ct);
+                else
+                    await _broker.ClosePositionAsync(closePos.OrderId, ct);
+                break;
+
+            case ClosePartialOpenPosition partial:
+                // iter-38 A4b: close part of the position; the venue emits a partial fill that reduces it.
+                await _broker.ClosePartialPositionAsync(partial.OrderId, partial.CloseLots, ct);
+                break;
+
+            case RecordDecisionEvent record:
+                // iter-36 K5: the gate decision is now journaled losslessly on the StepRecord (DecisionReason),
+                // so the kernel path no longer needs the old IDecisionJournal. Kept optional only for the
+                // golden oracle harness, which still asserts on it; production passes null / a no-op.
+                _decisionJournal?.Record(record.Decision);
+                break;
+
+            case PublishTradeClosed tradeClosed:
+                await HandlePublishTradeClosed(tradeClosed, ct);
+                break;
+
+            case RegisterRisk register:
+                _riskManager.RegisterPosition(register.PositionId, register.StrategyId, register.RiskAmount);
+                break;
+
+            case DeregisterRisk deregister:
+                _riskManager.DeregisterPosition(deregister.PositionId);
+                _positionManager.DeregisterPosition(deregister.PositionId);
+                break;
+        }
+    }
+
+    private async Task HandlePublishTradeClosed(PublishTradeClosed effect, CancellationToken ct)
+    {
+        var symbolInfo = _symbolRegistry.Get(effect.Symbol);
+
+        // P0.3 (F6): trade construction extracted to TradeResultFactory so the LIVE path here and the
+        // journal-based BACKFILL path (TradePersistenceBarrier) reconstruct trades identically — a trade
+        // recovered from the journal is byte-for-byte what this live close would have written. Timeframe
+        // is the one field the journal can't carry, so the live path supplies it from the strategy.
+        var timeframe = _strategies.FirstOrDefault(s => s.Id == effect.StrategyId)?.EntryTimeframe.ToString();
+        var tradeResult = TradeResultFactory.FromClose(effect, symbolInfo, _crossRateProvider, Guid.NewGuid(), timeframe);
+
+        var gross = tradeResult.GrossPnL;
+        var net = tradeResult.NetPnL;
+
+        foreach (var s in _strategies.Where(s => s.Id == effect.StrategyId))
+        {
+            s.OnTradeResult(tradeResult);
+        }
+
+        await _eventBus.PublishAsync(new TradeClosed(tradeResult, _runId, effect.ClosedAtUtc, effect.ExcursionPathJson), ct);
+
+        _governor?.OnTradeClosed(tradeResult);
+        _signalGate?.OnPositionClosed(effect.StrategyId, effect.Symbol.Value, effect.Direction,
+            effect.ExitReason, effect.ClosedAtUtc);
+
+        // Live funnel "Closes" + journal: emitted once per actually-closed trade.
+        _progress?.Report(new BacktestProgressEvent(_runId, "CLOSE",
+            $"{effect.Symbol.Value} {effect.Direction} exit={effect.ExitPrice.Value:F5} net={net.Amount:F2} reason={effect.ExitReason}",
+            effect.ClosedAtUtc));
+
+        _logger.LogInformation("CLOSED|{Symbol}|{Dir}|Exit={Exit:F5}|Gross={Gross:F2}|Net={Net:F2}|Reason={Reason}",
+            effect.Symbol.Value, effect.Direction, effect.ExitPrice.Value, gross.Amount, net.Amount, effect.ExitReason);
+    }
+}

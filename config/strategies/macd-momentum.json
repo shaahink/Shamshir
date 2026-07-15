@@ -1,31 +1,60 @@
 {
-  "id": "macd-momentum",
-  "displayName": "MACD Momentum",
-  "enabled": true,
-  "symbols": ["EURUSD", "GBPUSD"],
-  "riskProfileId": "standard",
-  "timeframe": "H1",
-  "regimeFilter": { "allowRanging": false },
-  "orderEntry": { "method": "Market", "maxSlippagePips": 2.0 },
-  "positionManagement": {
-    "stopLoss": { "method": "AtrMultiple", "atrMultiple": 2.0 },
-    "takeProfit": { "method": "RrMultiple", "rrMultiple": 3.0 }
-  },
-  "parameters": {
-    "macdFast": 12,
-    "macdSlow": 26,
-    "macdSignal": 9,
-    "smaPeriod": 200,
-    "adxPeriod": 14,
-    "adxMinThreshold": 20.0,
-    "atrPeriod": 14,
-    "slAtrMultiple": 2.0,
-    "tpRrMultiple": 3.0
-  }
-  "reentry": {
-    "blockWhileSameDirectionOpen": true,
-    "cooldownBarsAfterSl": 5,
-    "cooldownBarsAfterTp": 2,
-    "cooldownBarsAfterEntry": 3
-  }
+    "id":  "macd-momentum",
+    "displayName":  "MACD Momentum",
+    "enabled":  true,
+    "riskProfileId":  "standard",
+    "thesis":  "A MACD histogram zero-cross with price on the trend side of SMA(200) confirms fresh momentum worth trading toward a 3R target.",
+    "expectedTradesPerWeek":  2,
+    "expectedHoldBars":  20,
+    "regimeFilter":  {
+                         "allowRanging":  false
+                     },
+    "orderEntry":  {
+                        "method":  "LimitOffset",
+                        "limitOffsetPips":  3.0,
+                        "limitOffsetAtrFraction":  0.15,
+                        "limitOrderExpiryBars":  12,
+                        "maxSlippagePips":  2.0,
+                        "maxSlippageSpreadMultiple":  2.0
+                    },
+    "positionManagement":  {
+                               "stopLoss":  {
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  2.0,
+                                                "maxSlAtrMultiple":  5.0
+                                            },
+                               "takeProfit":  {
+                                                  "method":  "RrMultiple",
+                                                  "rrMultiple":  3.0
+                                              },
+                               "breakeven":  {
+                                                 "enabled":  true,
+                                                 "triggerRMultiple":  1.0,
+                                                 "offsetPips":  1.0,
+                                                 "offsetSpreadMultiple":  1.0
+                                             },
+                               "trailing":  {
+                                                "enabled":  true,
+                                                "mode":  "Auto",
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  2.5
+                                            }
+                           },
+    "parameters":  {
+                       "macdFast":  12,
+                       "macdSlow":  26,
+                       "macdSignal":  9,
+                       "smaPeriod":  200,
+                       "adxPeriod":  14,
+                       "adxMinThreshold":  20.0,
+                       "atrPeriod":  14,
+                       "slAtrMultiple":  2.0,
+                       "tpRrMultiple":  3.0
+                   },
+    "reentry":  {
+                    "blockWhileSameDirectionOpen":  true,
+                    "cooldownBarsAfterSl":  5,
+                    "cooldownBarsAfterTp":  2,
+                    "cooldownBarsAfterEntry":  3
+                }
 }

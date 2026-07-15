@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.8" />
+    <PackageReference Include="Scrutor" Version="6.0.1" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="10.*" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
@@ -23,5 +24,6 @@
     <ProjectReference Include="..\TradingEngine.Infrastructure\TradingEngine.Infrastructure.csproj" />
     <ProjectReference Include="..\TradingEngine.Services\TradingEngine.Services.csproj" />
     <ProjectReference Include="..\TradingEngine.Strategies\TradingEngine.Strategies.csproj" />
+    <ProjectReference Include="..\TradingEngine.Experiments\TradingEngine.Experiments.csproj" />
   </ItemGroup>
 </Project>

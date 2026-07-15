@@ -1,7 +1,10 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace TradingEngine.Strategies.SessionBreakout;
 
+[StrategyId("session-breakout")]
 public sealed class SessionBreakoutStrategy : IStrategy
 {
     private readonly SessionBreakoutConfig _config;
@@ -13,14 +16,15 @@ public sealed class SessionBreakoutStrategy : IStrategy
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.Timeframe];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => _config.Parameters.AtrPeriod + 5;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats { get; private set; } = new(0, 0, 0, 0);
 
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
 
     public SessionBreakoutStrategy(SessionBreakoutConfig config, ISymbolInfoRegistry symbolRegistry, ILogger<SessionBreakoutStrategy> logger)
@@ -34,16 +38,10 @@ public sealed class SessionBreakoutStrategy : IStrategy
     {
         try
         {
-            if (!_config.Symbols.Contains(context.Symbol.Value))
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
+            if (bars is null || bars.Count < RequiredBarCount)
             {
-                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
-                return null;
-            }
-
-            var h1Bars = context.Bars.GetValueOrDefault(_config.Timeframe);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
-            {
-                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, h1Bars?.Count ?? 0, RequiredBarCount);
+                _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
@@ -52,8 +50,20 @@ public sealed class SessionBreakoutStrategy : IStrategy
 
             if (now >= p.RangeStartUtc && now < p.RangeEndUtc)
             {
-                _rangeHigh = h1Bars.Max(b => b.High);
-                _rangeLow = h1Bars.Min(b => b.Low);
+                var sessionDay = context.EngineTimeUtc.Date;
+                var sessionBars = bars
+                    .Where(b =>
+                    {
+                        if (b.OpenTimeUtc.Date != sessionDay) return false;
+                        var barTime = TimeOnly.FromDateTime(b.OpenTimeUtc);
+                        return barTime >= p.RangeStartUtc && barTime < p.RangeEndUtc;
+                    })
+                    .ToList();
+                if (sessionBars.Count > 0)
+                {
+                    _rangeHigh = sessionBars.Max(b => b.High);
+                    _rangeLow = sessionBars.Min(b => b.Low);
+                }
                 return null;
             }
 
@@ -102,5 +112,23 @@ public sealed class SessionBreakoutStrategy : IStrategy
         _rangeHigh = null;
         _rangeLow = null;
         Stats = new StrategyStats(0, 0, 0, 0);
+    }
+
+    public static SessionBreakoutStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new SessionBreakoutConfig(
+            entry.Id, entry.DisplayName, entry.Enabled,
+            entry.RiskProfileId,
+            StrategyFactoryHelper.DeserializeParams<SessionBreakoutParameters>(entry.Parameters))
+        {
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
+        };
+        return new SessionBreakoutStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<SessionBreakoutStrategy>>());
     }
 }

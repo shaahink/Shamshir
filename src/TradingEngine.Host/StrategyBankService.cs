@@ -11,6 +11,7 @@ public sealed class StrategyBankService : IStrategyBank
     public StrategyBankService(
         StrategyRegistry registry,
         StrategyRotationOptions? rotation,
+        RunPlan? runPlan,
         ILogger<StrategyBankService> logger)
     {
         _registry = registry;
@@ -18,13 +19,13 @@ public sealed class StrategyBankService : IStrategyBank
         _logger = logger;
     }
 
-    public IReadOnlyList<IStrategy> GetActive(Symbol symbol, Timeframe timeframe, MarketRegime regime)
+    public IReadOnlyList<IStrategy> GetActive(Symbol symbol, Timeframe timeframe, MarketRegime regime, bool ignoreRegime = false)
     {
         return _registry.GetAll()
             .Where(s => _enabledOverrides.TryGetValue(s.Id, out var en) ? en : s.Config.Enabled)
-            .Where(s => s.Config.Symbols.Contains(symbol.Value))
-            .Where(s => s.RequiredTimeframes.Contains(timeframe))
-            .Where(s => s.Config.RegimeFilter.Allows(regime))
+            .Where(s => s.Config.EntryTimeframe == timeframe)
+            .Where(s => s.Config.Symbol is null || s.Config.Symbol == symbol.Value)
+            .Where(s => ignoreRegime || s.Config.RegimeFilter.Allows(regime))
             .ToList();
     }
 

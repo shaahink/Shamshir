@@ -1,13 +1,34 @@
+using TradingEngine.Services.Helpers;
+
 namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
-public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepository
+public sealed class SqliteTradeRepository(TradingDbContext db, ISymbolInfoRegistry? symbolRegistry = null) : ITradeRepository
 {
     public async Task SaveAsync(TradeResult trade, string runId, CancellationToken ct)
     {
+        double? maeR = null;
+        double? mfeR = null;
+
+        if (symbolRegistry is not null && symbolRegistry.TryGet(trade.Symbol, out var symInfo))
+        {
+            var entry = trade.EntryPrice.Value;
+            var stop = (trade.InitialStopLoss ?? trade.StopLoss).Value;
+            if (entry > 0 && stop > 0)
+            {
+                (maeR, mfeR) = MaeMfeNormalizer.Normalize(
+                    trade.MaxAdverseExcursion.Value,
+                    trade.MaxFavorableExcursion.Value,
+                    entry,
+                    stop,
+                    symInfo);
+            }
+        }
+
         var entity = new TradeResultEntity
         {
             Id = trade.Id,
             PositionId = trade.PositionId,
+            OrderId = trade.OrderId,
             Symbol = trade.Symbol.ToString(),
             Direction = trade.Direction.ToString(),
             Lots = trade.Lots,
@@ -29,12 +50,30 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             RMultiple = trade.RMultiple,
             MaxAdverseExcursion = trade.MaxAdverseExcursion.Value,
             MaxFavorableExcursion = trade.MaxFavorableExcursion.Value,
+            MaeR = maeR,
+            MfeR = mfeR,
             ExitReason = trade.ExitReason,
             StrategyId = trade.StrategyId,
             RiskProfileId = trade.RiskProfileId,
             Mode = trade.Mode.ToString(),
+            OrderEntryMethod = trade.OrderEntryMethod,
             DurationSeconds = trade.DurationSeconds,
             RunId = string.IsNullOrEmpty(runId) ? null : runId,
+            EntryReason = trade.EntryReason,
+            EntryRegime = trade.EntryRegime,
+            EntryTimeframe = trade.Timeframe,
+            EntrySnapshotJson = trade.EntrySnapshotJson,
+            InitialStopLoss = trade.InitialStopLoss?.Value,
+            // P0.1: finalStopLoss/initialStopLoss alongside the existing reason/exit/r so exit-lab /
+            // giveback analysis can see both without re-joining EntrySnapshotJson.
+            ExitDetailJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                reason = trade.ExitReason,
+                exit = trade.ExitPrice.Value,
+                r = trade.RMultiple,
+                finalStopLoss = trade.StopLoss.Value,
+                initialStopLoss = trade.InitialStopLoss?.Value,
+            }),
         };
         db.Trades.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -74,6 +113,12 @@ public sealed class SqliteTradeRepository(TradingDbContext db) : ITradeRepositor
             new Pips(e.PnLPips), e.RMultiple,
             new Pips(e.MaxAdverseExcursion), new Pips(e.MaxFavorableExcursion),
             e.ExitReason, e.StrategyId, e.RiskProfileId,
-            Enum.Parse<EngineMode>(e.Mode));
+            Enum.Parse<EngineMode>(e.Mode),
+            OrderEntryMethod: e.OrderEntryMethod,
+            OrderId: e.OrderId,
+            Timeframe: e.EntryTimeframe,
+            InitialStopLoss: e.InitialStopLoss.HasValue ? new Price(e.InitialStopLoss.Value) : null,
+            MaeR: e.MaeR,
+            MfeR: e.MfeR);
     }
 }

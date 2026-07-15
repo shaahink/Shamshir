@@ -7,8 +7,11 @@
     <Project Path="src/TradingEngine.Application/TradingEngine.Application.csproj" />
     <Project Path="src/TradingEngine.CTraderRunner/TradingEngine.CTraderRunner.csproj" />
     <Project Path="src/TradingEngine.Domain/TradingEngine.Domain.csproj" />
+    <Project Path="src/TradingEngine.Engine/TradingEngine.Engine.csproj" />
+    <Project Path="src/TradingEngine.Experiments/TradingEngine.Experiments.csproj" />
     <Project Path="src/TradingEngine.Host/TradingEngine.Host.csproj" />
     <Project Path="src/TradingEngine.Infrastructure/TradingEngine.Infrastructure.csproj" />
+    <Project Path="src/TradingEngine.ResearchCli/TradingEngine.ResearchCli.csproj" />
     <Project Path="src/TradingEngine.Risk/TradingEngine.Risk.csproj" />
     <Project Path="src/TradingEngine.Services/TradingEngine.Services.csproj" />
     <Project Path="src/TradingEngine.Strategies/TradingEngine.Strategies.csproj" />
@@ -17,6 +20,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/TradingEngine.Tests.Integration/TradingEngine.Tests.Integration.csproj" />
     <Project Path="tests/TradingEngine.Tests.Simulation/TradingEngine.Tests.Simulation.csproj" />
+    <Project Path="tests/TradingEngine.Tests.Architecture/TradingEngine.Tests.Architecture.csproj" />
     <Project Path="tests/TradingEngine.Tests.Unit/TradingEngine.Tests.Unit.csproj" />
   </Folder>
 </Solution>

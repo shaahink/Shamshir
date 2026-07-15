@@ -1,13 +1,16 @@
 namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class ExperimentRunEntity
+public sealed class ExperimentRunEntity : IAuditableEntity
 {
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
+
     public Guid Id { get; set; }
     public Guid ExperimentId { get; set; }
     public ExperimentEntity Experiment { get; set; } = null!;
     public string BacktestRunId { get; set; } = "";
     public string VariantLabel { get; set; } = "";
     public int FoldIndex { get; set; }
-    public string FoldRole { get; set; } = "Test";
+    public string FoldRole { get; set; } = "Train";
     public string ScoreJson { get; set; } = "{}";
 }

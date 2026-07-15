@@ -8,7 +8,8 @@ public sealed class ComposedStrategy : IStrategy
 
     public string Id { get; }
     public string DisplayName { get; }
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [Timeframe.H1];
+    public Timeframe EntryTimeframe => Config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [Config.EntryTimeframe];
     public int RequiredBarCount => _signal.RequiredBarCount;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators => _signal.RequiredIndicators;
     public IReadOnlyList<IPositionBehavior> PositionBehaviors { get; }
@@ -21,7 +22,8 @@ public sealed class ComposedStrategy : IStrategy
         ISignalProvider signal,
         IExitBehavior exit,
         IEnumerable<IEntryFilter>? filters = null,
-        IEnumerable<IPositionBehavior>? behaviors = null)
+        IEnumerable<IPositionBehavior>? behaviors = null,
+        ReentryOptions? reentry = null)
     {
         Id = id;
         DisplayName = displayName;
@@ -29,15 +31,15 @@ public sealed class ComposedStrategy : IStrategy
         _exit = exit;
         _filters = filters?.ToList() ?? [];
         PositionBehaviors = behaviors?.ToList() ?? [];
-        Config = new ComposedStrategyConfig(id, displayName);
+        Config = new ComposedStrategyConfig(id, displayName, reentry);
     }
 
     public TradeIntent? Evaluate(MarketContext context)
     {
         try
         {
-            var h1Bars = context.Bars.GetValueOrDefault(Timeframe.H1);
-            if (h1Bars is null || h1Bars.Count < RequiredBarCount)
+            var bars = context.Bars.GetValueOrDefault(Config.EntryTimeframe);
+            if (bars is null || bars.Count < RequiredBarCount)
                 return null;
 
             foreach (var filter in _filters)
@@ -89,14 +91,15 @@ public sealed class ComposedStrategy : IStrategy
     }
 }
 
-internal sealed record ComposedStrategyConfig(string Id, string DisplayName) : IStrategyConfig
+internal sealed record ComposedStrategyConfig(string Id, string DisplayName, ReentryOptions? ReentryOverride = null) : IStrategyConfig
 {
     public bool Enabled => true;
-    public IReadOnlyList<string> Symbols => [];
     public string RiskProfileId => "standard";
-    public Timeframe Timeframe => Timeframe.H1;
     public RegimeFilterOptions RegimeFilter => new();
     public OrderEntryOptions OrderEntry => new();
     public PositionManagementOptions PositionManagement => new();
-    public ReentryOptions Reentry => new();
+    public ReentryOptions Reentry => ReentryOverride ?? new();
+    public Timeframe EntryTimeframe { get; init; } = Timeframe.H1;
+    public string? Symbol { get; init; }
+    public IReadOnlyList<Timeframe> RequiredTimeframes { get; init; } = [];
 }

@@ -1,0 +1,51 @@
+{
+  "barCount": 20,
+  "trades": [
+    {
+      "direction": "Long",
+      "lots": 0.20,
+      "entryPrice": 1.0970,
+      "exitPrice": 1.0920,
+      "exitReason": "SL"
+    }
+  ],
+  "journal": [
+    {
+      "stage": "OrderSubmitted",
+      "event": "OrderSubmitted",
+      "guardResult": null,
+      "reason": "Order accepted: lots=0.2000 risk=100.00"
+    },
+    {
+      "stage": "Submitted",
+      "event": "OrderFilled",
+      "guardResult": null,
+      "reason": "Filled"
+    },
+    {
+      "stage": "Open",
+      "event": "OrderFilled",
+      "guardResult": null,
+      "reason": "SL"
+    },
+    {
+      "stage": "OrderSubmitted",
+      "event": "OrderSubmitted",
+      "guardResult": null,
+      "reason": "Order accepted: lots=0.1900 risk=95.00"
+    },
+    {
+      "stage": "Submitted",
+      "event": "OrderFilled",
+      "guardResult": null,
+      "reason": "Filled"
+    }
+  ],
+  "finalRisk": {
+    "peakEquity": 10000,
+    "currentDailyDrawdown": 0.010000,
+    "currentMaxDrawdown": 0.010000,
+    "inProtectionMode": false,
+    "protectionCause": null
+  }
+}

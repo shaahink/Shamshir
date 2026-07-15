@@ -3,10 +3,14 @@ namespace TradingEngine.Infrastructure.Persistence.Repositories;
 public sealed class SqliteBarRepository(TradingDbContext db) : IBarRepository
 {
     public async Task BulkInsertAsync(IReadOnlyList<Bar> bars, CancellationToken ct)
+        => await BulkInsertAsync("", bars, ct);
+
+    public async Task BulkInsertAsync(string runId, IReadOnlyList<Bar> bars, CancellationToken ct)
     {
         var entities = bars.Select(b => new BarEntity
         {
             Id = Guid.NewGuid(),
+            RunId = runId,
             Symbol = b.Symbol.ToString(),
             Timeframe = b.Timeframe.ToString(),
             OpenTimeUtc = b.OpenTimeUtc,
@@ -22,8 +26,14 @@ public sealed class SqliteBarRepository(TradingDbContext db) : IBarRepository
     }
 
     public async Task<IReadOnlyList<Bar>> GetAsync(Symbol symbol, Timeframe tf, DateTime from, DateTime to, CancellationToken ct)
+        => await GetAsync("", symbol, tf, from, to, ct);
+
+    public async Task<IReadOnlyList<Bar>> GetAsync(string runId, Symbol symbol, Timeframe tf, DateTime from, DateTime to, CancellationToken ct)
     {
-        return await db.Bars
+        var query = db.Bars.AsQueryable();
+        if (!string.IsNullOrEmpty(runId))
+            query = query.Where(b => b.RunId == runId);
+        return await query
             .Where(b => b.Symbol == symbol.ToString()
                 && b.Timeframe == tf.ToString()
                 && b.OpenTimeUtc >= from

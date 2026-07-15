@@ -2,7 +2,7 @@ using Skender.Stock.Indicators;
 
 namespace TradingEngine.Infrastructure.Indicators;
 
-internal sealed class SkenderQuote(Bar bar) : IQuote
+public sealed class SkenderQuote(Bar bar) : IQuote
 {
     public DateTime Date => bar.OpenTimeUtc;
     public decimal Open => bar.Open;

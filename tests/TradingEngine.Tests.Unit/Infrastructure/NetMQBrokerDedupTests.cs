@@ -7,8 +7,10 @@ public sealed class NetMQBrokerDedupTests
     public void DuplicateExecEvents_AreDeduplicated_InExecChannel()
     {
         // Simulate the cBot sending the same close exec via both bar_result.execs[] and standalone exec
-        var adapter = new NetMQBrokerAdapter("tcp://127.0.0.1:55555", "tcp://*:55556",
-            Substitute.For<ILogger<NetMQBrokerAdapter>>());
+        var transportLogger = Substitute.For<ILogger<NetMqMessageTransport>>();
+        var transport = new NetMqMessageTransport("tcp://127.0.0.1:55555", "tcp://*:55556", transportLogger);
+        var adapter = new CTraderBrokerAdapter(transport,
+            Substitute.For<ILogger<CTraderBrokerAdapter>>());
 
         // Simulate two identical exec events (same orderId, state, fillPrice, lots)
         var exec1 = new ExecutionEvent(

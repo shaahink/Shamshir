@@ -20,7 +20,7 @@ public sealed class GovernorController : ControllerBase
             state = snapshot.State.ToString(),
             sizeMultiplier = snapshot.SizeMultiplier,
             consecutiveLosses = snapshot.ConsecutiveLosses,
-            dayRealizedPnLPercent = snapshot.DayRealizedPnLPercent,
+            dayNetPnLFraction = snapshot.DayNetPnLFraction,
             distanceToDailyLimitFraction = snapshot.DistanceToDailyLimitFraction,
             reason = snapshot.Reason,
         });

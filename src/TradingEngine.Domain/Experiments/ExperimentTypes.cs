@@ -19,7 +19,23 @@ public record ExperimentSpec(
     public ScoringWeights Scoring { get; init; } = Scoring ?? new();
 }
 
-public record WalkForwardSpec(int Folds = 4, double TrainFraction = 0.7);
+public record WalkForwardSpec(int Folds = 4, double TrainFraction = 0.7)
+{
+    public string[]? Strategies { get; init; }
+    public string[]? Symbols { get; init; }
+    public string[]? Timeframes { get; init; }
+    public DateOnly From { get; init; }
+    public DateOnly To { get; init; }
+    public Dictionary<string, decimal[]>? ParamGrid { get; init; }
+    public decimal Balance { get; init; } = 100_000m;
+
+    // R3.2: without these, every train/test window silently reverts to the strategy's default
+    // pack/risk profile — walk-forwarding a variant that beat baseline on a pack or risk-profile
+    // swap would validate the WRONG config. Optional so existing default-config walk-forwards
+    // (no pack/risk override) are unaffected.
+    public string? PackId { get; init; }
+    public string? RiskProfileId { get; init; }
+}
 
 public record VariantSpec(string Label)
 {

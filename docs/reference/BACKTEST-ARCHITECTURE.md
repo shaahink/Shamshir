@@ -1,91 +1,140 @@
 # Backtest Architecture
 
-**Last updated**: Iteration 10
+**Last updated**: 2026-06-18 (post iter-31/32)
 
-This document explains how backtesting actually works in this system — both paths, their
-status, and where the data flows. Implementing agents must read this before touching any
+> **2026-07-15 (branch refactor/god-classes):** the orchestrator was decomposed. Venue execution
+> now lives behind the `IVenueRunner` seam in `TradingEngine.Web/Services/Venues/` —
+> `ReplayVenueRunner` (replay + tape) and `CTraderVenueRunner` (NetMQ + ctrader-cli) — resolved
+> per run by `VenueRunnerRegistry` from the run's `Venue` custom param (**not** the old
+> `CTrader:UseForBacktest` flag; ports are dynamic, not 15555/15556). Run-scoped services live in
+> `TradingEngine.Web/Services/Runs/` (RunRegistry, RunRecordStore, RunConfigAssembler,
+> RunMarketContextLoader, RunProgressProjector, EngineHostLifecycle). Method names below such as
+> `RunEngineReplayAsync`/`RunEngineNetMqAsync` refer to code that moved verbatim into those
+> runners; the flows themselves are unchanged. See
+> `docs/iterations/iter-refactor-godclasses/SURVEY.md`.
+
+This document explains how backtesting actually works — both venue paths, data flow,
+cost computation, limit orders, and journal capture. Read this before touching any
 backtest-related code.
 
 ---
 
-## The two backtest paths
+## The two venue paths
 
-### Path A — cTrader (production-equivalent)
+### Path A — BacktestReplayAdapter (default, credential-free)
 
 ```
-User clicks "Run Backtest" in Web UI
+BacktestOrchestrator.Start()
+  → RunEngineReplayAsync() (when CTrader:UseForBacktest=false)
+    → spins up engine in-process via IHostBuilder
+      → registers BacktestReplayAdapter as IBrokerAdapter
+      → engine uses EngineMode.Backtest
     ↓
-BacktestOrchestrator.Start(cfg)
-    ↓
-BacktestRunner.RunAsync(cfg)        [TradingEngine.CTraderRunner]
-    ↓ (optionally)
-StartEngine() → dotnet run TradingEngine.Host (subprocess)
-    → reads Engine__RunId from env
-    → registers EngineRunContext(runId)
-    → registers SimulatedBrokerAdapter (NOT BacktestReplayAdapter)
-    → EngineWorker starts: ProcessBarsAsync, ProcessTicksAsync etc.
-    ↓
-Process.Start("ctrader-cli backtest ...")
-    → cBot starts inside ctrader-cli sandbox
-    → cBot connects to engine via NetMQ (ZeroMQ, tcp://127.0.0.1:15555)
-    → cBot sends bars via NetMQ PUB → engine receives on BarStream
-    → engine evaluates strategies → signals → OrderDispatcher
-    → OrderDispatcher → broker.SubmitOrderAsync → cBot fills via NetMQ DEALER
-    → ExecutionEvent → PositionTracker → TradeClosed event
-    → TradePersistenceHandler → SQLite Trades table (with RunId)
-    → BarEvaluationHandler → SQLite BarEvaluations table (with RunId)
-    ↓
-ctrader-cli exits → writes report.json
-    ↓
-BacktestRunner reads report.json → BacktestResult
-    ↓
-BacktestOrchestrator queries DB for trade stats (overrides report.json stats)
-    ↓
-BacktestRuns row saved to DB
+BacktestReplayAdapter.ConnectAsync()
+  → loads bars from SQLite Bars table for (symbol, timeframe, from, to)
+  → feeds bars + synthetic ticks to engine
+  → for each bar:
+      → evaluates strategies via TradingLoop
+      → EntryPlanner resolves limit/market orders
+      → fills market orders at bar close, rests limit orders
+      → cancels expired limit orders (OrderCancelled event)
+      → computes commission + swap via TradeCostCalculator
+      → stamps ExecutionEvent with GrossProfit/Commission/Swap/NetProfit
+      → emits AccountUpdate with net-updated balance
+      → drains execution events
+  ↓
+Journal captured: PipelineEvents (SIGNAL/ORDER/FILL/CLOSE/ENTRY_EXPIRED)
+  with itemized cost detail on every close
 ```
 
-**Status**: Working, but:
-- Requires CTrader credentials (`CTrader:CtId`, `CTrader:PwdFile`, `CTrader:Account`)
-- Cannot be automated in CI
-- Max drawdown stat is wrong (see BUG-04 in `docs/OPEN-ISSUES.md`)
-- BacktestRuns saved only on success (see DESIGN-05)
+**Status**: Working. Default path when `CTrader:UseForBacktest=false` (Development profile currently has this at `true` — set to `false` for credential-free). Produces honest cost-inclusive results. Supports limit orders with resting/expiry semantics.
+
+### Path B — SimulatedBrokerAdapter (synthetic, tick-driven)
+
+```
+DataFeedService (IHostedService)
+  → reads CSV from HistoricalDataProvider (committed test data in tests/data/)
+  → synthesizes 4 ticks per bar (0%/25%/50%/75% duration)
+  → writes to SimulatedBrokerAdapter's TickWriter / BarWriter
+  ↓
+SimulatedBrokerAdapter.OnTickReceived()
+  → fills market orders on next tick
+  → rests limit orders until price reached or expiry
+  → computes costs via TradeCostCalculator
+  → checks SL/TP hits per tick
+  ↓
+Used primarily by EngineTestHarness in simulation tests.
+Also registered for EngineMode.Backtest in Host Program.cs, but the default
+UI path (RunEngineReplayAsync) uses BacktestReplayAdapter.
+```
+
+### Path C — cTrader (production-equivalent, requires credentials)
+
+```
+BacktestOrchestrator.Start() (CTrader:UseForBacktest=true)
+  → BacktestRunner.RunAsync()
+    → launches ctrader-cli as external Process
+      → cBot connects to engine via NetMQ
+      → engine uses NetMQBrokerAdapter (lock-step protocol)
+      → cTrader handles fill simulation, costs, SL/TP
+```
+
+**Status**: Requires CTrader credentials (`CTrader:CtId`, `CTrader:PwdFile`, `CTrader:Account`). Cannot be automated in CI. NetMQ ports 15555/15556 must be free.
 
 ---
 
-### Path B — Engine Replay (development, CI)
+## Cost computation (iter-31)
+
+Both credential-free venues use a shared `TradeCostCalculator` (in `TradingEngine.Services/Helpers/`):
 
 ```
-BacktestOrchestrator (or test harness)
-    ↓
-Spins up engine in-process (IHostBuilder)
-    → registers BacktestReplayAdapter as IBrokerAdapter
-    → registers EngineRunContext(runId)
-    → EngineWorker starts: ProcessBarsAsync, ProcessTicksAsync etc.
-    ↓
-BacktestReplayAdapter.ConnectAsync()
-    → loads bars from SQLite Bars table for (symbol, timeframe, from, to)
-    → for each bar:
-        → writes bar to BarStream channel
-        → writes synthetic tick at bar.Close to TickStream
-        → [PLANNED] fills any pending orders at bar.Close
-        → [PLANNED] emits AccountUpdate with updated equity
-    ↓
-EngineWorker processes bars → strategy evaluates → signals → OrderDispatcher
-    → OrderDispatcher → adapter.SubmitOrderAsync → pending order
-    → [PLANNED] adapter fills it → ExecutionEvent → PositionTracker
-    → TradeClosed → TradePersistenceHandler → DB
+closeExecutionEvent.GrossProfit = PipCalculator.GrossPnL(entry, exit, direction, lots, symbolInfo, crossRate)
+closeExecutionEvent.Commission   = lots × commissionPerLotPerSide × 2  (round turn)
+closeExecutionEvent.Swap         = nightsHeld × swapRate(direction) × lots
+closeExecutionEvent.NetProfit    = GrossProfit − Commission − Swap
 ```
 
-**Status as of Iteration 10**: BROKEN
-- BUG-01: `SimulateFill` exists but is never called → 0 trades always
-- BUG-02: Bar channel capacity 2,000 with `DropOldest` — ConnectAsync writes all bars before
-  consumer starts → silent data loss for ranges > 2,000 bars
-- BUG-03: `ClosePositionAsync` sends null fill price → force-close silently discarded
-- NOT wired to the UI — the "Run Backtest" button always uses Path A
+- `nightsHeld` counts daily-rollover boundaries crossed between open/close
+- Triple-swap day (default Wednesday) counts ×3
+- Cost data lives in `SymbolInfo` (+ `config/symbols.json`): `CommissionPerLotPerSide`, `SwapLongPerLotPerNight`, `SwapShortPerLotPerNight`, `TripleSwapWeekday`
+- All fields default to 0 (costs off, back-compatible)
 
-**Target state after Iteration 11**: BUG-01, 02, 03 fixed. E2E test passes without credentials.
-**Target state after Iteration 12**: BacktestOrchestrator uses Path B by default; Path A available
-as explicit "cTrader mode".
+---
+
+## Limit order support (iter-31 C0/C1)
+
+`EntryPlanner` (single place, in TradingLoop after `strategy.Evaluate()`) reads `OrderEntryOptions` from config:
+
+| Method | Behavior |
+|--------|----------|
+| `Market` | Immediate fill at bar close + slippage |
+| `LimitOffset` | Place limit `offsetPips` more favorable; rest until price reaches limit; expire after `limitOrderExpiryBars` |
+| `MarketWithSlippage` | Immediate fill capped at `maxSlippagePips` |
+
+- Buy limit fills when `Ask ≤ limitPrice`, at limit price (no slippage)
+- Sell limit fills when `Bid ≥ limitPrice`, at limit price
+- Expired limits emit `OrderCancelled` → journal as `ENTRY_EXPIRED`
+- SL/TP re-derived off the planned limit so R stays consistent
+- Default: all strategies `Market`; `mean-reversion` on `LimitOffset` as demonstration
+
+---
+
+## Journal taxonomy
+
+All pipeline events are normalized via `JournalNormalizer` into one taxonomy:
+
+| Kind | Meaning |
+|------|---------|
+| `SIGNAL` | Strategy emitted a TradeIntent (reason + direction + indicators) |
+| `ORDER` | Order accepted by dispatcher (size, risk, profile) |
+| `FILL` | Order filled / position opened |
+| `CLOSE` | Position closed (SL/TP/FORCE/DailyDD/MaxDD) with itemized costs |
+| `REJECTED` | Order rejected by risk gate |
+| `BREACH` | Drawdown limit breach detected |
+| `GOVERNOR` | Governor (session) state change |
+| `ENTRY_EXPIRED` | Limit order expired unfilled |
+
+API: `GET /api/backtest/{runId}/journal?kind=&afterSeq=&limit=50`
 
 ---
 
@@ -93,25 +142,19 @@ as explicit "cTrader mode".
 
 ```
 BacktestOrchestrator.Start()
-    → generates RunId = Guid.NewGuid().ToString("N")[..8]
-    → stamps BacktestConfig.RunId = runId
+  → generates RunId = Guid.NewGuid().ToString("N")[..8]
+  → BacktestOrchestrator.RunEngineReplayAsync()
     ↓
-BacktestRunner passes RunId as env var: Engine__RunId = runId
-    ↓
-TradingEngine.Host Program.cs reads Engine:RunId from config
-    → registers singleton: EngineRunContext(runId)
+creates inner IHost with EngineHostOptions(runId)
     ↓
 EngineWorker gets EngineRunContext injected
+  → all handlers stamp RunId on every record
     ↓
-PositionTracker.ClosePosition:
-    → fires TradeClosed(tradeResult, runContext.RunId, clock.UtcNow)
-    ↓
-TradePersistenceHandler handles TradeClosed
-    → PersistenceService.SaveTradeAsync(trade, runId, ct)
-    → SqliteTradeRepository sets TradeResultEntity.RunId
-    ↓
-BarEvaluationHandler handles BarEvaluated
-    → saves BarEvaluationEntity.RunId
+TradePersistenceHandler  → Trades table (RunId)
+BarEvaluationHandler     → BarEvaluations table (RunId)
+EquityPersistenceHandler → EquitySnapshots table (RunId)
+PipelineEventWriter      → PipelineEvents table (RunId)
+BacktestRunEntity        → BacktestRuns table (RunId, EffectiveConfigJson)
 ```
 
 ---
@@ -120,7 +163,7 @@ BarEvaluationHandler handles BarEvaluated
 
 | Channel | Location | Mode | Capacity | Why |
 |---------|----------|------|----------|-----|
-| BarStream | IBrokerAdapter | DropOldest | 2,000 | Market data; replay uses higher capacity |
+| BarStream | IBrokerAdapter | DropOldest | 2,000 | Market data; replay uses separate pacing |
 | TickStream | IBrokerAdapter | DropOldest | 10,000 | Ticks for fills only; can drop |
 | ExecutionStream | IBrokerAdapter | Wait | 1,000 | Never drop fills |
 | _executionEventChannel | EngineWorker | Wait | 1,000 | Internal relay for execution events |
@@ -133,37 +176,35 @@ BarEvaluationHandler handles BarEvaluated
 
 | Mode | Bar source | Seeded by |
 |------|-----------|-----------|
+| BacktestReplayAdapter | `IBarRepository.GetAsync()` → SQLite `Bars` table | Prior cTrader backtest or fixture data |
+| SimulatedBrokerAdapter | `HistoricalDataProvider` → CSV files (`tests/data/`) | `CsvDataGenerator` (seeded deterministic) |
 | cTrader backtest | cBot via NetMQ | ctrader-cli replay |
-| Engine replay | `IBarRepository.GetAsync()` → SQLite `Bars` table | Prior cTrader backtest |
 | Live | cBot via NetMQ | Live market |
 
-**Important**: For the engine replay path to work, the `Bars` table must already contain data
-for the requested symbol/timeframe/date range. This data is populated when a cTrader backtest
-runs and the cBot sends bars to the engine (they're saved by `IBarRepository`).
+---
+
+## Schema management
+
+Schema is maintained via EF Core migrations only. The raw SQL `ALTER TABLE` patches
+in startup files were removed in Iteration 18. Current migration: single `InitialCreate`
+capturing the full schema.
+
+**Rule**: All schema changes via EF migrations. Run:
+```
+dotnet ef migrations add <Name> --startup-project src/TradingEngine.Web --project src/TradingEngine.Infrastructure
+```
 
 ---
 
-## Ports used (NetMQ)
+## Current test status
 
-| Port | Use | Configurable |
-|------|-----|-------------|
-| 15555 | PUB/SUB data stream (bars, ticks, account) | `Engine:Broker:NetMQ:DataPort` |
-| 15556 | ROUTER/DEALER command channel (orders, fills) | `Engine:Broker:NetMQ:CommandPort` |
+| Suite | Count | Requires credentials |
+|-------|-------|---------------------|
+| Unit | ~207 pass, 4 skipped | No |
+| Simulation (FtmoGolden) | 4 pass | No |
+| Simulation (Replay) | Several E2E | No |
+| Architecture | 3 pass | No |
+| Integration | 35 pass | No |
+| cTrader E2E | Requires credentials | Yes |
 
-Both ports must be free when a cTrader backtest runs. Parallel runs would conflict (D74).
-
----
-
-## Schema management (current state — tech debt)
-
-Schema is maintained in two places simultaneously:
-
-1. **EF Core** (`TradingDbContext.OnModelCreating`) — the authoritative definition
-2. **Raw SQL in startup** (`Web/Program.cs:28–37`, `Host/Program.cs:118–119`) — `ALTER TABLE`
-   and `CREATE TABLE IF NOT EXISTS` patches applied at startup
-
-This is tech debt from using `EnsureCreated()` without migration history. The raw SQL patches
-cannot be removed until a full migration baseline is established (Iteration 15 target).
-
-**Rule**: Do not add more raw SQL patches. If adding a column, add an EF migration AND update
-the EF entity. Do not rely on the startup patch pattern for new schema.
+Run: `dotnet test tests/TradingEngine.Tests.Unit` + `tests/TradingEngine.Tests.Simulation`

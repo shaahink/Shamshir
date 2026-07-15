@@ -1,6 +1,6 @@
 namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class OrderEntity
+public sealed class OrderEntity : IAuditableEntity
 {
     public Guid Id { get; set; }
     public string Symbol { get; set; } = "";
@@ -19,4 +19,5 @@ public sealed class OrderEntity
     public string StrategyId { get; set; } = "";
     public string RiskProfileId { get; set; } = "";
     public string Reason { get; set; } = "";
+    public DateTime UpdatedAtUtc { get; set; }
 }

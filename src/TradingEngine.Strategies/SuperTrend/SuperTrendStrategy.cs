@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using TradingEngine.Services.SLTPCalculation;
 
 namespace TradingEngine.Strategies.SuperTrend;
@@ -8,8 +10,6 @@ public sealed class SuperTrendStrategy : IStrategy
     private readonly SuperTrendConfig _config;
     private readonly ILogger<SuperTrendStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
-    private readonly Timeframe _timeframe;
-    private int? _prevDirection;
     private int _winStreak;
     private int _lossStreak;
 
@@ -21,19 +21,19 @@ public sealed class SuperTrendStrategy : IStrategy
         _config = config;
         _symbolRegistry = symbolRegistry;
         _logger = logger;
-        _timeframe = config.Timeframe;
     }
 
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [_timeframe];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => Math.Max(_config.Parameters.AtrPeriod, _config.Parameters.AdxPeriod) * 2 + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"ST_{_config.Parameters.AtrPeriod}_{_config.Parameters.AtrMultiplier}", IndicatorType.SuperTrend, _config.Parameters.AtrPeriod) { Param2 = _config.Parameters.AtrMultiplier },
-        new($"ADX_{_config.Parameters.AdxPeriod}", IndicatorType.Adx, _config.Parameters.AdxPeriod),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"ST_{_config.Parameters.AtrPeriod}_{_config.Parameters.AtrMultiplier}", IndicatorType.SuperTrend, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe) { Param2 = _config.Parameters.AtrMultiplier },
+        new($"ADX_{_config.Parameters.AdxPeriod}", IndicatorType.Adx, _config.Parameters.AdxPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);
@@ -42,33 +42,22 @@ public sealed class SuperTrendStrategy : IStrategy
     {
         try
         {
-            if (!_config.Symbols.Contains(context.Symbol.Value))
-            {
-                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
-                return null;
-            }
-
-            var bars = context.Bars.GetValueOrDefault(_timeframe);
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
             if (bars is null || bars.Count < RequiredBarCount)
             {
                 _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
-            var prefix = $"{context.Symbol}:";
             var p = _config.Parameters;
 
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ST_{p.AtrPeriod}_{p.AtrMultiplier}", out var stLine))
+            // Indicator keys are bare (e.g. "ST_10_3"), matching IndicatorSnapshotService —
+            // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
+            if (!context.IndicatorValues.TryGetValue($"ST_{p.AtrPeriod}_{p.AtrMultiplier}", out var stLine))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ST_{p.AtrPeriod}_{p.AtrMultiplier}_Direction", out var stDirRaw))
+            if (!context.IndicatorValues.TryGetValue($"ADX_{p.AdxPeriod}", out var adx))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ADX_{p.AdxPeriod}", out var adx))
-                return null;
-            context.IndicatorValues.TryGetValue($"{prefix}ATR_{p.AtrPeriod}", out var atr);
-
-            var stDir = (int)stDirRaw;
-            if (stDir is not 1 and not -1)
-                return null;
+            context.IndicatorValues.TryGetValue($"ATR_{p.AtrPeriod}", out var atr);
 
             if (adx < p.AdxMinThreshold)
             {
@@ -76,17 +65,28 @@ public sealed class SuperTrendStrategy : IStrategy
                 return null;
             }
 
-            if (_prevDirection is null)
+            var dirSeries = context.GetSeries($"ST_{p.AtrPeriod}_{p.AtrMultiplier}_Direction");
+            if (dirSeries.Count == 0) return null;
+            var stDir = (int)dirSeries[^1];
+            if (stDir is not 1 and not -1)
+                return null;
+
+            // P2.1: read the direction series instead of caching a private field — avoids desync if a
+            // bar is ever skipped/replayed out of order. Mirrors the old field's semantics exactly: it only
+            // ever held the last VALID (±1) direction, so scan back for the most recent valid reading
+            // before this one rather than blindly taking index ^2 (which could be an invalid warmup value).
+            int? prevDir = null;
+            for (var i = dirSeries.Count - 2; i >= 0; i--)
             {
-                _prevDirection = stDir;
-                return null;
+                var v = (int)dirSeries[i];
+                if (v is 1 or -1) { prevDir = v; break; }
             }
+            if (prevDir is null) return null;
 
-            if (_prevDirection == stDir)
+            if (prevDir == stDir)
                 return null;
 
-            var flippedDir = _prevDirection;
-            _prevDirection = stDir;
+            var flippedDir = prevDir.Value;
 
             TradeDirection direction = stDir == 1 ? TradeDirection.Long : TradeDirection.Short;
             var entryPrice = new Price(context.LatestTick.Mid);
@@ -126,8 +126,25 @@ public sealed class SuperTrendStrategy : IStrategy
 
     public void Reset()
     {
-        _prevDirection = null;
         _winStreak = 0;
         _lossStreak = 0;
+    }
+
+    public static SuperTrendStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new SuperTrendConfig
+        {
+            Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+            RiskProfileId = entry.RiskProfileId,
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+            Parameters = StrategyFactoryHelper.DeserializeParams<SuperTrendParameters>(entry.Parameters),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
+        };
+        return new SuperTrendStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<SuperTrendStrategy>>());
     }
 }

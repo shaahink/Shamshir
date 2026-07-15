@@ -1,0 +1,80 @@
+{
+  "name": "regime-calibration",
+  "description": "P6.4 canonical regime-conditioned exit calibration: explore-run → exitlab-eval (all sessions, get breakdown) → eval per-regime → owner-gate → save calibrations → report. The SessionDetector labels each trade's entry bar by trading session (Asian, London, NewYork, Asian-London, London-NY, Pacific), and the exit-lab grid is evaluated separately per regime so optimal exit rules can differ by session. The playbook ships with the regime-calibration playbook step and measures the A/B difference between pooled (all-sessions) and per-regime calibration.",
+  "steps": [
+    {
+      "kind": "ensure-data",
+      "symbols": "EURUSD",
+      "tfs": "H1",
+      "from": "2026-01-01",
+      "to": "2026-04-01"
+    },
+    {
+      "kind": "start-run",
+      "as": "exploreRun",
+      "venue": "tape",
+      "symbols": ["EURUSD"],
+      "periods": ["H1"],
+      "start": "2026-01-01T00:00:00Z",
+      "end": "2026-04-01T00:00:00Z",
+      "balance": 100000,
+      "explore": true
+    },
+    {
+      "kind": "await-run",
+      "runId": "exploreRun",
+      "timeout": 3600
+    },
+    {
+      "kind": "assert-gates",
+      "runId": "exploreRun",
+      "requireStatus": "completed",
+      "minTrades": 1
+    },
+    {
+      "kind": "exitlab-eval",
+      "runIds": ["$exploreRun"],
+      "positionIds": [],
+      "referenceAtrPips": 20.0
+    },
+    {
+      "kind": "exitlab-eval",
+      "runIds": ["$exploreRun"],
+      "positionIds": [],
+      "referenceAtrPips": 20.0,
+      "regime": "London-NY"
+    },
+    {
+      "kind": "exitlab-eval",
+      "runIds": ["$exploreRun"],
+      "positionIds": [],
+      "referenceAtrPips": 20.0,
+      "regime": "London"
+    },
+    {
+      "kind": "exitlab-eval",
+      "runIds": ["$exploreRun"],
+      "positionIds": [],
+      "referenceAtrPips": 20.0,
+      "regime": "Asian"
+    },
+    {
+      "kind": "owner-gate",
+      "reason": "review per-regime exit-lab plateau cells (all-sessions, London-NY, London, Asian) and approve calibrations to apply"
+    },
+    {
+      "kind": "apply-calibration",
+      "strategyId": "trend-breakout",
+      "symbol": "EURUSD",
+      "entryTimeframe": "H1",
+      "regime": "London-NY",
+      "rule": { "slAtrMultiple": 2.0, "tpRrMultiple": null, "beTriggerR": 1.0, "trailAtrMultiple": 2.0, "referenceAtrPips": 20.0 },
+      "datasetId": "default",
+      "isStartUtc": "2026-01-01T00:00:00Z",
+      "isEndUtc": "2026-04-01T00:00:00Z"
+    },
+    {
+      "kind": "report"
+    }
+  ]
+}

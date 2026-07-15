@@ -1,0 +1,4 @@
+node_modules/
+dist/
+src/styles.generated.css
+../src/TradingEngine.Web/wwwroot/

@@ -4,17 +4,42 @@
     <LangVersion>10</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Shamshir</AssemblyName>
+    <!-- Don't glob/validate **/*.cbotset. The SDK otherwise validates every parameter-set file under
+         the project (incl. the hundreds cTrader writes into bin/.../data/.../Backtesting/ per run)
+         against the cBot's current parameters, so adding a new [Parameter] (e.g. ReportPath) fails the
+         build with CT0301 on stale sets. We pass parameters via the CLI, not .cbotset files. -->
+    <EnableDefaultAlgoSetItems>false</EnableDefaultAlgoSetItems>
+    <!-- NOTE: the cTrader.Automate SDK names the .algo bundle after the project's PARENT
+         directory ("src"), so the output is always "src.algo" regardless of AssemblyName.
+         The bot's identity/version come from the [Robot] class + runtime version print, not
+         this filename. Do not set _AlgoFileName here — the SDK targets override it. -->
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="cTrader.Automate" Version="*" />
     <PackageReference Include="NetMQ" Version="4.*" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- Default cTrader Sources path (overridable via -p:CTraderSourcesPath=...).
+         cTrader Desktop auto-discovers .algo files placed here. -->
+    <CTraderSourcesPath Condition="'$(CTraderSourcesPath)' == ''">$(USERPROFILE)\Documents\cAlgo\Sources\Robots</CTraderSourcesPath>
+  </PropertyGroup>
+
+  <!-- Auto-deploy: dotnet build -p:AutoDeploy=true  — or use scripts/deploy-cbot.ps1 -->
   <Target Name="AutoDeployAlgo" AfterTargets="Build"
           Condition="'$(AutoDeploy)' == 'true' AND '$(CTraderSourcesPath)' != ''">
+    <MakeDir Directories="$(CTraderSourcesPath)" Condition="!Exists('$(CTraderSourcesPath)')" />
     <Copy SourceFiles="$(OutputPath)src.algo"
           DestinationFolder="$(CTraderSourcesPath)"
           OverwriteReadOnlyFiles="true" />
     <Message Text="[Shamshir] Deployed src.algo → $(CTraderSourcesPath)" Importance="high" />
+  </Target>
+
+  <Target Name="StampCbotBuild" BeforeTargets="BeforeBuild">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(SolutionDir)scripts\stamp-cbot-build.ps1&quot; -OutDir &quot;$(MSBuildProjectDirectory)&quot;"
+          WorkingDirectory="$(SolutionDir)"
+          ContinueOnError="true" />
+    <Message Text="[Shamshir] cBot build stamp generated" Importance="normal" />
   </Target>
 </Project>

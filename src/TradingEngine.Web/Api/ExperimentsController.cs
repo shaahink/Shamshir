@@ -6,15 +6,18 @@ public sealed class ExperimentsController : ControllerBase
 {
     private readonly ExperimentRunner _runner;
     private readonly IExperimentRepository _repo;
+    private readonly SetupScoreService _scorer;
     private readonly ILogger<ExperimentsController> _logger;
 
     public ExperimentsController(
         ExperimentRunner runner,
         IExperimentRepository repo,
+        SetupScoreService scorer,
         ILogger<ExperimentsController> logger)
     {
         _runner = runner;
         _repo = repo;
+        _scorer = scorer;
         _logger = logger;
     }
 
@@ -80,19 +83,102 @@ public sealed class ExperimentsController : ControllerBase
     }
 
     [HttpGet("{id:guid}/report")]
-    public IActionResult GetReport(Guid id)
+    public async Task<IActionResult> GetReport(Guid id, CancellationToken ct)
     {
-        var dir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "experiments");
-        foreach (var subdir in Directory.GetDirectories(dir))
+        // iter-38 W-B2: resolve the report for THIS experiment instead of returning the first REPORT.md
+        // found. ExperimentReportWriter writes to docs/experiments/{Name}-{shortId}/REPORT.md where
+        // shortId = id.ToString("N")[..8]; mirror that naming exactly.
+        var experiment = await _repo.GetByIdAsync(id, ct);
+        if (experiment is null)
+            return NotFound(new { error = $"Experiment {id} not found" });
+
+        var shortId = id.ToString("N")[..8];
+        var baseDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "docs", "experiments");
+        var reportPath = Path.Combine(baseDir, $"{experiment.Name}-{shortId}", "REPORT.md");
+
+        if (!System.IO.File.Exists(reportPath))
+            return NotFound(new { error = $"Report not found for experiment {id}" });
+
+        var content = await System.IO.File.ReadAllTextAsync(reportPath, ct);
+        return Content(content, "text/markdown");
+    }
+
+    // R0.2: score a run via SetupScore v1
+    [HttpPost("score")]
+    public async Task<IActionResult> Score([FromBody] ScoreRequest req, CancellationToken ct)
+    {
+        var result = await _scorer.ScoreRunAsync(
+            req.BacktestRunId,
+            req.ExperimentId,
+            req.VariantLabel,
+            req.FoldIndex,
+            req.FoldRole,
+            ct,
+            req.StrategyId,
+            req.WalkForwardJobId);
+
+        if (result.Passed)
         {
-            var reportPath = Path.Combine(subdir, "REPORT.md");
-            if (System.IO.File.Exists(reportPath))
+            return Ok(new
             {
-                var content = System.IO.File.ReadAllText(reportPath);
-                return Content(content, "text/markdown");
-            }
+                verdict = "PASS",
+                score = result.Composite,
+                version = result.Version,
+                scoreJson = result.ScoreJson,
+            });
         }
 
-        return NotFound(new { error = $"Report not found for experiment {id}" });
+        return Ok(new
+        {
+            verdict = "FAIL",
+            reason = result.Reason,
+            score = (double?)null,
+            version = result.Version,
+        });
     }
+
+    // R0.2: scoreboard — top N experiment runs
+    [HttpGet("{id:guid}/scoreboard")]
+    public async Task<IActionResult> Scoreboard(Guid id, [FromQuery] int top = 20, CancellationToken ct = default)
+    {
+        var result = await _scorer.GetScoreboardAsync(id, top, ct);
+        if (result.Error is not null)
+            return NotFound(new { error = result.Error });
+
+        return Ok(new
+        {
+            experimentId = result.ExperimentId,
+            experimentName = result.ExperimentName,
+            totalRuns = result.TotalRuns,
+            scoredRuns = result.ScoredRuns,
+            nullRuns = result.NullRuns,
+            top = result.Top.Select(e => new
+            {
+                e.BacktestRunId,
+                e.VariantLabel,
+                composite = e.Score!.Composite,
+                version = e.Score.VersionKind,
+                expectancy = e.Score.Components.Expectancy,
+                drawdownPct = e.Score.Components.DrawdownPct,
+                consistency = e.Score.Components.Consistency,
+                trades = e.Score.Trades,
+            }),
+        });
+    }
+}
+
+public sealed record ScoreRequest
+{
+    public string BacktestRunId { get; init; } = "";
+    public Guid? ExperimentId { get; init; }
+    public string? VariantLabel { get; init; }
+    public int? FoldIndex { get; init; }
+    public string? FoldRole { get; init; }
+    public string? StrategyId { get; init; }
+
+    // R3.2 (F62): when set, ScoreRunAsync computes a real OOS ratio from this walk-forward job's
+    // WalkForwardWindowResultEntity rows (Sum(TestNetProfit) / Sum(PlateauValue) across folds)
+    // instead of leaving RobustnessOos/OosRatio null — this is what upgrades a cell from
+    // sv1-partial to full sv1.
+    public Guid? WalkForwardJobId { get; init; }
 }

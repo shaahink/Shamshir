@@ -1,79 +1,31 @@
-﻿using Microsoft.Data.Sqlite;
-using TradingEngine.Host;
-using TradingEngine.Infrastructure.Indicators;
-using TradingEngine.Infrastructure.Persistence.Repositories;
-using TradingEngine.Infrastructure.Persistence.Reporting;
-using TradingEngine.Risk.Compliance;
-using TradingEngine.Web.Services;
+﻿using Serilog;
+using TradingEngine.Web.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddRazorPages();
-builder.Services.AddControllers();
-builder.Services.AddServerSideBlazor();
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .CreateLogger();
 
-var dbPath = builder.Configuration.GetValue<string>("Persistence:DbPath")
-    ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "data", "trading.db"));
+builder.Host.UseSerilog();
 
-Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+builder.Services.AddShamshir(builder.Configuration);
 
-builder.Services.AddDbContext<TradingDbContext>(opt =>
-    opt.UseSqlite($"Data Source={dbPath}"));
-builder.Services.AddDbContext<ReportingDbContext>(opt =>
-    opt.UseSqlite($"Data Source={dbPath}"));
+var app = builder.Build();
+await app.UseShamshir();
 
-builder.Services.AddScoped<IBacktestRunRepository, SqliteBacktestRunRepository>();
-builder.Services.AddScoped<IBarRepository, SqliteBarRepository>();
-builder.Services.AddScoped(_ => new TradeReportQueries(new SqliteConnection($"Data Source={dbPath}")));
-builder.Services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
-builder.Services.AddScoped<IExperimentRepository, SqliteExperimentRepository>();
-builder.Services.AddScoped<ITradeRepository, SqliteTradeRepository>();
-builder.Services.AddScoped<IEquityRepository, SqliteEquityRepository>();
-builder.Services.AddTransient<ExperimentRunner>();
-builder.Services.AddSingleton<BacktestProgressStore>();
-builder.Services.AddSingleton<BacktestJournal>();
-builder.Services.AddSingleton<BacktestOrchestrator>();
-builder.Services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
-builder.Services.AddSingleton<IBacktestQueryService, BacktestQueryService>();
-
-// Register strategy bank infrastructure for Blazor pages + APIs
-builder.Services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
-builder.Services.AddSingleton<IRegimeDetector, AtrBasedRegimeDetector>();
-builder.Services.AddSingleton<IPassProbabilityEstimator, PassProbabilityEstimator>();
-builder.Services.AddSingleton<ISymbolInfoRegistry>(_ =>
+try
 {
-    var solRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-    var catalog = new SymbolCatalog(solRoot);
-    var reg = new SymbolInfoRegistry();
-    foreach (var si in catalog.GetAll()) reg.Register(si);
-    return reg;
-});
-builder.Services.AddSingleton<StrategyRegistry>();
-builder.Services.AddSingleton<IStrategyBank>(sp => new StrategyBankService(
-    sp.GetRequiredService<StrategyRegistry>(),
-    null,
-    sp.GetRequiredService<ILogger<StrategyBankService>>()));
-builder.Services.AddSingleton<ITradingGovernor, TradingGovernorService>();
-builder.Services.AddSingleton(new GovernorOptions());
-builder.Services.AddSingleton<DrawdownTracker>();
-builder.Services.AddSingleton<ProtectionLedgerWriter>();
-
-using var app = builder.Build();
-
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-    //await db.Database.EnsureCreatedAsync();
-    await db.Database.MigrateAsync();
+    app.Run();
 }
-
-app.UseStaticFiles();
-app.UseRouting();
-app.MapRazorPages();
-app.MapControllers();
-app.MapBlazorHub();
-app.MapFallbackToPage("/blazor/_Host");
-
-app.Run();
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Web host terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
 
 public partial class Program { }

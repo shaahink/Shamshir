@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using TradingEngine.Services.SLTPCalculation;
 
 namespace TradingEngine.Strategies.BollingerSqueeze;
@@ -8,9 +10,9 @@ public sealed class BollingerSqueezeStrategy : IStrategy
     private readonly BollingerSqueezeConfig _config;
     private readonly ILogger<BollingerSqueezeStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
-    private readonly Timeframe _timeframe;
-    private readonly Queue<double> _bbWidthQueue = new();
     private int _cooldownRemaining;
+    private bool _squeezeActive;
+    private int _barsSinceLatched;
     private int _winStreak;
     private int _lossStreak;
 
@@ -22,18 +24,18 @@ public sealed class BollingerSqueezeStrategy : IStrategy
         _config = config;
         _symbolRegistry = symbolRegistry;
         _logger = logger;
-        _timeframe = config.Timeframe;
     }
 
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [_timeframe];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => _config.Parameters.BbPeriod + _config.Parameters.AtrPeriod + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new($"BB_{_config.Parameters.BbPeriod}_{_config.Parameters.BbStdDev}", IndicatorType.BollingerBands, _config.Parameters.BbPeriod, _config.Parameters.BbStdDev),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new($"BB_{_config.Parameters.BbPeriod}_{_config.Parameters.BbStdDev}", IndicatorType.BollingerBands, _config.Parameters.BbPeriod, _config.Parameters.BbStdDev, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);
@@ -42,29 +44,24 @@ public sealed class BollingerSqueezeStrategy : IStrategy
     {
         try
         {
-            if (!_config.Symbols.Contains(context.Symbol.Value))
-            {
-                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
-                return null;
-            }
-
-            var bars = context.Bars.GetValueOrDefault(_timeframe);
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
             if (bars is null || bars.Count < RequiredBarCount)
             {
                 _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
-            var prefix = $"{context.Symbol}:";
             var p = _config.Parameters;
 
-            if (!context.IndicatorValues.TryGetValue($"{prefix}BB_{p.BbPeriod}_{p.BbStdDev}", out var middleBand))
+            // Indicator keys are bare (e.g. "BB_20_2"), matching IndicatorSnapshotService —
+            // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
+            if (!context.IndicatorValues.TryGetValue($"BB_{p.BbPeriod}_{p.BbStdDev}", out var middleBand))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}BB_{p.BbPeriod}_{p.BbStdDev}_Upper", out var upperBand))
+            if (!context.IndicatorValues.TryGetValue($"BB_{p.BbPeriod}_{p.BbStdDev}_Upper", out var upperBand))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}BB_{p.BbPeriod}_{p.BbStdDev}_Lower", out var lowerBand))
+            if (!context.IndicatorValues.TryGetValue($"BB_{p.BbPeriod}_{p.BbStdDev}_Lower", out var lowerBand))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ATR_{p.AtrPeriod}", out var atr))
+            if (!context.IndicatorValues.TryGetValue($"ATR_{p.AtrPeriod}", out var atr))
                 return null;
 
             if (middleBand <= 0 || upperBand <= lowerBand || atr <= 0)
@@ -74,15 +71,52 @@ public sealed class BollingerSqueezeStrategy : IStrategy
             }
 
             var bbWidth = (upperBand - lowerBand) / middleBand;
-            _bbWidthQueue.Enqueue(bbWidth);
-            while (_bbWidthQueue.Count > p.BbPeriod)
-                _bbWidthQueue.Dequeue();
 
-            if (_bbWidthQueue.Count < p.BbPeriod / 2)
+            // P2.1: derive the prior-width window from the Upper/Lower/Middle series instead of a private
+            // queue — avoids desync if a bar is ever skipped/replayed out of order. The three series are
+            // always the same length (written together every recompute), so index i is one bar's reading.
+            var upperSeries = context.GetSeries($"BB_{p.BbPeriod}_{p.BbStdDev}_Upper");
+            var lowerSeries = context.GetSeries($"BB_{p.BbPeriod}_{p.BbStdDev}_Lower");
+            var middleSeries = context.GetSeries($"BB_{p.BbPeriod}_{p.BbStdDev}");
+            var seriesLen = Math.Min(upperSeries.Count, Math.Min(lowerSeries.Count, middleSeries.Count));
+
+            // Squeeze = bandwidth contracted to <= SqueezeThreshold (e.g. 0.8 = 80%) of its recent
+            // AVERAGE, measured over the PRIOR window (excluding the current bar's width). The old code
+            // compared to Min() of a window that already included the current width, so `bbWidth < 0.8*min`
+            // (min ≤ bbWidth) was mathematically impossible and the squeeze never triggered.
+            var priorStart = Math.Max(0, seriesLen - 1 - p.BbPeriod);
+            var priorWidths = new List<double>();
+            for (var i = priorStart; i < seriesLen - 1; i++)
+            {
+                if (middleSeries[i] <= 0) continue;
+                priorWidths.Add((upperSeries[i] - lowerSeries[i]) / middleSeries[i]);
+            }
+
+            var priorCount = priorWidths.Count;
+            var avgPriorWidth = priorCount > 0 ? priorWidths.Average() : bbWidth;
+
+            if (priorCount < p.BbPeriod / 2)
                 return null;
 
-            var minBbbWidth = _bbWidthQueue.Min();
-            var isSqueezing = bbWidth < p.SqueezeThreshold * minBbbWidth;
+            // Latch the squeeze: a contraction sets the flag, and the breakout that fires it can land on a
+            // LATER bar. Requiring squeeze AND breakout on the same bar (as before) is self-contradictory —
+            // the breakout bar is the one expanding the bands.
+            if (bbWidth <= p.SqueezeThreshold * avgPriorWidth)
+            {
+                _squeezeActive = true;
+                _barsSinceLatched = 0;
+            }
+            else if (_squeezeActive)
+            {
+                // P2.3/D8: an armed latch expires after BbPeriod bars without a breakout — an old,
+                // stale contraction must not arm a breakout that shows up weeks later.
+                _barsSinceLatched++;
+                if (_barsSinceLatched > p.BbPeriod)
+                {
+                    _logger.LogTrace("SKIP|{Id}|SqueezeLatchExpired|barsSinceLatched={Bars}", Id, _barsSinceLatched);
+                    _squeezeActive = false;
+                }
+            }
 
             if (_cooldownRemaining > 0)
             {
@@ -91,7 +125,7 @@ public sealed class BollingerSqueezeStrategy : IStrategy
                 return null;
             }
 
-            if (!isSqueezing)
+            if (!_squeezeActive)
                 return null;
 
             var latestBar = bars[^1];
@@ -117,6 +151,8 @@ public sealed class BollingerSqueezeStrategy : IStrategy
             }
 
             _cooldownRemaining = p.CooldownBars;
+            _squeezeActive = false;
+            _barsSinceLatched = 0;
 
             var entryPrice = new Price(context.LatestTick.Mid);
             var symbolInfo = _symbolRegistry.Get(context.Symbol);
@@ -155,9 +191,28 @@ public sealed class BollingerSqueezeStrategy : IStrategy
 
     public void Reset()
     {
-        _bbWidthQueue.Clear();
         _cooldownRemaining = 0;
+        _squeezeActive = false;
+        _barsSinceLatched = 0;
         _winStreak = 0;
         _lossStreak = 0;
+    }
+
+    public static BollingerSqueezeStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new BollingerSqueezeConfig
+        {
+            Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+            RiskProfileId = entry.RiskProfileId,
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+            Parameters = StrategyFactoryHelper.DeserializeParams<BollingerSqueezeParameters>(entry.Parameters),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
+        };
+        return new BollingerSqueezeStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<BollingerSqueezeStrategy>>());
     }
 }

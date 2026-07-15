@@ -42,10 +42,15 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                 services.AddSingleton(new EngineRunContext(runId));
 
                 services.AddSingleton<IBrokerAdapter>(sp =>
-                    new NetMQBrokerAdapter(
+                {
+                    var transportLogger = Substitute.For<ILogger<NetMqMessageTransport>>();
+                    var adapterLogger = Substitute.For<ILogger<CTraderBrokerAdapter>>();
+                    var transport = new NetMqMessageTransport(
                         $"tcp://127.0.0.1:{dataPort}",
                         $"tcp://*:{commandPort}",
-                        sp.GetRequiredService<ILogger<NetMQBrokerAdapter>>()));
+                        transportLogger);
+                    return new CTraderBrokerAdapter(transport, adapterLogger);
+                });
 
                 var symbolInfo = new SymbolInfo(symbol, SymbolCategory.Forex, "EUR", "USD",
                     0.0001m, 0.00001m, 100_000m, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m);
@@ -59,7 +64,8 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
 
                 services.AddSingleton<INewsFilter>(_ => new NewsFilter());
                 services.AddSingleton<SessionFilter>();
-                services.AddSingleton<DrawdownTracker>();
+                services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
+                services.AddSingleton<ISignalGate, SignalGateService>();
                 services.AddSingleton<RiskManager>();
                 services.AddSingleton<IRiskManager>(sp => sp.GetRequiredService<RiskManager>());
                 services.AddSingleton(new SizingPolicyOptions());
@@ -86,12 +92,18 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
 
                 services.AddSingleton<IPositionManager, PositionManager>();
                 services.AddSingleton<IEventBus, TypedEventBus>();
+                services.AddSingleton<IDecisionJournal>(_ => Substitute.For<IDecisionJournal>());
+                services.AddSingleton<IEquitySink>(_ => Substitute.For<IEquitySink>());
                 services.AddSingleton<EquityPersistenceHandler>();
                 services.AddSingleton<TradePersistenceHandler>();
-                services.AddSingleton<BarEvaluationHandler>();
                 services.AddSingleton<IIndicatorService, SkenderIndicatorService>();
                 services.AddSingleton<OrderDispatcher>();
                 services.AddSingleton<PositionTracker>();
+                // iter-38 (CT-1 sibling): EngineWorkerDependencies resolves EntryPlanner (below), so it must be
+                // registered or the inner host fails DI resolution at StartAsync (this smoke test was red).
+                services.AddSingleton<TradingEngine.Services.EntryPlanner>();
+                // iter-36 K4: the kernel EngineRunner requires an EffectExecutor (wired into PersistenceServices below).
+                services.AddSingleton<EffectExecutor>();
 
                 services.AddSingleton<IProgress<BacktestProgressEvent>>(_ =>
                     new Progress<BacktestProgressEvent>(_ => { }));
@@ -99,6 +111,9 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                 var registry = new StrategyRegistry();
                 services.AddSingleton(registry);
                 services.AddSingleton<IEnumerable<IStrategy>>(_ => []);
+                // iter-36 K4: EffectExecutor needs IReadOnlyList<IStrategy> (production exposes both — see
+                // EngineServiceCollectionExtensions; registering only IEnumerable left EffectExecutor unresolvable).
+                services.AddSingleton<IReadOnlyList<IStrategy>>(_ => []);
 
                 services.AddSingleton<EngineWorker>(sp => new EngineWorker(
                     new EngineWorkerDependencies
@@ -116,25 +131,30 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
                         Risk = new RiskServices
                         {
                             RiskManager = sp.GetRequiredService<IRiskManager>(),
-                            DrawdownTracker = sp.GetRequiredService<DrawdownTracker>(),
                             RiskProfileResolver = sp.GetRequiredService<IRiskProfileResolver>(),
                             CrossRateProvider = sp.GetRequiredService<Func<string, string, decimal>>(),
                             Governor = sp.GetRequiredService<ITradingGovernor>(),
                             SizingPolicy = new SizingPolicyOptions(),
+                            NewsFilter = sp.GetRequiredService<INewsFilter>(),
+                            SessionFilter = sp.GetRequiredService<SessionFilter>(),
                         },
                         Strategies = new StrategyServices
                         {
                             Strategies = sp.GetRequiredService<IEnumerable<IStrategy>>(),
                             StrategyBank = Substitute.For<IStrategyBank>(),
                             RegimeDetector = Substitute.For<IRegimeDetector>(),
-                            OrderDispatcher = sp.GetRequiredService<OrderDispatcher>(),
                             PositionTracker = sp.GetRequiredService<PositionTracker>(),
+                            EntryPlanner = sp.GetRequiredService<TradingEngine.Services.EntryPlanner>(),
+                            PositionManager = sp.GetRequiredService<IPositionManager>(),
+                            SignalGate = sp.GetRequiredService<ISignalGate>(),
                         },
                         Persistence = new PersistenceServices
                         {
                             EventBus = sp.GetRequiredService<IEventBus>(),
                             Persistence = sp.GetRequiredService<PersistenceService>(),
                             Progress = sp.GetRequiredService<IProgress<BacktestProgressEvent>>(),
+                            EffectExecutor = sp.GetRequiredService<EffectExecutor>(),
+                            EquitySink = sp.GetRequiredService<IEquitySink>(),
                         },
                     },
                     sp.GetRequiredService<EngineRunContext>(),
@@ -157,7 +177,7 @@ public sealed class InProcessEngineSmokeTests : IAsyncDisposable
         await Task.Delay(500, cts.Token);
 
         // Engine should be connected (ROUTER bound on command port)
-        var adapter = host.Services.GetRequiredService<IBrokerAdapter>() as NetMQBrokerAdapter;
+        var adapter = host.Services.GetRequiredService<IBrokerAdapter>() as CTraderBrokerAdapter;
         Assert.NotNull(adapter);
 
         // Clean stop

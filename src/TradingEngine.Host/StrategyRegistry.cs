@@ -1,15 +1,7 @@
 using System.Reflection;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using TradingEngine.Strategies.BollingerSqueeze;
-using TradingEngine.Strategies.EmaAlignment;
-using TradingEngine.Strategies.MacdMomentum;
-using TradingEngine.Strategies.MeanReversion;
-using TradingEngine.Strategies.MtfTrend;
-using TradingEngine.Strategies.RsiDivergence;
-using TradingEngine.Strategies.SessionBreakout;
-using TradingEngine.Strategies.SuperTrend;
+using TradingEngine.Domain.Interfaces;
 
 namespace TradingEngine.Host;
 
@@ -21,168 +13,25 @@ public sealed class StrategyRegistry
 
     public StrategyRegistry()
     {
-        ScanAssembly(typeof(TrendBreakoutStrategy).Assembly);
-        RegisterFactories();
+        ScanAssembly(typeof(TradingEngine.Strategies.TrendBreakout.TrendBreakoutStrategy).Assembly);
+        DiscoverFactories();
     }
 
-    private void RegisterFactories()
+    private void DiscoverFactories()
     {
-        _factories["trend-breakout"] = (entry, sp) =>
+        foreach (var (id, type) in _strategyTypes)
         {
-            var config = new TrendBreakoutConfig
+            var createMethod = type.GetMethod("Create",
+                BindingFlags.Public | BindingFlags.Static,
+                null,
+                [typeof(StrategyConfigEntry), typeof(IServiceProvider)],
+                null);
+            if (createMethod is not null)
             {
-                Id = entry.Id,
-                DisplayName = entry.DisplayName,
-                Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(),
-                RiskProfileId = entry.RiskProfileId,
-                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
-                RegimeFilter = entry.RegimeFilter ?? new(),
-                OrderEntry = entry.OrderEntry ?? new(),
-                PositionManagement = entry.PositionManagement ?? new(),
-                Parameters = DeserializeParams<TrendBreakoutParameters>(entry.Parameters),
-            };
-            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
-            var logger = sp.GetRequiredService<ILogger<TrendBreakoutStrategy>>();
-            return new TrendBreakoutStrategy(config, registry, logger);
-        };
-
-        _factories["ema-alignment"] = (entry, sp) =>
-        {
-            var config = new EmaAlignmentConfig(
-                entry.Id, entry.DisplayName, entry.Enabled,
-                entry.Symbols.ToList(), entry.RiskProfileId,
-                DeserializeParams<EmaAlignmentParameters>(entry.Parameters),
-                Enum.Parse<Timeframe>(entry.Timeframe, true))
-            {
-                RegimeFilter = entry.RegimeFilter ?? new(),
-                OrderEntry = entry.OrderEntry ?? new(),
-                PositionManagement = entry.PositionManagement ?? new(),
-            };
-            return new EmaAlignmentStrategy(config, sp.GetRequiredService<ISymbolInfoRegistry>(), sp.GetRequiredService<ILogger<EmaAlignmentStrategy>>());
-        };
-
-        _factories["mean-reversion"] = (entry, sp) =>
-        {
-            var config = new MeanReversionConfig(
-                entry.Id, entry.DisplayName, entry.Enabled,
-                entry.Symbols.ToList(), entry.RiskProfileId,
-                DeserializeParams<MeanReversionParameters>(entry.Parameters),
-                Enum.Parse<Timeframe>(entry.Timeframe, true))
-            {
-                RegimeFilter = entry.RegimeFilter ?? new(),
-                OrderEntry = entry.OrderEntry ?? new(),
-                PositionManagement = entry.PositionManagement ?? new(),
-            };
-            return new MeanReversionStrategy(config, sp.GetRequiredService<ISymbolInfoRegistry>(), sp.GetRequiredService<ILogger<MeanReversionStrategy>>());
-        };
-
-        _factories["session-breakout"] = (entry, sp) =>
-        {
-            var config = new SessionBreakoutConfig(
-                entry.Id, entry.DisplayName, entry.Enabled,
-                entry.Symbols.ToList(), entry.RiskProfileId,
-                DeserializeParams<SessionBreakoutParameters>(entry.Parameters),
-                Enum.Parse<Timeframe>(entry.Timeframe, true))
-            {
-                RegimeFilter = entry.RegimeFilter ?? new(),
-                OrderEntry = entry.OrderEntry ?? new(),
-                PositionManagement = entry.PositionManagement ?? new(),
-            };
-            return new SessionBreakoutStrategy(config, sp.GetRequiredService<ISymbolInfoRegistry>(), sp.GetRequiredService<ILogger<SessionBreakoutStrategy>>());
-        };
-
-        _factories["rsi-divergence"] = (entry, sp) =>
-        {
-            var config = new RsiDivergenceConfig
-            {
-                Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(), RiskProfileId = entry.RiskProfileId,
-                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
-                RegimeFilter = entry.RegimeFilter ?? new(),
-                OrderEntry = entry.OrderEntry ?? new(),
-                PositionManagement = entry.PositionManagement ?? new(),
-                Parameters = DeserializeParams<RsiDivergenceParameters>(entry.Parameters),
-            };
-            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
-            var logger = sp.GetRequiredService<ILogger<RsiDivergenceStrategy>>();
-            return new RsiDivergenceStrategy(config, registry, logger);
-        };
-
-        _factories["bb-squeeze"] = (entry, sp) =>
-        {
-            var config = new BollingerSqueezeConfig
-            {
-                Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(), RiskProfileId = entry.RiskProfileId,
-                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
-                RegimeFilter = entry.RegimeFilter ?? new(),
-                OrderEntry = entry.OrderEntry ?? new(),
-                PositionManagement = entry.PositionManagement ?? new(),
-                Parameters = DeserializeParams<BollingerSqueezeParameters>(entry.Parameters),
-            };
-            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
-            var logger = sp.GetRequiredService<ILogger<BollingerSqueezeStrategy>>();
-            return new BollingerSqueezeStrategy(config, registry, logger);
-        };
-
-        _factories["macd-momentum"] = (entry, sp) =>
-        {
-            var config = new MacdMomentumConfig
-            {
-                Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(), RiskProfileId = entry.RiskProfileId,
-                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
-                RegimeFilter = entry.RegimeFilter ?? new(),
-                OrderEntry = entry.OrderEntry ?? new(),
-                PositionManagement = entry.PositionManagement ?? new(),
-                Parameters = DeserializeParams<MacdMomentumParameters>(entry.Parameters),
-            };
-            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
-            var logger = sp.GetRequiredService<ILogger<MacdMomentumStrategy>>();
-            return new MacdMomentumStrategy(config, registry, logger);
-        };
-
-        _factories["mtf-trend"] = (entry, sp) =>
-        {
-            var config = new MtfTrendConfig
-            {
-                Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(), RiskProfileId = entry.RiskProfileId,
-                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
-                RegimeFilter = entry.RegimeFilter ?? new(),
-                OrderEntry = entry.OrderEntry ?? new(),
-                PositionManagement = entry.PositionManagement ?? new(),
-                Parameters = DeserializeParams<MtfTrendParameters>(entry.Parameters),
-            };
-            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
-            var logger = sp.GetRequiredService<ILogger<MtfTrendStrategy>>();
-            return new MtfTrendStrategy(config, registry, logger);
-        };
-
-        _factories["super-trend"] = (entry, sp) =>
-        {
-            var config = new SuperTrendConfig
-            {
-                Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
-                Symbols = entry.Symbols.ToList(), RiskProfileId = entry.RiskProfileId,
-                Timeframe = Enum.Parse<Timeframe>(entry.Timeframe, true),
-                RegimeFilter = entry.RegimeFilter ?? new(),
-                OrderEntry = entry.OrderEntry ?? new(),
-                PositionManagement = entry.PositionManagement ?? new(),
-                Parameters = DeserializeParams<SuperTrendParameters>(entry.Parameters),
-            };
-            var registry = sp.GetRequiredService<ISymbolInfoRegistry>();
-            var logger = sp.GetRequiredService<ILogger<SuperTrendStrategy>>();
-            return new SuperTrendStrategy(config, registry, logger);
-        };
-    }
-
-    private static T DeserializeParams<T>(JsonElement element) where T : new()
-    {
-        if (element.ValueKind == JsonValueKind.Undefined) return new T();
-        var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
-        return JsonSerializer.Deserialize<T>(element.GetRawText(), opts) ?? new T();
+                _factories[id] = (entry, sp) =>
+                    (IStrategy)createMethod.Invoke(null, [entry, sp])!;
+            }
+        }
     }
 
     private void ScanAssembly(Assembly assembly)
@@ -203,38 +52,124 @@ public sealed class StrategyRegistry
     public IReadOnlyList<IStrategy> CreateStrategies(
         IReadOnlyList<string> activeIds,
         LoadedConfig config,
+        RunPlan runPlan,
         IServiceProvider services)
     {
         var strategies = new List<IStrategy>();
 
-        foreach (var id in activeIds)
+        // P1.1: when no run-plan is provided (legacy/test paths), create one instance per
+        // configured strategy WITHOUT binding a symbol — all strategies match all symbols (old behaviour).
+        // When a run-plan IS provided, bind each row's symbol+timeframe.
+        if (runPlan.Entries.Count == 0)
         {
-            if (!_strategyTypes.TryGetValue(id, out var type) && !_factories.ContainsKey(id))
+            foreach (var id in activeIds)
             {
-                throw new InvalidOperationException(
-                    $"Active strategy ID '{id}' has no matching [StrategyId] class. " +
-                    $"Available: [{string.Join(", ", _strategyTypes.Keys)}]");
-            }
+                if (!_strategyTypes.ContainsKey(id) && !_factories.ContainsKey(id))
+                {
+                    throw new InvalidOperationException(
+                        $"Active strategy ID '{id}' has no matching [StrategyId] class. " +
+                        $"Available: [{string.Join(", ", _strategyTypes.Keys)}]");
+                }
 
-            var configEntry = config.StrategyConfigs.FirstOrDefault(s => s.Id == id);
-            if (configEntry is null)
-            {
-                throw new InvalidOperationException(
-                    $"Strategy '{id}' has no config file in config/strategies/.");
-            }
+                var configEntry = config.StrategyConfigs.FirstOrDefault(s => s.Id == id);
+                if (configEntry is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Strategy '{id}' has no config file in config/strategies/.");
+                }
 
-            if (_factories.TryGetValue(id, out var factory))
-            {
-                var strategy = factory(configEntry, services);
-                strategies.Add(strategy);
+                if (_factories.TryGetValue(id, out var factory))
+                {
+                    var strategy = factory(configEntry, services);
+                    strategies.Add(strategy);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Strategy '{id}' has no static Create method.");
+                }
             }
-            else
+        }
+        else
+        {
+            foreach (var entry in runPlan.Entries)
             {
+                var id = entry.StrategyId;
+                if (!_strategyTypes.ContainsKey(id) && !_factories.ContainsKey(id))
+                {
+                    throw new InvalidOperationException(
+                        $"Run-plan row has strategy ID '{id}' with no matching [StrategyId] class. " +
+                        $"Available: [{string.Join(", ", _strategyTypes.Keys)}]");
+                }
+
+                var configEntry = config.StrategyConfigs.FirstOrDefault(s => s.Id == id);
+                if (configEntry is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Strategy '{id}' has no config file in config/strategies/.");
+                }
+
+                if (!Enum.TryParse<Timeframe>(entry.Timeframe, ignoreCase: true, out var tf))
+                {
+                    throw new InvalidOperationException(
+                        $"Run-plan row for strategy '{id}' has an unparseable timeframe '{entry.Timeframe}'.");
+                }
+
+                var boundEntry = configEntry with
+                {
+                    Symbol = entry.Symbol,
+                    EntryTimeframe = tf,
+                };
+
+                // P2.6 (D9, units doctrine): normalized-unit fields (ATR-multiple/spread-multiple/ATR-fraction)
+                // resolve into the existing raw-pip fields HERE, once, with the row's real symbol+TF — the
+                // only point besides the per-proposal RiskProfile resolve (BarEvaluator) where both are known
+                // together. Symbol/TF are fixed for the lifetime of this instance (D1 instance-per-row), so a
+                // one-time resolution is correct — no per-bar re-resolution needed.
                 var symbolRegistry = services.GetRequiredService<ISymbolInfoRegistry>();
-                var loggerFactory = services.GetRequiredService<ILoggerFactory>();
-                var logger = loggerFactory.CreateLogger(type!);
-                var strategy = (IStrategy)Activator.CreateInstance(type!, configEntry, symbolRegistry, logger)!;
-                strategies.Add(strategy);
+                var referenceScales = services.GetService<IReferenceScaleLookup>();
+                if (symbolRegistry.TryGet(new Symbol(entry.Symbol), out var symbolInfo))
+                {
+                    boundEntry = boundEntry with
+                    {
+                        PositionManagement = (boundEntry.PositionManagement ?? new()).ResolvePips(tf, symbolInfo, referenceScales),
+                        OrderEntry = (boundEntry.OrderEntry ?? new()).ResolvePips(tf, symbolInfo, referenceScales),
+                    };
+                }
+
+                // P4.5.4: if a calibration row exists for this (strategy, symbol, TF), override SL/TP
+                // options with the calibrated values. This is the bind-time consumption path that was
+                // missing — previously "Save Calibration" was a write-only table.
+                var calLookup = services.GetService<IExitCalibrationLookup>();
+                if (calLookup is not null)
+                {
+                    var cal = calLookup.Get(id, entry.Symbol, tf, null);
+                    if (cal is not null)
+                    {
+                        var pm = boundEntry.PositionManagement ?? new();
+                        boundEntry = boundEntry with
+                        {
+                            PositionManagement = pm with
+                            {
+                                StopLoss = pm.StopLoss with { Method = "AtrMultiple", AtrMultiple = cal.SlAtrMultiple },
+                                TakeProfit = cal.TpRrMultiple is { } tpRr
+                                    ? pm.TakeProfit with { Method = "RrMultiple", RrMultiple = tpRr }
+                                    : pm.TakeProfit with { Method = "None" },
+                            },
+                        };
+                    }
+                }
+
+                if (_factories.TryGetValue(id, out var factory))
+                {
+                    var strategy = factory(boundEntry, services);
+                    strategies.Add(strategy);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Strategy '{id}' has no static Create method.");
+                }
             }
         }
 
@@ -244,4 +179,17 @@ public sealed class StrategyRegistry
 
     public IReadOnlyList<IStrategy> GetAll()
         => _cachedAll ?? [];
+
+    public IReadOnlyList<string> GetAllIds()
+        => _strategyTypes.Keys.OrderBy(k => k).ToList();
+
+    public static IReadOnlyList<string> SelectActiveIds(
+        IEnumerable<string> configuredIds, IReadOnlyList<string> selectedIds)
+    {
+        var configured = configuredIds.ToArray();
+        if (selectedIds is not { Count: > 0 })
+            return configured;
+        var selected = new HashSet<string>(selectedIds, StringComparer.Ordinal);
+        return configured.Where(selected.Contains).ToArray();
+    }
 }

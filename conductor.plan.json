@@ -1,0 +1,159 @@
+{
+  "version": "1.0",
+  "planVersion": 1,
+  "name": "Shamshir iter-land-fix",
+  "repo": "C:/Code/Shamshir",
+  "tracker": "docs/iterations/iter-land-fix/TRACKER.md",
+  "planDoc": "docs/iterations/iter-land-fix/PLAN.md",
+  "pauseOnBlocked": true,
+
+  "agent": {
+    "command": "opencode",
+    "args": [
+      "run",
+      "-m", "deepseek/deepseek-v4-pro",
+      "--auto",
+      "--format", "json",
+      "{prompt}"
+    ],
+    "resumeArgs": [
+      "run",
+      "-m", "deepseek/deepseek-v4-pro",
+      "--auto",
+      "--format", "json",
+      "--continue",
+      "{prompt}"
+    ],
+    "provider": "opencode",
+    "tokenCeiling": 64000
+  },
+
+  "readOrder": [
+    "AGENTS.md",
+    "docs/iterations/iter-land-fix/PLAN.md",
+    "docs/iterations/iter-land-fix/TRACKER.md",
+    "docs/audit/RECONCILE-FINDINGS.md",
+    "docs/agents/ctrader-quickstart.md"
+  ],
+
+  "conventions": {
+    "stageIdPattern": "(?<stage>[A-Za-z]+\\d+)",
+    "handoffMarker": "## Handoff",
+    "humanToken": "HUMAN:",
+    "status": {
+      "done": ["DONE"],
+      "blocked": ["BLOCKED"],
+      "inProgress": ["IN PROGRESS"],
+      "todo": ["TODO"]
+    }
+  },
+
+  "stages": [
+    {
+      "id": "A1",
+      "title": "Fix F17 — tape/replay zero-trade regression",
+      "sessions": 2,
+      "notes": "✅ RESOLVED + VERIFIED 2026-07-10 (owner session). Root cause: commit 9454878 removed Persistence:DbPath; orchestrator inner-host fallback wrote journal/trades/equity to phantom repo-root data/trading.db. Fix = 9962432 (DbPathResolver). Verified live: run 8bd9cedb = 3 trades/272 journal/244 equity, NetProfit byte-identical to known-good 2cdba11a. Evidence: docs/iterations/iter-land-fix/evidence/a1-f17-verified-20260710.md. TRACKER row = DONE. Do NOT reopen. Superseded original notes follow for history only.\n\nF17 CRITICAL: tape/replay venue produces 0 trades. TWO sessions attempted already — the C# default revert (OrderEntryOptions.Method LimitOffset→Market) was committed (f0855ed) and startup diagnostic confirms all 9 strategies use Market, but F17 is NOT resolved. Tape runs still produce 0 Journal entries + 0 TradeResults after 145 bars. The REAL root cause found by session 2: KERNEL EVENT PERSISTENCE — kPump produces in-memory fills during execution but those events never reach the DB. Old working tape runs (July 7, commit 2cdba11a) had explicit RunPlanJson entries; broken new runs use empty RunPlanJson causing a different code path — likely StrategyRegistry binding difference.\n\nDO NOT revert the C# default fix — that was correct defense-in-depth. NOW trace: BarEvaluator.EvaluateAsync → Kernel event loop → journal/trade persistence pipeline. Compare working runs (2cdba11a) vs broken runs (ff9cdc9). Check: StrategyRegistry binding when RunPlanJson is empty vs explicit.\n\nALSO: query the existing trading.db — check if ANY trade data exists in TradeResults or JournalEntry tables. Try EURUSD H1 with TrendBreakout strategy OR RSIMeanReversion strategy specifically to generate trades. Check KernelBacktestLoop.PumpAsync's execution event flow — are events reaching the persistence handlers?\n\nVerify bug exists FIRST: run a live tape backtest with EURUSD H1, 7 days, TrendBreakout strategy. Confirm zero trades. Add diagnostic logging to BarEvaluator and EffectExecutor to trace event flow. Only then fix.\n\nGate: TotalTrades > 0 in DB after tape run. FULL CONTEXT in PLAN.md §1 (root cause) + §4 (stage A1 steps).\n\nCORRECTED ROOT CAUSE (Jul 9): Earlier sessions assumed trades don't persist, but the DB DOES have trades from recent tape backtests. The real bug is in the UI Run Form — the form doesn't display the expected values, but the Details view DOES show trades correctly. This is a UI/query reporting bug, NOT a kernel persistence bug. Compare what the Run Form queries vs what Details queries — likely a missing join, wrong filter, or stale projection. The C# default revert (f0855ed) is still correct defense-in-depth.\n\n⚠ STALL PREVENTION CRITICAL: Do NOT run tape backtests as blocking foreground commands. The conductor kills sessions after 15m of no output. Always background long operations: use Start-Job, Start-Process -NoNewWindow -RedirectStandardOutput, or the call operator with output redirection. Poll periodically with Write-Host progress messages every 3-5 minutes. Never run dotnet run or dotnet test as a blocking command that may take >10m. Read log files after completion instead of waiting synchronously."
+    },
+    {
+      "id": "A2",
+      "title": "Fix F18 + rerun P2.2 headline gate",
+      "sessions": 2,
+      "dependsOn": ["A1"],
+      "notes": "READ FIRST: docs/iterations/iter-land-fix/ENGINE-TRUTH.md (owner audit 2026-07-10) — includes new findings to bundle here: F19 (false TRADES_PARTIALLY_UNRECONSTRUCTABLE warning on healthy tape runs — barrier pairing doesn't recognize tape journal shape), F20 (CTraderListenService.cs:105 stale 5-levels-up dbPath fallback → use DbPathResolver), F21 (quickstart doc says port 5000 — REAL DEV PORT IS 5134; also remove its 'kill all dotnet' advice — kill by PID only), F22 (CompletedAtUtc stores sim-time on cTrader runs). TRUTH GATE for this stage: after fixes, `POST /api/runs` tape EURUSD H1 2026-03-03→03-09 must yield status=completed (NO warnings), trades=3. Never run the web app or backtests as blocking foreground commands — background with output redirected to file, poll /api/runs/{id}.\n\nF18 HIGH: compare-both broken — RunCompareBothAsync doesn't spawn cTrader children. B1-B3 fixes from P6 session regressed by P2.1 RunStateMachine refactor. Fix: trace the failure point in BacktestOrchestrator.cs:955-1048, repair child registration (B3 fix: manual _runs insertion, not Start()). THEN rerun P2.2 headline gate: EURUSD H1 May 1-Jun 1 2026 compare-both. Verify: F17 (tape trades>0), F1 (equal lots), F5 (truthful status), F6 (no TRADES_LOST), F2 (entryDelayBars). Fill V4 template in RECONCILE-FINDINGS.md. NEEDS cTrader creds. Heartbeat output every 30s during cTrader polling to avoid Conductor 12m stall. FULL CONTEXT in PLAN.md §1 (F18 root cause) + §5 (stage A2 steps)."
+    },
+    {
+      "id": "B1",
+      "title": "Pipeline completion + UI gaps + P6 playbook validation",
+      "sessions": 2,
+      "dependsOn": ["A2"],
+      "notes": "5 backlog items unblocked now that F17+F18 fixed: (1) cTrader queue — SemaphoreSlim(1,1) serializing runs per Q2; (2) auto-reconcile — call LedgerReconciler.Compare() after compare-both, store ReconcileJson; (3) walk-forward.json + WalkForward equity endpoint fix; (4) P5.1 OnPush/inject gaps + global error toast; (5) P6 playbook validation — run all 11 playbooks via CLI, goal ≥9 PASS. All incremental, no new architecture. FULL CONTEXT in PLAN.md §6."
+    },
+    {
+      "id": "C1",
+      "title": "P3.6 Entry-Tactic Lab — data model + recording hooks",
+      "sessions": 2,
+      "dependsOn": ["A2"],
+      "notes": "P3.6 is the capstone deferred feature from iter-quant-model (D97: deferred until P6.1 reconcile gate green — now unblocked). 32 files mapped in P3.6-HANDOVER.md. THIS STAGE: Phase A (7 new files: domain types, EF entity, migration, persistence handler) + Phase B (4 recording hook points: BarEvaluator, EffectExecutor gate reject, EffectExecutor fill, KernelBacktestLoop expiry). GOLDEN PROTOCOL ABSOLUTE: recording hooks must be fire-and-forget (_ = PublishAsync(...)) outside decision paths. If ANY golden fixture moves, stop and move the hook outside the decision path. Create tests BEFORE hooks. FULL CONTEXT in PLAN.md §7."
+    },
+    {
+      "id": "C2",
+      "title": "P3.6 Entry-Tactic Lab — counterfactuals + API + Angular UI",
+      "sessions": 2,
+      "dependsOn": ["C1"],
+      "notes": "Continues C1. Phase C: counterfactual paths for unfilled limits (extend PendingLimit class in both adapters, per-bar recording in OnBarObserved, serialize on expiry, thread through kernel). Phase D: EntryTacticEvaluator (per-method fill-rate + R-multiples), ProposalsController, EntryTacticController. Phase E: Angular UI (entry-tactic.component.ts, route /entry-tactic). Follow ExitLab patterns. FULL CONTEXT in PLAN.md §8."
+    },
+    {
+      "id": "D1",
+      "title": "Final audit + fidelity gaps",
+      "sessions": 1,
+      "dependsOn": ["B1", "C1", "C2"],
+      "notes": "LAST STAGE. Fix F4 (gap-through fills at bar open instead of optimistic stop-price fills). Document F3 (trailing cadence — per-decision-bar vs per-tick, deferred). Record Q4 final (M1-cadence cBot fix deferred per constant 1-bar lag). THEN full audit: run gate battery, rate all stages against this plan (CONFORMS/CWF/DEVIATES), write ITER-LAND-FIX-AUDIT.md, produce ≤5 item bugfix queue. Update TRACKER.md final handoff + AGENTS.md RESUME for next iteration. Fix-in-place: if any gate is red, fix within this session. FULL CONTEXT in PLAN.md §9."
+    }
+  ],
+
+  "gates": [
+    {
+      "name": "build",
+      "command": "dotnet build TradingEngine.slnx -c Debug",
+      "tier": "fast",
+      "timeoutMinutes": 5
+    },
+    {
+      "name": "unit",
+      "command": "dotnet test tests/TradingEngine.Tests.Unit",
+      "tier": "fast",
+      "timeoutMinutes": 5
+    },
+    {
+      "name": "integration",
+      "command": "dotnet test tests/TradingEngine.Tests.Integration",
+      "tier": "full",
+      "timeoutMinutes": 5
+    },
+    {
+      "name": "sim-fast",
+      "command": "dotnet test tests/TradingEngine.Tests.Simulation --filter \"RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ\"",
+      "tier": "fast",
+      "timeoutMinutes": 5
+    },
+    {
+      "name": "golden",
+      "command": "powershell -Command \"$diff = git diff --stat -- **/*golden*.json; if ($diff) { Write-Host $diff; exit 1 } else { Write-Host 'golden clean'; exit 0 }\"",
+      "tier": "full",
+      "timeoutMinutes": 1
+    },
+    {
+      "name": "web-tsc",
+      "command": "npx tsc --noEmit",
+      "cwd": "web-ui",
+      "tier": "full",
+      "timeoutMinutes": 2,
+      "optional": true,
+      "skipIfMissing": "web-ui/node_modules/.bin/tsc"
+    }
+  ],
+
+  "gatePolicy": "perPhase",
+
+    "advisor": {
+      "enabled": true,
+      "command": "opencode",
+      "args": ["run", "-m", "deepseek/deepseek-v4-pro", "--format", "json", "{prompt}"],
+      "output": "json",
+      "timeoutMinutes": 6
+    },
+
+    "limits": {
+      "stallMinutes": 15,
+      "sessionTimeoutMinutes": 240,
+      "maxResumesPerSession": 3,
+      "stageSlackFactor": 3,
+      "stallPatternTermination": true
+    },
+
+  "report": {
+    "commit": true,
+    "push": false
+  }
+}

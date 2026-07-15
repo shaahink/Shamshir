@@ -1,3 +1,3 @@
 namespace TradingEngine.Domain;
 
-public sealed record MoveStopLoss(Guid PositionId, Price NewStopLoss) : PositionModification(PositionId);
+public sealed record MoveStopLoss(Guid PositionId, Price NewStopLoss, string Reason = "TRAIL") : PositionModification(PositionId);

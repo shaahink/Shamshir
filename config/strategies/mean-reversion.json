@@ -1,35 +1,50 @@
 {
-  "id": "mean-reversion",
-  "displayName": "Mean Reversion v1",
-  "enabled": true,
-  "symbols": ["EURUSD", "GBPUSD"],
-  "riskProfileId": "standard",
-  "timeframe": "H1",
-  "regimeFilter": {
-    "allowTrending": false,
-    "allowRanging": true,
-    "allowHighVolatility": true,
-    "allowLowVolatility": true,
-    "allowUnknown": true
-  },
-  "orderEntry": {
-    "method": "Market",
-    "maxSlippagePips": 2.0
-  },
-  "positionManagement": {
-    "stopLoss": { "method": "AtrMultiple", "atrMultiple": 1.5 },
-    "takeProfit": { "method": "RrMultiple", "rrMultiple": 1.0 }
-  },
-  "parameters": {
-    "rsiPeriod": 14,
-    "bbPeriod": 20,
-    "bbStdDev": 2.0,
-    "atrPeriod": 14
-  }
-  "reentry": {
-    "blockWhileSameDirectionOpen": true,
-    "cooldownBarsAfterSl": 5,
-    "cooldownBarsAfterTp": 2,
-    "cooldownBarsAfterEntry": 3
-  }
+    "id":  "mean-reversion",
+    "displayName":  "Mean Reversion v1",
+    "enabled":  true,
+    "riskProfileId":  "standard",
+    "thesis":  "RSI oversold/overbought readings combined with price rejecting the outer Bollinger Band snap back toward the mean within a few bars.",
+    "expectedTradesPerWeek":  3,
+    "expectedHoldBars":  8,
+    "regimeFilter":  {
+                         "allowTrending":  false,
+                         "allowRanging":  true,
+                         "allowHighVolatility":  true,
+                         "allowLowVolatility":  true,
+                         "allowUnknown":  true
+                     },
+    "orderEntry":  {
+                       "method":  "LimitOffset",
+                       "limitOffsetPips":  5.0,
+                       "limitOffsetAtrFraction":  0.25,
+                       "limitOrderExpiryBars":  3,
+                       "maxSlippagePips":  2.0,
+                       "maxSlippageSpreadMultiple":  2.0
+                   },
+    "positionManagement":  {
+                               "stopLoss":  {
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  1.5,
+                                                "maxSlAtrMultiple":  5.0
+                                            },
+                               "takeProfit":  {
+                                                  "method":  "RrMultiple",
+                                                  "rrMultiple":  1.0
+                                              }
+                           },
+    "parameters":  {
+                       "rsiPeriod":  14,
+                       "rsiOversold":  30,
+                       "rsiOverbought":  70,
+                       "bbPeriod":  20,
+                       "bbStdDev":  2.0,
+                       "atrPeriod":  14,
+                       "proximityToExtremeFraction":  0.33
+                   },
+    "reentry":  {
+                    "blockWhileSameDirectionOpen":  true,
+                    "cooldownBarsAfterSl":  5,
+                    "cooldownBarsAfterTp":  2,
+                    "cooldownBarsAfterEntry":  3
+                }
 }

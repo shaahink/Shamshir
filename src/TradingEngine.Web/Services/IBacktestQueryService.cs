@@ -15,9 +15,14 @@ public sealed record BacktestRunView(
     int WinningTrades,
     double WinRatePct,
     string AlgoHash,
-    string? Error);
+    string? Error,
+    string? EffectiveConfigJson = null);
 
 public sealed record EquityPoint(DateTime TimestampUtc, decimal Equity, decimal Balance);
+
+// iter-37 T3: a NAMED record (not a ValueTuple) so System.Text.Json emits {"reason","count"} — a tuple
+// serialized as {"item1","item2"}, which the SPA read as reason/count → "undefined (undefined)".
+public sealed record NoSignalReason(string Reason, int Count);
 
 public sealed record StrategyPerformance(
     string StrategyId,
@@ -27,7 +32,7 @@ public sealed record StrategyPerformance(
     int Wins,
     int Losses,
     double WinRatePct,
-    IReadOnlyList<(string Reason, int Count)> TopRejections);
+    IReadOnlyList<NoSignalReason> TopRejections);
 
 public interface IBacktestQueryService
 {

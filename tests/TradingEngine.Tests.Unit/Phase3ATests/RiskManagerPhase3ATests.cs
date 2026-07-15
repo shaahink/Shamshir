@@ -1,3 +1,5 @@
+using TradingEngine.Engine;
+
 namespace TradingEngine.Tests.Unit.Phase3ATests;
 
 [Trait("Category", "Risk")]
@@ -16,15 +18,15 @@ public sealed class RiskManagerPhase3ATests
 
     private static RiskManager Create()
     {
-        var tracker = new DrawdownTracker();
-        tracker.Initialize(100_000);
         var registry = new SymbolInfoRegistry();
         registry.Register(new SymbolInfo(Symbol.Parse("EURUSD"), SymbolCategory.Forex, "EUR", "USD",
             0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
-        return new RiskManager(tracker, registry, (_, _) => 1,
+        var rm = new RiskManager(registry, (_, _) => 1,
             new NewsFilter(), new SessionFilter(), new StubClock(DateTime.UtcNow),
             Substitute.For<ICurrencyExposureTracker>(), PermissiveGovernor(),
             new SizingPolicyOptions());
+        rm.InitializeDrawdownIfNeeded(100_000m);
+        return rm;
     }
 
     private static TradeIntent MakeIntent(string strategyId = "test") => new(
@@ -64,8 +66,7 @@ public sealed class RiskManagerPhase3ATests
     [Fact] // T-15
     public void DailyDrawdown_UsesInitialAccountBalance()
     {
-        var tracker = new DrawdownTracker();
-        tracker.Initialize(100_000);
-        tracker.GetDailyLossLimit(0.05m).Should().Be(95_000m);
+        var state = DrawdownReducer.CreateInitial(100_000);
+        state.GetDailyLossLimit(0.05m).Should().Be(95_000m);
     }
 }

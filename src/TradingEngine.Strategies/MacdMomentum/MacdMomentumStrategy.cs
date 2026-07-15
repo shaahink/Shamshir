@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using TradingEngine.Services.SLTPCalculation;
 
 namespace TradingEngine.Strategies.MacdMomentum;
@@ -8,8 +10,6 @@ public sealed class MacdMomentumStrategy : IStrategy
     private readonly MacdMomentumConfig _config;
     private readonly ILogger<MacdMomentumStrategy> _logger;
     private readonly ISymbolInfoRegistry _symbolRegistry;
-    private readonly Timeframe _timeframe;
-    private double? _lastHist;
     private int _winStreak;
     private int _lossStreak;
 
@@ -21,20 +21,20 @@ public sealed class MacdMomentumStrategy : IStrategy
         _config = config;
         _symbolRegistry = symbolRegistry;
         _logger = logger;
-        _timeframe = config.Timeframe;
     }
 
     public string Id => _config.Id;
     public string DisplayName => _config.DisplayName;
     public IStrategyConfig Config => _config;
-    public IReadOnlyList<Timeframe> RequiredTimeframes => [_timeframe];
+    public Timeframe EntryTimeframe => _config.EntryTimeframe;
+    public IReadOnlyList<Timeframe> RequiredTimeframes => [_config.EntryTimeframe];
     public int RequiredBarCount => _config.Parameters.MacdSlow + _config.Parameters.SmaPeriod + 5;
     public IReadOnlyList<IndicatorRequest> RequiredIndicators =>
     [
-        new("MACD_12_26_9", IndicatorType.Macd, 12) { Param1 = 26, Param2 = 9 },
-        new($"SMA_{_config.Parameters.SmaPeriod}", IndicatorType.Sma, _config.Parameters.SmaPeriod),
-        new($"ADX_{_config.Parameters.AdxPeriod}", IndicatorType.Adx, _config.Parameters.AdxPeriod),
-        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod),
+        new("MACD_12_26_9", IndicatorType.Macd, 12, Timeframe: _config.EntryTimeframe) { Param1 = 26, Param2 = 9 },
+        new($"SMA_{_config.Parameters.SmaPeriod}", IndicatorType.Sma, _config.Parameters.SmaPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ADX_{_config.Parameters.AdxPeriod}", IndicatorType.Adx, _config.Parameters.AdxPeriod, Timeframe: _config.EntryTimeframe),
+        new($"ATR_{_config.Parameters.AtrPeriod}", IndicatorType.Atr, _config.Parameters.AtrPeriod, Timeframe: _config.EntryTimeframe),
     ];
     public IReadOnlyList<IPositionBehavior> PositionBehaviors => [];
     public StrategyStats Stats => new(_winStreak, _lossStreak, 0, 0);
@@ -43,29 +43,22 @@ public sealed class MacdMomentumStrategy : IStrategy
     {
         try
         {
-            if (!_config.Symbols.Contains(context.Symbol.Value))
-            {
-                _logger.LogTrace("SKIP|{Id}|SymbolNotInConfig|{Sym}", Id, context.Symbol.Value);
-                return null;
-            }
-
-            var bars = context.Bars.GetValueOrDefault(_timeframe);
+            var bars = context.Bars.GetValueOrDefault(_config.EntryTimeframe);
             if (bars is null || bars.Count < RequiredBarCount)
             {
                 _logger.LogTrace("SKIP|{Id}|NotEnoughBars|has={Count} needs={Need}", Id, bars?.Count ?? 0, RequiredBarCount);
                 return null;
             }
 
-            var prefix = $"{context.Symbol}:";
             var p = _config.Parameters;
 
-            if (!context.IndicatorValues.TryGetValue($"{prefix}SMA_{p.SmaPeriod}", out var sma200))
+            // Indicator keys are bare (e.g. "ATR_14"), matching IndicatorSnapshotService —
+            // see MarketContext.IndicatorValues. Do NOT prefix with the symbol.
+            if (!context.IndicatorValues.TryGetValue($"SMA_{p.SmaPeriod}", out var sma200))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}MACD_12_26_9_Histogram", out var histNow))
+            if (!context.IndicatorValues.TryGetValue($"ADX_{p.AdxPeriod}", out var adx))
                 return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ADX_{p.AdxPeriod}", out var adx))
-                return null;
-            if (!context.IndicatorValues.TryGetValue($"{prefix}ATR_{p.AtrPeriod}", out var atr))
+            if (!context.IndicatorValues.TryGetValue($"ATR_{p.AtrPeriod}", out var atr))
                 return null;
 
             if (adx < p.AdxMinThreshold)
@@ -78,14 +71,12 @@ public sealed class MacdMomentumStrategy : IStrategy
             var close = (double)latestBar.Close;
             var priceAboveSma = close > sma200;
 
-            if (_lastHist is null)
-            {
-                _lastHist = histNow;
-                return null;
-            }
-
-            var histPrev = _lastHist.Value;
-            _lastHist = histNow;
+            // P2.1: read the MACD histogram series instead of caching a private field — a private
+            // "previous value" field silently desyncs if a bar is ever skipped/replayed out of order.
+            var histSeries = context.GetSeries("MACD_12_26_9_Histogram");
+            if (histSeries.Count < 2) return null;
+            var histPrev = histSeries[^2];
+            var histNow = histSeries[^1];
 
             TradeDirection? direction = null;
             string reason;
@@ -137,8 +128,25 @@ public sealed class MacdMomentumStrategy : IStrategy
 
     public void Reset()
     {
-        _lastHist = null;
         _winStreak = 0;
         _lossStreak = 0;
+    }
+
+    public static MacdMomentumStrategy Create(StrategyConfigEntry entry, IServiceProvider sp)
+    {
+        var config = new MacdMomentumConfig
+        {
+            Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+            RiskProfileId = entry.RiskProfileId,
+            RegimeFilter = entry.RegimeFilter ?? new(),
+            OrderEntry = entry.OrderEntry ?? new(),
+            PositionManagement = entry.PositionManagement ?? new(),
+            Parameters = StrategyFactoryHelper.DeserializeParams<MacdMomentumParameters>(entry.Parameters),
+            EntryTimeframe = entry.EntryTimeframe ?? Timeframe.H1,
+            Symbol = entry.Symbol,
+        };
+        return new MacdMomentumStrategy(config,
+            sp.GetRequiredService<ISymbolInfoRegistry>(),
+            sp.GetRequiredService<ILogger<MacdMomentumStrategy>>());
     }
 }

@@ -22,7 +22,9 @@ public sealed class OrderDispatcherTests
             0.0001m, 0.00001m, 100_000, 0.01m, 100m, 0.01m, 0.03333m, 0.0001m));
 
         var logger = Substitute.For<ILogger<OrderDispatcher>>();
-        var dispatcher = new OrderDispatcher(rm, resolver, registry, (_, _) => 1, logger);
+        var journal = Substitute.For<IDecisionJournal>();
+        var runCtx = new EngineRunContext("test-run");
+        var dispatcher = new OrderDispatcher(rm, resolver, registry, (_, _) => 1, journal, runCtx, logger);
         var broker = Substitute.For<IBrokerAdapter>();
         broker.SubmitOrderAsync(Arg.Any<OrderRequest>(), Arg.Any<CancellationToken>())
             .Returns(Guid.NewGuid());
@@ -31,7 +33,7 @@ public sealed class OrderDispatcherTests
             new Price(1.08210m), new Price(1.08500m), "test", "standard", "", DateTime.UtcNow);
         var equity = new EquitySnapshot(DateTime.UtcNow, 100_000, 0, 100_000, 100_000, 100_000, 0, 0, EngineMode.Backtest);
 
-        var result = await dispatcher.DispatchAsync(intent, equity, 1.0850m, broker, CancellationToken.None);
+        var result = await dispatcher.DispatchAsync(intent, equity, 1.0850m, broker, [], CancellationToken.None);
 
         result.Should().NotBeNull();
         result!.Lots.Should().Be(0.1m);

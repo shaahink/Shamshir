@@ -22,16 +22,18 @@ it in the handover — do not expand scope silently.
 
 In this exact order:
 
-1. **`docs/WORKFLOW.md`** — this file. Understand the process.
-2. **`DECISIONS.md`** — read the full file. Know every locked decision and every resolved D-number.
-   Do not implement anything that contradicts a locked decision without flagging it.
-3. **`ITERATION-N.md`** — the brief for this specific iteration. This is your source of truth for scope.
-4. **Referenced briefs** — if the iteration references other brief files (e.g. `PHASE4A-MONEY-MGMT-BRIEF.md`),
-   read them fully. They contain exact code specs, not prose descriptions.
-5. **`ITERATION-(N-1)-HANDOVER.md`** — if it exists, read the prior handover to understand
-   what was left incomplete and why.
-
-Do not start coding until you have read all of the above.
+1. **`AGENTS.md`** — session startup guide. Branch state, build commands, key facts.
+2. **`docs/reference/SYSTEM-REFERENCE.md`** — §1 system overview, then skim the full reference
+3. **`docs/reference/CODE-MAP.md`** — feature→file index — find where anything lives
+4. **`docs/reference/BACKTEST-ARCHITECTURE.md`** — how backtesting actually works (both venue paths)
+5. **`docs/reference/TEST-ARCHITECTURE.md`** — test tiers, harnesses, credential deps
+6. **`docs/WORKFLOW.md`** — this file. Understand the process and code standards.
+7. **`DECISIONS.md`** — all locked decisions D1–D80
+8. **`docs/OPEN-ISSUES.md`** — active bugs and design problems
+9. **`docs/NEXT-STEPS.md`** — roadmap backlog
+10. **`docs/RESOLVED-ISSUES.md`** — audit trail of fixed issues (reference only)
+11. **`docs/iterations/iter-NN/PLAN.md`** — the brief for your specific iteration
+12. Prior handover — `docs/iterations/iter-NN/HANDOVER.md` if it exists
 
 ---
 
@@ -45,27 +47,32 @@ C:\Code\Shamshir\
 │   ├── TradingEngine.Infrastructure/   # EF Core, Skender, adapters, persistence
 │   ├── TradingEngine.Risk/             # DrawdownTracker, RiskManager, PositionSizer
 │   ├── TradingEngine.Strategies/       # Strategy implementations
-│   ├── TradingEngine.Services/         # PipCalculator, SL/TP, trailing, indicators
+│   ├── TradingEngine.Services/         # PipCalc, SL/TP, trailing, EntryPlanner, TradeCost
 │   ├── TradingEngine.Adapters.CTrader/ # cBot (net6.0, cTrader.Automate NuGet)
 │   ├── TradingEngine.Host/             # EngineWorker, Program.cs, DI wiring
-│   ├── TradingEngine.Web/              # Razor Pages, API controllers, SSE
-│   └── TradingEngine.CTraderRunner/    # Orchestrator for CLI backtest (Phase 11+)
+│   ├── TradingEngine.Web/              # Razor Pages, API controllers, SSE/SignalR
+│   └── TradingEngine.CTraderRunner/    # Orchestrator for CLI backtest
 ├── aspire/
 │   └── TradingEngine.AppHost/          # .NET Aspire dev orchestration only
 ├── tests/
-│   ├── TradingEngine.Tests.Unit/       # xUnit unit tests — fast, no I/O
+│   ├── TradingEngine.Tests.Unit/       # xUnit — fast, no I/O, ~207 tests
 │   ├── TradingEngine.Tests.Integration/# EF Core + SQLite integration tests
 │   └── TradingEngine.Tests.Simulation/ # End-to-end backtest harness tests
 ├── config/
-│   ├── strategies/                     # JSON per strategy config
+│   ├── strategies/                     # JSON per strategy config (seed → DB)
 │   ├── risk-profiles/                  # JSON per risk profile
-│   └── prop-firms/                     # JSON per prop firm ruleset
+│   ├── prop-firms/                     # JSON per prop firm ruleset
+│   └── symbols.json                    # Symbol metadata incl. cost fields
 ├── tests/data/                         # Committed test CSV files
-├── docs/                               # WORKFLOW.md + design docs
-├── DECISIONS.md                        # Decision record — update as you go
-├── ITERATION-N.md                      # Current iteration brief (input)
-├── ITERATION-N-HANDOVER.md             # Your output — written at end of iteration
-└── PHASE*-BRIEF.md                     # Phase-specific deep-dive briefs (read-only inputs)
+├── docs/
+│   ├── reference/                      # DOMAIN-KNOWLEDGE, DESIGN-V1, SYSTEM-REFERENCE, etc.
+│   ├── agents/                         # HOW-TO-WORK, ITERATION-TEMPLATE
+│   ├── iterations/                     # iter-NN/PLAN.md + HANDOVER.md per iteration
+│   └── archive/                        # Old phase briefs, start docs, historical specs
+├── AGENTS.md                           # Session startup — read first
+├── DECISIONS.md                        # Decision record D1–D80 — update as you go
+├── README.md
+└── TradingEngine.sln
 ```
 
 ---
@@ -136,7 +143,7 @@ As you work through phases, maintain these records:
 
 ### Branch discipline
 - One branch per sub-phase: `phase/{N}{letter}-{name}` (e.g., `phase/4a-money-management`)
-- PR into `dev`. Never push directly to `main`
+- PR into `develop`. Never push directly to `main`
 - Commit message: imperative mood, under 72 chars, reference the phase
 
 ### Tests — write them as you go, not at the end

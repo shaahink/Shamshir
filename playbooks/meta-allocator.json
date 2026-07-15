@@ -1,0 +1,16 @@
+{
+  "name": "meta-allocator",
+  "description": "P6.6 canonical meta-allocator: ranks enabled cells by contribution score (avgR × √frequency × confidence), recommends a top-N portfolio and cells to park/monitor. Pure config-in/config-out — reads the scoreboard, computes weights, produces a keep/monitor/park recommendation. Run monthly to re-weight the active portfolio by rolling performance evidence.",
+  "steps": [
+    {
+      "kind": "meta-allocate",
+      "topN": 4,
+      "minTrades": 10,
+      "frequencyWeight": 0.3,
+      "parkFraction": 0.1
+    },
+    {
+      "kind": "report"
+    }
+  ]
+}
