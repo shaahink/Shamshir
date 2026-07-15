@@ -167,6 +167,10 @@ public static class ServiceRegistration
         // one shared bounded lane, owned-PID reaping. Bound from CTrader:ProcessOwner (default max 2).
         services.AddOptions<CTraderProcessOwnerOptions>().BindConfiguration("CTrader:ProcessOwner");
         services.AddSingleton<CTraderProcessOwner>();
+        services.AddSingleton<RunRegistry>();
+        services.AddSingleton<IVenueRunner, ReplayVenueRunner>();
+        services.AddSingleton<IVenueRunner, CTraderVenueRunner>();
+        services.AddSingleton<VenueRunnerRegistry>();
         services.AddSingleton<RunConfigAssembler>();
         services.AddSingleton<RunRecordStore>();
         services.AddSingleton<RunMarketContextLoader>();

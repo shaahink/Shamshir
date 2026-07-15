@@ -7,7 +7,6 @@ using System.Text.Json;
 using TradingEngine.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Options;
 using TradingEngine.CTraderRunner;
 using TradingEngine.Host;
 using TradingEngine.Infrastructure.Adapters;
@@ -29,12 +28,11 @@ namespace TradingEngine.Web.Services;
     private readonly BacktestProgressStore _progressStore;
     private readonly BacktestJournal _journal;
     private readonly IConfiguration _configuration;
-    private readonly CTraderConnectionOptions _ctraderOptions;
     private readonly RunProgressBroadcaster _broadcaster;
-    private readonly EffectiveConfigResolver _configResolver;
     private readonly IRunDataCache? _runDataCache;
     private readonly IMemoryCache? _memoryCache;
-    private readonly ConcurrentDictionary<string, BacktestRunState> _runs = new();
+    private readonly RunRegistry _registry;
+    private readonly VenueRunnerRegistry _venues;
     private readonly ConcurrentDictionary<string, string> _idempotencyKeys = new();
     private readonly object _idempotencyLock = new();
 
@@ -48,14 +46,13 @@ namespace TradingEngine.Web.Services;
     private readonly CTraderProcessOwner _owner;
     private readonly RunConfigAssembler _configAssembler;
     private readonly RunRecordStore _records;
-    private readonly RunMarketContextLoader _marketContext;
     private readonly ConcurrentQueue<(string RunId, BacktestConfig Config)> _queue = new();
     private readonly CancellationTokenSource _dequeueCts = new();
     private readonly Task? _dequeueTask;
 
     public int QueuedCount => _queue.Count;
-    public int RunningTapeCount => _runs.Values.Count(r => r.Status == "running" && !string.Equals(r.Venue, "ctrader", StringComparison.OrdinalIgnoreCase));
-    public int RunningCtraderCount => _runs.Values.Count(r => r.Status == "running" && string.Equals(r.Venue, "ctrader", StringComparison.OrdinalIgnoreCase));
+    public int RunningTapeCount => _registry.All().Count(r => r.Status == "running" && !string.Equals(r.Venue, "ctrader", StringComparison.OrdinalIgnoreCase));
+    public int RunningCtraderCount => _registry.All().Count(r => r.Status == "running" && string.Equals(r.Venue, "ctrader", StringComparison.OrdinalIgnoreCase));
 
     public int? GetQueuePosition(string runId)
     {
@@ -77,14 +74,13 @@ namespace TradingEngine.Web.Services;
         BacktestProgressStore progressStore,
         BacktestJournal journal,
         IConfiguration configuration,
-        IOptions<CTraderConnectionOptions> ctraderOptions,
         RunProgressBroadcaster broadcaster,
-        EffectiveConfigResolver configResolver,
         ILogger<BacktestOrchestrator> logger,
         CTraderProcessOwner owner,
         RunConfigAssembler configAssembler,
         RunRecordStore records,
-        RunMarketContextLoader marketContext,
+        RunRegistry registry,
+        VenueRunnerRegistry venues,
         IRunDataCache? runDataCache = null,
         IMemoryCache? memoryCache = null)
     {
@@ -92,13 +88,12 @@ namespace TradingEngine.Web.Services;
         _progressStore = progressStore;
         _journal = journal;
         _configuration = configuration;
-        _ctraderOptions = ctraderOptions.Value;
         _broadcaster = broadcaster;
-        _configResolver = configResolver;
         _owner = owner;
         _configAssembler = configAssembler;
         _records = records;
-        _marketContext = marketContext;
+        _registry = registry;
+        _venues = venues;
         _runDataCache = runDataCache;
         _memoryCache = memoryCache;
         _logger = logger;
@@ -143,7 +138,7 @@ namespace TradingEngine.Web.Services;
             // count first (found live: a client polling right after POST /api/runs saw "[]" here).
             RunPlanJson = cfg.CustomParams.GetValueOrDefault("RunRows") ?? "[]",
         };
-        _runs[runId] = state;
+        _registry.Register(state);
         state.CancellationSource = new CancellationTokenSource();
         state.Status = RunStateMachine.Queued;
 
@@ -192,17 +187,17 @@ namespace TradingEngine.Web.Services;
     {
         if (!_queue.TryPeek(out var peeked)) return;
         var (runId, cfg) = peeked;
-        if (!_runs.TryGetValue(runId, out var state)) return;
+        if (!_registry.TryGet(runId, out var state)) return;
         if (state.Status != RunStateMachine.Queued) return;
 
-        var isCtrader = ResolveUseCtrader(cfg.CustomParams.GetValueOrDefault("Venue"));
+        var isCtrader = VenueRouting.ResolveUseCtrader(cfg.CustomParams.GetValueOrDefault("Venue"));
         // X4: cTrader admission goes through the shared owner lane (parallel with downloads, bounded);
         // tape keeps its own semaphore.
         var availableSlots = isCtrader ? _owner.AvailableSlots : _tapeSemaphore.CurrentCount;
         if (availableSlots == 0) return;
 
         if (!_queue.TryDequeue(out var dequeued)) return;
-        if (!_runs.TryGetValue(dequeued.RunId, out state)) return;
+        if (!_registry.TryGet(dequeued.RunId, out state)) return;
         if (state.Status != RunStateMachine.Queued) { TryDequeueNext(); return; }
 
         TransitionRun(state, RunStateMachine.Starting);
@@ -285,20 +280,8 @@ namespace TradingEngine.Web.Services;
         });
     }
 
-    /// <summary>
-    /// iter-38 D6 / P0-B1: resolve which venue a run uses from its optional "Venue" selection. cTrader is
-    /// EXPLICIT opt-in (<c>"ctrader"</c>); the default (no/empty selection) and any unknown value route to
-    /// the credential-free replay venue. Pure + config-free so venue routing is deterministically testable.
-    /// </summary>
-    public static bool ResolveUseCtrader(string? venue) => venue?.ToLowerInvariant() switch
-    {
-        "ctrader" => true,
-        "replay" or "sim" or "simulated" => false,
-        _ => false,
-    };
-
     public BacktestRunState? GetState(string runId) =>
-        _runs.TryGetValue(runId, out var state) ? state : null;
+        _registry.TryGet(runId, out var state) ? state : null;
 
     // iter-redesign P6.1: snapshot for a late-joining / reconnecting SignalR client so the live monitor
     // is never blank until the next throttled broadcast. Null when the run is unknown or already finalized
@@ -315,7 +298,7 @@ namespace TradingEngine.Web.Services;
         return RunProgressProjector.Build(state, status);
     }
 
-    public IReadOnlyList<BacktestRunState> GetAll() => _runs.Values.ToList();
+    public IReadOnlyList<BacktestRunState> GetAll() => _registry.All();
 
     public async Task<string> StartAsync(BacktestConfig cfg, CancellationToken ct)
     {
@@ -356,7 +339,7 @@ namespace TradingEngine.Web.Services;
 
     public void Cancel(string runId)
     {
-        if (!_runs.TryGetValue(runId, out var state))
+        if (!_registry.TryGet(runId, out var state))
             return;
 
         // P2.1 (F8): idempotent + truthful. A double-cancel or a cancel of an already-terminal run is a
@@ -416,7 +399,7 @@ namespace TradingEngine.Web.Services;
 
     public void SetSpeed(string runId, float speed)
     {
-        if (!_runs.TryGetValue(runId, out var state)) return;
+        if (!_registry.TryGet(runId, out var state)) return;
         speed = Math.Clamp(speed, 0f, 10f);
         state.Speed = speed;
         if (state.TapeAdapter is { } tape)
@@ -430,7 +413,7 @@ namespace TradingEngine.Web.Services;
         // Cancel all queued runs (they never started, so mark them cancelled directly).
         while (_queue.TryDequeue(out var queued))
         {
-            if (_runs.TryGetValue(queued.RunId, out var qs))
+            if (_registry.TryGet(queued.RunId, out var qs))
             {
                 TransitionRun(qs, RunStateMachine.Cancelled);
                 qs.CancellationSource?.Cancel();
@@ -441,10 +424,10 @@ namespace TradingEngine.Web.Services;
             }
         }
 
-        foreach (var (_, state) in _runs)
+        foreach (var state in _registry.All())
             state.CancellationSource?.Cancel();
 
-        var tasks = _runs.Values
+        var tasks = _registry.All()
             .Select(s => s.RunTask)
             .Where(t => t is not null)
             .ToArray();
@@ -458,7 +441,7 @@ namespace TradingEngine.Web.Services;
 
     private async Task RunAsync(string runId, BacktestConfig cfg, CancellationToken ct)
     {
-        var state = _runs[runId];
+        var state = _registry.GetRequired(runId);
         var startedAt = state.StartedAt;
         string? effectiveConfigJson = null;
         bool finalized = false;
@@ -476,23 +459,21 @@ namespace TradingEngine.Web.Services;
 
             BacktestResult result;
 
-            var useCtader = ResolveUseCtrader(cfg.CustomParams.GetValueOrDefault("Venue"));
             var compareBoth = string.Equals(cfg.CustomParams.GetValueOrDefault("Compare"), "both", StringComparison.OrdinalIgnoreCase);
 
             if (compareBoth)
             {
                 var comparePairId = Guid.NewGuid().ToString("N")[..8];
-                result = await RunCompareBothAsync(runId, cfg, comparePairId, state.LogLines, ct);
-            }
-            else if (useCtader)
-            {
-                EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
-                result = await RunEngineNetMqAsync(runId, cfg, state.LogLines, ct);
+                result = await RunCompareBothAsync(runId, cfg, comparePairId, state, ct);
             }
             else
             {
-                EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running engine replay...");
-                result = await RunEngineReplayAsync(runId, cfg, state.LogLines, ct);
+                // The pluggable venue seam: the registry picks the runner for the run's "Venue"
+                // selection (unknown/empty => replay). The runner executes the engine leg only;
+                // the finalize below stays venue-agnostic.
+                var runner = _venues.Resolve(cfg.CustomParams.GetValueOrDefault("Venue"));
+                EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] {runner.StartLogLine}");
+                result = await runner.ExecuteAsync(runId, cfg, state, ct);
             }
 
             // P2.1 (F8): the engine loop has returned a result; enter the transient `finalizing` state for
@@ -624,7 +605,7 @@ namespace TradingEngine.Web.Services;
             }));
 
             _broadcaster.RemoveRun(runId);
-            _runs.TryRemove(runId, out _);
+            _registry.Remove(runId);
             _memoryCache?.Remove(RunsListCacheKey);
         }
     }
@@ -632,22 +613,15 @@ namespace TradingEngine.Web.Services;
     // P0.2 (F5, Q5): record a teardown/persistence anomaly against the run without failing it.
     private void AddTeardownWarning(string runId, string code, string detail)
     {
-        if (_runs.TryGetValue(runId, out var state))
+        if (_registry.TryGet(runId, out var state))
             state.Warnings.Enqueue(new RunWarning(code, detail, DateTime.UtcNow));
         _logger.LogWarning("RUN_WARNING|run={RunId}|code={Code}|detail={Detail}", runId, code, detail);
     }
 
-    // P0.2 (F5, Q5): run one teardown step in isolation. A fault after a complete engine result becomes
-    // a warning, never a propagated exception (which the outer catch would turn into `failed`).
-    private async Task SafeTeardownStepAsync(string runId, string code, Func<Task> step)
-    {
-        try { await step(); }
-        catch (Exception ex) { AddTeardownWarning(runId, code, ex.Message); }
-    }
-
     private async Task<BacktestResult> RunCompareBothAsync(
-        string runId, BacktestConfig cfg, string comparePairId, ConcurrentQueue<string> logLines, CancellationToken ct)
+        string runId, BacktestConfig cfg, string comparePairId, BacktestRunState state, CancellationToken ct)
     {
+        var logLines = state.LogLines;
         EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] Compare mode — running tape first...");
 
         // Tag the parent with the pair id
@@ -662,7 +636,7 @@ namespace TradingEngine.Web.Services;
                 ["Venue"] = "tape",
             },
         };
-        var tapeResult = await RunEngineReplayAsync(runId, tapeCfg, logLines, ct);
+        var tapeResult = await _venues.Resolve("tape").ExecuteAsync(runId, tapeCfg, state, ct);
 
         if (!tapeResult.Success)
         {
@@ -687,7 +661,7 @@ namespace TradingEngine.Web.Services;
 
         // Manually register state without spawning a duplicate RunAsync —
         // Start() would fire RunAsync which would see Venue="ctrader" and run
-        // RunEngineNetMqAsync again, racing with our own call below.
+        // the cTrader venue runner again, racing with our own call below.
         var ctraderState = new BacktestRunState
         {
             RunId = ctraderRunId,
@@ -706,7 +680,7 @@ namespace TradingEngine.Web.Services;
             StartedAt = DateTime.UtcNow,
         };
         ctraderState.CancellationSource = new CancellationTokenSource();
-        _runs[ctraderRunId] = ctraderState;
+        _registry.Register(ctraderState);
 
         // F18 (R0.1): write a start record to DB immediately so the child run is visible from spawn
         // moment, even if a crash prevents WriteEndRecordAsync from running later.
@@ -718,7 +692,7 @@ namespace TradingEngine.Web.Services;
         {
             TransitionRun(ctraderState, RunStateMachine.Running);
             EnqueueLog(ctraderRunId, ctraderState.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
-            var ctraderResult = await RunEngineNetMqAsync(ctraderRunId, ctraderCfg, ctraderState.LogLines, ct);
+            var ctraderResult = await _venues.Resolve("ctrader").ExecuteAsync(ctraderRunId, ctraderCfg, ctraderState, ct);
 
             TransitionRun(ctraderState, RunStateMachine.Finalizing);
 
@@ -776,644 +750,6 @@ namespace TradingEngine.Web.Services;
         return tapeResult;
     }
 
-    private async Task<BacktestResult> RunEngineReplayAsync(
-        string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines, CancellationToken userCt = default)
-    {
-        var from = cfg.Start;
-        var wallStart = DateTime.UtcNow;
-
-        var dbPath = DbPathResolver.ResolveTradingDbPath(_configuration.GetValue<string>("Persistence:DbPath"));
-
-        using var scope = _scopeFactory.CreateScope();
-        var barRepo = scope.ServiceProvider.GetRequiredService<IBarRepository>();
-
-        // iter-marketdata-tape P3: opt-in fast fake venue. Venue="tape" replays the canonical market-data
-        // store in-process (no cTrader-cli/NetMQ) with dual-resolution exits (decision TF vs ExitTimeframe,
-        // default m1). Default/empty venue keeps the existing per-run-bars BacktestReplayAdapter unchanged.
-        var useTape = string.Equals(cfg.CustomParams.GetValueOrDefault("Venue"), "tape", StringComparison.OrdinalIgnoreCase);
-        var to = useTape ? cfg.End.Date.AddDays(1) : cfg.End;
-        var marketDataStore = useTape ? scope.ServiceProvider.GetService<IMarketDataStore>() : null;
-        var exitTf = RunRequestParser.ParseTimeframe(cfg.CustomParams.GetValueOrDefault("ExitTimeframe") ?? "M1");
-
-        var solutionRoot = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-
-        var state = _runs[runId];
-        var progressCallback = new Progress<BacktestProgressEvent>(evt =>
-        {
-            _journal.Write(runId, evt.EventType, evt.Message);
-            if (evt.EventType == "BAR")
-            {
-                Interlocked.Increment(ref state.BarCount);
-                if (evt.Message.Length > 4 && evt.Message.StartsWith("Bar "))
-                {
-                    var pipeIdx = evt.Message.IndexOf(" | ", StringComparison.Ordinal);
-                    state.SimTime = pipeIdx > 4 ? evt.Message[4..pipeIdx] : evt.Message[4..];
-                }
-            }
-            RunProgressProjector.TallyEvent(state, evt);
-
-            var barCount = Volatile.Read(ref state.BarCount) + 1;
-            if (barCount <= 5 || barCount % 50 == 0)
-                _journal.Write(runId, "LIVE_DIAG", $"BAR#{barCount} tally={state.Signals}s/{state.Orders}o/{state.Fills}f/{state.Closes}c");
-
-            _broadcaster.Publish(RunProgressProjector.Build(state, "running"), force: evt.EventType == "BREACH" || barCount <= 3);
-        });
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(userCt,
-            new CancellationTokenSource(TimeSpan.FromMinutes(30)).Token);
-
-        // iter-strategy-system P1 (D3): prefer the explicit row plan (RunRows) — each row is a
-        // (strategy × symbol × timeframe × pack), built per-pass so the same strategy can carry a different
-        // pack on different passes. Otherwise fall back to the legacy Symbols×Periods×Strategies cross-product
-        // with one shared config for every pass (behaviour unchanged).
-        var rowEntries = RunRequestParser.ParseRunPlanEntries(cfg);
-        var perRow = rowEntries.Count > 0;
-
-        RunPlan runPlan;
-        IReadOnlyList<string> activeStrategyIds;
-        LoadedConfig? sharedConfig = null;
-        List<(Symbol Sym, Timeframe Tf, IReadOnlyDictionary<string, string?>? Packs)> passes;
-
-        if (perRow)
-        {
-            runPlan = new RunPlan(rowEntries);
-            activeStrategyIds = rowEntries.Select(e => e.StrategyId).Distinct().ToArray();
-            passes = RunPlanBuilder.IntoPasses(runPlan)
-                .Select(p => (Symbol.Parse(p.Symbol), RunRequestParser.ParseTimeframe(p.Timeframe),
-                    (IReadOnlyDictionary<string, string?>?)p.StrategyPacks))
-                .ToList();
-        }
-        else
-        {
-            var strategyIds = RunRequestParser.ParseStrategyIds(cfg);
-            sharedConfig = await _configAssembler.BuildLoadedConfigFromDbAsync(cfg);
-            var effectiveStrategyIds = strategyIds.Length > 0
-                ? strategyIds
-                : sharedConfig.StrategyConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
-            runPlan = RunRequestParser.BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
-            activeStrategyIds = strategyIds;
-            passes = runPlan.Entries
-                .Select(e => (Sym: Symbol.Parse(e.Symbol), Tf: RunRequestParser.ParseTimeframe(e.Timeframe)))
-                .Distinct()
-                .Select(c => (c.Sym, c.Tf, (IReadOnlyDictionary<string, string?>?)null))
-                .ToList();
-        }
-
-        if (passes.Count == 0)
-        {
-            EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] No symbol/timeframe combinations to run.");
-            return new BacktestResult { RunId = runId, ExitCode = 1, AlgoHash = "", ErrorMessage = "No combinations." };
-        }
-
-        // F34: every currency this run touches must be priceable into the account denomination from real
-        // data. Resolved and loaded here, once, because this is where market data and the run window are
-        // both in scope — and it fails the run rather than falling back to a literal (a wrong cross rate
-        // is a wrong lot size). Costs nothing on the common case: a USD account trading USD pairs needs
-        // no legs at all.
-        var accountCurrency = _marketContext.ResolveAccountCurrency();
-        var crossRateSeries = await _marketContext.LoadCrossRateSeriesAsync(
-            accountCurrency, passes.Select(p => p.Sym).Distinct().ToList(), solutionRoot,
-            scope.ServiceProvider.GetService<IMarketDataStore>(), from, to, runId, logLines, cts.Token);
-        var venueSymbolSpecs = await _marketContext.LoadVenueSymbolSpecsAsync(cts.Token);
-
-        // P2.1: pre-query actual bar counts so progress shows % of real bars, not calendar estimate.
-        // The foreach loop below also sums bar counts, but this locks in barsTotal BEFORE the first pass
-        // starts, so the progress bar climbs to 100% smoothly instead of stalling at ~70%.
-        var preQueryBars = 0;
-        foreach (var (sym, tf, _) in passes)
-        {
-            if (useTape && marketDataStore is not null)
-            {
-                var tapeBars = await marketDataStore.ReadBarsAsync(sym, tf, cfg.Start, cfg.End, userCt);
-                preQueryBars += tapeBars.Count;
-            }
-            else
-            {
-                var bars = await barRepo.GetAsync(sym, tf, cfg.Start, cfg.End, userCt);
-                preQueryBars += bars.Count;
-            }
-        }
-        if (preQueryBars > 0)
-            state.BarsTotal = preQueryBars;
-
-        var totalBars = 0;
-        var anyBars = false;
-        var passIndex = 0;
-
-        foreach (var (sym, tf, packs) in passes)
-        {
-            passIndex++;
-            // Per-row runs build a fresh config per pass so the SAME strategy can carry a DIFFERENT pack on
-            // each (symbol,tf). Legacy runs reuse one shared config (cheaper, behaviour byte-identical).
-            var passConfig = perRow ? await _configAssembler.BuildLoadedConfigFromDbAsync(cfg, packs) : sharedConfig!;
-            state.CurrentPass = $"{sym}/{tf}";
-            state.PassIndex = passIndex;
-            state.PassTotal = passes.Count;
-
-            // P1.3: compute auxiliary-timeframe bars needed by multi-TF strategies (e.g. mtf-trend needs H4).
-            IReadOnlyDictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>? auxBars = null;
-            if (useTape && marketDataStore is not null && activeStrategyIds.Contains("mtf-trend"))
-            {
-                var auxTf = Timeframe.H4;
-                if (tf != auxTf)
-                {
-                    var auxBarList = await marketDataStore.ReadBarsAsync(sym, auxTf, from, to, userCt);
-                    if (auxBarList.Count > 0)
-                    {
-                        auxBars = new Dictionary<string, IReadOnlyDictionary<Timeframe, IReadOnlyList<Bar>>>
-                        {
-                            [sym.ToString()] = new Dictionary<Timeframe, IReadOnlyList<Bar>>
-                            {
-                                [auxTf] = auxBarList,
-                            },
-                        };
-                    }
-                }
-            }
-
-            var innerHost = EngineHostFactory.Create(new EngineHostOptions
-            {
-                RunId = runId,
-                Mode = EngineMode.Backtest,
-                AdapterFactory = sp =>
-                {
-                    if (useTape && marketDataStore is not null)
-                    {
-                        // P0.3 (D4): honest entry timing default ON; CustomParams["HonestFills"]="false"
-                        // preserves the old optimistic (fill-at-signal-bar-close) behavior for A/B.
-                        var honestFills = cfg.CustomParams.GetValueOrDefault("HonestFills") != "false";
-                        // P3.1: opt-in excursion recorder, default OFF (unlike HonestFills) -- this is
-                        // instrumentation for the exploration/exit-lab workflow (P3.2+), not a default-on
-                        // behavior change. CustomParams["RecordExcursions"]="true" turns it on.
-                        var recordExcursions = cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true";
-                        var tapeAdapter = new TapeReplayAdapter(marketDataStore, sym, tf, exitTf, from, to,
-                            cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
-                            sp.GetRequiredService<Func<string, string, decimal>>(),
-                            sp.GetRequiredService<ILogger<TapeReplayAdapter>>(),
-                            honestFills, recordExcursions,
-                            commissionPerMillion: (decimal?)cfg.CommissionPerMillion,
-                            spreadPipsOverride: (decimal?)cfg.SpreadPips);
-                        tapeAdapter.Speed = state.Speed;
-                        state.TapeAdapter = tapeAdapter;
-                        return tapeAdapter;
-                    }
-                    return new BacktestReplayAdapter(barRepo, sym, tf, from, to,
-                        cfg.Balance, sp.GetRequiredService<ISymbolInfoRegistry>(),
-                        sp.GetRequiredService<Func<string, string, decimal>>(),
-                        sp.GetRequiredService<ILogger<BacktestReplayAdapter>>(),
-                        commissionPerMillion: (decimal?)cfg.CommissionPerMillion);
-                },
-                DbPath = dbPath,
-                SolutionRoot = solutionRoot,
-                SymbolNames = cfg.Symbols,
-                ActiveStrategyIds = activeStrategyIds,
-                RunPlan = runPlan,
-                PreloadedConfig = passConfig,
-                Progress = progressCallback,
-                MinLogLevel = LogLevel.Warning,
-                DiagnosticsEnabled = _configuration.GetSection("Engine:Diagnostics").GetValue<bool>("Enabled"),
-                RunDataCache = _runDataCache,
-                SkipJournal = string.Equals(cfg.CustomParams.GetValueOrDefault("SkipJournal"), "true", StringComparison.OrdinalIgnoreCase),
-                PreloadedAuxBars = auxBars,
-                InitialBalance = cfg.Balance,
-                AccountCurrency = accountCurrency,
-                CrossRateSeries = crossRateSeries,
-                VenueSymbolSpecs = venueSymbolSpecs,
-            });
-            state.EngineHost = innerHost;
-            EngineHostFactory.WireEventHandlers(innerHost);
-            EngineHostFactory.WireRiskRules(innerHost);
-
-            if (_configuration.GetSection("Engine:Diagnostics").GetValue<bool>("Enabled"))
-                _logger.LogWarning("Engine diagnostics enabled for run {RunId} — engine profiling → %TEMP%/shamshir-profiling/; cBot timing → run log (CBOT|TIMING)", runId);
-
-            await innerHost.StartAsync(cts.Token);
-            EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Pass {passIndex}/{passes.Count} {sym}/{tf} started...");
-
-            using var equityCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
-            _ = EngineHostLifecycle.StartEquityPollingAsync(innerHost, state, runId, equityCts.Token);
-
-            var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
-            await adapter.BarStream.Completion;
-
-            var barCount = (adapter as IReplayVenue)?.BarCount ?? 0;
-            totalBars += barCount;
-            if (barCount > 0) anyBars = true;
-
-            if (adapter is TapeReplayAdapter tape && tape.ExitResolution is not null)
-                state.ExitResolution = tape.ExitResolution;
-            // BarsTotal is set by pre-query (line 832) — do NOT overwrite mid-loop
-            // or the display shows nonsense like "99.9% (816 / 400)" on multi-pass runs.
-
-            equityCts.Cancel();
-            await EngineHostLifecycle.FlushRunPersistenceAsync(innerHost);
-            EngineHostLifecycle.CaptureFinalEquity(state, innerHost, runId);
-            await innerHost.StopAsync(CancellationToken.None);
-            await EngineHostLifecycle.DisposeHostAsync(innerHost);
-
-            EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Pass {passIndex}/{passes.Count} {sym}/{tf} complete ({barCount} bars).");
-        }
-
-        state.BarsTotal = totalBars;
-        state.EngineHost = null;
-
-        if (!anyBars)
-        {
-            EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] No bars found for any symbol/timeframe in {cfg.Start:yyyy-MM-dd}–{cfg.End:yyyy-MM-dd}.");
-            return new BacktestResult
-            {
-                RunId = runId,
-                ExitCode = 1,
-                AlgoHash = "",
-                ErrorMessage = "No bars found for any symbol/timeframe combination."
-            };
-        }
-
-        EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] All passes complete ({passes.Count} combinations, {totalBars} total bars).");
-        var wallElapsedMs = (long)(DateTime.UtcNow - wallStart).TotalMilliseconds;
-        return new BacktestResult
-        {
-            RunId = runId,
-            ExitCode = 0,
-            AlgoHash = "",
-            WallElapsedMs = wallElapsedMs,
-            BarsPerSec = wallElapsedMs > 0 ? totalBars / (wallElapsedMs / 1000.0) : 0,
-            TotalBars = totalBars,
-        };
-    }
-
-    private async Task<BacktestResult> RunEngineNetMqAsync(
-        string runId, BacktestConfig cfg, ConcurrentQueue<string> logLines, CancellationToken ct)
-    {
-        var ctid = _ctraderOptions.CtId;
-        var pwdFile = _ctraderOptions.PwdFile;
-        var account = _ctraderOptions.Account;
-        var wallStart = DateTime.UtcNow;
-        if (string.IsNullOrWhiteSpace(ctid) || string.IsNullOrWhiteSpace(pwdFile) || string.IsNullOrWhiteSpace(account))
-        {
-            EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] CTrader credentials not configured");
-            return new BacktestResult
-            {
-                RunId = runId,
-                ExitCode = 1,
-                AlgoHash = "",
-                ErrorMessage = "CTrader credentials not configured."
-            };
-        }
-
-        var algoPath = ResolveAlgoPath();
-        var algoHash = ComputeAlgoHash(algoPath);
-
-        var symbol = Symbol.Parse(cfg.Symbol);
-        var timeframe = RunRequestParser.ParseTimeframe(cfg.Period);
-
-        var (dataPort, commandPort) = AllocatePorts();
-
-        var dbPath = DbPathResolver.ResolveTradingDbPath(_configuration.GetValue<string>("Persistence:DbPath"));
-
-        var solutionRoot = DbPathResolver.FindRepoRoot();
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct,
-            new CancellationTokenSource(TimeSpan.FromMinutes(30)).Token);
-
-        var progressCallback = new Progress<BacktestProgressEvent>(evt =>
-        {
-            _journal.Write(runId, evt.EventType, evt.Message);
-            if (evt.EventType is "EXEC" or "REJECTED" or "NETMQ_CONNECTED" or "NETMQ_SENT"
-                or "NETMQ_DROPPED" or "CBOT")
-            {
-                _journal.Write(runId, evt.EventType, evt.Message, logLines);
-            }
-
-            if (!_runs.TryGetValue(runId, out var runState)) return;
-            if (evt.EventType == "BAR")
-            {
-                runState.BarCount++;
-                if (evt.Message.Length > 4 && evt.Message.StartsWith("Bar "))
-                {
-                    var pipeIdx = evt.Message.IndexOf(" | ", StringComparison.Ordinal);
-                    runState.SimTime = pipeIdx > 4 ? evt.Message[4..pipeIdx] : evt.Message[4..];
-                }
-            }
-            RunProgressProjector.TallyEvent(runState, evt);
-            _broadcaster.Publish(RunProgressProjector.Build(runState, "running"), force: evt.EventType == "BREACH");
-        });
-
-        var strategyIds = RunRequestParser.ParseStrategyIds(cfg);
-        var loadedConfig = await _configAssembler.BuildLoadedConfigFromDbAsync(cfg);
-        var effectiveStrategyIds = strategyIds.Length > 0
-            ? strategyIds
-            : loadedConfig.StrategyConfigs.Where(s => s.Enabled).Select(s => s.Id).ToArray();
-        var runPlan = RunRequestParser.BuildRunPlan(effectiveStrategyIds, cfg.Symbols, cfg.Periods);
-
-        var accountCurrency = _marketContext.ResolveAccountCurrency();
-        IReadOnlyDictionary<string, IReadOnlyList<CrossRatePoint>>? crossRateSeries;
-        using (var rateScope = _scopeFactory.CreateScope())
-        {
-            crossRateSeries = await _marketContext.LoadCrossRateSeriesAsync(
-                accountCurrency, cfg.Symbols.Select(Symbol.Parse).ToList(), solutionRoot,
-                rateScope.ServiceProvider.GetService<IMarketDataStore>(),
-                cfg.Start, cfg.End, runId, logLines, ct);
-        }
-
-        var innerHost = EngineHostFactory.Create(new EngineHostOptions
-        {
-            RunId = runId,
-            Mode = EngineMode.Backtest,
-            AdapterFactory = sp =>
-            {
-                var transport = new NetMqMessageTransport(
-                    $"tcp://127.0.0.1:{dataPort}",
-                    $"tcp://*:{commandPort}",
-                    sp.GetRequiredService<ILogger<NetMqMessageTransport>>());
-                var adapter = new CTraderBrokerAdapter(transport,
-                    sp.GetRequiredService<ILogger<CTraderBrokerAdapter>>());
-                adapter.OnSymbolSpec = spec =>
-                {
-                    sp.GetRequiredService<ISymbolInfoRegistry>().UpsertVenueSpec(spec);
-
-                    // P4.4 (F44): persist it. The cTrader leg is the only leg that ever learns the broker's
-                    // real commission/swap; without durable storage those numbers die with the process and
-                    // the tape leg silently re-prices off the fabricated symbols.json rates.
-                    //
-                    // NOTE `sp` here is the INNER engine host's provider, which knows nothing of the web
-                    // app's services — resolving the store from it throws inside HandleSymbolSpec and takes
-                    // the whole cTrader leg down with it. Go through the orchestrator's own scope factory.
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            using var scope = _scopeFactory.CreateScope();
-                            await scope.ServiceProvider.GetRequiredService<IVenueSymbolSpecStore>().SaveAsync(spec);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Failed to persist venue symbol spec for {Symbol}", spec.Symbol);
-                        }
-                    });
-                };
-                adapter.OnStatusChange = (type, msg) =>
-                {
-                    _journal.Write(runId, type, msg);
-                    _journal.Write(runId, type, msg, logLines);
-                    ((IProgress<BacktestProgressEvent>)progressCallback).Report(
-                        new BacktestProgressEvent(runId, type, msg, DateTime.UtcNow));
-                    Task.Run(async () =>
-                    {
-                        using var scope = _scopeFactory.CreateScope();
-                        var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-                        db.VenueSessions.Add(new TradingEngine.Infrastructure.Persistence.Entities.VenueSessionEntity
-                        {
-                            RunId = runId, Event = type, Detail = msg, OccurredAtUtc = DateTime.UtcNow
-                        });
-                        await db.SaveChangesAsync();
-                    });
-                };
-                return adapter;
-            },
-            DbPath = dbPath,
-            SolutionRoot = solutionRoot,
-            SymbolNames = cfg.Symbols,
-            ActiveStrategyIds = strategyIds,
-            RunPlan = runPlan,
-            PreloadedConfig = loadedConfig,
-            Progress = progressCallback,
-            MinLogLevel = LogLevel.Warning,
-            DiagnosticsEnabled = _configuration.GetSection("Engine:Diagnostics").GetValue<bool>("Enabled"),
-            RunDataCache = _runDataCache,
-            InitialBalance = cfg.Balance,
-            // F34: the cTrader leg sizes orders in the engine exactly as the tape leg does, so it must model
-            // the SAME account denomination — otherwise the two venues size differently from identical
-            // signals and every per-trade lot comparison in the parity gate is meaningless.
-            AccountCurrency = accountCurrency,
-            CrossRateSeries = crossRateSeries,
-            // ...and, for the same reason, the SAME venue-declared economics (F44).
-            VenueSymbolSpecs = await _marketContext.LoadVenueSymbolSpecsAsync(ct),
-        });
-        EngineHostFactory.WireEventHandlers(innerHost);
-        EngineHostFactory.WireRiskRules(innerHost);
-
-        if (_configuration.GetSection("Engine:Diagnostics").GetValue<bool>("Enabled"))
-            _logger.LogWarning("Engine diagnostics enabled for run {RunId} — engine profiling → %TEMP%/shamshir-profiling/; cBot timing → run log (CBOT|TIMING)", runId);
-
-        try
-        {
-            await innerHost.StartAsync(cts.Token);
-        }
-        catch (Exception ex)
-        {
-            await EngineHostLifecycle.DisposeHostAsync(innerHost);
-            EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Engine start failed: {ex.Message}");
-            return new BacktestResult
-            {
-                RunId = runId,
-                ExitCode = 1,
-                AlgoHash = algoHash,
-                ErrorMessage = $"Engine start failed: {ex.Message}"
-            };
-        }
-
-        EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] Engine started (in-process NetMQ). Ports={dataPort}/{commandPort}");
-
-        _ = EngineHostLifecycle.StartEquityPollingAsync(innerHost, _runs[runId], runId, cts.Token);
-
-        var resultsDir = Path.Combine(Path.GetTempPath(), "shamshir-backtest", runId);
-        Directory.CreateDirectory(resultsDir);
-        var reportJsonPath = Path.Combine(resultsDir, "events.json");
-        // The cBot writes its own resilient ledger here (ShamshirTradeLogger), independent of
-        // cTrader-cli's crash-prone report-saving.
-        var cbotReportDir = Path.Combine(resultsDir, "cbot");
-        Directory.CreateDirectory(cbotReportDir);
-
-        var cli = new CTraderCli();
-        var diagnosticsEnabled = _configuration.GetSection("Engine:Diagnostics").GetValue<bool>("Enabled");
-        var argList = new List<string>
-        {
-            $"--start={cfg.Start:dd/MM/yyyy}", $"--end={cfg.End:dd/MM/yyyy}",
-            $"--symbol={cfg.Symbol}", $"--period={cfg.Period}",
-            $"--balance={cfg.Balance}", $"--commission={cfg.CommissionPerMillion}",
-            $"--spread={cfg.SpreadPips}", $"--data-mode={cfg.DataMode}",
-            $"--ctid={ctid}", $"--pwd-file={pwdFile}", $"--account={account}",
-            $"--DataPort={dataPort}", $"--CommandPort={commandPort}",
-            $"--SymbolString={string.Join(",", cfg.Symbols)}",
-            $"--Periods={string.Join(",", cfg.Periods)}",
-            $"--ReportPath={cbotReportDir}",
-            "--full-access",
-        };
-        // Phase-0 measurement (audit fast-track): turn on the cBot's per-bar round-trip + tick-publish timing
-        // (emitted as CBOT|TIMING to ctrader-cli stdout in OnStop) on the SAME opt-in switch as the engine-side
-        // timing. Measurement-only: it does NOT set Verbose, so F11/F12 stay suppressed and backtest behaviour
-        // is unchanged. Without this, the cBot timing harness is only ever reachable from the E2E test harness.
-        if (diagnosticsEnabled)
-            argList.Add("--Diagnostics=true");
-        var args = argList.ToArray();
-
-        EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] Launching ctrader-cli...");
-        CTraderResult cliResult;
-        int ctraderBarCount = 0;
-        try
-        {
-            cliResult = await cli.BacktestAsync(algoPath, args, cts.Token,
-                onStarted: pid => _owner.Register(pid, $"run:{runId}"));
-        }
-        finally
-        {
-            // P0.2 (F5, Q5): the engine has already produced a complete result by the time we get here.
-            // Any exception during transport/host teardown must NOT propagate to the orchestrator's outer
-            // catch (which would stamp this complete run `failed`). Each step is isolated and records a
-            // warning instead — the run downgrades to `completed-with-warnings`, never `failed`. The
-            // idempotent transport fix (6533c7e) removes the known NetMQPoller race at source; this is the
-            // durable safety net for any future teardown fault.
-            var adapter = innerHost.Services.GetRequiredService<IBrokerAdapter>();
-            var barDone = adapter.BarStream.Completion;
-            var safety = Task.Delay(TimeSpan.FromSeconds(30));
-            if (await Task.WhenAny(barDone, safety) == safety)
-            {
-                _logger.LogWarning("CTRADER|BAR_STREAM_TIMEOUT|run={RunId}|forcing disconnect", runId);
-                EnqueueLog(runId, logLines,
-                    $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: Bar stream did not complete — forcing disconnect");
-                AddTeardownWarning(runId, "BAR_STREAM_TIMEOUT", "Bar stream did not complete within 30s — forced disconnect");
-                try { await adapter.DisconnectAsync(CancellationToken.None); } catch { }
-                try { await barDone; } catch { }
-            }
-            ctraderBarCount = _runs.TryGetValue(runId, out var rs) ? rs.BarCount : 0;
-            await SafeTeardownStepAsync(runId, "FLUSH_PERSISTENCE", () => EngineHostLifecycle.FlushRunPersistenceAsync(innerHost));
-            try { EngineHostLifecycle.CaptureFinalEquity(_runs[runId], innerHost, runId); }
-            catch (Exception ex) { AddTeardownWarning(runId, "CAPTURE_EQUITY", ex.Message); }
-            await SafeTeardownStepAsync(runId, "HOST_STOP", () => innerHost.StopAsync(CancellationToken.None));
-            await SafeTeardownStepAsync(runId, "HOST_DISPOSE", () => EngineHostLifecycle.DisposeHostAsync(innerHost));
-        }
-
-        // iter-redesign-ctrader P6.3 / P2.1 → X4: after the engine has disposed and the run is done, reap
-        // any remaining ctrader-cli process THIS run owns. The ChildProcessReaper job object kills on
-        // parent-exit, but the persistent web app lives on. X4 makes this owned-PID (by run tag) instead
-        // of by image name, so it is safe under parallel cTrader and never touches another worktree's cli.
-        _owner.ReapByTag($"run:{runId}", "reap");
-
-        EnqueueLog(runId, logLines,
-            $"[{DateTime.UtcNow:HH:mm:ss}] CLI exit code: {cliResult.ExitCode}");
-
-        // Surface the cBot's Phase-0 timing (only present when --Diagnostics=true) into the run log, so a real
-        // cTrader backtest can be profiled from the UI — this is the round-trip-window-vs-total + tick-publish
-        // count the audit's fast-track said to measure FIRST to decide whether F11 or ctrader-cli tick replay
-        // dominates wall-clock.
-        // NOTE: the cBot's Print() output does NOT survive the cTrader CLI — nothing it prints reaches
-        // StandardOutput. Anything the cBot must tell the engine goes over NetMQ or into its own
-        // ledger (see WarnOnVenueCurrencyMismatch); this loop is kept only for the CLI's own lines.
-        foreach (var line in cliResult.StandardOutput.Split('\n'))
-        {
-            var t = line.Trim();
-            if (t.Contains("CBOT|TIMING") || t.Contains("CBOT|STOP"))
-                EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] {t}");
-        }
-
-        var isKnownCrash = cliResult.ExitCode != 0 && cliResult.IsKnownPostBacktestCrash;
-
-        if (cliResult.ExitCode != 0 && !isKnownCrash)
-        {
-            var errMsg = !string.IsNullOrWhiteSpace(cliResult.StandardError)
-                ? cliResult.StandardError.Trim()
-                : cliResult.StandardOutput.Split('\n').LastOrDefault(l => l.Contains("Error"))?.Trim()
-                    ?? $"ctrader-cli exited with code {cliResult.ExitCode}";
-            EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] CLI error: {errMsg}");
-        }
-
-        var reportHtmlPath = "";
-        var captureSucceeded = false;
-        try
-        {
-            var algoDir = Path.GetDirectoryName(algoPath)!;
-            var dataSrcDir = Path.Combine(algoDir, "data", "src");
-            if (Directory.Exists(dataSrcDir))
-            {
-                var backtestDirs = Directory.GetDirectories(dataSrcDir, "Backtesting", SearchOption.AllDirectories)
-                    .OrderByDescending(Directory.GetLastWriteTimeUtc)
-                    .ToList();
-
-                if (backtestDirs.Count > 0)
-                {
-                    var latestDir = backtestDirs[0];
-                    var htmlFile = Path.Combine(latestDir, "report.html");
-                    if (File.Exists(htmlFile))
-                    {
-                        var destHtml = Path.Combine(resultsDir, "report.html");
-                        File.Copy(htmlFile, destHtml, overwrite: true);
-                        reportHtmlPath = destHtml;
-                        EnqueueLog(runId, logLines,
-                            $"[{DateTime.UtcNow:HH:mm:ss}] cTrader report: {destHtml}");
-                    }
-
-                    foreach (var dir in backtestDirs)
-                    {
-                        var jsonFile = Path.Combine(dir, "events.json");
-                        if (!File.Exists(jsonFile)) continue;
-                        if (new FileInfo(jsonFile).Length == 0) continue;
-                        File.Copy(jsonFile, reportJsonPath, overwrite: true);
-                        captureSucceeded = true;
-                        EnqueueLog(runId, logLines,
-                            $"[{DateTime.UtcNow:HH:mm:ss}] cTrader events JSON: {reportJsonPath}");
-                        break;
-                    }
-                }
-            }
-
-            if (!captureSucceeded && File.Exists(reportJsonPath))
-            {
-                captureSucceeded = true;
-                EnqueueLog(runId, logLines,
-                    $"[{DateTime.UtcNow:HH:mm:ss}] cTrader events JSON: {reportJsonPath}");
-            }
-        }
-        catch (Exception ex)
-        {
-            EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Failed to capture cTrader report: {ex.Message}");
-        }
-
-        // Prefer the cBot's own report.json (always written, carries clientOrderId + per-trade history)
-        // over cTrader's scraped events.json. This is the venue ledger used for reconciliation.
-        var cbotReport = Path.Combine(cbotReportDir, CtraderReportHarvester.CbotReportFileName);
-        string? finalReportPath =
-            File.Exists(cbotReport) && new FileInfo(cbotReport).Length > 0 ? cbotReport
-            : captureSucceeded ? reportJsonPath
-            : null;
-        if (finalReportPath == cbotReport)
-            EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cBot ledger: {cbotReport}");
-
-        // F34: the venue declares its deposit currency in its own ledger. Every figure in that ledger
-        // — gross, net, commission, swap, equity — is denominated in it, while this engine models USD
-        // throughout (pip values, risk sizing, FTMO limits, the entire tape). A mismatch is a silent
-        // FX scaling on every number the run produces, so the run has to say so out loud. (The cBot's
-        // Print output does NOT survive the cTrader CLI, so the report file is the only reliable
-        // channel for this.)
-        WarnOnVenueCurrencyMismatch(runId, finalReportPath, logLines);
-
-        var wallElapsedMsCtrader = (long)(DateTime.UtcNow - wallStart).TotalMilliseconds;
-        return new BacktestResult
-        {
-            RunId = runId,
-            ExitCode = isKnownCrash ? 0 : cliResult.ExitCode,
-            AlgoHash = algoHash,
-            ErrorMessage = isKnownCrash ? null : (cliResult.ExitCode != 0
-                ? cliResult.StandardError.Trim() ?? $"CLI exited with code {cliResult.ExitCode}"
-                : null),
-            ReportJsonPath = finalReportPath,
-            WallElapsedMs = wallElapsedMsCtrader,
-            BarsPerSec = wallElapsedMsCtrader > 0 ? ctraderBarCount / (wallElapsedMsCtrader / 1000.0) : 0,
-            TotalBars = ctraderBarCount,
-        };
-    }
-
     /// <summary>Acquire a tape-lane slot as an <see cref="IDisposable"/> lease, mirroring the owner lane
     /// so the dequeue loop treats both venues uniformly.</summary>
     private async Task<IDisposable> AcquireTapeLaneAsync(CancellationToken ct)
@@ -1428,105 +764,6 @@ namespace TradingEngine.Web.Services;
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _released, 1) == 0) sem.Release();
-        }
-    }
-
-    private static (int dataPort, int commandPort) AllocatePorts()
-    {
-        using var a = new TcpListener(IPAddress.Loopback, 0);
-        using var b = new TcpListener(IPAddress.Loopback, 0);
-        a.Start(); b.Start();
-        var p1 = ((IPEndPoint)a.LocalEndpoint!).Port;
-        var p2 = ((IPEndPoint)b.LocalEndpoint!).Port;
-        a.Stop(); b.Stop();
-        return (p1, p2);
-    }
-
-    // X4: the P2.1 image-name reaper (KillCtraderProcessTreeAsync + RecordReap) was removed. Killing
-    // every ctrader-cli/cTrader.Automate by image name was safe only under the strict serial queue; it
-    // cross-kills siblings under parallel cTrader and kills another worktree's cli. Reaping is now
-    // owned-PID by run tag via CTraderProcessOwner.ReapByTag; the ChildProcessReaper Job Object remains
-    // the crash/app-exit net.
-
-    private string ResolveAlgoPath()
-    {
-        var configured = _configuration["CTrader:AlgoPath"];
-        if (!string.IsNullOrEmpty(configured) && File.Exists(configured))
-            return configured;
-
-        var baseDir = AppContext.BaseDirectory;
-        var candidates = new[]
-        {
-            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "src", "TradingEngine.Adapters.CTrader", "bin", "Release", "net6.0", "src.algo")),
-            Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "..",
-                "src", "TradingEngine.Adapters.CTrader", "bin", "Debug", "net6.0", "src.algo")),
-        };
-
-        return candidates.FirstOrDefault(File.Exists)
-            ?? throw new FileNotFoundException("src.algo not found. Build TradingEngine.Adapters.CTrader first.");
-    }
-
-    private static string ComputeAlgoHash(string algoPath)
-    {
-        if (!File.Exists(algoPath)) return "missing";
-        using var sha = SHA256.Create();
-        using var fs = File.OpenRead(algoPath);
-        return Convert.ToHexString(sha.ComputeHash(fs))[..16].ToLowerInvariant();
-    }
-
-    // P0.3 (F6): trade-persistence integrity barrier. Runs after the engine produced a complete result
-    // and the journal + TradeResults have drained. Reconciles journalled closes vs persisted TradeResults;
-    // F34: read the deposit currency the venue declared in its own ledger and warn if it is not the
-    // currency this engine models. A EUR-denominated venue account scales every figure a cTrader run
-    // produces by the EURUSD rate (~0.86), which is indistinguishable from a strategy difference
-    // unless somebody says the word "EUR" out loud — and nothing in the system ever did.
-    private void WarnOnVenueCurrencyMismatch(string runId, string? reportPath, ConcurrentQueue<string> logLines)
-    {
-        if (string.IsNullOrEmpty(reportPath) || !File.Exists(reportPath))
-        {
-            return;
-        }
-
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(reportPath));
-            if (!doc.RootElement.TryGetProperty("main", out var main) ||
-                !main.TryGetProperty("accountCurrency", out var ccyEl))
-            {
-                return;
-            }
-
-            // F33: the venue-intent invariant. The cBot compares the protection the venue actually
-            // holds against the prices the engine asked for, and counts the disagreements. This is the
-            // check that turns "every cTrader stop was at the wrong distance" from a four-session blind
-            // spot into a warning on the very first run.
-            if (main.TryGetProperty("protectionMismatches", out var pmEl) &&
-                pmEl.TryGetInt32(out var mismatches) && mismatches > 0)
-            {
-                AddTeardownWarning(runId, $"VENUE_PROTECTION_MISMATCH:{mismatches}",
-                    $"{mismatches} position(s) carried a stop-loss/take-profit the venue did not hold at the price the engine asked for");
-                EnqueueLog(runId, logLines,
-                    $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: {mismatches} position(s) had venue protection that did not match the engine's intent");
-            }
-
-            var modelled = _marketContext.ResolveAccountCurrency();
-            var venueCurrency = ccyEl.GetString();
-            if (string.IsNullOrWhiteSpace(venueCurrency) ||
-                string.Equals(venueCurrency, modelled, StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            AddTeardownWarning(runId, $"VENUE_CURRENCY_MISMATCH:{venueCurrency}",
-                $"venue account is denominated in {venueCurrency} but the engine models {modelled} — " +
-                "every money figure from this run is scaled by an FX rate and is NOT comparable to a tape run");
-            EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] WARNING: venue account currency is {venueCurrency}, engine models {modelled}");
-        }
-        catch (Exception ex)
-        {
-            AddTeardownWarning(runId, "VENUE_LEDGER_UNREADABLE", ex.Message);
         }
     }
 
