@@ -73,96 +73,8 @@ namespace TradingEngine.Web.Services;
 
     private sealed record TradeStats(decimal NetProfit, decimal GrossPnL, decimal CommissionTotal, decimal SwapTotal, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
 
-    // P0.2 (F5, Q5): a teardown/persistence anomaly that does NOT invalidate a complete engine result.
-    public sealed record RunWarning(string Code, string Detail, DateTime AtUtc);
-
-    public sealed record BacktestRunState
-    {
-        public required string RunId { get; init; }
-        public DateTime StartedAt { get; init; } = DateTime.UtcNow;
-        public string Status { get; set; } = "starting";
-        public BacktestResult? Result { get; set; }
-        public string? Error { get; set; }
-
-        // P0.2 (F5, Q5): teardown/persistence anomalies collected during a run that still produced a
-        // complete engine result. Non-empty => the run finalizes `completed-with-warnings`, never
-        // `failed`. Thread-safe: teardown warnings are appended from the run's finally block.
-        public ConcurrentQueue<RunWarning> Warnings { get; } = new();
-        public string Symbol { get; init; } = "";
-        public string Period { get; init; } = "";
-        public ConcurrentQueue<string> LogLines { get; init; } = new();
-        public CancellationTokenSource? CancellationSource { get; set; }
-        public Task? RunTask { get; set; }
-        public IHost? EngineHost { get; set; }
-
-        // P2.1 (F8): user-cancel intent, separate from Status. Cancel() no longer writes a (lying)
-        // terminal `cancelled` while the run is still finalizing — it records intent here and lets the
-        // run's own finalize path make the truthful terminal transition through the state machine. Also
-        // lets the OperationCanceled path distinguish a user cancel from a near-completion timeout/teardown.
-        public volatile bool CancelRequested;
-        public int BarCount;
-        public int BarsTotal { get; set; }
-        public string SimTime { get; set; } = "";
-        public IReadOnlyList<string> GetLogs() => LogLines.ToArray();
-
-        // iter-21 U1 — live funnel counters + a small ring of recent journal lines for the
-        // RunProgress envelope. A Progress<T> created on a thread with no captured SyncContext
-        // posts its callbacks to the thread pool, so these can fire concurrently.
-        public int Signals;
-        public int Orders;
-        public int Fills;
-        public int Closes;
-        public int Rejections;
-        public int Breaches;
-
-        // iter-24/21 — engine equity snapshot fields, populated from AccountSnapshotStore
-        // after the run completes for the final RunProgress envelope.
-        public decimal Equity;
-        public decimal Balance;
-        public bool HasEquityObservation;
-        public decimal DailyDdPct;
-        public decimal MaxDdPct;
-        public decimal DistanceToDailyLimit;
-        public int OpenPositions;
-        public string? GovernorState;
-        public string? GovernorReason;
-
-        // iter-strategy-system P1/P3: which multi-pass combination is running now (for the live Monitor).
-        public string? CurrentPass;
-        public int PassIndex;
-        public int PassTotal;
-
-        // P4: config fields for memory-first run detail (no DB read while running).
-        public string? Venue;
-        public bool GovernorEnabled = true;
-        public bool RegimeEnabled = true;
-        public double CommissionPerMillion;
-        public double SpreadPips;
-
-        // iter-tape-trust T0/B2: memory-served run detail must carry these.
-        public decimal InitialBalance;
-        public DateTime BacktestFrom;
-        public DateTime BacktestTo;
-        public string? RiskProfileId;
-        public string? EffectiveConfigJson;
-        public string? RunPlanJson;
-
-        // iter-tape-trust T0/F8: which exit resolution the tape venue actually used.
-        public string? ExitResolution;
-
-        // Tape replay playback speed (see TapeReplayAdapter.Speed).
-        public float Speed = 10f;
-
-        // Reference to the tape adapter for live speed changes.
-        public TapeReplayAdapter? TapeAdapter;
-
-        // P3.2: exploration mode — one-click preset run (SL=ATR×4, TP=none, add-ons off).
-        public bool ExplorationMode;
-
-        // P3.2: whether excursion paths were recorded for this run (tape-only, opt-in).
-        public bool RecordExcursions;
-    }
-
+    // BacktestRunState + RunWarning live in Runs/BacktestRunState.cs; progress projection + the
+    // funnel tally live in Runs/RunProgressProjector.cs (both were nested here pre-refactor).
     public BacktestOrchestrator(
         IServiceScopeFactory scopeFactory,
         BacktestProgressStore progressStore,
@@ -193,68 +105,6 @@ namespace TradingEngine.Web.Services;
         _tapeSemaphore = new SemaphoreSlim(_maxTapeConcurrency, _maxTapeConcurrency);
 
         _dequeueTask = Task.Run(() => DequeueLoopAsync(_dequeueCts.Token));
-    }
-
-    // iter-21 U1 — project the live run state into the throttled SignalR envelope. Fields the
-    // orchestrator can't yet source (equity curve, governor, daily-DD) stay at honest zero/null
-    // until iter-20 wires the kernel; the page renders an empty-state rather than fabricating.
-    private RunProgress BuildProgress(BacktestRunState state, string status)
-    {
-        DateTime? simTime = DateTime.TryParse(state.SimTime, out var t) ? t : null;
-        var elapsedMs = (long)(DateTime.UtcNow - state.StartedAt).TotalMilliseconds;
-        var barsPerSec = elapsedMs > 0 ? state.BarCount / (elapsedMs / 1000.0) : 0;
-
-        var barsTotal = state.BarsTotal > 0 ? state.BarsTotal : 0;
-        double percent;
-        double? etaSeconds;
-        if (status is "completed" or "completed-with-warnings")
-        {
-            percent = 100.0;
-            etaSeconds = 0;
-        }
-        else if (barsTotal > 0 && state.BarCount > 0)
-        {
-            percent = state.BarCount >= barsTotal ? 99.9 : (double)state.BarCount / barsTotal * 100.0;
-            etaSeconds = barsPerSec > 0 ? (barsTotal - state.BarCount) / barsPerSec : null;
-        }
-        else
-        {
-            percent = 0;
-            etaSeconds = null;
-        }
-
-        return new RunProgress(
-            state.RunId, status, simTime,
-            BarsProcessed: state.BarCount, BarsTotal: barsTotal, Percent: percent, EtaSeconds: etaSeconds,
-            WallElapsedMs: elapsedMs, BarsPerSec: barsPerSec, Speed: state.Speed,
-            Equity: state.HasEquityObservation ? state.Equity : null,
-            Balance: state.Balance, OpenPositions: state.OpenPositions,
-            DailyDdPct: state.DailyDdPct, MaxDdPct: state.MaxDdPct,
-            DistanceToDailyLimit: state.DistanceToDailyLimit,
-            GovernorState: state.GovernorState, GovernorReason: state.GovernorReason,
-            Counters: new RunCounters(state.Signals, state.Orders, state.Fills,
-                state.Closes, state.Rejections, state.Breaches),
-            CurrentPass: state.CurrentPass, PassIndex: state.PassIndex, PassTotal: state.PassTotal);
-    }
-
-    internal static void TallyEvent(BacktestRunState state, BacktestProgressEvent evt)
-    {
-        // Counter keys must match the event-type strings the ENGINE actually emits:
-        //   TradingLoop → "SIGNAL"/"ORDER"; MarketEventSource → "EXEC" (fill) / "REJECTED";
-        //   EffectExecutor → "CLOSE" (on trade close); AccountProcessor → "BREACH".
-        // The old keys ("FILL"/"REJECT"/no breach producer) never matched, so Fills/Rejections/
-        // Breaches were always 0 and Closes undercounted.
-        // Interlocked: a Progress<T> created on a thread with no captured SyncContext (the background
-        // RunAsync task) posts its callbacks to the thread pool, so these can fire concurrently.
-        switch (evt.EventType)
-        {
-            case "SIGNAL": Interlocked.Increment(ref state.Signals); break;
-            case "ORDER": Interlocked.Increment(ref state.Orders); break;
-            case "EXEC": Interlocked.Increment(ref state.Fills); break;
-            case "CLOSE": Interlocked.Increment(ref state.Closes); break;
-            case "REJECTED": case "OrderRejected": Interlocked.Increment(ref state.Rejections); break;
-            case "BREACH": Interlocked.Increment(ref state.Breaches); break;
-        }
     }
 
     private void EnqueueLog(string runId, ConcurrentQueue<string> queue, string msg)
@@ -525,7 +375,7 @@ namespace TradingEngine.Web.Services;
             "completed" or "completed-with-warnings" or "failed" or "cancelled" => state.Status,
             _ => "running",
         };
-        return BuildProgress(state, status);
+        return RunProgressProjector.Build(state, status);
     }
 
     public IReadOnlyList<BacktestRunState> GetAll() => _runs.Values.ToList();
@@ -829,7 +679,7 @@ namespace TradingEngine.Web.Services;
             // iter-21 U1 — terminal frame, always delivered (bypasses the throttle).
             // iter-38 B7 / T9: pass the actual status so a user-cancelled run is reported as
             // "cancelled", not "completed" (the old ternary only distinguished "failed").
-            _broadcaster.PublishDone(BuildProgress(state, state.Status switch
+            _broadcaster.PublishDone(RunProgressProjector.Build(state, state.Status switch
             {
                 "failed" => "failed",
                 "cancelled" => "cancelled",
@@ -1348,13 +1198,13 @@ namespace TradingEngine.Web.Services;
                     state.SimTime = pipeIdx > 4 ? evt.Message[4..pipeIdx] : evt.Message[4..];
                 }
             }
-            TallyEvent(state, evt);
+            RunProgressProjector.TallyEvent(state, evt);
 
             var barCount = Volatile.Read(ref state.BarCount) + 1;
             if (barCount <= 5 || barCount % 50 == 0)
                 _journal.Write(runId, "LIVE_DIAG", $"BAR#{barCount} tally={state.Signals}s/{state.Orders}o/{state.Fills}f/{state.Closes}c");
 
-            _broadcaster.Publish(BuildProgress(state, "running"), force: evt.EventType == "BREACH" || barCount <= 3);
+            _broadcaster.Publish(RunProgressProjector.Build(state, "running"), force: evt.EventType == "BREACH" || barCount <= 3);
         });
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(userCt,
@@ -1638,8 +1488,8 @@ namespace TradingEngine.Web.Services;
                     runState.SimTime = pipeIdx > 4 ? evt.Message[4..pipeIdx] : evt.Message[4..];
                 }
             }
-            TallyEvent(runState, evt);
-            _broadcaster.Publish(BuildProgress(runState, "running"), force: evt.EventType == "BREACH");
+            RunProgressProjector.TallyEvent(runState, evt);
+            _broadcaster.Publish(RunProgressProjector.Build(runState, "running"), force: evt.EventType == "BREACH");
         });
 
         var strategyIds = ParseStrategyIds(cfg);

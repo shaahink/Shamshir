@@ -18,9 +18,9 @@ public sealed class Iter27FixTests
     [Fact]
     public void TallyEvent_maps_engine_event_types_to_the_right_counters()
     {
-        var state = new BacktestOrchestrator.BacktestRunState { RunId = "r" };
+        var state = new BacktestRunState { RunId = "r" };
 
-        void Tally(string type) => BacktestOrchestrator.TallyEvent(
+        void Tally(string type) => RunProgressProjector.TallyEvent(
             state, new BacktestProgressEvent("r", type, $"{type} msg", DateTime.UtcNow));
 
         Tally("SIGNAL");

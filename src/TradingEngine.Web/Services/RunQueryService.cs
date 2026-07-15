@@ -262,7 +262,7 @@ public sealed class RunQueryService : IRunQueryService
         };
     }
 
-    private RunDetailResponse BuildRunDetailFromState(BacktestOrchestrator.BacktestRunState state)
+    private RunDetailResponse BuildRunDetailFromState(BacktestRunState state)
     {
         var wallElapsedMs = (long)(DateTime.UtcNow - state.StartedAt).TotalMilliseconds;
         var barsPerSec = wallElapsedMs > 0 ? state.BarCount / (wallElapsedMs / 1000.0) : 0;

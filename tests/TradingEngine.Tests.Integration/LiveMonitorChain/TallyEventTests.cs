@@ -9,13 +9,13 @@ public sealed class TallyEventTests
     [Fact]
     public void TallyEventCounters()
     {
-        var s = new BacktestOrchestrator.BacktestRunState { RunId = "test" };
-        BacktestOrchestrator.TallyEvent(s, new("t", "SIGNAL", "", DateTime.UtcNow));
-        BacktestOrchestrator.TallyEvent(s, new("t", "ORDER", "", DateTime.UtcNow));
-        BacktestOrchestrator.TallyEvent(s, new("t", "EXEC", "", DateTime.UtcNow));
-        BacktestOrchestrator.TallyEvent(s, new("t", "CLOSE", "", DateTime.UtcNow));
-        BacktestOrchestrator.TallyEvent(s, new("t", "REJECTED", "", DateTime.UtcNow));
-        BacktestOrchestrator.TallyEvent(s, new("t", "BREACH", "", DateTime.UtcNow));
+        var s = new BacktestRunState { RunId = "test" };
+        RunProgressProjector.TallyEvent(s, new("t", "SIGNAL", "", DateTime.UtcNow));
+        RunProgressProjector.TallyEvent(s, new("t", "ORDER", "", DateTime.UtcNow));
+        RunProgressProjector.TallyEvent(s, new("t", "EXEC", "", DateTime.UtcNow));
+        RunProgressProjector.TallyEvent(s, new("t", "CLOSE", "", DateTime.UtcNow));
+        RunProgressProjector.TallyEvent(s, new("t", "REJECTED", "", DateTime.UtcNow));
+        RunProgressProjector.TallyEvent(s, new("t", "BREACH", "", DateTime.UtcNow));
 
         s.Signals.Should().Be(1);
         s.Orders.Should().Be(1);
