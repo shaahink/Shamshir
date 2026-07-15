@@ -11,10 +11,32 @@ handoff.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **R3.2 walk-forward DONE for mechanics, BLOCKED for the formal cull.** Fixed F61: `WalkForwardSpec`/`Request` had no `PackId`/`RiskProfileId` — would have silently walk-forwarded each candidate's DEFAULT config instead of the variant that actually won R3.1. Verified the fix reaches real execution (not just the request) via `TradeResults` partial-close inspection, since the API's own `effectiveConfigJson` audit field turned out to have a second, separate bug (F61b, display-only, confirmed harmless). Ran real 6-fold walk-forward for v6a/v1a/v6b: all 3 profitable in 5/6 OOS test windows, positive cumulative PnL. Then found **F62**: `SetupScoreService.ScoreRunAsync` hardcodes `oosRatio=null` unconditionally — the plan's whole "OOS ratio < 0.5 → park" cull mechanism was never implemented, in this session or any prior one. Did not implement it now (real formula/design decision, not a bolt-on). App still running (port 5134).
-stage: **R0–R2 (as P4), P0–P4, X0–X5, R1', F59, F60, R3.1 DONE. R3.2 walk-forward mechanics DONE; formal cull BLOCKED on F62.**
-gate: Unit 759/0/6 re-verified after the WalkForwardSpec code change. R3.2's 18 window results are real and evidence-backed (`evidence/scoreboard-s2-wf.md`) but are a directional read, not the plan's designed score.
-next: (1) **Owner decision on F62**: implement OOS-ratio (Walk-Forward Efficiency) scoring in `SetupScoreService` now — data already exists (`WalkForwardWindowResultEntity.PlateauValue` + `TestNetProfit`), needs a formula decision + a DB query + wiring — or proceed to R3 session 2 pre-registration without a formal OOS gate and revisit F62 later. (2) F61b (display-only `effectiveConfigJson` bug) — low priority, no score/trading impact. (3) Two unchased observations from R3.1: `scalp-tight`'s trade-count drops (mechanism unconfirmed) and v4b's trade collapse under `aggressive` risk (unconfirmed). (4) F48 open (tape-vs-venue levels on XAUUSD-class symbols). (5) Minor: stale `completedAtUtc: null` on an evicted run; orphan `96fa9214` row cleanup (both harmless, optional).
+last: **R3 sessions 1+2 BOTH DONE, F61+F62 fixed, F62 live-validated on a real cull.** Session 2 (12
+variants) tested whether session 1's 2 patterns generalize: `runner-aggressive` confirmed 8/8
+across both sessions on trend-family cells (raises edge every time, though the DD/consistency
+"free lunch" only holds ~half the time); `scalp-tight` rejected on mean-reversion (0/3, worse than
+its trend/momentum losses — universally bad, not thesis-dependent); found a new clean
+`conservative`-risk win; confirmed risk scale-invariance a 2nd time. Walk-forwarded the best 3
+(s2c/s2l/s2j) — **F62 caught 2 real overfits**: s2c and s2j both scored OOS ratio 0.0 and got
+PARKED (`StrategyCellParks`, real rows with reasons) despite looking strong pre-walk-forward — s2j
+even had 4/6 winning OOS test windows, which is exactly the case that justifies F62 over an
+informal "win-window count" read. **s2l survives as the strongest candidate of the whole R3
+program**: 6/6 OOS windows profitable, ratio 1.58, composite 98.3 full `sv1`. Census now: 4 real
+full-`sv1` survivors (v1a 100, s2l 98.3, v6a 97.3, v6b 90.3) + 2 parked (s2c, s2j). Gate: Unit
+759/0/6, Integration 141/0/0. App still running (port 5134).
+stage: **R0–R2 (as P4), P0–P4, X0–X5, R1', F59, F60, R3.1, R3.2, F61, F62, R3 session 2 (+ its
+walk-forward + cull) ALL DONE → R3 session 3 (or R4 dress rehearsal) is next.**
+gate: both sessions' truth gates PASS (24 ExperimentRuns from pre-registered variants, 36
+WindowResults from 6 walk-forward jobs, 2 StrategyCellParks rows with reasons).
+next: (1) **Owner call on R3 pacing**: run a 3rd R3 session (more cells from the R1' top-20 remain
+untried — mean-reversion/GBPUSD/H4, trend-breakout/XAGUSD/H1's siblings, super-trend/NZDUSD/H1,
+etc.) or move to **R4 FTMO dress rehearsal** with the 4 survivors already in hand (v1a, s2l, v6a,
+v6b) — the plan calls for R3 to run 3–5 sessions total, so either is plan-conformant. (2) F61b
+(display-only `effectiveConfigJson` bug) — low priority. (3) Unchased observations: `scalp-tight`'s
+trade-count-drop mechanism (still unconfirmed after 6 tries across both sessions), s2a's outlier DD
+jump (0.01%→4.77%, trades +165%, unlike every other `runner-aggressive` variant). (4) F48 open
+(tape-vs-venue levels on XAUUSD-class symbols). (5) Minor: stale `completedAtUtc: null` on an
+evicted run; orphan `96fa9214` row cleanup (both harmless, optional).
 
 ## Checkpoints
 
@@ -102,6 +124,8 @@ phase (a code path is not evidence).
 | R3.1 | **Refinement loop, session 1** — 12 pre-registered variants (pack swap or risk-profile swap, one knob at a time) on 6 cells from the R1' top-20; corrected PLAN.md's §R3 knob inventory first (packs are 3 fixed presets not tunables, "session filters via VenueSessions" doesn't exist — real mechanism is `ExitLabEvaluateRequest.Regime`) | DONE (live-verified) | (this commit) | `evidence/scoreboard-s2.md`; gate PASS — 12/12 ExperimentRuns persisted, 11 scored/1 null-with-reason (below floor). 2 real wins (both `runner-aggressive`: `ema-alignment/EURJPY/H1` ExpectancyR +82%, `trend-breakout/XAUUSD/H4` +32%, both DD/Consistency-neutral); `scalp-tight` lost on 3/3 cells tried; `aggressive` risk scale-invariant on 1 cell, degraded on 2; `conservative` risk never cleanly risk-adjusted-positive. Next: walk-forward best 3 (v6a, v1a, v6b), blocked on strategy `ParamGrid` lookup |
 | R3.2 | **Walk-forward the best 3** — found + fixed F61 (`WalkForwardSpec` had no `PackId`/`RiskProfileId`, would have silently validated the WRONG variant), found F61b (display-only, `ResolveEffectiveConfigJsonAsync` never applies packs — confirmed harmless to real execution via `TradeResults` partial-close signature), ran real 6-fold walk-forward for all 3 candidates, found + fixed F62 | DONE | (this commit) | `evidence/scoreboard-s2-wf.md`; gate Unit 759/0/6, Integration 141/0/0 (+4 new tests). All 3 candidates profitable in 5/6 OOS test windows and upgraded to full `sv1` after F62: v6a 96.8→97.3, v1a 100→100, v6b 88.6→90.3, all OOS ratio 2.15–4.32× (well above the 0.5 park threshold — none culled) |
 | F62 | **`SetupScoreService.ScoreRunAsync` hardcoded `oosRatio=null` unconditionally** — the plan's entire "OOS ratio < 0.5 → park" cull mechanism (§R3 step 5) had never been implemented, this session or any prior one | DONE | (this commit) | Added optional `walkForwardJobId` param + `ComputeOosRatioAsync` (Walk-Forward Efficiency: `Sum(TestNetProfit)/Sum(PlateauValue)` across a job's folds, Pardo's standard formula — matches the plan's own "OOS ratio" terminology). 4 new tests pin the arithmetic (0.6 ratio, >1.0 clamp, non-positive in-sample guard, no-job regression). Threaded through `ScoreRequest.WalkForwardJobId` |
+| R3.s2 | **Refinement loop, session 2** — 12 pre-registered variants testing whether session 1's 2 clean patterns generalize: `runner-aggressive` on 6 more trend-family cells, `scalp-tight` on 3 genuine mean-reversion cells (reversing the "always loses" finding into a thesis-fit question), 2 risk-scale tests, 1 more `conservative` test | DONE | (this commit) | `evidence/scoreboard-s3.md`; gate PASS — 12/12 ExperimentRuns, 12/12 scored (no nulls this time). Pattern A confirmed 8/8 across both sessions (`runner-aggressive` raises edge on every trend cell tried); Pattern B rejected (`scalp-tight` 0/3 on mean-reversion, worse than trend/momentum losses — universally bad, not thesis-dependent); new pattern found (`conservative` risk's first clean multi-dimensional win); scale-invariance confirmed a 2nd time |
+| R3.s2.wf | **Walk-forward the session-2 best 3 + F62 live on a fresh batch** — s2c, s2l, s2j | DONE | (this commit) | `evidence/scoreboard-s3.md`; 6-fold walk-forward × 3, re-scored with `WalkForwardJobId`. **s2c and s2j PARKED** (OOS ratio 0.0 each, real `StrategyCellParks` rows via `POST /api/scoreboard/{id}/park`) — both looked strong pre-walk-forward (s2j had 4/6 winning test windows and the largest cumulative test PnL of the three) but the fold-level in-sample optimization never found a net-positive parameter set, exactly the failure mode F62 was built to catch. **s2l survives as the strongest candidate of the whole R3 program**: 6/6 test windows profitable, OOS ratio 1.58, composite 98.3 full `sv1` |
 
 ## Quick commands
 

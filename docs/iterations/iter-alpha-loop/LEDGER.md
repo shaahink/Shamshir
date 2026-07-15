@@ -896,3 +896,84 @@ pinned by synthetic-number unit tests in isolation) — each fold's train window
 than its test window (~15d) but produced less absolute profit, so a few strongly-trending short
 test windows can swing the aggregate ratio well above 1. Not chased further; flagged so a future
 session doesn't mistake ratio > 1 as a red flag.
+
+---
+
+## R3 session 2 — pre-registration — 2026-07-15 (same session, "carry on")
+
+Session 1 found two clean, consistent patterns worth testing for generalization rather than
+treating as cell-specific accidents:
+- **`runner-aggressive` won on BOTH trend-style cells tried** (trend-breakout/XAUUSD/H4 +32% edge,
+  ema-alignment/EURJPY/H1 +82% edge) — a 2/2 record, not a coincidence pattern yet.
+- **`scalp-tight` lost on ALL 3 cells tried, but every one of those was a trend/momentum-thesis
+  strategy** (rsi-divergence, macd-momentum, bb-squeeze) whose theses need room for the trade to
+  develop. A genuine mean-reversion strategy's thesis is the opposite — bounce back to mean, take
+  the quick profit — so `scalp-tight`'s early-lock bias might actually *fit* mean-reversion instead
+  of fighting it. Untested: session 1 never tried `scalp-tight` on an actual mean-reversion cell.
+
+**12 variants, 9 cells from the R1' top-20 not touched in session 1**, same protocol (one knob per
+variant, same baseline window 2025-07-04→2026-05-05, tape venue):
+
+| Variant | Cell (R1' rank, baseline score) | Knob changed | Hypothesis |
+|---|---|---|---|
+| s2a | trend-breakout/NZDUSD/H4 (#8, 83.7) | pack=`runner-aggressive` | Tests whether the trend-breakout+runner-aggressive win generalizes to a second symbol. Baseline DD is already ~0.01% — same "no DD budget being spent" setup as v1a. |
+| s2b | trend-breakout/ETHUSD/H4 (#9, 82.7) | pack=`runner-aggressive` | Same generalization test, crypto instead of FX/metal — checks the pattern isn't asset-class-specific. |
+| s2c | trend-breakout/XAGUSD/H1 (#14, 76.8) | pack=`runner-aggressive` | Same strategy, different symbol+timeframe (H1 not H4) — checks the pattern isn't timeframe-specific. |
+| s2d | trend-breakout/USDCAD/H4 (#19, 72.0) | pack=`runner-aggressive` | 4th trend-breakout instance — by now this is a real generalization test, not a single lucky cell. |
+| s2e | mtf-trend/EURJPY/H1 (#7, 87.6) | pack=`runner-aggressive` | Different STRATEGY, same trend-following thesis family — tests whether the pattern is about the strategy family (trend-following needs room to run) rather than literally the `trend-breakout` strategy. |
+| s2f | super-trend/AUDUSD/H1 (#15, 74.4) | pack=`runner-aggressive` | Another trend-following-family strategy, different symbol — third data point for the "trend-following family benefits" hypothesis. |
+| s2g | mean-reversion/GBPUSD/H1 (#2, 96.5) | pack=`scalp-tight` | Tests whether `scalp-tight`'s early-lock bias fits mean-reversion's own "take the quick bounce" thesis, reversing session 1's "scalp-tight always loses" finding into a strategy-fit question. |
+| s2h | mean-reversion/AUDUSD/H1 (#3, 96.1) | pack=`scalp-tight` | Same test, second mean-reversion cell — checks it's not a fluke of one symbol. |
+| s2i | mean-reversion/GBPJPY/H1 (#5, 90.1) | pack=`scalp-tight` | Third mean-reversion cell, lowest trade count (22, near the D3 floor) of the three — worth watching for a below-floor result if `scalp-tight` trims trade count the way it did in session 1. |
+| s2j | mean-reversion/GBPUSD/H1 (#2, 96.5) | risk=`aggressive` | Tests whether a genuinely high-consistency, low-DD cell (like v6b's ema-alignment/EURJPY/H1) scales cleanly at 4x risk — a second data point for "high-consistency cells are scale-invariant." |
+| s2k | trend-breakout/NZDUSD/H4 (#8, 83.7) | risk=`aggressive` | Near-zero baseline DD (0.01%) — the cleanest possible cell to test whether risk scaling holds when there's essentially no DD budget being spent today. |
+| s2l | mean-reversion/AUDUSD/H1 (#3, 96.1) | risk=`conservative` | Session 1 only tested `conservative` on trend/momentum strategies (mixed-to-negative results) — untested on mean-reversion, whose smaller/faster wins might interact differently with tighter position sizing. |
+
+**Idempotency keys:** `r3-s2-<variant>`. **Truth gate:** ExperimentRuns grows by exactly 12; every
+pre-registered variant scored-or-null; `evidence/scoreboard-s3.md` committed.
+
+**Results — all 12 run + scored, 12/12 cleared the floor (session 1 had 1 null).** Full comparison:
+`evidence/scoreboard-s3.md`.
+
+- **Pattern A confirmed, 8/8 across both sessions**: `runner-aggressive` raised raw ExpectancyR on
+  every trend-following-family cell tried (session 2: 6/6, some by a large margin — s2c +221%, s2d
+  +136%, s2f +91%). The "free lunch" (DD/consistency held flat) only showed up cleanly in about
+  half (s2b, s2e clean; s2a/s2c/s2d/s2f traded some DD or consistency for the edge).
+- **Pattern B rejected**: `scalp-tight` lost on all 3 genuine mean-reversion cells tried (s2g -47%,
+  s2h -82%, s2i inverted to negative) — worse than its session-1 losses on trend/momentum
+  strategies, not better. The "maybe it fits mean-reversion's own quick-exit thesis" hypothesis is
+  dead; `scalp-tight` looks universally bad in this system, not thesis-dependent.
+- **New pattern**: `conservative` risk produced its first unambiguous clean win (s2l,
+  mean-reversion/AUDUSD/H1 — edge up, DD nearly halved, consistency up, all at once). One data
+  point.
+- **Scale-invariance confirmed a second time** (s2j, mean-reversion/GBPUSD/H1 + `aggressive`):
+  ExpectancyR and Consistency held exactly flat at 4x risk, matching v6b's earlier result — real
+  signal for R4 sizing.
+- **Anomaly, not chased**: s2a (trend-breakout/NZDUSD/H4 + `runner-aggressive`) showed DD jumping
+  0.01%→4.77% and trade count +165% (43→114) — both far outside the range every other
+  `runner-aggressive` variant showed. Flagged, not investigated.
+
+**Walk-forward the best 3 (s2c, s2l, s2j) + F62 scoring — the gate did real work.** 6-fold
+walk-forward, then re-scored with `WalkForwardJobId` (F62's real OOS ratio, first live use on a
+fresh batch):
+
+| Variant | Test windows won | Cumulative test PnL | OosRatio | Composite before→after | Verdict |
+|---|---|---|---|---|---|
+| s2c (trend-breakout/XAGUSD/H1 + runner-aggressive) | 3/6 | +$2,324 | **0.0** | 91.2→77.5 | **PARKED** |
+| s2l (mean-reversion/AUDUSD/H1 + conservative) | 6/6 | +$7,398 | **1.58** | 98.0→98.3 | survives |
+| s2j (mean-reversion/GBPUSD/H1 + aggressive) | 4/6 | +$8,908 | **0.0** | 96.5→82.0 | **PARKED** |
+
+**s2c and s2j parked via `POST /api/scoreboard/{strategyId}/park`** (real `StrategyCellParks` rows
+with reasons, not deleted — D-gate is OOS ratio < 0.5, both landed at exactly 0.0). In both cases
+the walk-forward's own in-sample fold optimization came out net-negative/zero even though the
+original single-window run looked strong — exactly the failure mode a walk-forward gate exists to
+catch. **s2j is the case that justifies F62 existing**: 4/6 winning test windows and the largest
+cumulative test PnL of the three would have read as a clear survivor under the informal "win-window
+count" heuristic R3.2's first batch used (before F62 existed) — the formal OOS ratio disagrees,
+because the fold-level in-sample optimization never found a net-positive parameter set to begin
+with. **s2l is the strongest surviving candidate of the whole R3 program**: 6/6 test windows
+profitable, OOS ratio 1.58, composite 98.3 full `sv1`.
+
+Full census now (both sessions): 6 real full-`sv1` candidates (v6a 97.3, v1a 100, v6b 90.3, s2l
+98.3, plus s2c/s2j parked). Gate: 6 walk-forward jobs total, 36 WindowResults rows, 2
+`StrategyCellParks` rows.
