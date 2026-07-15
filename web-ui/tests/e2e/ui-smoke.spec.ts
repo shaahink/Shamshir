@@ -228,13 +228,9 @@ test.describe('iter-37 structure surfaces', () => {
     await expect(page.locator('app-dashboard')).toBeVisible({ timeout: TIMEOUT });
   });
 
-  test('new-backtest shows the resolved-config preview + overrides', async ({ page }) => {
-    await page.goto('/runs/new');
-    await expect(page.locator('app-new-backtest')).toBeVisible({ timeout: TIMEOUT });
-    await expect(page.locator('app-new-backtest', { hasText: 'Resolved config preview' })).toBeVisible({ timeout: TIMEOUT });
-    // Strategies default to the enabled set → per-strategy override textareas render.
-    await expect(page.locator('app-new-backtest textarea').first()).toBeVisible({ timeout: TIMEOUT });
-  });
+  // D1 triage 2026-07-15: "resolved-config preview + overrides" DELETED — the iter-37 preview panel
+  // and per-strategy override textareas were removed by the iter-strategy-system row-based builder.
+  // See KNOWN-FAILURES.md.
 
   test('risk-profile editor blocks an invalid save with a field error', async ({ page }) => {
     await page.goto('/risk-profiles');
@@ -262,40 +258,43 @@ test.describe('Add-on Packs UI (iter-38 S10 U1)', () => {
     await expect(page.locator('app-addon-pack-list', { hasText: 'Add-on Packs' })).toBeVisible({ timeout: TIMEOUT });
   });
 
+  // D1 triage 2026-07-15: packs moved under the Risk hub — /addon-packs 301s to /risk/packs, so the
+  // old waitForURL('**/addon-packs/**') could never match after a card click.
   test('card links navigate to detail', async ({ page }) => {
-    await page.goto('/addon-packs');
+    await page.goto('/risk/packs');
     await expect(page.locator('app-addon-pack-list a').first()).toBeVisible({ timeout: TIMEOUT });
     await page.locator('app-addon-pack-list a').first().click();
-    await page.waitForURL('**/addon-packs/**', { timeout: TIMEOUT });
+    await page.waitForURL('**/risk/packs/**', { timeout: TIMEOUT });
     await expect(page.locator('app-addon-pack-detail')).toBeVisible({ timeout: TIMEOUT });
   });
 
   test('detail page has editable fields', async ({ page }) => {
-    await page.goto('/addon-packs');
+    await page.goto('/risk/packs');
     await expect(page.locator('app-addon-pack-list a').first()).toBeVisible({ timeout: TIMEOUT });
     await page.locator('app-addon-pack-list a').first().click();
-    await page.waitForURL('**/addon-packs/**', { timeout: TIMEOUT });
+    await page.waitForURL('**/risk/packs/**', { timeout: TIMEOUT });
     await expect(page.locator('app-addon-pack-detail')).toBeVisible({ timeout: TIMEOUT });
     await expect(page.locator('app-addon-pack-detail input, app-addon-pack-detail textarea, app-addon-pack-detail select').first()).toBeVisible({ timeout: TIMEOUT });
   });
 });
 
-test.describe('New-Backtest pack + regime (iter-38 S10 U3)', () => {
-  test('renders pack dropdown and regime checkbox', async ({ page }) => {
-    await page.goto('/runs/new');
-    await expect(page.locator('app-new-backtest')).toBeVisible({ timeout: TIMEOUT });
-    await expect(page.locator('app-new-backtest', { hasText: 'Add-on Pack' })).toBeVisible({ timeout: TIMEOUT });
-    await expect(page.locator('app-new-backtest', { hasText: 'Disable Regime Detection' })).toBeVisible({ timeout: TIMEOUT });
-  });
-});
+// D1 triage 2026-07-15: "New-Backtest pack + regime (iter-38 S10 U3)" DELETED — the single
+// "Add-on Pack" dropdown and "Disable Regime Detection" checkbox were replaced by the row builder's
+// per-row pack selects and the "Regime" protection chip (iter-strategy-system). See KNOWN-FAILURES.md.
 
 test.describe('Strategy Detail add-ons (iter-38 S10 U2)', () => {
   test('shows Baseline & Add-ons section with labels', async ({ page }) => {
     await page.goto('/strategies');
-    await expect(page.locator('app-strategy-list a').first()).toBeVisible({ timeout: TIMEOUT });
-    await page.locator('app-strategy-list a').first().click();
+    // D1 triage 2026-07-15: the first <a> is now "New Strategy" (/strategies/new — the CREATE page,
+    // which has no add-ons section). Target a real strategy card.
+    const card = page.locator('app-strategy-list a[href^="/strategies/"]:not([href$="/new"])').first();
+    await expect(card).toBeVisible({ timeout: TIMEOUT });
+    await card.click();
     await page.waitForURL('**/strategies/**', { timeout: TIMEOUT });
     await expect(page.locator('app-strategy-detail')).toBeVisible({ timeout: TIMEOUT });
+    // D1 triage 2026-07-15: the Baseline & Add-ons editor now lives behind edit mode ("Edit Fields");
+    // the read view shows the thesis/params summary instead.
+    await page.locator('app-strategy-detail button', { hasText: 'Edit Fields' }).click();
     await expect(page.locator('app-strategy-detail', { hasText: 'Baseline & Add-ons' })).toBeVisible({ timeout: TIMEOUT });
     await expect(page.locator('app-strategy-detail', { hasText: 'Breakeven (Add-on)' })).toBeVisible({ timeout: TIMEOUT });
     await expect(page.locator('app-strategy-detail', { hasText: 'Trailing (Add-on)' })).toBeVisible({ timeout: TIMEOUT });
@@ -316,12 +315,9 @@ test.describe('Run Analyzer (iter-38)', () => {
   });
 });
 
-test.describe('Nav bar Packs link (iter-38)', () => {
-  test('has Packs nav link', async ({ page }) => {
-    await page.goto('/runs');
-    await expect(page.locator('nav a[routerlink="/addon-packs"]')).toBeVisible({ timeout: TIMEOUT });
-  });
-});
+// D1 triage 2026-07-15: "Nav bar Packs link (iter-38)" DELETED — the top-nav Packs link was removed
+// when packs moved under the Risk hub (/risk/packs, with an /addon-packs redirect). The reachable
+// path is covered by the Add-on Packs tests above. See KNOWN-FAILURES.md.
 
 test.describe('Duplicate dialog modal (iter-39 A1, requires SEEDED_RUN_ID)', () => {
   const seeded = process.env.SEEDED_RUN_ID;
@@ -356,8 +352,9 @@ test.describe('Live Monitor journal polling (31-B2)', () => {
     const url = page.url();
     await page.goto(url + '/monitor');
     await expect(page.locator('app-run-monitor')).toBeVisible({ timeout: TIMEOUT });
-    // Journal section should be present
-    await expect(page.locator('app-run-monitor', { hasText: 'Journal' })).toBeVisible({ timeout: TIMEOUT });
+    // D1 triage 2026-07-15: the journal section was renamed "Narrative" (M3.1 server-side narrative
+    // projection replaced the raw journal ring). Same surface, new label.
+    await expect(page.locator('app-run-monitor', { hasText: 'Narrative' })).toBeVisible({ timeout: TIMEOUT });
   });
 });
 
@@ -369,12 +366,13 @@ test.describe('Risk Profile create modal (C5)', () => {
     const newBtn = page.locator('app-risk-profile-list button', { hasText: 'New Profile' });
     await expect(newBtn).toBeVisible({ timeout: TIMEOUT });
     await newBtn.click();
-    // Modal should appear
-    await expect(page.locator('app-create-modal')).toBeVisible({ timeout: TIMEOUT });
-    await expect(page.locator('app-create-modal', { hasText: 'New Risk Profile' })).toBeVisible({ timeout: TIMEOUT });
+    // D1 triage 2026-07-15: assert the overlay, not the <app-create-modal> host — the host is an
+    // inline element with a zero-size box (its only child is position:fixed), so toBeVisible() on
+    // the host always fails even while the modal is on screen.
+    await expect(page.locator('app-create-modal h2', { hasText: 'New Risk Profile' })).toBeVisible({ timeout: TIMEOUT });
     // Cancel should close it
     await page.locator('app-create-modal button', { hasText: 'Cancel' }).click();
-    await expect(page.locator('app-create-modal')).not.toBeVisible({ timeout: TIMEOUT });
+    await expect(page.locator('app-create-modal h2')).not.toBeVisible({ timeout: TIMEOUT });
   });
 });
 
@@ -397,7 +395,12 @@ test.describe('Per-bar why (T4)', () => {
 // ============================================
 
 test.describe('Live Backtest Chain (start → monitor → report)', () => {
-  test('EURUSD H1 3-day backtest: monitor updates, report shows trades', async ({ page }) => {
+  // QUARANTINED (D1 triage 2026-07-15): drives the PRE-redesign form — never selects a strategy, so
+  // the row-builder's Start stays disabled ("EURUSD is the default" is no longer true either), and a
+  // yesterday-relative replay window has no bars. Unquarantine by rewriting against the row builder
+  // (strategy chip + symbol + TF, venue=tape, known-bars window) — or retire in favour of
+  // scripts/verify-live.ps1 (iter-dx-speed D4) + x2-x3.spec's live list test. See KNOWN-FAILURES.md.
+  test.fixme('EURUSD H1 3-day backtest: monitor updates, report shows trades', async ({ page }) => {
     test.setTimeout(180_000);
 
     // 1. Navigate to new-backtest
@@ -466,19 +469,17 @@ test.describe('Strategy CRUD (32-P4)', () => {
 
   test('delete button visible on detail page', async ({ page }) => {
     await page.goto('/strategies');
-    await expect(page.locator('app-strategy-list a[href^="/strategies/"]').first()).toBeVisible({ timeout: TIMEOUT });
-    await page.locator('app-strategy-list a[href^="/strategies/"]').first().click();
+    // D1 triage 2026-07-15: exclude /strategies/new — the first matching <a> was the New Strategy
+    // link, landing on the CREATE page, which has no Delete button.
+    const card = page.locator('app-strategy-list a[href^="/strategies/"]:not([href$="/new"])').first();
+    await expect(card).toBeVisible({ timeout: TIMEOUT });
+    await card.click();
     await page.waitForURL('**/strategies/**', { timeout: TIMEOUT });
     await expect(page.locator('app-strategy-detail')).toBeVisible({ timeout: TIMEOUT });
     await expect(page.locator('app-strategy-detail button', { hasText: 'Delete' })).toBeVisible({ timeout: TIMEOUT });
   });
 });
 
-// 32-P5: new-backtest per-strategy pack dropdown
-test.describe('New-Backtest per-strategy pack (32-P5)', () => {
-  test('shows pack dropdown per selected strategy', async ({ page }) => {
-    await page.goto('/runs/new');
-    await expect(page.locator('app-new-backtest')).toBeVisible({ timeout: TIMEOUT });
-    await expect(page.locator('app-new-backtest', { hasText: 'Pack: strategy default' })).toBeVisible({ timeout: TIMEOUT });
-  });
-});
+// D1 triage 2026-07-15: "New-Backtest per-strategy pack (32-P5)" DELETED — the "Pack: strategy
+// default" per-strategy dropdown belonged to the pre-row-builder form; packs are now chosen per
+// run-plan ROW ("Strategy defaults" option in each row's select). See KNOWN-FAILURES.md.

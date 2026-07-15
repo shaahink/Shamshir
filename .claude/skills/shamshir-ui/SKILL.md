@@ -27,13 +27,12 @@ node .claude/skills/shamshir-ui/driver.mjs --serve
 Test specs live at `web-ui/tests/e2e/ui-smoke.spec.ts`. Add new specs there.
 Config at `web-ui/playwright.config.ts`.
 
-## Suite state (measured 2026-07-15) — read before running the full suite
+## Suite state (D1 triage DONE 2026-07-15) — read before running the full suite
 
-- **Full suite ≈ 7 min wall; ~15 failures are PRE-EXISTING on a healthy tree** (stale specs from
-  earlier iterations + tests needing cTrader/seeded bars). Do **not** stash-rebuild a baseline to
-  prove a failure is pre-existing — check `web-ui/tests/e2e/KNOWN-FAILURES.md` (created by
-  iter-dx-speed D1; until that lands, this note is the record and the triage is
-  `docs/iterations/iter-dx-speed/PLAN.md` D1).
+- **The full suite exits 0 on a healthy tree** (~30s wall, 31 passed / 17 skipped): the 15
+  historical failures were triaged — 8 stale tests fixed, 3 quarantined as `test.fixme`, 5 deleted
+  (dead UI). `web-ui/tests/e2e/KNOWN-FAILURES.md` is the authority: any failure NOT listed there is
+  a regression on YOUR change. Never stash-rebuild a baseline.
 - **Iterate on one targeted spec** (`npx playwright test tests/e2e/x2-x3.spec.ts`, ~30s); run the
   full suite once, in the background, before calling a phase done.
 - Config gotchas: `screenshot: 'on'` means every passing test pays a screenshot; `retries: 0`;

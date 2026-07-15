@@ -87,6 +87,8 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                 class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">MD</button>
               <a [routerLink]="['/runs', d.runId, 'monitor']"
                 class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Monitor</a>
+              <a [routerLink]="['/runs', d.runId, 'analyzer']"
+                class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Analyzer</a>
               <a routerLink="/runs"
                 class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">All Runs</a>
             </div>

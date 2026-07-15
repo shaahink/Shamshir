@@ -1,6 +1,10 @@
 # Iter DX-Speed — Remove Development-Cycle Bottlenecks (PLAN)
 
-**Status:** PLANNED — not started. Written 2026-07-15 from the X2/X3 session retrospective.
+**Status:** D1 DONE (executed 2026-07-15 on `iter/alpha-loop` at the owner's direct instruction —
+see `web-ui/tests/e2e/KNOWN-FAILURES.md` for the full triage; suite now exits 0 in ~30s, 31 passed /
+17 skipped). D0 partially covered by D1's measured before/after (7 min + 15 failures → 30s + 0).
+D2–D6 remain for the fresh agent; D5's "interim note" in the shamshir-ui skill is already updated.
+Written 2026-07-15 from the X2/X3 session retrospective.
 **Executor:** a fresh agent. This doc is self-contained; you do not need the X2/X3 transcript.
 **Branch:** execute on `iter/dx-speed` off `iter/alpha-loop`.
 **Scope guard:** this iteration touches ONLY `web-ui/tests/**`, `web-ui/package.json`,

@@ -16,33 +16,9 @@ const APP_TIMEOUT = 10_000;
 // ── Tier 1: SignalR connectivity ──────────────────────────────────────────
 
 test.describe('Tier 1 — SignalR connectivity', () => {
-  test('SignalR connects within 8 seconds (existing run monitor)', async ({ page }) => {
-    const logs: string[] = [];
-    page.on('console', msg => logs.push(msg.text()));
-
-    // Load any completed run's monitor page
-    await page.goto('/runs');
-    await expect(page.locator('app-run-list table tbody tr').first()).toBeVisible({ timeout: APP_TIMEOUT });
-
-    await page.locator('app-run-list table tbody tr').first().click();
-    await page.waitForURL('**/runs/**', { timeout: APP_TIMEOUT });
-
-    const url = page.url();
-    await page.goto(url + '/monitor');
-    await expect(page.locator('app-run-monitor')).toBeVisible({ timeout: APP_TIMEOUT });
-
-    // The run-hub.service.ts now logs:
-    //   "[SignalR] connected" on success
-    //   "[SignalR] start failed: ..." on error
-    await expect(async () => {
-      const all = logs.join(' ');
-      if (all.includes('[SignalR] start failed')) {
-        const err = logs.find(l => l.includes('start failed')) || 'unknown';
-        throw new Error('SignalR start failed: ' + err);
-      }
-      expect(all).toContain('[SignalR] connected');
-    }).toPass({ timeout: 8_000, intervals: [500] });
-  });
+  // D1 triage 2026-07-15: the "[SignalR] connected" console-log test was DELETED — run-hub.service.ts
+  // no longer emits that log line, and the intent (SignalR actually connects) is covered by the
+  // status-tile test below plus x2-x3.spec's live run-list updates. See KNOWN-FAILURES.md.
 
   test('monitor status changes from connecting when SignalR connects', async ({ page }) => {
     await page.goto('/runs');
@@ -69,7 +45,12 @@ test.describe('Tier 1 — SignalR connectivity', () => {
 // ── Tier 2: Progress events reach browser ─────────────────────────────────
 
 test.describe('Tier 2 — Progress events reach browser', () => {
-  test('live backtest shows running status within 15 seconds', async ({ page }) => {
+  // QUARANTINED (D1 triage 2026-07-15): drives the PRE-redesign backtest form — it never selects a
+  // strategy, so the row-builder's Start button stays disabled; it also assumes a yesterday→today
+  // replay window has bars. Unquarantine by rewriting against the row builder (pick strategy chip +
+  // symbol + TF, venue=tape, a known-bars window) — or retire in favour of scripts/verify-live.ps1
+  // (iter-dx-speed D4) + x2-x3.spec's live list test. See KNOWN-FAILURES.md.
+  test.fixme('live backtest shows running status within 15 seconds', async ({ page }) => {
     // Start a minimal backtest: 1 day, EURUSD H1
     await page.goto('/runs/new');
     await expect(page.locator('app-new-backtest')).toBeVisible({ timeout: APP_TIMEOUT });
@@ -107,7 +88,8 @@ test.describe('Tier 2 — Progress events reach browser', () => {
 // ── Tier 3: Full chain (start → monitor → complete → report) ──────────────
 
 test.describe('Tier 3 — Full chain', () => {
-  test('EURUSD H1 3-day: completes and report has trades', async ({ page }) => {
+  // QUARANTINED (D1 triage 2026-07-15): same stale form contract as Tier 2. See KNOWN-FAILURES.md.
+  test.fixme('EURUSD H1 3-day: completes and report has trades', async ({ page }) => {
     test.setTimeout(180_000);
 
     await page.goto('/runs/new');
