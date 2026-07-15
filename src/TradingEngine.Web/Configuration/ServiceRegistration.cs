@@ -197,6 +197,7 @@ public static class ServiceRegistration
         services.AddScoped<Services.ParityGateService>();
         services.AddScoped<Services.RunNarrativeService>();
         services.AddScoped<Services.PassProbabilityService>();
+        services.AddScoped<Services.ChallengeSimulationService>();
         services.AddScoped<Services.SetupScoreService>();
         services.AddSingleton<WalkForwardBackgroundService>();
         services.AddHostedService(sp => sp.GetRequiredService<WalkForwardBackgroundService>());

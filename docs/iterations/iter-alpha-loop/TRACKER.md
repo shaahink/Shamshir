@@ -11,25 +11,27 @@ handoff.
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **R3 CLOSED — owner elected to stop at 2 sessions (plan allows 3–5; this is plan-conformant,
-not a shortfall).** Full writeup: LEDGER.md §"R3 CLOSED". 24 variants run+scored across 15 of 20
-R1' top-20 cells; F61 (walk-forward silently validated the wrong pack/risk config) and F62 (OOS-ratio
-cull scoring was a stub — `oosRatio` hardcoded null) both found and fixed as load-bearing scoring
-infra, not one-off patches. 2 cells formally parked on real OOS-ratio evidence (0.0 each) despite
-looking strong pre-walk-forward — proof the gate works, not just built.
-stage: **R0–R2(as P4), P0–P4, X0–X5, R1', F59, F60, R3 (sessions 1+2, F61, F62) ALL DONE → R4 FTMO
-dress rehearsal is next.**
-gate: both R3 sessions' truth gates PASS. 4 full-`sv1` walk-forward-validated survivors ranked in
-LEDGER.md's R3-CLOSED table: #1 trend-breakout/XAUUSD/H4+runner-aggressive (100, OOS 2.15), #2
-mean-reversion/AUDUSD/H1+conservative (98.3, OOS 1.58), #3 ema-alignment/EURJPY/H1+runner-aggressive
-(97.3, OOS 4.32), #4 ema-alignment/EURJPY/H1+aggressive-risk (90.3, OOS 3.23 — same cell as #3,
-tests scale; owner call whether R4 carries both).
-next: (1) **R4** (PLAN.md §R4): top-3 survivors, governor ON, prop-rule set ON, exploration OFF,
-HonestFills default, tape on the EMBARGOED window (2026-05-06→2026-07-05, first and only touch) +
-3 rolling 30-day challenge sims each → `evidence/candidate-cards.md`. F48 (tape-vs-venue PnL on
-XAUUSD) matters here since candidate #1 is XAUUSD — a fresh cTrader compare-both before/during R4
-is worth it, not a blocker. (2) Minor/non-blocking, no rush: F61b (display-only bug), `scalp-tight`
-trade-count-drop mechanism (unconfirmed), s2a's DD/trade-count outlier, orphan `96fa9214` row.
+last: **R4 CLOSED — FTMO dress rehearsal run, both #3/#4 carried (owner call executed).** Full
+writeup: LEDGER.md §"R4". Built new permanent infra (`ChallengeSimulator` +
+`ChallengeSimulationService` + `GET /api/runs/{id}/challenge-sim`, 14 new tests, gates green) since
+the plan's "3 rolling 30-day challenge sims" had no prior implementation — found along the way that
+`SetupScoreService.ComputeFtmoSurvival` (25% of every R1'/R3 composite) is a placeholder, filed as
+**F63**, not fixed (would retroactively rescore ~250 runs — out of R4 scope). Ran all 4 survivors
+on the embargo window (2026-05-06→2026-07-05, first and only touch): **0/4 candidates reached a
+30-day +10% target in any of 12 rolling windows; 0/12 breached daily/max-loss limits either.** 2 of
+4 (`ema-alignment/EURJPY/H1`, both knobs) are net NEGATIVE on the embargo window. Full detail +
+per-candidate tables: `evidence/candidate-cards.md`.
+stage: **R0–R2(as P4), P0–P4, X0–X5, R1', F59, F60, R3 (sessions 1+2, F61, F62), R4 (F63 filed) ALL
+DONE → R5 final audit + owner pack is next.**
+gate: build 0err, Unit 766/0/6, Integration 148/0/0, Sim-fast 144/0/0 — all up from R3's 759/759/141/144
+by exactly the new tests added (7+7). All 4 embargo runs completed clean, 0 warnings, ExitCode 0.
+next: (1) **R5** (PLAN.md §R5): audit R0–R4 against the plan (CONFORMS/CWF/DEVIATES), verify the
+empty-table fact stays dead, ≤5-item bugfix queue, hand `evidence/candidate-cards.md` + a one-page
+"what next" to the owner. The headline finding (safe but not challenge-ready by return velocity) IS
+the R4 deliverable — do not re-run or reinterpret the embargo window trying to make it look better.
+(2) Non-blocking follow-ups: **F63** (ComputeFtmoSurvival placeholder — rescore decision needed),
+F61b, `scalp-tight` mechanism, s2a outlier, orphan `96fa9214`, F48 (XAUUSD tape-vs-venue PnL —
+still open, still not exercised by R4 since R4 stayed on tape per D1).
 App was left running (port 5134) — kill before next build (see Gotchas).
 
 ## Checkpoints
@@ -121,6 +123,11 @@ phase (a code path is not evidence).
 | R3.s2 | **Refinement loop, session 2** — 12 pre-registered variants testing whether session 1's 2 clean patterns generalize: `runner-aggressive` on 6 more trend-family cells, `scalp-tight` on 3 genuine mean-reversion cells (reversing the "always loses" finding into a thesis-fit question), 2 risk-scale tests, 1 more `conservative` test | DONE | (this commit) | `evidence/scoreboard-s3.md`; gate PASS — 12/12 ExperimentRuns, 12/12 scored (no nulls this time). Pattern A confirmed 8/8 across both sessions (`runner-aggressive` raises edge on every trend cell tried); Pattern B rejected (`scalp-tight` 0/3 on mean-reversion, worse than trend/momentum losses — universally bad, not thesis-dependent); new pattern found (`conservative` risk's first clean multi-dimensional win); scale-invariance confirmed a 2nd time |
 | R3.s2.wf | **Walk-forward the session-2 best 3 + F62 live on a fresh batch** — s2c, s2l, s2j | DONE | (this commit) | `evidence/scoreboard-s3.md`; 6-fold walk-forward × 3, re-scored with `WalkForwardJobId`. **s2c and s2j PARKED** (OOS ratio 0.0 each, real `StrategyCellParks` rows via `POST /api/scoreboard/{id}/park`) — both looked strong pre-walk-forward (s2j had 4/6 winning test windows and the largest cumulative test PnL of the three) but the fold-level in-sample optimization never found a net-positive parameter set, exactly the failure mode F62 was built to catch. **s2l survives as the strongest candidate of the whole R3 program**: 6/6 test windows profitable, OOS ratio 1.58, composite 98.3 full `sv1` |
 | **R3** | **CLOSED — 2 of the plan's allowed 3–5 sessions run; owner call to proceed to R4** | **DONE** | (this commit) | LEDGER.md §"R3 CLOSED"; 24 variants across 15/20 R1' top-20 cells, 6 walk-forward jobs (36 WindowResults), 2 StrategyCellParks. 4 final survivors ranked — see Handoff |
+| R4.0 | **Challenge-sim infra built** — `ChallengeSimulator` (pure day-walk simulator) + `ChallengeSimulationService` (buckets EquitySnapshots into engine-truth trading days, builds N rolling windows) + `GET /api/runs/{id}/challenge-sim` | DONE | (this commit) | `src/TradingEngine.Risk/Compliance/ChallengeSimulator.cs`, `src/TradingEngine.Web/Services/ChallengeSimulationService.cs`; 7 unit + 7 integration tests (target/daily-breach/max-breach/incomplete/min-trading-days/DailyStart-basis/day-bucketing edge cases) |
+| F63 | **`SetupScoreService.ComputeFtmoSurvival` is a placeholder** — no profit-target check, no ruleset-specific daily cap, no min-trading-days gate; just "did equity ever dip >10% from its own start within a naive 30-day slice". 25% weight in every R1'/R3 composite, all 4 R4 candidates show `FtmoSurvival:100` | **OPEN — filed, not fixed** | — | `SetupScoreService.cs:340-369`; fixing it means rescoring ~250 existing `ExperimentRuns` — out of R4 scope, flagged for a future session |
+| R4.1 | **4 candidates run on the EMBARGOED window** (2026-05-06→2026-07-05, first and only touch), tape venue, governor/prop-rules/HonestFills all default-ON, exploration default-OFF | DONE (live-verified) | (this commit) | RunIds `e319c25a` (v1a, 3 trades, +$401), `fdf0ae70` (s2l, 4 trades, +$109), `94090b6f` (v6a, 6 trades, −$1,921), `0dc27c9f` (v6b, 7 trades, −$810) — all completed, 0 warnings, ExitCode 0 |
+| R4.2 | **3 rolling 30-day challenge sims per candidate (12 total)** | DONE | (this commit) | 0/12 Pass, 0/12 Fail, 12/12 Incomplete (no 30-day window reached +10%; none breached 5%/10% loss caps either, worst single day 1.47%) |
+| **R4** | **CLOSED — headline: safe but not challenge-ready by return velocity on the one unseen window touched** | **DONE** | (this commit) | `evidence/candidate-cards.md` — full per-candidate tables, method, F63, owner bottom-line |
 
 ## Quick commands
 

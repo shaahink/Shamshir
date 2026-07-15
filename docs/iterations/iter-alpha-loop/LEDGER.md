@@ -1033,3 +1033,109 @@ low priority), `scalp-tight`'s trade-count-drop mechanism (unconfirmed after 6 t
 trade-count outlier (unconfirmed), F48 (tape-vs-venue PnL conversion on XAUUSD-class symbols — DOES
 matter for R4 since candidate #1 is XAUUSD; worth a fresh cTrader compare-both before or during R4,
 not a blocker to starting), the stale `completedAtUtc: null` display quirk, orphan `96fa9214` row.
+
+---
+
+## R4 — FTMO dress rehearsal — 2026-07-15
+
+**Pre-work: the plan's own mechanism didn't exist yet.** §R4 calls for "3 rolling 30-day challenge
+sims each from EquitySnapshots." No code anywhere did this — `PassProbabilityEstimator` answers a
+different question (Monte Carlo forward risk projection from a resampled PnL distribution, used for
+the live UI's "P(pass) from here"), and `SetupScoreService.ComputeFtmoSurvival` (the FtmoSurvival
+score component, 25% weight in every R1'/R3 composite) turned out to be an explicit placeholder —
+see **F63** below. Built new, permanent infra rather than a one-off script, matching the F61/F62
+precedent (research infra earns its keep beyond one session):
+
+- `ChallengeSimulator.SimulateWindow` (`src/TradingEngine.Risk/Compliance/ChallengeSimulator.cs`) —
+  pure function, walks a day-bucketed equity sequence deterministically (NOT resampled) from a
+  fresh window-start baseline, checking the real `PropFirmRuleSet` numbers: profit target, daily
+  loss cap (InitialBalance- or DailyStart-basis per `DailyDdBase`), fixed max-loss floor, and
+  min-trading-days (profit target reached early is "sticky" but Pass only fires once enough
+  distinct trading days have elapsed — matches how a real prop firm evaluates a request).
+- `ChallengeSimulationService` (`src/TradingEngine.Web/Services/ChallengeSimulationService.cs`) —
+  loads a run's `EquitySnapshots` + `Trades`, buckets them into trading days, builds N evenly-spread
+  rolling windows, resolves the risk profile (falling back to `"standard"` when a run has no
+  override recorded — see the F-shaped gotcha below), and calls the simulator per window.
+- `GET /api/runs/{runId}/challenge-sim?windows=3&windowDays=30` — new endpoint, sibling to the
+  existing `pass-probability` one.
+- **Day-bucketing gotcha, found and fixed before it ever ran on real data:** the first cut grouped
+  consecutive `EquitySnapshot` rows into one "trading day" whenever `DailyStartEquity` stayed the
+  same — which silently merges an entire flat multi-day stretch (no open position, no equity
+  movement) into a SINGLE bucket, because a governor daily-reset onto an unchanged equity value is
+  numerically indistinguishable from "still the same day." A synthetic test with 3 flat consecutive
+  days caught it collapsing to 1 bucket instead of 3. Fixed by treating a boundary as EITHER a
+  `DailyStartEquity` change OR a calendar-date change (whichever fires) — the two blind spots don't
+  overlap. Regression-pinned (`BuildDailyPoints_SplitsOnCalendarDate_EvenWhenDailyStartEquityNeverChanges`).
+- **Gate:** 7 unit tests (`ChallengeSimulatorTests.cs`, all 6 FTMO-standard semantics) + 7
+  integration tests (`ChallengeSimulationServiceTests.cs`, DB-backed incl. the bucketing edge case
+  and the null-RiskProfileId fallback). Full battery re-verified post-build: **0 build errors, Unit
+  766/0/6, Integration 148/0/0, Sim-fast 144/0/0** (each exactly +7 over R3's baseline).
+
+**F63 (filed, NOT fixed this session) — `ComputeFtmoSurvival` is a placeholder, not a real
+simulation.** Reading `SetupScoreService.cs:340-369` while building the real thing: the function's
+own comment says "Placeholder... Full implementation needs governor rules + daily DD tracking.
+Deferred to R3" (R3 never touched it — R3's scope was pack/risk knob variants, not score
+components). What it actually does: split the run into naive `(windowDays)/30` calendar-chunks and
+check whether equity ever dipped more than 10% from *that chunk's own starting equity* — no profit
+target, no ruleset-specific daily-loss cap, no min-trading-days requirement, no distinction between
+InitialBalance-basis and DailyStart-basis rulesets. Every one of R4's 4 candidates scored
+`FtmoSurvival: 100` under this stub. Not fixing it now: swapping in the real `ChallengeSimulator`
+would retroactively change the FtmoSurvival component (and therefore the composite) for all ~250
+`ExperimentRuns` rows from R1'/R3 — a rescore of the whole census, clearly a separate undertaking
+from "run 4 candidates on the embargo window." Flagged because R4's own embargo results (below)
+suggest the stub's 100-everywhere reading is optimistic for low-trade-frequency cells specifically —
+worth a future session's judgment call on whether to rescore.
+
+**Owner call executed — #3 and #4 both carried.** The R3-close handoff explicitly left open
+whether R4 should test both `ema-alignment/EURJPY/H1` knobs (pack=runner-aggressive vs
+risk=aggressive, same cell) or pick one. Ran both: the marginal cost is one more tape run + one
+more challenge-sim call on data already downloaded, and comparing how the same edge responds to 4×
+risk scaling under real prop constraints is exactly the kind of thing a dress rehearsal should
+answer, not skip for economy.
+
+**Execution:** 4 tape runs on the embargo window (2026-05-06→2026-07-05, 60 calendar days — first
+and only touch of this data in the whole iteration), same StrategyId/Symbol/Timeframe/PackId as
+each candidate's scored full-year run, `RiskProfileId` now explicit on every run (the full-year
+runs left it null for two of the four — implicit `"standard"` default never recorded on the row;
+recorded explicitly this time so the audit trail is complete). Governor/prop-rules/HonestFills all
+left at their StartRunRequest defaults (all already ON/true); ExplorationMode left at its default
+(false) — R4 needed zero config overrides beyond the candidate's own knob to satisfy "governor ON,
+prop-rule set ON, exploration OFF, HonestFills default," because those ARE the defaults. All 4 runs
+completed clean (0 warnings, ExitCode 0) in under a minute wall-clock (X0's queue ran 3 concurrent +
+1 queued, same as every prior sweep).
+
+**Result — the headline finding:**
+
+| Candidate | Full-year Composite / OOS | Embargo trades | Embargo NetPnL | Embargo MaxDD | 3× challenge-sim verdict |
+|---|---|---|---|---|---|
+| #1 trend-breakout/XAUUSD/H4 + runner-aggressive | 100 / 2.15 | 3 | **+$401.42** | 0.15% | Incomplete ×3 |
+| #2 mean-reversion/AUDUSD/H1 + conservative | 98.3 / 1.58 | 4 | **+$108.61** | 0.15% | Incomplete ×3 |
+| #3 ema-alignment/EURJPY/H1 + runner-aggressive | 97.3 / 4.32 | 6 | **−$1,920.70** | 1.92% | Incomplete ×3 |
+| #4 ema-alignment/EURJPY/H1 + aggressive-risk | 90.3 / 3.23 | 7 | **−$810.38** | 2.07% | Incomplete ×3 |
+
+**0/4 candidates reached +10% in any of their 12 combined 30-day rolling windows. 0/12 windows
+breached the 5% daily or 10% max-loss caps either** (worst single day across all 48 candidate-days
+sampled: 1.47%, candidate #4). Every full-year survivor that scored 90-100/100 on the census
+stalled to near-flat or net-negative on the one unseen window it has ever touched. This is not a
+breach-driven failure (risk discipline held completely) — it is a return-velocity failure: at
+3-7 trades per 60 days, none of these cells compound fast enough to clear a 30-day target, full
+stop, regardless of win rate on that thin sample.
+
+Full per-candidate detail, method section, and the owner-facing bottom line are in
+`evidence/candidate-cards.md` (not duplicated here in full — this entry is the session record, that
+file is the deliverable). Plan files for the 4 embargo runs are committed at
+`config/r4-embargo/*.json` for reproducibility (same RunPlanJson shape the app itself POSTs).
+
+**Explicitly not done, and why it's fine:** did not attempt a fresh cTrader compare-both for
+XAUUSD (F48) before/during this R4 — the handoff flagged it as "worth it, not a blocker," and R4
+stayed on tape per D1 (search venue is tape-only; cTrader is a parity guard, not a dress-rehearsal
+venue) — F48 remains open, unaffected by this session either way. Did not resync XAUUSD/H4 market
+data past 2026-07-03 (2 days short of the embargo's nominal end) — immaterial given the cell only
+produced 3 trades total across the full 60-day window; noted in the candidate card.
+
+**SESSION-RESULT:** R4 done in one session (plan allows 1-2). Built the challenge-sim mechanism the
+plan required (didn't exist), found and fixed one bug in it before using it on real data
+(day-bucketing collapse), filed one pre-existing scoring-infra gap without fixing it (F63, correctly
+out of scope), ran all 4 survivors + both contested knobs on the embargo window exactly once, and
+got a real, honest, non-improved-upon answer: safe, not yet challenge-ready. Handoff below points to
+R5.

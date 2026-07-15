@@ -35,7 +35,8 @@
       "Bash(sqlite3 /c/code/shamshir/data/trading.db \"SELECT COUNT\\(*\\) FROM Bars;\")",
       "Bash(sqlite3 *)",
       "Bash(rm -rf src/TradingEngine.Web/wwwroot/*)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(powershell.exe -NoProfile -Command 'Get-NetTCPConnection -LocalPort 5134 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force; Write-Output \"killed $_\" }')"
     ]
   }
 }

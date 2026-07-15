@@ -74,6 +74,22 @@ public sealed class RunsController : ControllerBase
         }
     }
 
+    [HttpGet("{runId}/challenge-sim")]
+    public async Task<IActionResult> GetChallengeSim(
+        string runId, [FromQuery] int windows = 3, [FromQuery] int windowDays = 30, CancellationToken ct = default)
+    {
+        try
+        {
+            var svc = HttpContext.RequestServices.GetRequiredService<ChallengeSimulationService>();
+            var result = await svc.SimulateAsync(runId, windows, windowDays, ct);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost]
     public async Task<IActionResult> Start([FromBody] StartRunRequest req, CancellationToken ct)
     {
