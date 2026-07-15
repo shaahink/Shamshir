@@ -29,7 +29,7 @@ public sealed class SetupScoreService
 
     public async Task<ScoreResult> ScoreRunAsync(
         string backtestRunId, Guid? experimentId, string? variantLabel, int? foldIndex, string? foldRole,
-        CancellationToken ct, string? strategyId = null)
+        CancellationToken ct, string? strategyId = null, Guid? walkForwardJobId = null)
     {
         var run = await _db.BacktestRuns.AsNoTracking().FirstOrDefaultAsync(r => r.RunId == backtestRunId, ct);
         if (run is null)
@@ -101,8 +101,12 @@ public sealed class SetupScoreService
         var drawdownScore = ComputeDrawdownScore(drawdownPctValue);
         var consistency = ComputeConsistency(trades);
         var ftmoSurvival = ComputeFtmoSurvival(equitySnaps, run.BacktestFrom, run.BacktestTo);
-        // OOS robustness: null until walk-forward runs in R3
-        double? oosRatio = null;
+        // F62: OOS robustness — Walk-Forward Efficiency (Pardo), the standard measure in walk-forward
+        // methodology: OOS test profit as a fraction of the in-sample train profit that chose the
+        // params. null unless the caller names a completed walk-forward job for this cell.
+        var oosRatio = walkForwardJobId.HasValue
+            ? await ComputeOosRatioAsync(walkForwardJobId.Value, ct)
+            : null;
 
         var hasOos = oosRatio.HasValue;
         var oosScore = hasOos ? Math.Clamp(oosRatio!.Value * 100, 0, 100) : (double?)null;
@@ -279,6 +283,27 @@ public sealed class SetupScoreService
         });
         await _db.SaveChangesAsync(ct);
         return id;
+    }
+
+    // F62: Walk-Forward Efficiency = sum(OOS test profit) / sum(in-sample profit of the chosen param),
+    // aggregated across every fold in the job — Pardo's standard walk-forward methodology, generally
+    // read as: >=50-70% is a robust setup, <50% (the plan's D-gate) means the edge doesn't survive
+    // contact with unseen data. If the folds' chosen params were themselves net-losing in-sample
+    // (trainSum <= 0), there is no genuine in-sample edge to claim efficiency against — score 0
+    // rather than leaving it null (a silent partial score would hide a real walk-forward failure).
+    internal async Task<double?> ComputeOosRatioAsync(Guid walkForwardJobId, CancellationToken ct)
+    {
+        var windows = await _db.Set<WalkForwardWindowResultEntity>()
+            .AsNoTracking()
+            .Where(w => w.JobId == walkForwardJobId && w.PlateauValue != null)
+            .ToListAsync(ct);
+
+        if (windows.Count == 0) return null;
+
+        var testSum = windows.Sum(w => w.TestNetProfit);
+        var trainSum = windows.Sum(w => (decimal)w.PlateauValue!.Value);
+
+        return trainSum > 0 ? (double)(testSum / trainSum) : 0.0;
     }
 
     internal static double ComputeExpectancy(IReadOnlyList<TradeResultEntity> trades)

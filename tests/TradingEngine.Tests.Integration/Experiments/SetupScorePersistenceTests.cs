@@ -217,5 +217,129 @@ public sealed class SetupScorePersistenceTests : IDisposable
         highComponents.GetProperty("DrawdownPct").GetDouble().Should().BeApproximately(11.6, 0.01);
     }
 
+    // F62: SetupScoreService.ScoreRunAsync hardcoded oosRatio=null unconditionally — the plan's
+    // "walk-forward upgrades sv1-partial to full sv1" step had nothing to compute it from. These
+    // pin the fix: Walk-Forward Efficiency = sum(TestNetProfit) / sum(PlateauValue) across a job's
+    // windows (Pardo's standard walk-forward methodology).
+    private async Task SeedWalkForwardJobAsync(Guid jobId, params (decimal testNetProfit, double? plateauValue)[] windows)
+    {
+        using var ctx = _db.NewContext();
+        ctx.WalkForwardJobs.Add(new WalkForwardJobEntity { Id = jobId, Status = "completed" });
+        var i = 0;
+        foreach (var (testNetProfit, plateauValue) in windows)
+        {
+            ctx.WalkForwardWindowResults.Add(new WalkForwardWindowResultEntity
+            {
+                Id = Guid.NewGuid(),
+                JobId = jobId,
+                WindowIndex = i++,
+                StrategyId = "trend-breakout",
+                Symbol = "EURUSD",
+                Timeframe = "H1",
+                TestNetProfit = testNetProfit,
+                PlateauValue = plateauValue,
+            });
+        }
+        await ctx.SaveChangesAsync();
+    }
+
+    private async Task<ScoreResult> ScoreWithWalkForwardAsync(string runId, Guid walkForwardJobId)
+    {
+        using var ctx = _db.NewContext();
+        var svc = new SetupScoreService(ctx, NullLogger<SetupScoreService>.Instance);
+        return await svc.ScoreRunAsync(runId, null, null, null, null, CancellationToken.None,
+            walkForwardJobId: walkForwardJobId);
+    }
+
+    [Fact]
+    public async Task WalkForwardJob_ComputesOosRatio_UpgradesToFullSv1()
+    {
+        using (var ctx = _db.NewContext())
+        {
+            ctx.BacktestRuns.Add(Run("cell-wf-good"));
+            await ctx.SaveChangesAsync();
+        }
+        await SeedTradesAsync("cell-wf-good", 25);
+
+        var jobId = Guid.NewGuid();
+        // 3 folds: train (Plateau) profit 1000/1000/1000 = 3000; test profit 700/500/600 = 1800.
+        // WFE = 1800/3000 = 0.6 -> RobustnessOos = 60.
+        await SeedWalkForwardJobAsync(jobId, (700m, 1000), (500m, 1000), (600m, 1000));
+
+        var result = await ScoreWithWalkForwardAsync("cell-wf-good", jobId);
+
+        result.Passed.Should().BeTrue();
+        result.Version.Should().Be("sv1", "a real OOS ratio upgrades the cell out of sv1-partial");
+        using var doc = JsonDocument.Parse(result.ScoreJson);
+        doc.RootElement.GetProperty("VersionKind").GetString().Should().Be("sv1");
+        var components = doc.RootElement.GetProperty("Components");
+        components.GetProperty("OosRatio").GetDouble().Should().BeApproximately(0.6, 0.001);
+        components.GetProperty("RobustnessOos").GetDouble().Should().BeApproximately(60, 0.1);
+    }
+
+    [Fact]
+    public async Task WalkForwardJob_OosRatioAboveOne_ClampsRobustnessScoreAt100()
+    {
+        using (var ctx = _db.NewContext())
+        {
+            ctx.BacktestRuns.Add(Run("cell-wf-great"));
+            await ctx.SaveChangesAsync();
+        }
+        await SeedTradesAsync("cell-wf-great", 25);
+
+        var jobId = Guid.NewGuid();
+        // Test outperformed train: WFE = 2000/1000 = 2.0 -> RobustnessOos clamps to 100, not 200.
+        await SeedWalkForwardJobAsync(jobId, (2000m, 1000));
+
+        var result = await ScoreWithWalkForwardAsync("cell-wf-great", jobId);
+
+        using var doc = JsonDocument.Parse(result.ScoreJson);
+        var components = doc.RootElement.GetProperty("Components");
+        components.GetProperty("OosRatio").GetDouble().Should().BeApproximately(2.0, 0.001);
+        components.GetProperty("RobustnessOos").GetDouble().Should().Be(100);
+    }
+
+    [Fact]
+    public async Task WalkForwardJob_NonPositiveInSampleProfit_ScoresOosZero_NotNull()
+    {
+        using (var ctx = _db.NewContext())
+        {
+            ctx.BacktestRuns.Add(Run("cell-wf-losing-is"));
+            await ctx.SaveChangesAsync();
+        }
+        await SeedTradesAsync("cell-wf-losing-is", 25);
+
+        var jobId = Guid.NewGuid();
+        // The chosen in-sample params were themselves net-losing (train sum <= 0) — there is no
+        // genuine in-sample edge to measure OOS efficiency against. Score 0, not null: a silent
+        // null would leave this looking like "no walk-forward data" instead of "walk-forward failed".
+        await SeedWalkForwardJobAsync(jobId, (500m, -200), (-100m, -100));
+
+        var result = await ScoreWithWalkForwardAsync("cell-wf-losing-is", jobId);
+
+        result.Version.Should().Be("sv1", "oosRatio has a value (0), so this is still a full score");
+        using var doc = JsonDocument.Parse(result.ScoreJson);
+        var components = doc.RootElement.GetProperty("Components");
+        components.GetProperty("OosRatio").GetDouble().Should().Be(0);
+        components.GetProperty("RobustnessOos").GetDouble().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task NoWalkForwardJob_LeavesOosRatioNull_StaysSv1Partial()
+    {
+        using (var ctx = _db.NewContext())
+        {
+            ctx.BacktestRuns.Add(Run("cell-no-wf"));
+            await ctx.SaveChangesAsync();
+        }
+        await SeedTradesAsync("cell-no-wf", 25);
+
+        var result = await ScoreAsync("cell-no-wf");
+
+        result.Version.Should().Be("sv1-partial", "without a walk-forward job there is nothing to compute OOS from");
+        using var doc = JsonDocument.Parse(result.ScoreJson);
+        doc.RootElement.GetProperty("Components").GetProperty("OosRatio").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
     public void Dispose() => _db.Dispose();
 }

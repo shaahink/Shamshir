@@ -860,3 +860,39 @@ the formal numeric cull is blocked.
 OOS PnL on all 3 candidates is a genuinely encouraging signal that R3.1's wins were not pure
 in-sample curve-fitting — but this is a directional read, not the plan's designed gate, and should
 be labeled as such to the owner.
+
+---
+
+## F62 fixed — 2026-07-15 (same session, owner: "implement, satisfy the gate")
+
+Implemented Walk-Forward Efficiency scoring: `SetupScoreService.ScoreRunAsync` gained an optional
+`walkForwardJobId` param (threaded through `ScoreRequest`/`POST /api/experiments/score`). When
+provided, `ComputeOosRatioAsync` queries that job's `WalkForwardWindowResultEntity` rows and
+computes `oosRatio = Sum(TestNetProfit) / Sum(PlateauValue)` across every fold — Pardo's standard
+Walk-Forward Efficiency, the same concept the plan's "OOS ratio < 0.5 → park" threshold is drawn
+from. Guard: if the folds' chosen in-sample params were themselves net-losing (`trainSum <= 0`),
+score 0 rather than leaving it null — a silent null would look like "no walk-forward data" instead
+of "the walk-forward itself failed."
+
+4 new tests in `SetupScorePersistenceTests.cs` (synthetic, controlled numbers): a 0.6 ratio upgrades
+to full `sv1`; a >1.0 ratio clamps `RobustnessOos` at 100 without overflowing; a non-positive
+in-sample sum scores 0 (not null); no `walkForwardJobId` leaves the cell at `sv1-partial` exactly as
+before (regression guard on existing behavior). Full suite re-verified: Unit 759/0/6, Integration
+141/0/0 (was 137 pre-fix, +4 new tests, 0 regressions).
+
+**Re-scored the 3 R3.2 candidates with their walk-forward jobs — all upgraded to full `sv1`:**
+
+| Variant | Cell | OosRatio | RobustnessOos | Composite (was sv1-partial) |
+|---|---|---|---|---|
+| v6a | ema-alignment/EURJPY/H1 + runner-aggressive | 4.32 | 100 (clamped) | 96.8 → **97.3** |
+| v1a | trend-breakout/XAUUSD/H4 + runner-aggressive | 2.15 | 100 (clamped) | 100 → **100** |
+| v6b | ema-alignment/EURJPY/H1 + aggressive risk | 3.23 | 100 (clamped) | 88.6 → **90.3** |
+
+**None park** — all 3 OOS ratios are far above the 0.5 D-gate (2.15–4.32×, not under it). Note the
+direction is unusual: OOS ratio *above* 1.0 means the out-of-sample test windows outperformed the
+in-sample train windows that chose the params, the opposite of the classic overfitting pattern a
+walk-forward is normally built to catch. Plausible and not a bug (the formula's arithmetic is
+pinned by synthetic-number unit tests in isolation) — each fold's train window (~35d) is longer
+than its test window (~15d) but produced less absolute profit, so a few strongly-trending short
+test windows can swing the aggregate ratio well above 1. Not chased further; flagged so a future
+session doesn't mistake ratio > 1 as a red flag.

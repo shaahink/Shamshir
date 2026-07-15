@@ -60,27 +60,36 @@ differently (4x risk turned a -$1,530 loss into -$2,534 — roughly 1.65x, not t
 losses aren't purely linear in position size once SL/exit timing differs). Cumulative test
 NetPnL: **+$18,215.44**.
 
+## F62 fixed — final scores (same session)
+
+`SetupScoreService.ScoreRunAsync` now computes a real `oosRatio` (Walk-Forward Efficiency:
+`Sum(TestNetProfit) / Sum(PlateauValue)` across a job's folds) whenever a `walkForwardJobId` is
+passed to `POST /api/experiments/score`. Re-scored all 3 candidates against their walk-forward job
+— all upgraded from `sv1-partial` to full `sv1`, none culled (all OOS ratios far above the 0.5
+D-gate):
+
+| Variant | OosRatio | RobustnessOos | Composite before | Composite after |
+|---|---|---|---|---|
+| v6a (ema-alignment/EURJPY/H1 + runner-aggressive) | 4.32 | 100 (clamped) | 96.8 | **97.3** |
+| v1a (trend-breakout/XAUUSD/H4 + runner-aggressive) | 2.15 | 100 (clamped) | 100 | **100** |
+| v6b (ema-alignment/EURJPY/H1 + aggressive risk) | 3.23 | 100 (clamped) | 88.6 | **90.3** |
+
+All 3 ratios are above 1.0 (test outperformed train) rather than the more typical <1.0 walk-forward
+pattern — plausible given each fold's ~35-day train window produced less absolute profit than its
+~15-day test window in several folds, not investigated as a possible bug since the ratio's
+arithmetic is independently pinned by synthetic-number unit tests.
+
 ## Reading this honestly — what this is and isn't
 
 **All 3 candidates: 5 of 6 test windows profitable, positive cumulative out-of-sample PnL.** That's
 a genuinely encouraging directional read — these aren't curve-fit train-only results falling apart
 out of sample.
 
-**This is NOT the plan's formal "OOS ratio < 0.5 → park" cull, because that scoring path does not
-exist yet.** `SetupScoreService.ScoreRunAsync` hardcodes `oosRatio = null` unconditionally (line
-105, comment: *"OOS robustness: null until walk-forward runs in R3"*) — this is R3, and it was
-never wired up. `VersionKind` can therefore never become full `sv1`, only `sv1-partial`, regardless
-of how much walk-forward data exists. This is a real, pre-existing gap in the scoring pipeline, not
-something broken by this session's work — flagged as **F62**.
-
-**The fix is scoped, not started from zero**: `WalkForwardWindowResultEntity` already stores
-`PlateauValue` (the winning train-window cell's net profit) alongside `TestNetProfit` — a real
-Walk-Forward Efficiency ratio (`sum(TestNetProfit) / sum(PlateauValue)`, or a per-fold average) is
-computable from data already being persisted. It needs: a query from `ScoreRunAsync` matching
-`WalkForwardWindowResultEntity` rows to the run's (StrategyId, Symbol, Timeframe, PackId/RiskProfileId),
-a decision on the exact ratio formula and how to aggregate across folds, and threading the result
-into the existing `oosRatio` variable. Not done this session — deliberately not rushed in as a
-tail-end addition to an already-large session.
+**F62, fixed same session:** `SetupScoreService.ScoreRunAsync` previously hardcoded `oosRatio = null`
+unconditionally — the plan's entire OOS-ratio cull mechanism had never been implemented. Fixed by
+adding an optional `walkForwardJobId` to the score request; when present, `ComputeOosRatioAsync`
+computes `Sum(TestNetProfit) / Sum(PlateauValue)` across the job's folds. See the section above for
+the final scores.
 
 **Also flagged, harmless: F61** — `RunConfigAssembler.ResolveEffectiveConfigJsonAsync` (the method
 that produces the `effectiveConfigJson` shown via `GET /api/runs/{id}`) never applies

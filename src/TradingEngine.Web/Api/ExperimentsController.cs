@@ -114,7 +114,8 @@ public sealed class ExperimentsController : ControllerBase
             req.FoldIndex,
             req.FoldRole,
             ct,
-            req.StrategyId);
+            req.StrategyId,
+            req.WalkForwardJobId);
 
         if (result.Passed)
         {
@@ -174,4 +175,10 @@ public sealed record ScoreRequest
     public int? FoldIndex { get; init; }
     public string? FoldRole { get; init; }
     public string? StrategyId { get; init; }
+
+    // R3.2 (F62): when set, ScoreRunAsync computes a real OOS ratio from this walk-forward job's
+    // WalkForwardWindowResultEntity rows (Sum(TestNetProfit) / Sum(PlateauValue) across folds)
+    // instead of leaving RobustnessOos/OosRatio null — this is what upgrades a cell from
+    // sv1-partial to full sv1.
+    public Guid? WalkForwardJobId { get; init; }
 }
