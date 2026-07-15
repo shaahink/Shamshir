@@ -176,6 +176,9 @@ public static class ServiceRegistration
         services.AddSingleton<RunMarketContextLoader>();
         services.AddSingleton<BacktestOrchestrator>();
         services.AddSingleton<IBacktestCommandService>(sp => sp.GetRequiredService<BacktestOrchestrator>());
+        // The read side (RunQueryService and the Runs/ query classes) observes live runs through
+        // this narrow port instead of taking the command-side orchestrator class.
+        services.AddSingleton<ILiveRunReader>(sp => sp.GetRequiredService<BacktestOrchestrator>());
         services.AddSingleton<DownloadJobService>();
         // X4: on-by-default background auto-sync loop (inert until the watchlist has cells).
         services.AddOptions<AutoSyncOptions>().BindConfiguration("MarketData:AutoSync");
