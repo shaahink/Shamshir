@@ -293,6 +293,27 @@ the two agree destroys the only oracle we have.
 
 ---
 
+## Dev-cycle speed rules (added 2026-07-15 — from the X2/X3 retrospective)
+
+The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
+`docs/iterations/iter-dx-speed/PLAN.md` (D0–D6). Until/beyond that lands:
+
+1. **One PLAN-budgeted phase per session.** Bundling two phases more than doubles the survey and
+   verification surface — X2+X3 together is why that session ran long.
+2. **Run long suites in the background** (full Playwright, full builds) while you write tracker /
+   ledger / evidence updates. Never sit idle on a 7-minute suite.
+3. **Playwright has ~15 pre-existing failures on a healthy tree** — see the shamshir-ui skill.
+   Iterate on a targeted spec (~30s), full suite once before "done". Never stash-rebuild a baseline
+   to prove a UI test failure is pre-existing; `web-ui/tests/e2e/KNOWN-FAILURES.md` (or the skill
+   note until it exists) is the record.
+4. **Bank every environment fact the session cost you a probe to learn** into the matching
+   `.claude/skills/*/SKILL.md` in the SAME session (API removals, table names, CLI flags, cold
+   endpoints). Re-derivation is the silent tax.
+5. **Write braces on every `if`** — IDE0011 is promoted to a build error and only surfaces at the
+   end of a full build.
+6. What this must never speed away: the live compare-both doctrine, analyzer severities, the full
+   e2e suite's existence, and the credential-free gate baseline (see iter-dx-speed V1–V5).
+
 ## RESUME (overwrite this block each session)
 
 **Phase:** iter-alpha-loop — **P0–P4 ALL DONE (2026-07-12). PARITY IS LOCKED. Next up: X0.**

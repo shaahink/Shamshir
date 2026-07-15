@@ -130,6 +130,21 @@ and auto-opens the browser. For live Angular dev with hot reload, use the
   4 risk profiles) — strategy params and risk profiles are read from the DB, not
   JSON, at request time.
 
+## Fast backend loop (2026-07-15)
+
+- Every backend change costs kill → build → relaunch → re-warm (locks, see Gotchas). Do it as ONE
+  step: `scripts/dev-restart.ps1` once iter-dx-speed D3 lands
+  (`docs/iterations/iter-dx-speed/PLAN.md`); until then, chain the CIM kill + build + launch in a
+  single command instead of interleaving them with probes.
+- **EF Core Debug logging floods the console** (query plans, thousands of lines per request) and
+  buries the run's progress lines — set `Logging:LogLevel:Microsoft.EntityFrameworkCore` to
+  `Warning` in `appsettings.Development.json` while iterating.
+- **EF migrations need the context named:** `dotnet ef migrations add <Name> --project
+  src/TradingEngine.Infrastructure --startup-project src/TradingEngine.Web --context
+  TradingDbContext` — omitting `--context` fails when multiple contexts resolve.
+- DB facts that cost probes to rediscover: the journal table is named **`Journal`** (singular);
+  money columns are stored as TEXT.
+
 ## Troubleshooting
 
 - **Driver prints `Process exited early ... Port in use?`** → another instance is
