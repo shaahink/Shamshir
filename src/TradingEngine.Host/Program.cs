@@ -103,10 +103,18 @@ public static class Program
                 return;
             }
 
-            app.Services.GetRequiredService<StrategyConfigSeeder>().SeedAsync().GetAwaiter().GetResult();
-
-            var store = app.Services.GetRequiredService<IStrategyConfigStore>();
-            var strategyConfigs = store.GetAllAsync(CancellationToken.None).GetAwaiter().GetResult();
+            // StrategyConfigSeeder/IStrategyConfigStore are scoped (EF-backed); resolving them from
+            // the root provider crashes under Development scope validation — which is exactly how the
+            // NetMQBridge sim test launches this entry (`dotnet run`), so the engine died before
+            // binding. The configs are materialized before the scope disposes; LoadedConfig itself
+            // is a root singleton.
+            IReadOnlyList<StrategyConfigEntry> strategyConfigs;
+            using (var seedScope = app.Services.CreateScope())
+            {
+                seedScope.ServiceProvider.GetRequiredService<StrategyConfigSeeder>().SeedAsync().GetAwaiter().GetResult();
+                var store = seedScope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
+                strategyConfigs = store.GetAllAsync(CancellationToken.None).GetAwaiter().GetResult();
+            }
             var loadedConfig = app.Services.GetRequiredService<LoadedConfig>();
             loadedConfig.StrategyConfigs = strategyConfigs;
 

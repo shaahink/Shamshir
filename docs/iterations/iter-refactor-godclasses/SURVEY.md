@@ -94,6 +94,18 @@ binaries) — same count expected on final binaries (checked below).
 - `RunQueryService` (684) remains the next read-side split candidate.
 - Simulation suite reports "Test Run Aborted" after summary at baseline too (suite-teardown quirk).
 
+**Pre-existing sim failure root-caused (and half-fixed) here:**
+`Pipeline.NetMQBridgeTest.EngineReceivesBarAndTickOverNetMQ` — the standalone Host entry
+(`Program.cs`) resolved the scoped `StrategyConfigSeeder`/`IStrategyConfigStore` from the ROOT
+provider; under `dotnet run` (Development launch profile ⇒ scope validation ON — exactly how the
+test spawns the engine) the process crashed before binding, so the test timed out. Untouched by
+this branch (`git diff 3075584..HEAD -- src/TradingEngine.Host src/TradingEngine.Infrastructure`
+is empty); fixed here by resolving both inside a scope. The engine now starts, binds the NetMQ
+transport and completes the handshake — the test still fails on its real assertion (no
+`BAR_EVAL|EURUSD` after the published bar), which is the legacy live-loop path and out of scope
+for this refactor. Net: crash → clean handshake; the "environmental cTrader-Pipeline sim tests"
+note from iter-27 is this bug.
+
 ## Verification contract for this branch
 - After each phase: `dotnet build` + Unit + Integration + Architecture (no new failures vs baseline).
 - Simulation suite at start and end.
