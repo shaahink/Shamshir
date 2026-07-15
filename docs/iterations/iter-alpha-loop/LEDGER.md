@@ -325,3 +325,98 @@ verification loop was specifically built to catch:
   Integration 121/0/0 · Sim-fast 144/0/0 (one flaky, order-dependent, unrelated test failure seen
   once — `VenueSizingParityTests.CtraderHello_SurfacesDemoBalance_ThatBacktestMustNotAdopt` —
   confirmed to pass both in isolation and on a clean full-suite re-run, not a P3 regression).
+
+---
+
+## X0/X1 verification — 2026-07-15 — live concurrency proof + 6 fixes
+
+**Context:** a prior session left X0 (run queue + concurrency) and X1 (progress + status truth)
+marked DONE, uncommitted, with the tracker's own recommended next step being *"smoke test: start 3
+tape runs concurrently, verify queued→running→completed, cancel mid-queue"* — i.e. the truth gate
+had never actually been run. This session ran it for the first time and treated every failure as a
+real defect to fix, not a test-tooling problem to work around.
+
+**Environment fix (found first, blocks everything):** `Microsoft.EntityFrameworkCore.Design` was
+pinned to floating `10.*` in both `Infrastructure.csproj` and `Web.csproj`, while
+`Microsoft.EntityFrameworkCore`/`.Sqlite` were pinned to exact `10.0.9`. A `10.0.10` patch had been
+published to the feed since the last session, so the build failed outright (`NU1605` downgrade
+error) before any gate could run. Pinned Design to `10.0.9` to match its siblings.
+
+**Static gates matched the tracker's claims exactly** once the build was unblocked: 0err/5warn ·
+Unit 759/0/6 · Integration 121/0/0 · Sim-fast 144/0/0.
+
+**Live concurrency test (X0's actual truth gate, run for the first time):** launched the app in the
+background (port 5134) and fired 5 `POST /api/runs` (tape, EURUSD H1, 7-day window) via true
+parallel `curl` calls (not `dotnet run`-per-call, which serializes on process-start overhead and
+hides the real race). Findings, each reproduced live, fixed, and re-verified:
+
+- **F49 — the gate had never been exercised and failed immediately:** all 5 calls either timed out
+  or came back `500 TaskCanceledException`. Root cause: `RunsController.ValidateTapeDataAsync` calls
+  `IMarketDataStore.GetInventoryAsync()`, an unfiltered `GROUP BY` scan of the entire 1.2GB
+  `MarketDataBars` table (~10-16s per call, confirmed via EF Core query logging). The *old*
+  one-run-at-a-time 409 guard — which X0 correctly removed, since serializing all starts defeats the
+  point of a concurrency queue — had been silently serializing these scans for free the whole time;
+  nothing about X0 accounted for what happens once N of them run at once. Fix: `BootstrapMarketDataStore`
+  (the existing singleton decorator) now coalesces concurrent callers onto one shared, lock-guarded,
+  20s-TTL-cached `Task<inventory>` — first caller triggers the scan, everyone else awaits the *same*
+  task instead of starting their own. Benefits every other `GetInventoryAsync` caller too
+  (`DataQualityValidator`, `ReferenceScalePopulator`, `DataManagerController`, `SystemController`
+  doctor) since downloads are rare, multi-minute operations — 20s staleness is invisible.
+- **F50 — thread-pool starvation in `Start(cfg)`:** `ResolveBarCount` (X1's own "real bar count"
+  feature) called `store.CountBarsAsync(...).GetAwaiter().GetResult()` synchronously inside the
+  synchronous `Start()` method. Invisible when only one `Start()` could ever be in flight; a genuine
+  starvation risk the instant X0 allowed N concurrent `Start()` calls to each block a request thread
+  on a sync-over-async DB round trip. Fix: `Start()` now uses the calendar estimate as an instant
+  placeholder and kicks off a fire-and-forget `RefreshBarCountAsync` that upgrades `state.BarsTotal`
+  once the DB answers (progress display tolerates being briefly approximate; the request path does
+  not tolerate a blocking DB call under load). Also fixed the *other* half of X1's own claim that
+  turned out unwired: the compare-both cTrader child state still used the calendar
+  `EstimateBarCount` (X1's plan text explicitly said "the cTrader child... must use it too" — it
+  didn't); it now properly `await`s the same `ResolveBarCountAsync`.
+- **F51 — cancelling a queued run had no effect until a slot opened:** the dequeued-but-waiting task
+  called `semaphore.WaitAsync(CancellationToken.None)` — the run's own cancellation token was passed
+  to `RunAsync` but never to the semaphore wait itself, so a user cancelling run #4 of 5 would see
+  nothing happen until run #4 would have started anyway (defeating the entire point of "cancel
+  mid-queue," which the prior session's own handoff listed as the next thing to verify). Reproduced
+  live with a deliberately slow config (`speed=0.05`, ~10 months of EURUSD H1) to create a real
+  multi-second queued window. Fix: wait on `state.CancellationSource!.Token` instead, with an
+  `OperationCanceledException` catch (guarded by `!acquired`, so the semaphore is never released
+  unless it was actually acquired) that finalizes the run as `Cancelled` directly instead of ever
+  calling `RunAsync`. Verified: a queued cancel now resolves in ~2s instead of waiting for 3 slow
+  runs ahead of it to finish.
+- **F52 — a cancelled run displayed as "failed":** `RunStatusResolver.Resolve` derives status purely
+  from `ExitCode`/`ErrorMessage`/`WarningsJson` and has no way to represent "cancelled" — any
+  non-null `ErrorMessage` (including the new F51 path's own message, and the *pre-existing*
+  shutdown-cancel path's "Cancelled (shutdown)." message) falls out as `Failed`. This bug predates
+  this session's F51 fix; F51 just made it visible for the first time via a real cancel-mid-queue
+  test. Fix: `WriteEndRecordAsync` now accepts an explicit `status:` (mirroring
+  `WriteStartRecordAsync`'s existing parameter) and persists it to the `Status` column X0 already
+  added but never actually read back; `RunQueryService.ResolveStatus` (single-run) and a new
+  `PreferPersistedTerminalStatus` pass (list endpoint) prefer that column whenever it names one of
+  the four real terminal states, falling back to the legacy derivation for pre-migration rows
+  (`Status=""`). Verified: cancelled-while-queued now shows `"status":"cancelled"` on both the
+  single-run and list endpoints.
+- **F53 — `state.RunPlanJson` raced its own readers:** only ever set deep inside `RunAsync`, well
+  after `Start()` returns — invisible before this session because F50's blocking DB call gave
+  `RunAsync` an incidental head start every time. Once F50 made `Start()` fast, `RunMetadataTests
+  .RowRun_persists_and_surfaces_full_selection` (part of the standing Integration suite, not written
+  this session) started failing: a poll landing right after a fast `POST /api/runs` could observe
+  the live in-memory state before `RunAsync` ever set `RunPlanJson`, reading the field's null
+  default (serialized as `"[]"`). Fix: set `RunPlanJson` in `Start()`'s initial object initializer,
+  alongside every other field that's already available at that point. Re-ran the full Integration
+  suite 3x consecutively post-fix with no flakiness (121/0/0 each time).
+- **Live concurrency proof, the actual X0 truth gate:** 5 truly-parallel `POST /api/runs` all
+  returned 200 with identical `startedAtUtc`; the first 3 (MaxTapeConcurrency=3) finished together
+  (~3.4s), the other 2 waited for a slot and finished ~3s later; **all 5 produced byte-identical
+  results** (`netProfit=-48.05991389653`, 3 trades) — exactly the plan's stated proof of concurrency
+  safety. Reproduced twice more (once mid-fix, once on the final build) with the same result.
+
+**Not done / deferred:** the cTrader serial lane (`_ctraderSemaphore(1,1)`) was not live-tested — no
+cTrader Desktop instance in this pass. It's architecturally sound by code read (separate semaphore,
+`isCtrader` branch in `TryDequeueNext`) but unverified under real concurrent load. F48 (XAUUSD PnL
+currency conversion) remains open, untouched. The previous handoff's "next: X3 (runs page rework) +
+X4" mislabeled X2 as X3 — corrected in TRACKER: X2 (Runs page, notes, copy-run) is the actual next
+phase per PLAN.md's own ordering; X3/X4 are untouched.
+
+**Gate battery, final:** build 0err/5warn · Unit 759/0/6 · Integration 121/0/0 (3x consecutive,
+confirmed non-flaky) · Sim-fast 144/0/0.

@@ -4,4 +4,5 @@ public sealed record StartRunResponse
 {
     public required string RunId { get; init; }
     public required string Status { get; init; }
+    public int? QueuePosition { get; init; }
 }

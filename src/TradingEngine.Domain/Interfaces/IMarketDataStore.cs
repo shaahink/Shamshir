@@ -18,6 +18,8 @@ public interface IMarketDataStore
     /// <summary>Ordered (ascending openTime) bars for a symbol/timeframe in [fromUtc, toUtc].</summary>
     Task<IReadOnlyList<Bar>> ReadBarsAsync(Symbol symbol, Timeframe tf, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
 
+    Task<int> CountBarsAsync(Symbol symbol, Timeframe tf, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
+
     /// <summary>What data we hold: one row per (symbol, timeframe, source) with its coverage + count.
     /// This is the UI's "no guesswork" inventory (owner requirement).</summary>
     Task<IReadOnlyList<MarketDataInventoryEntry>> GetInventoryAsync(CancellationToken ct = default);

@@ -263,6 +263,14 @@ public sealed class DataQualityValidatorTests
 
         public Task<int> DeleteBarsAsync(Symbol symbol, Timeframe tf, DateTime? fromUtc, DateTime? toUtc,
             string? source, CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<int> CountBarsAsync(Symbol symbol, Timeframe tf, DateTime fromUtc,
+            DateTime toUtc, CancellationToken ct = default)
+        {
+            var count = _bars.Count(b => b.Symbol.Value == symbol.Value && b.Timeframe == tf
+                && b.OpenTimeUtc >= fromUtc && b.OpenTimeUtc <= toUtc);
+            return Task.FromResult(count);
+        }
     }
 
     private sealed class FakeSymbolInfoRegistry : ISymbolInfoRegistry

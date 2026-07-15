@@ -104,19 +104,6 @@ public sealed class RunsController : ControllerBase
             validPeriods = perList.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
         }
 
-        var activeRuns = _orchestrator.GetAll()
-            .Where(r => r.Status is "starting" or "running")
-            .Select(r => r.RunId)
-            .ToList();
-        if (activeRuns.Count > 0)
-        {
-            return Conflict(new
-            {
-                error = "A backtest is already running. Wait for it to complete or cancel it first.",
-                activeRunIds = activeRuns,
-            });
-        }
-
         var errors = new List<string>();
         if (req.Rows is { Count: > 0 } && rowPlan is not { Entries.Count: > 0 })
             errors.Add("At least one enabled row is required.");
@@ -189,9 +176,10 @@ public sealed class RunsController : ControllerBase
 
         var runId = await _command.StartAsync(cfg, ct);
         var state = _orchestrator.GetState(runId);
-        _logger.LogInformation("Run started. RunId={RunId}", runId);
+        var queuePos = _orchestrator.GetQueuePosition(runId);
+        _logger.LogInformation("Run started. RunId={RunId} Status={Status} QueuePos={QueuePos}", runId, state?.Status, queuePos);
 
-        return Ok(new StartRunResponse { RunId = runId, Status = state?.Status ?? "started" });
+        return Ok(new StartRunResponse { RunId = runId, Status = state?.Status ?? "started", QueuePosition = queuePos });
     }
 
     [HttpPost("compare-both")]

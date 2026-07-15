@@ -93,6 +93,9 @@ interface RunListItem {
                       [label]="statusLabel(item.run.status)"
                       [variant]="statusVariant(item.run.status)"
                     />
+                    @if (item.run.status === 'queued' && item.run.queuePosition) {
+                      <span class="ml-1 text-xs text-gray-500">#{{ item.run.queuePosition }}</span>
+                    }
                   </td>
                   <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-gray-500">
                     {{ venueLabel(item.run.venue) }}

@@ -75,14 +75,52 @@ public sealed class RunQueryService : IRunQueryService
                 WarningsJson = r.WarningsJson,
                 ParentRunId = r.ParentRunId,
                 ComparePairId = r.ComparePairId,
+                QueuePosition = r.QueuePosition,
+                PersistedStatus = r.Status,
             })
             .ToListAsync(ct);
 
+        PreferPersistedTerminalStatus(runs);
         await FixStaleTradeCounts(runs, ct);
         FixStuckRunStatuses(runs);
+        OverlayLiveRunStatuses(runs);
 
         _memoryCache?.Set(RunsListCacheKey, runs, RunsListCacheDuration);
         return runs;
+    }
+
+    // X0: the DB projection above derives Status via the legacy ExitCode/ErrorMessage-only
+    // RunStatusResolver.Resolve, which can never say "cancelled" — see ResolveStatus for the same fix
+    // on the single-run path. The persisted Status column (written by WriteEndRecordAsync) is
+    // authoritative when it names one of the four real terminal states.
+    private static void PreferPersistedTerminalStatus(List<RunListResponse> runs)
+    {
+        for (var i = 0; i < runs.Count; i++)
+        {
+            var r = runs[i];
+            if (r.PersistedStatus is not null && RunStateMachine.TerminalStates.Contains(r.PersistedStatus) && r.PersistedStatus != r.Status)
+                runs[i] = r with { Status = r.PersistedStatus };
+        }
+    }
+
+    private void OverlayLiveRunStatuses(List<RunListResponse> runs)
+    {
+        if (_orchestrator is null) return;
+        var liveStates = _orchestrator.GetAll();
+        if (liveStates.Count == 0) return;
+
+        var liveMap = liveStates.ToDictionary(s => s.RunId);
+        for (var i = 0; i < runs.Count; i++)
+        {
+            if (liveMap.TryGetValue(runs[i].RunId, out var state))
+            {
+                runs[i] = runs[i] with
+                {
+                    Status = state.Status,
+                    QueuePosition = _orchestrator.GetQueuePosition(runs[i].RunId),
+                };
+            }
+        }
     }
 
     public void InvalidateRunsCache() => _memoryCache?.Remove(RunsListCacheKey);
@@ -533,11 +571,26 @@ public sealed class RunQueryService : IRunQueryService
             {
                 runs[i] = r with { Status = "failed", ErrorMessage = (r.ErrorMessage ?? "") + " Timed out (stuck)." };
             }
+
+            if (r.PersistedStatus == "queued" && r.Status != "running"
+                && DateTime.UtcNow - r.StartedAtUtc > StuckThreshold
+                && (_orchestrator?.GetState(r.RunId) is null))
+            {
+                runs[i] = r with { Status = "cancelled", ErrorMessage = (r.ErrorMessage ?? "") + " Orphaned queued run." };
+            }
         }
     }
 
     private static string ResolveStatus(BacktestRunSummary r, BacktestOrchestrator? orchestrator)
     {
+        // X0: an explicit terminal Status column (written by WriteEndRecordAsync) beats the legacy
+        // ExitCode/ErrorMessage-only inference below, which has no way to represent "cancelled" — any
+        // non-null ErrorMessage falls out as Failed there, so a cancelled run misreported as failed once
+        // it aged out of the live in-memory overlay (found in the X0 cancel-mid-queue smoke test). Rows
+        // written before this column existed carry Status="" and fall through unaffected.
+        if (r.Status is not null && RunStateMachine.TerminalStates.Contains(r.Status))
+            return r.Status;
+
         var isStuck = r.CompletedAtUtc == default
             && DateTime.UtcNow - r.StartedAtUtc > StuckThreshold
             && orchestrator?.GetState(r.RunId) is null;

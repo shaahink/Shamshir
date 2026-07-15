@@ -262,5 +262,14 @@ public sealed class BlockBootstrapperTests
         public Task<int> DeleteBarsAsync(Symbol symbol, Timeframe tf, DateTime? fromUtc, DateTime? toUtc,
             string? source, CancellationToken ct = default) =>
             Task.FromResult(0);
+
+        public Task<int> CountBarsAsync(Symbol symbol, Timeframe tf, DateTime fromUtc,
+            DateTime toUtc, CancellationToken ct = default)
+        {
+            var key = (symbol.ToString(), tf);
+            if (!_data.TryGetValue(key, out var bars))
+                return Task.FromResult(0);
+            return Task.FromResult(bars.Count(b => b.OpenTimeUtc >= fromUtc && b.OpenTimeUtc <= toUtc));
+        }
     }
 }

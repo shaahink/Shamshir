@@ -62,6 +62,8 @@ public sealed class TradingDbContext(DbContextOptions<TradingDbContext> options)
             e.Property(x => x.EffectiveConfigJson).HasColumnType("TEXT");
             e.Property(x => x.WarningsJson).HasColumnType("TEXT");
             e.HasIndex(x => x.StartedAtUtc);
+            e.HasIndex(x => x.Status);
+            e.Property(x => x.Status).HasMaxLength(32);
         });
 
         modelBuilder.Entity<ExperimentEntity>(e =>

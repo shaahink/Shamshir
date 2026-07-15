@@ -25,4 +25,6 @@ public sealed record RunListResponse
     public string? RiskProfileId { get; init; }
     public string? ParentRunId { get; init; }
     public string? ComparePairId { get; init; }
+    public int? QueuePosition { get; init; }
+    public string? PersistedStatus { get; init; }
 }

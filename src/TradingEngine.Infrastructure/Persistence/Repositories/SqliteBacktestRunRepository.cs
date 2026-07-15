@@ -6,60 +6,78 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
 {
     public async Task SaveAsync(BacktestRunSummary run, CancellationToken ct)
     {
-        var entity = new BacktestRunEntity
+        await RetryOnBusyAsync(async () =>
         {
-            RunId = run.RunId,
-            StartedAtUtc = run.StartedAtUtc,
-            CompletedAtUtc = run.CompletedAtUtc,
-            Symbol = run.Symbol,
-            Period = run.Period,
-            Symbols = run.Symbols,
-            Periods = run.Periods,
-            BacktestFrom = run.BacktestFrom,
-            BacktestTo = run.BacktestTo,
-            InitialBalance = run.InitialBalance,
-            AlgoHash = run.AlgoHash,
-            StrategyParamsJson = run.StrategyParamsJson,
-            EffectiveConfigJson = run.EffectiveConfigJson,
-            NetProfit = run.NetProfit,
-            GrossPnL = run.GrossPnL,
-            CommissionTotal = run.CommissionTotal,
-            SwapTotal = run.SwapTotal,
-            MaxDrawdownPct = run.MaxDrawdownPct,
-            TotalTrades = run.TotalTrades,
-            WinningTrades = run.WinningTrades,
-            WinRatePct = run.WinRatePct,
-            ExitCode = run.ExitCode,
-            ErrorMessage = run.ErrorMessage,
-            WarningsJson = run.WarningsJson,
-            ReportJsonPath = run.ReportJsonPath,
-            DatasetId = run.DatasetId,
-            ConfigSetId = run.ConfigSetId,
-            Seed = run.Seed,
-            ParentRunId = run.ParentRunId,
-            ComparePairId = run.ComparePairId,
-            RunPlanJson = run.RunPlanJson,
-            Venue = run.Venue,
-            RiskProfileId = run.RiskProfileId,
-            GovernorEnabled = run.GovernorEnabled,
-            RegimeEnabled = run.RegimeEnabled,
-            CommissionPerMillion = run.CommissionPerMillion,
-            SpreadPips = run.SpreadPips,
-            WallElapsedMs = run.WallElapsedMs,
-            BarsPerSec = run.BarsPerSec,
-            TotalBars = run.TotalBars,
-            ExplorationMode = run.ExplorationMode,
-            RecordExcursions = run.RecordExcursions,
-        };
-        db.BacktestRuns.Add(entity);
-        await db.SaveChangesAsync(ct);
+            var existing = await db.BacktestRuns.FindAsync([run.RunId], ct);
+            if (existing is not null)
+            {
+                MapToEntity(run, existing);
+            }
+            else
+            {
+                var entity = new BacktestRunEntity();
+                MapToEntity(run, entity);
+                db.BacktestRuns.Add(entity);
+            }
+            await db.SaveChangesAsync(ct);
+        }, ct);
+    }
+
+    private static void MapToEntity(BacktestRunSummary run, BacktestRunEntity entity)
+    {
+        entity.RunId = run.RunId;
+        entity.StartedAtUtc = run.StartedAtUtc;
+        entity.CompletedAtUtc = run.CompletedAtUtc;
+        entity.Symbol = run.Symbol;
+        entity.Period = run.Period;
+        entity.Symbols = run.Symbols;
+        entity.Periods = run.Periods;
+        entity.BacktestFrom = run.BacktestFrom;
+        entity.BacktestTo = run.BacktestTo;
+        entity.InitialBalance = run.InitialBalance;
+        entity.AlgoHash = run.AlgoHash;
+        entity.StrategyParamsJson = run.StrategyParamsJson;
+        entity.EffectiveConfigJson = run.EffectiveConfigJson;
+        entity.NetProfit = run.NetProfit;
+        entity.GrossPnL = run.GrossPnL;
+        entity.CommissionTotal = run.CommissionTotal;
+        entity.SwapTotal = run.SwapTotal;
+        entity.MaxDrawdownPct = run.MaxDrawdownPct;
+        entity.TotalTrades = run.TotalTrades;
+        entity.WinningTrades = run.WinningTrades;
+        entity.WinRatePct = run.WinRatePct;
+        entity.ExitCode = run.ExitCode;
+        entity.ErrorMessage = run.ErrorMessage;
+        entity.WarningsJson = run.WarningsJson;
+        entity.ReportJsonPath = run.ReportJsonPath;
+        entity.DatasetId = run.DatasetId;
+        entity.ConfigSetId = run.ConfigSetId;
+        entity.Seed = run.Seed;
+        entity.ParentRunId = run.ParentRunId;
+        entity.ComparePairId = run.ComparePairId;
+        entity.RunPlanJson = run.RunPlanJson;
+        entity.Venue = run.Venue;
+        entity.RiskProfileId = run.RiskProfileId;
+        entity.GovernorEnabled = run.GovernorEnabled;
+        entity.RegimeEnabled = run.RegimeEnabled;
+        entity.CommissionPerMillion = run.CommissionPerMillion;
+        entity.SpreadPips = run.SpreadPips;
+        entity.WallElapsedMs = run.WallElapsedMs;
+        entity.BarsPerSec = run.BarsPerSec;
+        entity.TotalBars = run.TotalBars;
+        entity.ExplorationMode = run.ExplorationMode;
+        entity.RecordExcursions = run.RecordExcursions;
+        entity.Status = run.Status ?? "";
+        entity.QueuePosition = run.QueuePosition;
     }
 
     public async Task UpdateAsync(BacktestRunSummary run, CancellationToken ct)
     {
-        var entity = await db.BacktestRuns.FindAsync([run.RunId], ct);
-        if (entity is null) return;
-        entity.CompletedAtUtc = run.CompletedAtUtc;
+        await RetryOnBusyAsync(async () =>
+        {
+            var entity = await db.BacktestRuns.FindAsync([run.RunId], ct);
+            if (entity is null) return;
+            entity.CompletedAtUtc = run.CompletedAtUtc;
         entity.NetProfit = run.NetProfit;
         entity.GrossPnL = run.GrossPnL;
         entity.CommissionTotal = run.CommissionTotal;
@@ -76,7 +94,26 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
         entity.WallElapsedMs = run.WallElapsedMs;
         entity.BarsPerSec = run.BarsPerSec;
         entity.TotalBars = run.TotalBars;
+        entity.Status = run.Status ?? "";
+        entity.QueuePosition = run.QueuePosition;
         await db.SaveChangesAsync(ct);
+        }, ct);
+    }
+
+    private static async Task RetryOnBusyAsync(Func<Task> action, CancellationToken ct, int maxRetries = 3)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await action();
+                return;
+            }
+            catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode == 5 && attempt < maxRetries)
+            {
+                await Task.Delay(100 << attempt, ct);
+            }
+        }
     }
 
     public async Task<IReadOnlyList<BacktestRunSummary>> GetAllAsync(CancellationToken ct)
@@ -226,7 +263,8 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             e.RunPlanJson, e.Venue, e.RiskProfileId, e.GovernorEnabled, e.RegimeEnabled,
             e.CommissionPerMillion, e.SpreadPips,
             e.WallElapsedMs, e.BarsPerSec, e.TotalBars, e.WarningsJson, e.ComparePairId,
-            e.ExplorationMode, e.RecordExcursions);
+            e.ExplorationMode, e.RecordExcursions,
+            e.Status, e.QueuePosition);
     }
 
     public async Task DeleteAsync(string runId, CancellationToken ct)

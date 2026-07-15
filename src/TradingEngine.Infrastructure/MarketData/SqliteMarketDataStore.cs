@@ -107,6 +107,16 @@ public sealed class SqliteMarketDataStore(IDbContextFactory<MarketDataDbContext>
             r.Spread is { } s ? (decimal?)s : null)).ToList();
     }
 
+    public async Task<int> CountBarsAsync(Symbol symbol, Timeframe tf, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var sym = symbol.ToString();
+        var tfs = tf.ToString();
+        return await db.Bars.AsNoTracking()
+            .Where(r => r.Symbol == sym && r.Timeframe == tfs && r.OpenTimeUtc >= fromUtc && r.OpenTimeUtc <= toUtc)
+            .CountAsync(ct);
+    }
+
     public async Task<IReadOnlyList<MarketDataInventoryEntry>> GetInventoryAsync(CancellationToken ct = default)
     {
         await using var db = await factory.CreateDbContextAsync(ct);

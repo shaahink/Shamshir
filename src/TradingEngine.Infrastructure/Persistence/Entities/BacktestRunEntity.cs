@@ -8,6 +8,10 @@ public sealed class BacktestRunEntity : IAuditableEntity
     public string RunId { get; set; } = "";
     public DateTime StartedAtUtc { get; set; }
     public DateTime CompletedAtUtc { get; set; }
+
+    public string Status { get; set; } = "";
+    public int? QueuePosition { get; set; }
+
     public string Symbol { get; set; } = "";
     public string Period { get; set; } = "";
     public string Symbols { get; set; } = "[]";

@@ -47,6 +47,28 @@ namespace TradingEngine.Web.Services;
     private const string RunsListCacheKey = "runs:all";
     private const int MaxIdempotencyKeys = 10_000;
 
+    private readonly int _maxTapeConcurrency;
+    private readonly SemaphoreSlim _tapeSemaphore;
+    private readonly SemaphoreSlim _ctraderSemaphore = new(1, 1);
+    private readonly ConcurrentQueue<(string RunId, BacktestConfig Config)> _queue = new();
+    private readonly CancellationTokenSource _dequeueCts = new();
+    private readonly Task? _dequeueTask;
+
+    public int QueuedCount => _queue.Count;
+    public int RunningTapeCount => _runs.Values.Count(r => r.Status == "running" && !string.Equals(r.Venue, "ctrader", StringComparison.OrdinalIgnoreCase));
+    public int RunningCtraderCount => _runs.Values.Count(r => r.Status == "running" && string.Equals(r.Venue, "ctrader", StringComparison.OrdinalIgnoreCase));
+
+    public int? GetQueuePosition(string runId)
+    {
+        var i = 0;
+        foreach (var (rId, _) in _queue)
+        {
+            if (rId == runId) return i + 1;
+            i++;
+        }
+        return null;
+    }
+
     private sealed record TradeStats(decimal NetProfit, decimal GrossPnL, decimal CommissionTotal, decimal SwapTotal, decimal MaxDrawdownPct, int TotalTrades, int WinningTrades, double WinRatePct);
 
     // P0.2 (F5, Q5): a teardown/persistence anomaly that does NOT invalidate a complete engine result.
@@ -161,6 +183,12 @@ namespace TradingEngine.Web.Services;
         _runDataCache = runDataCache;
         _memoryCache = memoryCache;
         _logger = logger;
+
+        var configuredMax = _configuration.GetValue<int?>("RunQueue:MaxTapeConcurrency");
+        _maxTapeConcurrency = configuredMax is > 0 ? configuredMax.Value : 3;
+        _tapeSemaphore = new SemaphoreSlim(_maxTapeConcurrency, _maxTapeConcurrency);
+
+        _dequeueTask = Task.Run(() => DequeueLoopAsync(_dequeueCts.Token));
     }
 
     // iter-21 U1 — project the live run state into the throttled SignalR envelope. Fields the
@@ -301,17 +329,149 @@ namespace TradingEngine.Web.Services;
             Speed = float.TryParse(cfg.CustomParams.GetValueOrDefault("Speed"), NumberStyles.Float, CultureInfo.InvariantCulture, out var spd) ? Math.Clamp(spd, 0f, 10f) : 10f,
             ExplorationMode = cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
             RecordExcursions = cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true",
+            // Set immediately, not just when RunAsync reaches its own (redundant) assignment: a live
+            // GET can now observe this state the instant Start() returns, since X0's dequeue can start
+            // RunAsync right away when a slot is free — Start() no longer blocks on a synchronous bar
+            // count first (found live: a client polling right after POST /api/runs saw "[]" here).
+            RunPlanJson = cfg.CustomParams.GetValueOrDefault("RunRows") ?? "[]",
         };
         _runs[runId] = state;
         state.CancellationSource = new CancellationTokenSource();
+        state.Status = RunStateMachine.Queued;
 
         _memoryCache?.Remove(RunsListCacheKey);
 
-        EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Starting backtest {runId}...");
-
-        state.RunTask = RunAsync(runId, cfg, state.CancellationSource.Token);
+        RefreshBarCountAsync(state, cfg);
+        EnqueueRun(runId, cfg, state);
 
         return state;
+    }
+
+    /// <summary>Enqueue a run for later execution. Persists as "queued" and signals the dequeue loop.</summary>
+    private void EnqueueRun(string runId, BacktestConfig cfg, BacktestRunState state)
+    {
+        _queue.Enqueue((runId, cfg));
+        EnqueueLog(runId, state.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Queued backtest {runId} (pos={_queue.Count})...");
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                await WriteStartRecordAsync(runId, cfg, state.StartedAt, effectiveConfigJson: null,
+                    status: RunStateMachine.Queued, queuePosition: _queue.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to persist queued run {RunId}", runId);
+            }
+        });
+
+        TryDequeueNext();
+    }
+
+    /// <summary>Background loop that dequeues runs when slots are available.</summary>
+    private async Task DequeueLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            TryDequeueNext();
+            try { await Task.Delay(500, ct); } catch (OperationCanceledException) { break; }
+        }
+    }
+
+    /// <summary>Try to dequeue one run if a venue-appropriate slot is free.</summary>
+    private void TryDequeueNext()
+    {
+        if (!_queue.TryPeek(out var peeked)) return;
+        var (runId, cfg) = peeked;
+        if (!_runs.TryGetValue(runId, out var state)) return;
+        if (state.Status != RunStateMachine.Queued) return;
+
+        var isCtrader = ResolveUseCtrader(cfg.CustomParams.GetValueOrDefault("Venue"));
+        var semaphore = isCtrader ? _ctraderSemaphore : _tapeSemaphore;
+        if (semaphore.CurrentCount == 0) return;
+
+        if (!_queue.TryDequeue(out var dequeued)) return;
+        if (!_runs.TryGetValue(dequeued.RunId, out state)) return;
+        if (state.Status != RunStateMachine.Queued) { TryDequeueNext(); return; }
+
+        TransitionRun(state, RunStateMachine.Starting);
+        EnqueueLog(state.RunId, state.LogLines,
+            $"[{DateTime.UtcNow:HH:mm:ss}] Starting backtest {state.RunId} ({dequeued.Config.CustomParams.GetValueOrDefault("Venue") ?? "replay"})...");
+
+        state.RunTask = Task.Run(async () =>
+        {
+            var acquired = false;
+            try
+            {
+                // Honor the run's own token while waiting for a slot: cancelling a run that is still
+                // queued behind others must take effect immediately, not only once a slot frees up
+                // (found live in the X0 cancel-mid-queue smoke test — WaitAsync(CancellationToken.None)
+                // made a queued cancel invisible until the run would have started anyway).
+                await semaphore.WaitAsync(state.CancellationSource!.Token);
+                acquired = true;
+                await RunAsync(dequeued.RunId, dequeued.Config, state.CancellationSource!.Token);
+            }
+            catch (OperationCanceledException) when (!acquired)
+            {
+                TransitionRun(state, RunStateMachine.Cancelled);
+                EnqueueLog(state.RunId, state.LogLines,
+                    $"[{DateTime.UtcNow:HH:mm:ss}] Cancelled (was waiting for a concurrency slot).");
+                _ = WriteEndRecordAsync(dequeued.RunId, dequeued.Config, state.StartedAt,
+                    new BacktestResult { RunId = dequeued.RunId, ExitCode = 0, ErrorMessage = "Cancelled while waiting in queue." },
+                    new TradeStats(0, 0, 0, 0, 0, 0, 0, 0), effectiveConfigJson: null, status: state.Status);
+            }
+            finally
+            {
+                if (acquired) semaphore.Release();
+                TryDequeueNext();
+            }
+        });
+
+        TryDequeueNext();
+    }
+
+    /// <summary>Real bar count from market data, replacing the calendar estimate (X1). Truly async —
+    /// callers must await it. <see cref="Start"/> cannot (it runs inside a caller's <c>lock</c> block
+    /// on one path), so it uses <see cref="RefreshBarCountAsync"/> instead; a blocking
+    /// <c>.GetAwaiter().GetResult()</c> here previously starved the thread pool the moment X0 allowed
+    /// concurrent <c>Start()</c> calls (found live in the X0 concurrency smoke test).</summary>
+    private async Task<int> ResolveBarCountAsync(BacktestConfig cfg, CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var store = scope.ServiceProvider.GetService<IMarketDataStore>();
+            if (store is not null)
+            {
+                var tf = ParseTimeframe(cfg.Period);
+                var count = await store.CountBarsAsync(new Symbol(cfg.Symbol), tf, cfg.Start, cfg.End, ct);
+                if (count > 0) return count;
+            }
+        }
+        catch { }
+
+        return EstimateBarCount(cfg.Start, cfg.End, cfg.Period);
+    }
+
+    /// <summary>Fire-and-forget upgrade of a just-registered run's placeholder BarsTotal (the calendar
+    /// estimate) to the real bar count once the DB answers. Never blocks <see cref="Start"/> — progress
+    /// display can tolerate a few hundred ms of estimate-then-real, but the request path cannot tolerate
+    /// a synchronous DB round-trip under concurrent load.</summary>
+    private void RefreshBarCountAsync(BacktestRunState state, BacktestConfig cfg)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var real = await ResolveBarCountAsync(cfg, CancellationToken.None);
+                if (real > 0) state.BarsTotal = real;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to resolve real bar count for run {RunId}", state.RunId);
+            }
+        });
     }
 
     private static int EstimateBarCount(DateTime start, DateTime end, string period)
@@ -466,6 +626,22 @@ namespace TradingEngine.Web.Services;
 
     public async Task StopAllAsync()
     {
+        _dequeueCts.Cancel();
+
+        // Cancel all queued runs (they never started, so mark them cancelled directly).
+        while (_queue.TryDequeue(out var queued))
+        {
+            if (_runs.TryGetValue(queued.RunId, out var qs))
+            {
+                TransitionRun(qs, RunStateMachine.Cancelled);
+                qs.CancellationSource?.Cancel();
+                EnqueueLog(queued.RunId, qs.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Cancelled (shutdown).");
+                _ = WriteEndRecordAsync(queued.RunId, queued.Config, qs.StartedAt,
+                    new BacktestResult { RunId = queued.RunId, ExitCode = 0, ErrorMessage = "Cancelled (shutdown)." },
+                    new TradeStats(0, 0, 0, 0, 0, 0, 0, 0), effectiveConfigJson: null, status: qs.Status);
+            }
+        }
+
         foreach (var (_, state) in _runs)
             state.CancellationSource?.Cancel();
 
@@ -476,6 +652,9 @@ namespace TradingEngine.Web.Services;
 
         if (tasks.Length > 0)
             await Task.WhenAll(tasks!);
+
+        if (_dequeueTask is not null)
+            await _dequeueTask;
     }
 
     private async Task RunAsync(string runId, BacktestConfig cfg, CancellationToken ct)
@@ -488,7 +667,7 @@ namespace TradingEngine.Web.Services;
         try
         {
             effectiveConfigJson = await ResolveEffectiveConfigJsonAsync(cfg);
-            await WriteStartRecordAsync(runId, cfg, startedAt, effectiveConfigJson);
+            await WriteStartRecordAsync(runId, cfg, startedAt, effectiveConfigJson, status: RunStateMachine.Running);
 
             state.EffectiveConfigJson = effectiveConfigJson;
             state.RunPlanJson = cfg.CustomParams.GetValueOrDefault("RunRows") ?? "[]";
@@ -560,7 +739,7 @@ namespace TradingEngine.Web.Services;
             EnqueueLog(runId, state.LogLines,
                 $"[{DateTime.UtcNow:HH:mm:ss}] Done. Status={state.Status} Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1} Gross={tradeStats.GrossPnL:N2} Comm={tradeStats.CommissionTotal:N2} Swap={tradeStats.SwapTotal:N2}");
 
-            finalized = await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson);
+            finalized = await WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson, status: state.Status);
         }
         catch (OperationCanceledException)
         {
@@ -587,7 +766,7 @@ namespace TradingEngine.Web.Services;
                 $"[{DateTime.UtcNow:HH:mm:ss}] Run {state.Status} ({tradeStats.TotalTrades} trades saved).");
             _logger.LogInformation("Backtest {RunId} ended via cancellation; status={Status} trades={Trades}",
                 runId, state.Status, tradeStats.TotalTrades);
-            finalized = await WriteEndRecordAsync(runId, cfg, startedAt, cancelResult, tradeStats, effectiveConfigJson);
+            finalized = await WriteEndRecordAsync(runId, cfg, startedAt, cancelResult, tradeStats, effectiveConfigJson, status: state.Status);
         }
         catch (Exception ex)
         {
@@ -600,7 +779,7 @@ namespace TradingEngine.Web.Services;
 
             finalized = await WriteEndRecordAsync(runId, cfg, startedAt,
                 new BacktestResult { RunId = runId, ExitCode = 1, ErrorMessage = ex.Message },
-                tradeStats, effectiveConfigJson);
+                tradeStats, effectiveConfigJson, status: state.Status);
         }
         finally
         {
@@ -651,7 +830,8 @@ namespace TradingEngine.Web.Services;
         }
     }
 
-    private async Task WriteStartRecordAsync(string runId, BacktestConfig cfg, DateTime startedAt, string? effectiveConfigJson)
+    private async Task WriteStartRecordAsync(string runId, BacktestConfig cfg, DateTime startedAt, string? effectiveConfigJson,
+        string? status = null, int? queuePosition = null)
     {
         try
         {
@@ -710,7 +890,9 @@ namespace TradingEngine.Web.Services;
                 CommissionPerMillion: cfg.CommissionPerMillion,
                 SpreadPips: cfg.SpreadPips,
                 ExplorationMode: cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
-                RecordExcursions: cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true");
+                RecordExcursions: cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true",
+                Status: status,
+                QueuePosition: queuePosition);
             await repo.SaveAsync(summary, CancellationToken.None);
         }
         catch (Exception ex)
@@ -721,7 +903,7 @@ namespace TradingEngine.Web.Services;
 
     private async Task<bool> WriteEndRecordAsync(
         string runId, BacktestConfig cfg, DateTime startedAt,
-        BacktestResult result, TradeStats stats, string? effectiveConfigJson)
+        BacktestResult result, TradeStats stats, string? effectiveConfigJson, string? status = null)
     {
         try
         {
@@ -749,7 +931,8 @@ namespace TradingEngine.Web.Services;
                 ComparePairId: cfg.CustomParams.GetValueOrDefault("ComparePairId"),
                 ParentRunId: cfg.CustomParams.GetValueOrDefault("ParentRunId"),
                 ExplorationMode: cfg.CustomParams.GetValueOrDefault("ExplorationMode") == "true",
-                RecordExcursions: cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true");
+                RecordExcursions: cfg.CustomParams.GetValueOrDefault("RecordExcursions") == "true",
+                Status: status);
             await repo.UpdateAsync(summary, CancellationToken.None);
             return true;
         }
@@ -1036,7 +1219,7 @@ namespace TradingEngine.Web.Services;
             Venue = "ctrader",
             Symbol = cfg.Symbol,
             Period = cfg.Period,
-            BarsTotal = EstimateBarCount(ctraderCfg.Start, ctraderCfg.End, ctraderCfg.Period),
+            BarsTotal = await ResolveBarCountAsync(ctraderCfg, ct),
             GovernorEnabled = ctraderCfg.CustomParams.GetValueOrDefault("GovernorEnabled") != "false",
             RegimeEnabled = ctraderCfg.CustomParams.GetValueOrDefault("DisableRegime") != "true",
             CommissionPerMillion = (double)ctraderCfg.CommissionPerMillion,

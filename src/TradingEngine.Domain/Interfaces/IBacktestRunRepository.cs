@@ -49,7 +49,11 @@ public sealed record BacktestRunSummary(
     // P7.1: persisted so the run-report exploration banner survives run completion.
     bool ExplorationMode = false,
     // P4.1 (F11): whether excursion paths were recorded for this run.
-    bool RecordExcursions = false);
+    bool RecordExcursions = false,
+    // X0: persisted run status so the queue survives restarts.
+    string? Status = null,
+    // X0: position in the queue while waiting for a slot. Null once running.
+    int? QueuePosition = null);
 
 public interface IBacktestRunRepository
 {

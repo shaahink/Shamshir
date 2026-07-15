@@ -22,6 +22,8 @@ export interface RunSummary {
   configSetId?: string | null;
   venue?: string | null;
   comparePairId?: string | null;
+  queuePosition?: number | null;
+  persistedStatus?: string | null;
 }
 
 export interface RunDetail {
