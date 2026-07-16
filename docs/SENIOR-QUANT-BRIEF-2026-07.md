@@ -1,6 +1,7 @@
 # Shamshir — Senior Quant Review Brief
 
-**Written:** 2026-07-16 · **Branch:** `docs/quant-review` (snapshot of `iter/structural-edge` @ `a2548ed`)
+**Written:** 2026-07-16, updated same day after S1.1 results landed (F70–F72) · **Branch:**
+`docs/quant-review` (snapshot of `iter/structural-edge` @ `b4a4ac5`)
 **Audience:** an external senior quantitative researcher, engaged to review our system, methodology,
 and results, and to advise on how to improve the research process and where to hunt next.
 **Nothing in this document is asserted without a repo artifact behind it.** Every table is copied
@@ -13,8 +14,10 @@ from committed evidence files; file paths are given throughout so any number can
 1. **Audit the methodology** (§6): pre-registration, validity floors, split-half, walk-forward,
    embargo windows. Tell us where it is weak, naive, or missing standard tools.
 2. **Interpret the results** (§7–§8): a full census of a 9-strategy bank came out ~zero-mean at
-   cell level with zero cell-level persistence, but with apparently real *rule-level* structure
-   in the exit layer. Is our reading right? Is the current plan (§9) the right response?
+   cell level with zero cell-level persistence. The one apparently real rule-level lead (the
+   exit layer) was then **refuted for its first family by a pre-registered factorial** — and the
+   refutation exposed a metric artifact (F70) that had manufactured the lead in the first place.
+   Is our reading right? Is the current plan (§9) the right response?
 3. **Advise on direction** (§11): given the machinery we have (fast honest backtests, prop-firm
    risk stack, parity-verified execution), what class of edges should an operation of this size
    hunt, on which instruments/timeframes/data, and how should the FTMO "velocity" constraint be
@@ -49,9 +52,9 @@ accounts** on FX/metals/crypto CFDs. .NET 10 / C# 13, SQLite persistence, Angula
   not as claimed alpha (see `docs/QUANT-ROADMAP.md` §1).
 
 State of play in one sentence: **the machinery is proven end-to-end; the current strategy bank ×
-knob space has produced a trustworthy negative at cell level, structural (rule-level) leads in the
-exit layer, and the active iteration is a pre-registered factorial to isolate which exit component
-is real.**
+knob space has produced a trustworthy negative at cell level, and the first pre-registered
+exit-layer factorial (trend-breakout, 96 runs) found no rule-level survivor either — exposing in
+the process that the program's best-looking prior result was a measurement artifact (F70).**
 
 ---
 
@@ -67,6 +70,7 @@ is real.**
 | **iter-alpha-loop** (2026-07-10→15) | Parity program (P0–P4), platform hardening (X0–X5), full census (R1'), refinement (R3), embargo dress rehearsal (R4), audit (R5). Closed as a **trustworthy negative** |
 | Deep research session (2026-07-16) | Post-mortem over the closed loop's data: findings F64–F68 (`docs/iterations/iter-structural-edge/RESEARCH.md`) |
 | **iter-structural-edge** (open) | Hunt *rule-level* edges with cells as instances, not the unit of search (`docs/iterations/iter-structural-edge/PLAN.md`) |
+| S1.1 exit factorial (2026-07-16) | First family (trend-breakout), 96 pre-registered runs: **no D5 survivor**; F70 metric artifact found (killed R3's 8/8 retroactively), F71 dead TP knob, F72 refactor drift-check clean (§7.5) |
 
 A recurring meta-finding worth knowing before you read any result: many early "results" were
 destroyed by later QA (a fake OOS walk-forward, a placeholder scoring component, inverted cost
@@ -290,7 +294,7 @@ never 0 (0 is information; null is "insufficient data").
    capped (≤ 8 variants including controls, down from ≤ 12 in the alpha loop).
 2. Survival claims need **all three legs**: sign-consistency across ≥ 75% of the family's cells,
    positive in **both** split halves at family level, and walk-forward OOS ratio ≥ 0.5 on the top
-   variant. (Walk-forward: 6 rolling folds, ~35d train / ~15d test, parameters chosen in-sample
+   variant — all evaluated on **position-level dollars**, not per-row R-multiples (F70). (Walk-forward: 6 rolling folds, ~35d train / ~15d test, parameters chosen in-sample
    per fold, stitched test-window PnL; OOS ratio = Σ test profit / Σ chosen-params train profit.)
 3. **Park, never delete** (`StrategyCellParks` with reasons) — reversible triage.
 4. Embargo windows are one-touch; re-tuning against a touched window is a plan violation.
@@ -332,6 +336,11 @@ F63 caveat in §6.)
 - **`runner-aggressive` raised raw expectancy on every trend-family cell tried — 8/8** (gains
   +54% to +221% in ExpR). In about half the cells the gain came free (DD/consistency held); in
   the other half it traded consistency and/or DD for edge.
+  **⚠ Retroactively invalidated (F70, §7.5):** the 8/8 was measured on per-row ExpectancyR,
+  and `PartialTp` splits each position into two `TradeResult` rows — the 50%-at-1R row is a
+  mechanically near-guaranteed positive R, so the metric is inflated for any partial-TP config.
+  Re-measured on position-level dollars in S1.1, the effect fails sign-consistency and
+  split-half. Kept here un-edited because the reasoning chain matters for the methodology audit.
 - **`scalp-tight` lost everywhere it was tried** (including 0/3 on mean-reversion, one edge
   inversion to negative) — treated as closed.
 - **`conservative` risk on mean-reversion/AUDUSD/H1** produced the cleanest single result of the
@@ -376,9 +385,11 @@ No new runs; mined from the census's 4,461 trades and per-run daily equity.
   before any machinery was built.
 - **F65 — the exit layer truncates the right tail.** 71% of all exits are stop-outs; winners
   capture a mean 42% of max favorable excursion; 12–20% of trend/divergence trades that reached
-  +1R died at ≤0. Independently corroborates R3's 8/8 pack effect from the trade-path side —
-  two measurement lines pointing at one structural lever (with F69's correction: the effect is
-  {tighter-then-relaxing trail + partial TP} vs {fixed wide trail}, both with BE).
+  +1R died at ≤0. At the time this was read as corroborating R3's 8/8 from an independent angle
+  ("two measurement lines, one lever"). After F70 (§7.5) the R3 line is dead; **F65's descriptive
+  numbers stand** (they are measured from trade paths, not per-row R), but they describe a
+  baseline that already had BE@1R + a wide trail (F69), and the first attempt to monetize the
+  truncation failed (§7.5).
 - **F66 — costs eat 20.9% of gross** on positive cells ($166.6k gross → $131.8k net), with
   **swap ≈ commission in magnitude** (multi-day holds; `rsi-divergence` median 87 h).
 - **F67 — entry noise floor:** 20–37% of entries never move +0.3R in favor (worst:
@@ -390,6 +401,42 @@ No new runs; mined from the census's 4,461 trades and per-run daily equity.
   ≈ +0.02R — a noise engine with a slight positive tilt, which is *why* per-cell selection
   (n = 20–90 trades/yr) can never work; the unit of analysis must pool to rule × family
   (n in the hundreds to thousands).
+
+### 7.5 S1.1 exit-layer factorial — the newest result (2026-07-16, `iter-structural-edge/LEDGER.md` S1.1)
+
+First family tested: **trend-breakout**, 8 pre-registered arms × 12 census cells = 96 tape runs,
+sv2-scored (experiment `862C5D04`), census window, evaluated at family level. Arms: control
+(strategy's own BE + 2.5×ATR trail), bare (no add-ons), BE-only, tight trail-only (1.0×ATR),
+trail+Ride, partial-only, full `runner-aggressive`, no-TP pure trail.
+
+**Verdict: no exit-layer component survives D5 for this family.**
+
+- On **position-level dollars**, no arm beats the control with better than 6/12 per-cell sign
+  consistency (coin flip); every arm fails split-half (all the in-sample gains are H1
+  (Jul–Dec) — the F64 regime shift again). Walk-forward was not run — nothing qualified.
+- **F70 (the load-bearing methodological finding):** `partial-only` shows +0.358 per-row ExpR
+  while *losing 41% of net dollars* vs control; `runner-full` is 12/12 on per-row expR sign-wins
+  but only 5/12 on dollars. PartialTp's row-splitting manufactures R-metric wins. **R3's 8/8 was
+  this artifact.** All family evaluation now uses position-level dollars.
+- **F71:** the pre-registered no-TP arm silently executed as a duplicate of trail-only —
+  `TakeProfit.Method="None"` is a dead knob for the hand-rolled families (trend-breakout,
+  rsi-divergence, macd-momentum read `RrMultiple` directly and never check `Method`), even
+  though the run's own `EffectiveConfigJson` records "None". The F65 truncation hypothesis is
+  therefore **still untested in its pure form** — it needs a small code fix first.
+- **F72 (a positive):** the control arm reproduced the census originals **exactly** (trade count
+  and net dollars on all 12 cells) across a major intervening refactor — the platform's
+  determinism/regression story holds under real use.
+- Also observed, not yet explained: BE-less trail arms halve the closed-position count —
+  exit configs change position lifetimes, which changes which later signals can enter under
+  `MaxConcurrent=3`. The factorial therefore measures the *whole-system* effect of an exit rule,
+  not "same entries, different exits" (the entry-stream-identical comparison is the excursion
+  recorder + offline exit replayer, unused for this so far).
+
+Net effect on the program: the strongest internal alpha lead is gone; what remains from S1.1 is
+that the incumbent BE+trail beats bare add-on-free execution in-sample (+$10.1k, H1-concentrated,
+fails split-half) — the incumbent earns its place, but it is not a new edge. Remaining S1
+families (ema-alignment, super-trend, mean-reversion as contrast) are still to run, with the
+F70-corrected discipline.
 
 ---
 
@@ -426,8 +473,8 @@ sv1-partial); (ii) walk-forward survived; (iii) embargo-tested — strongest, an
   H4 usually fails the 20-trade floor on a 10-month window); positive-cell rates are similar
   (55% H1, 75% H4 among scored).
 - The pattern is **family × TF, not TF alone:** mean-reversion works at H1 (short holds, 5.2 h
-  median); trend-breakout's winners are H4 (and its `runner-aggressive` lift was strongest
-  there). mtf-trend is negative everywhere it scored.
+  median); trend-breakout's positive census cells cluster at H4. mtf-trend is negative
+  everywhere it scored.
 - Shorter TFs (M15) are deliberately untested — the constant-spread model overstates
   tight-target economics, and the roadmap's rule is "no shorter-TF hunts justified by frequency
   alone" (D6): the velocity problem is to be solved by aggregation, not by moving down the
@@ -457,18 +504,20 @@ the ranked unit.** Highest-prior target first (D2): the exit layer, where two in
 evidence lines converge (F65 + R3's 8/8).
 
 Stages: S0 truth infra (**done** — sv2 scoring live, research tools committed, G0 gate passed
-with exact reproduction of F64 from the live DB) → S1 exit factorial (**pre-registered, ready to
-run**) → S2 entry noise floor + regime gating → S3 cost-aware knobs (swap-aware hold caps,
-expectancy floors) → S4 re-census under winners (sv2) → S5 EMBARGO-2 first touch (≥45 accrued
-days, ~Sep 2026) → S6 portfolio phase, **conditional** on a rule-level edge surviving S5 →
-S7 audit.
+with exact reproduction of F64 from the live DB) → S1 exit factorial (**family 1 of 4 done —
+no D5 survivor for trend-breakout, see §7.5**; remaining families pending) → S2 entry noise
+floor + regime gating → S3 cost-aware knobs (swap-aware hold caps, expectancy floors) → S4
+re-census under winners (sv2) → S5 EMBARGO-2 first touch (≥45 accrued days, ~Sep 2026) → S6
+portfolio phase, **conditional** on a rule-level edge surviving S5 → S7 audit.
 
-S1's design (from the ledger, S1.1): 8 pre-registered arms on all 12 census-scoreable
-trend-breakout cells — {control = strategy's own BE+2.5×ATR trail, bare (StripAddOns), BE-only,
+S1's design (executed for trend-breakout as S1.1): 8 pre-registered arms per family on all its
+census-scoreable cells — {control = strategy's own add-ons, bare (StripAddOns), BE-only,
 trail-only (1.0×ATR), trail+Ride, partial-only, full runner-aggressive, no-TP pure trail} —
-96 runs, family-level evaluation only (pooled ExpR delta, per-cell sign counts, split-half both
-halves, MFE-capture/giveback deltas must move, walk-forward on the best arm). The `bare` arm
-exists because of F69 — it measures what the research doc *believed* the baseline was.
+family-level evaluation only (pooled deltas **on position-level dollars** after F70, per-cell
+sign counts, split-half both halves, MFE-capture/giveback deltas must move, walk-forward on the
+best arm). The `bare` arm exists because of F69 — it measures what the research doc *believed*
+the baseline was. Next decision (S1.2, owner's call): fix F71 first so the no-TP arm is real
+across the remaining families, or proceed to `ema-alignment` with the corrected discipline.
 
 **Stop rule, stated up front:** if S1–S3 produce no structural effect satisfying all three D5
 legs and S4's pooled expectancy doesn't beat baseline, **the 9-family bank is declared exhausted
@@ -498,6 +547,12 @@ Research/statistical:
   by the bank's own development history (strategies were debugged on overlapping data). The
   *persistence* and *pooled-delta* measurements are designed to be robust to that; levels are not.
 - sv1 census scores carry a placeholder survival component (F63) — ranking aid only.
+- **F70:** per-row ExpectancyR is inflated for any PartialTp config (row-splitting). Corrected
+  going forward (position-level dollars), but any *historical* R-based claim involving partial
+  TPs — including R3's headline pattern — should be treated as contaminated unless re-derived.
+- **F71:** `TakeProfit.Method="None"` silently no-ops for three families while the persisted
+  effective config claims otherwise — an audit-trail/expressiveness gap that has already cost
+  one pre-registered hypothesis its test.
 - Walk-forward OOS ratios > 1 on all three R3 finalists (test outperformed train) is unusual and
   was noted but not root-caused; the arithmetic is unit-test-pinned.
 - Trade counts everywhere are small by institutional standards: per-cell n = 20–90/yr; family
@@ -526,10 +581,15 @@ Process/tooling (context for any recommendation you make about verification):
    bank mean and per-cell n, and that pooling to rule × family is the right response? Is there a
    better hierarchy (e.g., partial pooling / hierarchical shrinkage across cells) that uses the
    cell structure instead of discarding it?
-3. **The exit-layer hypothesis.** F65 (42% MFE capture, 71% stop-outs) + R3 (8/8) is our
-   strongest internal signal. Does the S1 factorial isolate it correctly? What would convince
-   *you* that an exit-rule effect is real rather than a volatility-regime artifact — and does
-   the pre-registered requirement that MFE-capture/giveback move alongside ExpR suffice?
+3. **The exit-layer hypothesis, post-refutation.** F65's description (42% MFE capture, 71%
+   stop-outs) stands, but the first factorial found no monetizable exit component for
+   trend-breakout (§7.5), and the corroborating R3 result died with F70. Questions: (a) is it
+   worth running the remaining three family factorials, or does trend-breakout's clean negative
+   plus F64's regime shift already tell us the answer? (b) The factorial measures whole-system
+   effects (exit rules change position lifetimes and thus entry admission under concurrency
+   caps) — should we invest in the entry-stream-identical comparison (recorded excursion paths +
+   offline exit replay) before spending more run-budget? (c) What would convince *you* that an
+   exit-rule effect is real rather than a volatility-regime artifact?
 4. **Regime question (S2).** Given 38/74 → 13/74 positive cells across the two half-years:
    what's the cleanest test you'd run on recorded trades to separate "trend-tilted bank in a
    ranging half" from noise, and would you condition live deployment on a regime classifier at
@@ -577,7 +637,7 @@ Process/tooling (context for any recommendation you make about verification):
 1. `docs/iterations/iter-structural-edge/RESEARCH.md` — F64–F68, the quantitative core (15 min)
 2. `evidence/candidate-cards.md` — the R4 embargo result in full (10 min)
 3. `docs/iterations/iter-structural-edge/PLAN.md` — current program + decisions D1–D8 (10 min)
-4. `docs/iterations/iter-structural-edge/LEDGER.md` — S0/S1.1 state incl. F69 (5 min)
+4. `docs/iterations/iter-structural-edge/LEDGER.md` — S0 + S1.1 full results incl. F69–F72 (10 min)
 5. `evidence/scoreboard-s1p.md`, `-s3.md`, `-s2-wf.md` — census + refinement detail (10 min)
 6. `docs/iterations/iter-alpha-loop/PLAN.md` + `HANDOVER.md` — the closed loop, parity program,
    decisions D1–D14 (15 min)
