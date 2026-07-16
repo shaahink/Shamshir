@@ -305,6 +305,25 @@ makes the remaining factorials complete.
   12→11, all long-hold profiles. Corrected family verdict appended below when the arm
   completes.
 
+### Corrected no-tp-trail results (12/12 cells, TP genuinely off — 0 TP exits)
+
+```
+variant           n   expR  dExpR     net$ sign+      H1$      H2$      dH1      dH2 MFEcap gvbk%   SL   TP
+control         567  0.123 +0.000    23422     -    22751      671       +0       +0   0.42  20.7  422  145
+no-tp-trail     219  0.042 -0.082    -2351  6/12    -2351        0   -25102     -671   0.22  36.4  219    0
+```
+
+**Hypothesis (b) REFUTED for trend-breakout, decisively.** Removing the 2R TP cap (pure
+ATR-1.0 trail, uncapped upside) takes the family from +$23.4k to **−$2.4k** (a −$25.8k swing),
+DROPS MFE capture to 0.22 (control 0.42 — the trail gives back far more than the cap costs),
+nearly doubles giveback (36.4% vs 20.7%), and chokes the trade stream (219 rows; 8/12 cells
+below the D3 floor; zero H2 closes — multi-month holds + the MaxConcurrent(3) cap starve new
+entries). Compared against `trail-only` (same trail WITH the 2R cap, +$10.6k): **the TP cap
+adds ~$13k to the identical trail config.** F65's interpretation is now qualified in full:
+the truncated MFE was real, but harvesting it by uncapping is strongly value-destroying for
+this family — the 2R cap does protective work. The S1.1 verdict (no D5 survivor) stands and
+is now complete across all 8 pre-registered arms.
+
 ### S1.2 pre-registration (D5 — BEFORE any ema-alignment run; same discipline as S1.1)
 
 **Family:** `ema-alignment` (routes TP via `SlTpResolver` natively — no-TP arm valid without
