@@ -316,10 +316,12 @@ The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** **iter-structural-edge OPEN (owner gate opened 2026-07-16). S0 DONE same day (Gate G0
-PASSED — sv2 scoring live, research tools committed, F64 reproduced exactly from the live DB;
-evidence in LEDGER.md). Next stage: S1 exit-layer factorial (owner gate sits AFTER S1) — pre-register
-variants in LEDGER.md before any scored run (D5).**
+**Phase:** **iter-structural-edge OPEN (2026-07-16). S0 DONE (G0 passed). S1 IN PROGRESS: S1.1
+trend-breakout exit factorial DONE — verdict: NO exit variant survives D5 (dollar-based; R3's 8/8
+was the F70 PartialTp row-splitting artifact + H1 regime). New findings F69–F72 in LEDGER.md S1.1;
+F71 (TakeProfit.Method dead knob) blocks the no-TP arm until fixed. Next: S1.2 — owner call between
+fixing F71 first or proceeding to ema-alignment; then super-trend, mean-reversion (contrast),
+mtf-trend + D7 park. Owner gate AFTER all of S1.**
 Background: the alpha-loop close had decided portfolio-of-cells gated on an OOS-honesty Phase 0;
 the 2026-07-16 research session ran that gate's moral equivalent on recorded data (split-half
 selection test, **F64**) and it FAILED — 38 H1-positive cells earned $116,518 in H1 and −$880 in
