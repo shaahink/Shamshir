@@ -318,6 +318,63 @@ semantics (D3 "recorded per-bar spread where available, else ≥ today's") there
 the RUN layer — V2 must pre-register its spread policy (recommended: per-bar
 `max(barSpread, TypicalSpread)`), never by distorting stored data.
 
+### Results — overlap reconciliation (gate GV1 evidence; derived H1/H4 vs recorded cTrader tape, 2025-07-04 → 2026-05-05, 99.3% file coverage)
+
+```
+symbol   tf  offs matched tapeOnly dukaOnly med|dC|bps  p90bps sign+%    medSpr  venueSpr
+EURUSD   H1    +0    5164        0       30       0.17    0.34   11.8   0.00004   0.00010
+EURUSD   H4    +0    1172      120      132       0.17    1.53   11.8   0.00004   0.00010
+GBPUSD   H1    +0    5142       21       31       0.22    0.51   11.6   0.00007   0.00010
+USDJPY   H1    +0    5139       24       31       0.13    0.34   23.5   0.00400   0.01000
+USDCHF   H1    +0    5140       24       30       0.39    0.87    5.4   0.00008   0.00010
+USDCAD   H1    +0    5164        0       30       0.37    0.58    4.4   0.00013   0.00010
+AUDUSD   H1    +0    5163        0       31       0.60    0.92    4.7   0.00009   0.00010
+NZDUSD   H1    +0    5094       69       29       0.70    1.20    4.7   0.00010   0.00010
+EURGBP   H1    +0    5137       27       30       0.35    0.69    5.0   0.00007   0.00010
+EURJPY   H1    +0    5139       24       31       0.16    0.44   12.5   0.00900   0.01000
+GBPJPY   H1    +0    5163        0       31       0.20    0.60   25.6   0.01600   0.01000
+XAUUSD   H1    +0    4850       29       53       0.61    1.14    2.7   0.63000   0.01000
+XAGUSD   H1    +0    4731      145       57       1.35    6.31   41.2   0.03800   0.01000
+BTCUSD   H1    +0    7146      143       55       5.13    9.70   83.6  50.00000   0.10000
+ETHUSD   H1    +0    7196       71       77       3.51    7.36   29.2   4.00000   0.10000
+(H4 rows omitted here for brevity — same shape; full output in the session task log and
+reproducible via `python tools/backfill/dukascopy.py reconcile --from 2025-07-04 --to 2026-05-05`)
+```
+
+**Criteria vs outcome:**
+1. **Time alignment: PASS** — best offset 0 h for all 28 symbol×TF combos (UTC file base +
+   venue EET/EEST H4/D1 bucketing both confirmed against the venue's own bars).
+2. **Bar counts: PASS with explanation** — initial run showed ~2,180 dukaOnly H1 bars/symbol;
+   root cause verified (not shrugged): Dukascopy day files pad closed-market hours with
+   zero-volume flat filler rows (Saturday = 1,440/1,440 filler; Sunday pre-21:00 = 1,260;
+   weekdays ≈ 6). Importer now skips volume==0 records — which also matches cTrader's own
+   bar-emission (no bar for a tickless minute). Residual dukaOnly ≈ 30 (H1) / ~130 (H4) and
+   tapeOnly ≈ 120 (H4) are Sunday-session-open edge bars, symmetric and small. Crypto
+   (24/7) showed no such gap — consistent with the mechanism.
+3. **Close deltas: PASS** — FX medians 0.13–0.70 bps (≈0.1–0.7 pip), p90 ≤ 1.2 bps H1;
+   metals/crypto 1.3–5.3 bps (different liquidity pools, expected).
+4. **Spread sanity: PASS for Dukascopy, FINDING for the venue constant** — per-bar medians:
+   FX 0.4–0.7 pip, XAU $0.63, BTC ~$50: plausible ECN levels, all ≥ 0.
+
+**F76 — systematic half-spread-level bid offset between feeds.** The recorded tape's close
+sits ABOVE Dukascopy's bid close in 74–98% of matched FX bars (sign+% column), magnitude ≈
+half of Dukascopy's spread (sub-pip); direction INVERTS for BTCUSD (84% duka-above). This is a
+feed-level difference in effective bid definition — corroborating the "tape half-spread bias"
+suspicion from iter-quant-model, now measured. **Consequence:** benign for 2019–24 research
+(decisions and fills use one self-consistent source; the ≥2025 import refusal already prevents
+source-mixing inside a window); relevant only to cross-source *level* comparisons, which
+nothing planned does at sub-pip resolution.
+
+**F77 — `VenueSymbolSpecs.TypicalSpread` is a placeholder, not a measurement.** Every captured
+value equals exactly 1 × PipSize (FX 0.0001, JPY/metals 0.01, crypto 0.1). For XAUUSD that
+claims a $0.01 spread against a real-world ~$0.30–0.60 — nonsense. Two consequences: (a) the
+tape's legacy constant-spread fallback has been UNDER-charging spread cost on metals/crypto
+whenever per-bar spread was absent (all recorded bars have Spread=NULL → every metals/crypto
+tape run to date); (b) the V2 era-conservative floor CANNOT be `max(barSpread, TypicalSpread)`
+with these values — V2's pre-registration needs real venue spread estimates (live tick capture
+or FTMO published typicals). Filed for L1/V2; no code change this session (the fix belongs
+with the V2 spread-policy decision, not buried here).
+
 ### Evidence — era-holdout guard baseline (run BEFORE import)
 
 ```

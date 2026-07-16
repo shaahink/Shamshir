@@ -39,7 +39,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MARKET_DB = ROOT / "src" / "TradingEngine.Web" / "data" / "marketdata.db"
 TRADING_DB = ROOT / "src" / "TradingEngine.Web" / "data" / "trading.db"
-RAW_DB = ROOT / "data" / "backfill" / "dukascopy-raw.db"
+# The raw archive lives OUTSIDE the repo on purpose (owner call, 2026-07-16): downloads run at
+# ~6 files/s (server throttle), so the archive must survive git clean / worktree removal.
+# Override with DUKASCOPY_RAW_DB; falls back to the legacy in-repo path if only that exists.
+import os  # noqa: E402
+
+RAW_DB = Path(os.environ.get("DUKASCOPY_RAW_DB", r"C:\ShamshirData\backfill\dukascopy-raw.db"))
+_LEGACY_RAW_DB = ROOT / "data" / "backfill" / "dukascopy-raw.db"
+if not RAW_DB.exists() and _LEGACY_RAW_DB.exists():
+    RAW_DB = _LEGACY_RAW_DB
 
 SYMBOLS = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD",
            "EURGBP", "EURJPY", "GBPJPY", "XAUUSD", "XAGUSD", "BTCUSD", "ETHUSD"]
@@ -244,6 +252,11 @@ def m1_stream(con, sym, d0, d1):
                 ask_recs[r[0]] = r
         base = dt.datetime(d.year, d.month, d.day)
         for r in decode_records(bid[0]):
+            # Zero-volume records are Dukascopy filler (verified 2026-07-16: Saturdays are 1,440
+            # flat zero-vol rows; Sunday pre-open 1,260; real weekdays ~6). cTrader emits no bar
+            # for a tickless minute, so skipping them also matches venue bar-emission behavior.
+            if r[5] == 0.0:
+                continue
             o, h, l, c = ohlc_from(r, order)
             spread = None
             a = ask_recs.get(r[0])
