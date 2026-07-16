@@ -9,26 +9,27 @@ the conductor plan stays valid — hand stages back to conductor whenever the ow
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **S1.1 DONE (2026-07-16) — trend-breakout exit factorial, 96/96 runs, experiment `862C5D04`.
-VERDICT: no exit variant survives D5** (best dollar sign-consistency 6/12; every variant fails
-split-half; WF moot). **F69** census baseline had BE+2.5×ATR trail ON for 7/9 families (RESEARCH.md
-corrected). **F70** PartialTp row-splitting inflates expR — R3's 8/8 was that artifact + H1 regime;
-family evaluation is position-level DOLLARS from now on. **F71** TakeProfit.Method is a dead knob in
-trend-breakout/rsi-divergence/macd-momentum (strategy reads RrMultiple directly) — no-TP arm ran as
-trail-only duplicate; fix before re-testing. **F72** control == census exactly (0/12 drift, refactor
-behavior-preserving). Full tables + execution record in LEDGER.md S1.1.
-gate: no code changed; S0 baseline stands (0/5 · 767 · 153 · 144). EMBARGO-2 untouched (all runs end
-2026-05-05).
-next: **S1.2** — owner call: fix F71 first (small change + tests, makes no-TP testable everywhere),
-or proceed to `ema-alignment` factorial with dollar-based discipline. Then super-trend,
-mean-reversion (contrast), mtf-trend + D7 park decision. OWNER GATE after all of S1.
+last: **S1 CLOSED early-with-reason (2026-07-16) — Gate G1: the exit layer holds NO D5-surviving
+component.** Both highest-prior families refuted in dollars: trend-breakout (`862C5D04`, 8 arms ×
+12 cells) and ema-alignment (`23DA6546`, 8 × 6) — **R3's 8/8 and its v6a star (+82% expR) both
+replicate as the F70 PartialTp row-splitting artifact while LOSING dollars vs control.** No-TP
+(F65's direct test, valid post-F71-fix) is strongly value-destroying (−$25.8k / −$10.1k swings).
+Remaining families not run: power (quant review: needs ~6.3k trades/arm, families give 100–900) —
+they cannot produce a bankable positive. **D7 EXECUTED**: mtf-trend parked family-level (4 cells,
+reversible). F69–F72 filed; F71 FIXED in code (+3 unit tests, preservation verified live).
+Speed kit shipped: dev-restart.ps1, parallel gates.ps1, exit_factorial_driver.py (--parallel
+validated by determinism probe: concurrent tape runs byte-identical), determinism_probe.py.
+gate: build 0/5 · Unit 770 · Int 153 · Sim 144. EMBARGO-2 untouched.
+next: **OWNER GATE** — (1) accept G1 negative + early stop; (2) S2 as planned (regime conditioning
+on EXISTING census trades, no new runs) and/or quant-review Dukascopy backfill for power;
+(3) ratify D7 park. LEDGER.md "S1 CLOSE" has the full gate pack.
 
 ## Checkpoints
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
 | S0 | Truth infra — sv2 scoring + research tools + LEDGER/TRACKER; Gate G0 | DONE | 27b22b2 | LEDGER.md S0 entry: G0 legs 1–3 pasted (F64 exact reproduction + suite counts); tools/research/; SetupScoreSv2Tests + SplitHalfPersistenceTests + DailyCapBreach_Dominates_TargetHit |
-| S1 | Exit-layer factorial — per-family component verdict (D5 legs); Gate G1 | IN PROGRESS | | S1.1 trend-breakout DONE (LEDGER.md: no D5 survivor; F69–F72); ema-alignment / super-trend / mean-reversion / mtf-trend+D7 remain |
+| S1 | Exit-layer factorial — per-family component verdict (D5 legs); Gate G1 | DONE (early close w/ reason) | | LEDGER.md S1.1 + S1.2 + "S1 CLOSE": trend-breakout & ema-alignment refuted in dollars (F70 artifact), no-TP value-destroying, remaining families unpowered (quant review), D7 park executed; OWNER GATE pending |
 | S2 | Entry noise floor + regime gating; Gate G2 | TODO | | |
 | S3 | Cost-aware knobs — cost-drag table; Gate G3 | TODO | | |
 | S4 | Re-census under winning config — pooled expR + WF; Gate G4 | TODO | | |

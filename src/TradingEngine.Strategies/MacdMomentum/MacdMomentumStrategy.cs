@@ -99,7 +99,11 @@ public sealed class MacdMomentumStrategy : IStrategy
             var entryPrice = new Price(context.LatestTick.Mid);
             var symbolInfo = _symbolRegistry.Get(context.Symbol);
             var sl = SlTpHelpers.AtrBased(entryPrice, direction.Value, atr, p.SlAtrMultiple, symbolInfo);
-            var tp = SlTpHelpers.RRMultiple(entryPrice, sl, direction.Value, p.TpRrMultiple, symbolInfo);
+            // F71: honor TakeProfit.Method="None" (config-level TP disable); the TP DISTANCE still
+            // comes from this strategy's own TpRrMultiple parameter, unchanged.
+            var tp = _config.PositionManagement.TakeProfit.Method == "None"
+                ? null
+                : SlTpHelpers.RRMultiple(entryPrice, sl, direction.Value, p.TpRrMultiple, symbolInfo);
 
             return new TradeIntent(
                 context.Symbol,

@@ -44,6 +44,35 @@ public sealed class SlTpCalculatorTests
         tp.Value.Value.Should().Be(1.08900m);
     }
 
+    // F71 (iter-structural-edge S1): TakeProfit.Method used to be a dead knob for hand-rolled
+    // strategies — they called RRMultiple with opts.RrMultiple directly, so a per-run/pack
+    // override to "None" was recorded in the effective config but silently ignored. These pin
+    // the Method dispatch the strategies now route through.
+    [Fact]
+    public void TakeProfitFor_MethodNone_ReturnsNull()
+    {
+        var opts = new TpOptions { Method = "None", RrMultiple = 2.0 };
+        var tp = SlTpHelpers.TakeProfitFor(opts, new Price(1.08500m), new Price(1.08300m), TradeDirection.Long, 0.0021, EurUsd);
+        tp.Should().BeNull("Method=None means the position exits via SL/trail/flatten only");
+    }
+
+    [Fact]
+    public void TakeProfitFor_DefaultRrMultiple_MatchesHistoricalBehavior()
+    {
+        var opts = new TpOptions { Method = "RrMultiple", RrMultiple = 2.0 };
+        var tp = SlTpHelpers.TakeProfitFor(opts, new Price(1.08500m), new Price(1.08300m), TradeDirection.Long, 0.0021, EurUsd);
+        tp.Should().Be(SlTpHelpers.RRMultiple(new Price(1.08500m), new Price(1.08300m), TradeDirection.Long, 2.0, EurUsd),
+            "every existing config uses RrMultiple — the fix must be behavior-preserving for them");
+    }
+
+    [Fact]
+    public void TakeProfitFor_AtrMultiple_UsesAtrDistance()
+    {
+        var opts = new TpOptions { Method = "AtrMultiple", AtrMultiple = 2.0 };
+        var tp = SlTpHelpers.TakeProfitFor(opts, new Price(1.08500m), new Price(1.08300m), TradeDirection.Long, 0.0021, EurUsd);
+        tp.Should().Be(SlTpHelpers.AtrMultiple(new Price(1.08500m), TradeDirection.Long, 0.0021, 2.0, EurUsd));
+    }
+
     [Fact]
     public void IsSlValid_ReturnsTrue_ForValidSl()
     {
