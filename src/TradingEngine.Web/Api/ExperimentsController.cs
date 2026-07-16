@@ -7,17 +7,20 @@ public sealed class ExperimentsController : ControllerBase
     private readonly ExperimentRunner _runner;
     private readonly IExperimentRepository _repo;
     private readonly SetupScoreService _scorer;
+    private readonly SplitHalfPersistenceService _persistence;
     private readonly ILogger<ExperimentsController> _logger;
 
     public ExperimentsController(
         ExperimentRunner runner,
         IExperimentRepository repo,
         SetupScoreService scorer,
+        SplitHalfPersistenceService persistence,
         ILogger<ExperimentsController> logger)
     {
         _runner = runner;
         _repo = repo;
         _scorer = scorer;
+        _persistence = persistence;
         _logger = logger;
     }
 
@@ -135,6 +138,32 @@ public sealed class ExperimentsController : ControllerBase
             score = (double?)null,
             version = result.Version,
         });
+    }
+
+    // iter-structural-edge S0: the F64 split-half selection test, parameterized (PLAN §5 — the
+    // owner's 5-minute verification). `experiment` accepts a GUID prefix (e.g. 075D5240).
+    [HttpGet("persistence")]
+    public async Task<IActionResult> Persistence(
+        [FromQuery] string experiment, [FromQuery] string split, [FromQuery] double @base = 100_000,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(experiment))
+        {
+            return BadRequest(new { error = "experiment (id or prefix) is required" });
+        }
+
+        if (!DateOnly.TryParse(split, System.Globalization.CultureInfo.InvariantCulture, out var splitDate))
+        {
+            return BadRequest(new { error = $"split '{split}' is not a date (yyyy-MM-dd)" });
+        }
+
+        var report = await _persistence.ComputeAsync(experiment, splitDate, @base, ct);
+        if (report.Error is not null)
+        {
+            return NotFound(new { error = report.Error });
+        }
+
+        return Ok(report);
     }
 
     // R0.2: scoreboard — top N experiment runs

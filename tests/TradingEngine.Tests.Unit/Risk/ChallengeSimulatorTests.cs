@@ -117,6 +117,24 @@ public sealed class ChallengeSimulatorTests
         result.WorstDailyLossPercent.Should().BeApproximately(0.025, 0.0001);
     }
 
+    // iter-structural-edge S0 (sv2 pin): a day can end ABOVE the profit target and still have
+    // lost more than the daily cap intraday-to-close (started the day far higher). The breach
+    // check runs before the target check — daily-cap breach dominates target-hit.
+    [Fact]
+    public void DailyCapBreach_Dominates_TargetHit()
+    {
+        var days = new[]
+        {
+            Day(0, 100_000, 120_000), // +20% day 1; target reached but MinTradingDays (4) not met
+            Day(1, 120_000, 112_000), // ends above the 110k target, but -8k > the 5k daily cap
+        };
+
+        var result = ChallengeSimulator.SimulateWindow(days, FtmoStandard);
+
+        result.Verdict.Should().Be(ChallengeVerdict.Fail);
+        result.Reason.Should().Be("daily-loss-breach");
+    }
+
     [Fact]
     public void DailyStartBasis_RecomputesCapAgainstEachDaysOwnStartEquity()
     {

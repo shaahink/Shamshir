@@ -53,11 +53,22 @@ public sealed class SetupScorePersistenceTests : IDisposable
         await ctx.SaveChangesAsync();
     }
 
+    // sv2 (iter-structural-edge S0): SetupScoreService now carries ChallengeSimulationService for
+    // the survival component. These tests seed no equity snapshots, so survival stays null and the
+    // D13 persistence contract under test is unchanged.
+    private static SetupScoreService Service(TradingDbContext ctx) => new(
+        ctx,
+        new ChallengeSimulationService(
+            ctx,
+            new SqliteEquityRepository(ctx),
+            new SqliteRiskProfileStore(ctx, NullLogger<SqliteRiskProfileStore>.Instance),
+            new SqlitePropFirmRuleSetStore(ctx, NullLogger<SqlitePropFirmRuleSetStore>.Instance)),
+        NullLogger<SetupScoreService>.Instance);
+
     private async Task<ScoreResult> ScoreAsync(string runId)
     {
         using var ctx = _db.NewContext();
-        var svc = new SetupScoreService(ctx, NullLogger<SetupScoreService>.Instance);
-        return await svc.ScoreRunAsync(runId, null, null, null, null, CancellationToken.None);
+        return await Service(ctx).ScoreRunAsync(runId, null, null, null, null, CancellationToken.None);
     }
 
     [Fact]
@@ -177,7 +188,7 @@ public sealed class SetupScorePersistenceTests : IDisposable
         await ScoreAsync("cell-b");
 
         using var ctx2 = _db.NewContext();
-        var svc = new SetupScoreService(ctx2, NullLogger<SetupScoreService>.Instance);
+        var svc = Service(ctx2);
         var experimentId = ctx2.Experiments.Single().Id;
         var board = await svc.GetScoreboardAsync(experimentId, top: 20, CancellationToken.None);
 
@@ -246,8 +257,7 @@ public sealed class SetupScorePersistenceTests : IDisposable
     private async Task<ScoreResult> ScoreWithWalkForwardAsync(string runId, Guid walkForwardJobId)
     {
         using var ctx = _db.NewContext();
-        var svc = new SetupScoreService(ctx, NullLogger<SetupScoreService>.Instance);
-        return await svc.ScoreRunAsync(runId, null, null, null, null, CancellationToken.None,
+        return await Service(ctx).ScoreRunAsync(runId, null, null, null, null, CancellationToken.None,
             walkForwardJobId: walkForwardJobId);
     }
 
@@ -269,9 +279,9 @@ public sealed class SetupScorePersistenceTests : IDisposable
         var result = await ScoreWithWalkForwardAsync("cell-wf-good", jobId);
 
         result.Passed.Should().BeTrue();
-        result.Version.Should().Be("sv1", "a real OOS ratio upgrades the cell out of sv1-partial");
+        result.Version.Should().Be("sv2", "a real OOS ratio upgrades the cell out of sv2-partial");
         using var doc = JsonDocument.Parse(result.ScoreJson);
-        doc.RootElement.GetProperty("VersionKind").GetString().Should().Be("sv1");
+        doc.RootElement.GetProperty("VersionKind").GetString().Should().Be("sv2");
         var components = doc.RootElement.GetProperty("Components");
         components.GetProperty("OosRatio").GetDouble().Should().BeApproximately(0.6, 0.001);
         components.GetProperty("RobustnessOos").GetDouble().Should().BeApproximately(60, 0.1);
@@ -317,7 +327,7 @@ public sealed class SetupScorePersistenceTests : IDisposable
 
         var result = await ScoreWithWalkForwardAsync("cell-wf-losing-is", jobId);
 
-        result.Version.Should().Be("sv1", "oosRatio has a value (0), so this is still a full score");
+        result.Version.Should().Be("sv2", "oosRatio has a value (0), so this is still a full score");
         using var doc = JsonDocument.Parse(result.ScoreJson);
         var components = doc.RootElement.GetProperty("Components");
         components.GetProperty("OosRatio").GetDouble().Should().Be(0);
@@ -336,7 +346,7 @@ public sealed class SetupScorePersistenceTests : IDisposable
 
         var result = await ScoreAsync("cell-no-wf");
 
-        result.Version.Should().Be("sv1-partial", "without a walk-forward job there is nothing to compute OOS from");
+        result.Version.Should().Be("sv2-partial", "without a walk-forward job there is nothing to compute OOS from");
         using var doc = JsonDocument.Parse(result.ScoreJson);
         doc.RootElement.GetProperty("Components").GetProperty("OosRatio").ValueKind.Should().Be(JsonValueKind.Null);
     }

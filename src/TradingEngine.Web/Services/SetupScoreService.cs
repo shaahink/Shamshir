@@ -6,24 +6,30 @@ using TradingEngine.Infrastructure.Persistence.Entities;
 namespace TradingEngine.Web.Services;
 
 /// <summary>
-/// SetupScore v1 (§2 of iter-alpha-loop/PLAN.md). Deterministic, versioned scorer that reads DB only
-/// — never starts a run. Computes a 0-100 composite from expectancy, drawdown, consistency, OOS
-/// robustness, and FTMO survival. A failed validity gate persists an ExperimentRun row with a NULL
-/// score and the reason (D13) — a census sweep must be able to prove coverage from the DB alone
-/// (F5: 248 below-floor cells once left no trace, so the R1 gate could not be evaluated).
+/// SetupScore v2 (§2 of iter-alpha-loop/PLAN.md; sv2 per iter-structural-edge S0/D4). Deterministic,
+/// versioned scorer that reads DB only — never starts a run. Computes a 0-100 composite from
+/// expectancy, drawdown, consistency, OOS robustness, and FTMO survival. sv2 executes F63: the
+/// survival component is <see cref="ChallengeSimulator"/>-backed (rolling 30-day windows over the
+/// run's real daily equity, FTMO-standard semantics) instead of the sv1 placeholder. Rows already
+/// scored as sv1 are never rewritten (D4) — sv2 applies to everything scored from now on. A failed
+/// validity gate persists an ExperimentRun row with a NULL score and the reason (D13) — a census
+/// sweep must be able to prove coverage from the DB alone (F5: 248 below-floor cells once left no
+/// trace, so the R1 gate could not be evaluated).
 /// </summary>
 public sealed class SetupScoreService
 {
     private readonly TradingDbContext _db;
+    private readonly ChallengeSimulationService _challengeSim;
     private readonly ILogger<SetupScoreService> _logger;
     private static readonly JsonSerializerOptions ScoreJsonOpts = new() { WriteIndented = false };
 
     // Hard validity floors (D3): a cell needs >= this many trades in its window.
     public const int MinimumTrades = 20;
 
-    public SetupScoreService(TradingDbContext db, ILogger<SetupScoreService> logger)
+    public SetupScoreService(TradingDbContext db, ChallengeSimulationService challengeSim, ILogger<SetupScoreService> logger)
     {
         _db = db;
+        _challengeSim = challengeSim;
         _logger = logger;
     }
 
@@ -88,11 +94,6 @@ public sealed class SetupScoreService
                 Gates(false), trades.Count, experimentId, variantLabel, strategyId, foldIndex, foldRole, ct);
         }
 
-        var equitySnaps = await _db.EquitySnapshots.AsNoTracking()
-            .Where(e => e.RunId == backtestRunId)
-            .OrderBy(e => e.TimestampUtc)
-            .ToListAsync(ct);
-
         // Components
         var expectancy = ComputeExpectancy(trades);
         // F60: BacktestRuns.MaxDrawdownPct is stored as a FRACTION (0.014 = 1.40%), but
@@ -100,7 +101,10 @@ public sealed class SetupScoreService
         var drawdownPctValue = run.MaxDrawdownPct * 100;
         var drawdownScore = ComputeDrawdownScore(drawdownPctValue);
         var consistency = ComputeConsistency(trades);
-        var ftmoSurvival = ComputeFtmoSurvival(equitySnaps, run.BacktestFrom, run.BacktestTo);
+        // sv2 (F63): real rolling-window challenge simulation; null when un-computable (no
+        // snapshots / < 30 daily buckets / no rule set) so the composite renormalizes without it.
+        var survival = await _challengeSim.ComputeSurvivalAsync(backtestRunId, ct);
+        var ftmoSurvival = survival is null ? (double?)null : survival.PassRate * 100;
         // F62: OOS robustness — Walk-Forward Efficiency (Pardo), the standard measure in walk-forward
         // methodology: OOS test profit as a fraction of the in-sample train profit that chose the
         // params. null unless the caller names a completed walk-forward job for this cell.
@@ -129,14 +133,20 @@ public sealed class SetupScoreService
 
         var scoreJson = JsonSerializer.Serialize(new SetupScore
         {
-            Version = "sv1",
-            VersionKind = hasOos ? "sv1" : "sv1-partial",
+            Version = "sv2",
+            VersionKind = hasOos ? "sv2" : "sv2-partial",
             Composite = composite,
             Components = new ScoreComponents
             {
                 ExpectancyR = trades.Average(t => t.RMultiple),
                 Expectancy = expectancy,
                 FtmoSurvival = ftmoSurvival,
+                FtmoPassRate = survival?.PassRate,
+                FtmoWindows = survival?.Windows,
+                FtmoPasses = survival?.Passes,
+                FtmoFails = survival?.Fails,
+                FtmoIncompletes = survival?.Incompletes,
+                FtmoRuleSetId = survival?.RuleSetId,
                 Drawdown = drawdownScore,
                 DrawdownPct = (double)drawdownPctValue,
                 Consistency = consistency,
@@ -153,9 +163,9 @@ public sealed class SetupScoreService
             foldIndex, foldRole, ct);
 
         _logger.LogInformation("SETUP_SCORE|run={RunId}|composite={Composite}|version={Version}|trades={Trades}",
-            backtestRunId, composite, hasOos ? "sv1" : "sv1-partial", trades.Count);
+            backtestRunId, composite, hasOos ? "sv2" : "sv2-partial", trades.Count);
 
-        return ScoreResult.Pass(composite, hasOos ? "sv1" : "sv1-partial", scoreJson);
+        return ScoreResult.Pass(composite, hasOos ? "sv2" : "sv2-partial", scoreJson);
     }
 
     // D13: a validity-gate failure is still a census result. Persist the cell with a null score and
@@ -167,8 +177,8 @@ public sealed class SetupScoreService
     {
         var scoreJson = JsonSerializer.Serialize(new SetupScore
         {
-            Version = "sv1",
-            VersionKind = "sv1-null",
+            Version = "sv2",
+            VersionKind = "sv2-null",
             Composite = null,
             NullReason = reason,
             ValidityGates = gates,
@@ -268,14 +278,15 @@ public sealed class SetupScoreService
 
     private async Task<Guid> GetOrCreateDefaultExperimentAsync(CancellationToken ct)
     {
-        var existing = await _db.Experiments.FirstOrDefaultAsync(e => e.Name == "default-sv1", ct);
+        // sv2 gets its own default bucket — the old default-sv1 bucket keeps only sv1 rows (D4).
+        var existing = await _db.Experiments.FirstOrDefaultAsync(e => e.Name == "default-sv2", ct);
         if (existing is not null) return existing.Id;
 
         var id = Guid.NewGuid();
         _db.Experiments.Add(new ExperimentEntity
         {
             Id = id,
-            Name = "default-sv1",
+            Name = "default-sv2",
             Hypothesis = "Default scoring bucket for ad-hoc scored runs",
             SpecJson = "{}",
             Status = "Active",
@@ -337,36 +348,6 @@ public sealed class SetupScoreService
         return ((double)profitable / months.Count) * 100;
     }
 
-    internal static double? ComputeFtmoSurvival(
-        IReadOnlyList<EquitySnapshotEntity> snaps, DateTime from, DateTime to)
-    {
-        // Placeholder: requires rolling 30-day challenge simulation with governor rules.
-        // Returns null when insufficient snapshots exist (< 30 days of data).
-        if (snaps.Count < 24 * 30) return null; // approx 24 H1 bars per day × 30 days
-        // Simple approximation: how often does equity never dip below 10% from peak?
-        // Full implementation needs governor rules + daily DD tracking. Deferred to R3.
-        if (snaps.Count == 0) return null;
-        var initialBalance = snaps.First().Equity;
-        if (initialBalance <= 0) return null;
-        var stages = Math.Max(1, (int)((to - from).TotalDays / 30));
-        var failures = 0;
-        var stageSize = snaps.Count / stages;
-        for (var i = 0; i < stages; i++)
-        {
-            var start = i * stageSize;
-            var end = Math.Min(start + stageSize, snaps.Count);
-            var stageEquity = snaps[start].Equity;
-            if (stageEquity <= 0) { failures++; continue; }
-            var stageMaxDd = 0m;
-            for (var j = start; j < end; j++)
-            {
-                var dd = (stageEquity - snaps[j].Equity) / stageEquity;
-                if (dd > stageMaxDd) stageMaxDd = dd;
-            }
-            if ((double)stageMaxDd > 0.10) failures++;
-        }
-        return ((double)(stages - failures) / stages) * 100;
-    }
 }
 
 public sealed record ScoreResult(bool Passed, double Composite, string Version, string ScoreJson, string? Reason)
@@ -374,10 +355,10 @@ public sealed record ScoreResult(bool Passed, double Composite, string Version, 
     public static ScoreResult Pass(double composite, string version, string scoreJson) =>
         new(true, composite, version, scoreJson, null);
     public static ScoreResult Fail(string reason) =>
-        new(false, 0, "sv1", "{}", reason);
+        new(false, 0, "sv2", "{}", reason);
     /// <summary>A validity-gate failure that DID persist a null-score ExperimentRun row (D13).</summary>
     public static ScoreResult NullScore(string reason, string scoreJson) =>
-        new(false, 0, "sv1-null", scoreJson, reason);
+        new(false, 0, "sv2-null", scoreJson, reason);
 }
 
 public sealed record ScoreWeights(double Expectancy, double FtmoSurvival, double Drawdown, double Consistency, double Robustness)
@@ -387,8 +368,8 @@ public sealed record ScoreWeights(double Expectancy, double FtmoSurvival, double
 
 public sealed record SetupScore
 {
-    public string Version { get; init; } = "sv1";
-    public string VersionKind { get; init; } = "sv1-partial";
+    public string Version { get; init; } = "sv2";
+    public string VersionKind { get; init; } = "sv2-partial";
     /// <summary>Null when a validity gate failed — <see cref="NullReason"/> says which (D13).</summary>
     public double? Composite { get; init; }
     public string? NullReason { get; init; }
@@ -403,7 +384,15 @@ public sealed record ScoreComponents
 {
     public double ExpectancyR { get; init; }
     public double Expectancy { get; init; }
+    /// <summary>0-100 for the composite; = FtmoPassRate × 100. Null when survival is un-computable.</summary>
     public double? FtmoSurvival { get; init; }
+    // sv2 (F63) evidence trail: rolling 30-day ChallengeSimulator windows over real daily equity.
+    public double? FtmoPassRate { get; init; }
+    public int? FtmoWindows { get; init; }
+    public int? FtmoPasses { get; init; }
+    public int? FtmoFails { get; init; }
+    public int? FtmoIncompletes { get; init; }
+    public string? FtmoRuleSetId { get; init; }
     public double Drawdown { get; init; }
     public double DrawdownPct { get; init; }
     public double Consistency { get; init; }

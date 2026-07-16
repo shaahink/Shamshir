@@ -45,6 +45,8 @@ try
             return await EntryQualityAsync(cli, baseUrl, timeout);
         case "pyramid-eval":
             return await PyramidEvalAsync(cli, baseUrl, timeout);
+        case "persistence":
+            return await PersistenceAsync(cli, baseUrl, timeout);
         case "score":
             return await ScoreAsync(cli, baseUrl, timeout);
         case "scoreboard":
@@ -634,6 +636,56 @@ static DateTime? ParseDate(string? value) =>
         System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var dt)
         ? dt : null;
 
+// iter-structural-edge S0: research persistence — the F64 split-half selection test for any
+// experiment (PLAN §5, the owner's 5-minute verification). Prints the server-rendered F64 block
+// verbatim; VERDICT carries the headline numbers.
+static async Task<int> PersistenceAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
+{
+    var experiment = cli.Option("experiment");
+    var split = cli.Option("split");
+    if (string.IsNullOrWhiteSpace(experiment) || string.IsNullOrWhiteSpace(split))
+    {
+        Console.Error.WriteLine("persistence requires --experiment <id-or-prefix> --split <yyyy-MM-dd> [--base 100000]");
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "missing-experiment-or-split")).Render());
+        return 2;
+    }
+    var baseAmount = cli.Option("base", "100000");
+
+    using var client = new ResearchApiClient(baseUrl, timeout);
+    var json = await client.GetAsync(
+        $"api/experiments/persistence?experiment={Uri.EscapeDataString(experiment)}" +
+        $"&split={Uri.EscapeDataString(split)}&base={Uri.EscapeDataString(baseAmount)}",
+        CancellationToken.None);
+
+    if (json is null)
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", "no-response")).Render());
+        return 1;
+    }
+
+    using var doc = System.Text.Json.JsonDocument.Parse(json);
+    var root = doc.RootElement;
+    if (root.TryGetProperty("error", out var err) && err.ValueKind == System.Text.Json.JsonValueKind.String)
+    {
+        Console.WriteLine(Verdict.Failing(VerdictField.Of("error", err.GetString() ?? "unknown")).Render());
+        return 1;
+    }
+
+    Console.WriteLine(root.GetProperty("text").GetString());
+    if (cli.Flag("json")) Console.WriteLine(json);
+
+    var h1Cells = root.GetProperty("h1PositiveCells").GetInt32();
+    var scoredCells = root.GetProperty("scoredCells").GetInt32();
+    var persisted = root.GetProperty("persistedCells").GetInt32();
+    Console.WriteLine(Verdict.Passing(
+        VerdictField.Of("scored", scoredCells),
+        VerdictField.Of("h1Positive", h1Cells),
+        VerdictField.Of("persisted", persisted),
+        VerdictField.Of("h1Pnl", root.GetProperty("h1PnlOfSelection").GetDouble().ToString("F0")),
+        VerdictField.Of("h2Pnl", root.GetProperty("h2PnlOfSelection").GetDouble().ToString("F0"))).Render());
+    return 0;
+}
+
 // R0.2: research score — compute SetupScore v1 for a completed tape run
 static async Task<int> ScoreAsync(CliArgs cli, string baseUrl, TimeSpan timeout)
 {
@@ -819,6 +871,9 @@ static void PrintUsage()
           research pipeline reject  <id>
           research entry-quality <runId> [--strategy <id>] [--min-trades 10] [--json]
           research pyramid-eval  <runId> [--strategy <id>] [--min-trades 10] [--add-levels 0.5,1.0,1.5] [--json]
+          research persistence  --experiment <id-or-prefix> --split <yyyy-MM-dd> [--base 100000] [--json]
+                                (F64 split-half selection test — reproduces RESEARCH.md §1
+                                 for any experiment; iter-structural-edge PLAN §5.)
           research score        <runId> [--experiment <id>] [--variant <label>]
           research scoreboard   --experiment <id> [--top 20] [--out <path.md>]
           research doctor

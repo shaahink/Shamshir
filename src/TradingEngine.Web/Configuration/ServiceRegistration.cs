@@ -202,6 +202,7 @@ public static class ServiceRegistration
         services.AddScoped<Services.PassProbabilityService>();
         services.AddScoped<Services.ChallengeSimulationService>();
         services.AddScoped<Services.SetupScoreService>();
+        services.AddScoped<Services.SplitHalfPersistenceService>();
         services.AddSingleton<WalkForwardBackgroundService>();
         services.AddHostedService(sp => sp.GetRequiredService<WalkForwardBackgroundService>());
         services.AddSingleton<IBacktestQueryService, BacktestQueryService>();

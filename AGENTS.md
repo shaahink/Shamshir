@@ -316,7 +316,10 @@ The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** **iter-structural-edge OPEN (owner gate opened 2026-07-16). Current stage: S0.**
+**Phase:** **iter-structural-edge OPEN (owner gate opened 2026-07-16). S0 DONE same day (Gate G0
+PASSED — sv2 scoring live, research tools committed, F64 reproduced exactly from the live DB;
+evidence in LEDGER.md). Next stage: S1 exit-layer factorial (owner gate sits AFTER S1) — pre-register
+variants in LEDGER.md before any scored run (D5).**
 Background: the alpha-loop close had decided portfolio-of-cells gated on an OOS-honesty Phase 0;
 the 2026-07-16 research session ran that gate's moral equivalent on recorded data (split-half
 selection test, **F64**) and it FAILED — 38 H1-positive cells earned $116,518 in H1 and −$880 in
@@ -326,16 +329,20 @@ Direction: hunt **rule-level structural edges** (exit layer first — F65 MFE-ca
 8/8 `runner-aggressive` are two independent lines at one lever), cells as instances, family-pooled
 evaluation, D5-tightened anti-overfit, EMBARGO-2 = everything after 2026-07-05 (first touch at S5,
 ≥45 accrued days, 60d complete ~2026-09-04). Findings continue at F69 (F64–F68 pre-filed in
-RESEARCH.md). Sessions are conductor-driven (`conductor-structural-edge.plan.json` at repo root);
-follow the session protocol in PLAN.md §4 — QA the previous session's claims before building.
-**Read first:** `docs/iterations/iter-structural-edge/PLAN.md` (S0–S7, decisions D1–D8) →
+RESEARCH.md). Sessions run MANUALLY for now (owner call 2026-07-16): interactive Claude sessions
+deliver stages one at a time; the conductor plan (`conductor-structural-edge.plan.json`, repo root)
+stays committed and TRACKER.md stays in its parseable checkpoint format so the owner can hand the
+remaining stages to conductor later. Follow the session protocol in PLAN.md §4 — QA the previous
+session's claims against artifacts before building.
+**Read first:** `docs/iterations/iter-structural-edge/TRACKER.md` (Handoff block) →
+`docs/iterations/iter-structural-edge/PLAN.md` (S0–S7, decisions D1–D8) →
 `docs/iterations/iter-structural-edge/RESEARCH.md` (the evidence, pasted outputs) →
-`docs/iterations/iter-structural-edge/TRACKER.md` (checkpoints + Handoff) →
+`docs/iterations/iter-structural-edge/LEDGER.md` (append-only session log, read the tail) →
 `docs/iterations/iter-alpha-loop/HANDOVER.md` (what the machine already proved).
-**Tracker:** `docs/iterations/iter-structural-edge/TRACKER.md` (LEDGER.md created at S0).
-**Branch:** `iter/structural-edge` (from `main` @ plan-commit; merge back to `main` at owner gates)
-**Gate baseline (re-verified live during R5, 2026-07-15):** build 0err/5warn · Unit 766/0/6 ·
-Integration 148/0/0 · Sim-fast 144/0/0.
+**Tracker:** `docs/iterations/iter-structural-edge/TRACKER.md`
+**Branch:** `iter/structural-edge` (from `main` @ e3c96e1; merge back to `main` at owner gates)
+**Gate baseline (re-verified live at S0 close, 2026-07-16):** build 0err/5warn · Unit 767/0/6 ·
+Integration 153/0/0 · Sim-fast 144/0/0. (S0 added 6 tests: sv2 survival pins + F64 machinery.)
 **Live parity:** **EURUSD `VERDICT: PASS`** (tape `a89d37b5` / ctrader `e497806d`) — TradeCount exact ·
 EntryPrice **0.0 ticks** · Lots exact · ExitPrice **100% within, 0.0 ticks** · Commission 0.53% ·
 Swap 0.44% · NetPnL 0.45%. **Tolerance budget UNTOUCHED.** XAUUSD (14 trades) green on everything
