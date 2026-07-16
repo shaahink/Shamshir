@@ -184,3 +184,101 @@ the single best variant (OOS ratio ≥ 0.5). No per-cell ranking claims of any k
 
 **Stop conditions:** a variant erroring/warning on >2 cells is reported as-is (null scores, D13);
 no mid-flight config edits — a bad variant dies as pre-registered.
+
+### Execution record
+
+96/96 variant-cells completed on tape and sv2-scored into experiment `862C5D04` (Status
+Completed 2026-07-16 16:02). The session was interrupted twice by external background-task
+kills; the app's idempotency-key store is **in-memory**, so the first resume re-created 23
+already-run variants as new runs (deterministic tape → byte-identical results; verified run 1:
+same 39 trades, same score). Fix: driver made resume-aware (skip variants with a completed
+scored run), and a dedupe pass removed the 23 stale `ExperimentRuns` rows (119 → exactly 96,
+one per variant; the duplicate `BacktestRuns` stay as audit trail). Run health: 0 failed, 0
+warnings, 33 below-floor D13 nulls — all on long-hold arms (bare 6, be-only 4, trail-only 7,
+trail-ride 9, partial-only 1, no-tp-trail 6), every one `trades=<N> below floor 20 (D3)`.
+No code changed this session → gates unchanged from S0 (build 0/5 · 767 · 153 · 144).
+
+### Results (pasted from `s1_evaluate.py` against the live DB)
+
+```
+variant           n   expR  dExpR     net$ sign+      H1$      H2$      dH1      dH2 MFEcap gvbk%   SL   TP
+control         567  0.123 +0.000    23422     -    22751      671       +0       +0   0.42  20.7  422  145
+bare            317  0.127 +0.004    13356  4/12    12256     1099   -10495     +428   0.54  37.2  197  120
+be-only         447  0.167 +0.043    24365  4/12    21852     2514     -900    +1843   0.49  30.5  295  152
+trail-only      253  0.145 +0.021    10586  4/12     9486     1099   -13265     +428   0.44  31.5  181   72
+trail-ride      225  0.143 +0.020    10456  4/12     9356     1099   -13395     +428   0.46  37.1  156   69
+partial-only    655  0.481 +0.358    13720 11/12    16180    -2460    -6572    -3131   0.68  19.5  287  166
+runner-full     916  0.472 +0.348    21588 12/12    24328    -2740    +1577    -3411   0.61  13.7  466  181
+no-tp-trail     253  0.145 +0.021    10586  4/12     9486     1099   -13265     +428   0.44  31.5  181   72
+
+dollar sign-consistency vs control (per-cell net$ delta > 0):
+bare 6/12 · be-only 6/12 · trail-only 4/12 · trail-ride 5/12 · partial-only 5/12 ·
+runner-full 5/12 · no-tp-trail 4/12
+
+position counts (rows minus PARTIAL rows): control 567 · bare 317 · be-only 447 ·
+trail-only 253 · trail-ride 225 · partial-only 453 · runner-full 647 · no-tp-trail 253
+
+engine drift (control vs census originals): 0/12 cells drifted — n and net$ EXACT on all 12
+```
+
+### Findings
+
+**F70 — PartialTp row-splitting inflates row-level ExpectancyR; R-metrics are not comparable
+across partial/non-partial variants.** `partial-only` gains +0.358 expR while LOSING 41% of
+net dollars vs control; `runner-full` shows 12/12 per-cell expR sign-wins but only **5/12
+dollar sign-wins**. Mechanism: each PartialTp position posts two TradeResult rows (R3 had
+noted the row doubling but still evaluated on ExpectancyR); the 50%-at-1R row is a
+mechanically near-guaranteed positive R. **Retro-effect: R3's "8/8 runner-aggressive" was an
+ExpectancyR effect measured on split rows over a single window — it replicates here on expR
+(12/12) and FAILS on dollars, split-half, and sign-consistency.** Family evaluation from now
+on uses position-level dollars (this session's tables already do).
+
+**F71 — `TakeProfit.Method` is a dead config knob for hand-rolled strategies.** The
+`no-tp-trail` arm executed as an EXACT duplicate of `trail-only` (72 TP exits) despite the
+run's own `EffectiveConfigJson` recording `takeProfit.method="None"`. Root cause:
+`TrendBreakoutStrategy.cs:126` calls `SlTpHelpers.RRMultiple(..., pm.TakeProfit.RrMultiple, ...)`
+directly and never reads `Method` (same pattern: `RsiDivergenceStrategy.cs:122/154`;
+`MacdMomentumStrategy.cs:102` ignores PositionManagement.TakeProfit entirely, uses its own
+param). `SlTpResolver`/`SlTpCalculator` both support "None", but these strategies don't route
+through them. **"Disable TP" is currently not expressible for these families without a code
+change.** Hypothesis (b) is untestable as pre-registered → bugfix-queue candidate; the pure
+no-TP test re-runs after the fix.
+
+**F72 — god-classes refactor is behavior-preserving on this slice.** The `control` arm
+reproduced the census originals EXACTLY — trade count and net$ to the dollar on all 12 cells —
+across the 9342fab refactor and every change since. S1 comparisons vs census-era conclusions
+are apples-to-apples.
+
+**Observations (logged, not chased):** (1) BE-less trail arms halve the closed-position count
+(253–317 vs 567) — same unexplained pattern as R3's scalp-tight trade-count drops; suspected
+long-hold × MaxConcurrent(3) interaction: exits change position lifetimes, which changes which
+signals can enter. The factorial therefore measures the WHOLE-SYSTEM effect of an exit config,
+not "same entries, different exits" — the entry-stream-identical comparison is the exit lab
+(`RecordExcursions` + `ExitReplayer`), a candidate follow-up. (2) Everything good is
+H1-concentrated (the F64 regime shift): even control−bare (+$10.1k in-sample) is an H1 story
+(+$10.5k H1, −$0.4k H2). (3) In-memory idempotency keys can't dedupe across app restarts —
+operational note for every future batch.
+
+### Verdict (Gate G1, family 1 of 4 — trend-breakout)
+
+**No exit-layer component survives D5 at family level for trend-breakout.**
+- Leg (a) sign consistency ≥9/12: FAIL for every variant on dollars (best 6/12 — coin flip).
+  The only ≥9/12 readings (runner-full 12/12, partial-only 11/12) are on the F70-contaminated
+  expR metric.
+- Leg (b) split-half both-halves-positive: FAIL for every variant (runner-full dH1 +$1,577 /
+  dH2 −$3,411; partial-only fails both; be-only fails H1).
+- Leg (c) walk-forward: NOT RUN — no variant passed legs (a)+(b), so nothing qualifies for WF
+  (D5 requires all three; running WF on a failed candidate cannot rescue it).
+- Hypothesis (a) refuted as tested: the R3 8/8 effect does not translate into a family-level
+  dollar edge over the true control (BE + 2.5×ATR trail); it fails split-half exactly the way
+  F64 failed cell selection. Hypothesis (b) untestable (F71). Hypothesis (c): the incumbent
+  BE+trail beats bare by +$10.1k in-sample (H1-concentrated) — the control config earns its
+  place, but it is the incumbent, not a new edge.
+
+**mtf-trend park decision (D7) is NOT executed this session** — it belongs to the mtf-trend
+family session (needs that family's own exit-factorial result first).
+
+**Next session (S1.2):** either (i) proceed to the next family (`ema-alignment`) with this
+session's dollar-based discipline, or (ii) fix F71 first so the no-TP arm is testable across
+all remaining families in one pass — owner's call; (ii) is one small code change + tests and
+makes the remaining factorials complete.

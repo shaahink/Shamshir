@@ -9,23 +9,26 @@ the conductor plan stays valid — hand stages back to conductor whenever the ow
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **S0 DONE (2026-07-16, manual session) — Gate G0 PASSED, all three legs pasted in LEDGER.md.**
-sv2 scoring live (F63 executed): `ChallengeSimulationService.ComputeSurvivalAsync` + SetupScoreService
-version bump sv1→sv2; placeholder deleted; sv1 rows untouched (D4). Research tools committed:
-`tools/research/{split_half,quant_research}.py` + `research persistence` verb (+ endpoint + service).
-F64 reproduced from the live DB EXACTLY ($0 delta): 38/74, $116,518 → −$880, 9/38 (24%).
-gate: build 0err/5warn · Unit 767/0/6 · Integration 153/0/0 · Sim-fast 144/0/0 (new baseline; +1/+5/+0
-tests vs PLAN G0 baseline). No BacktestRuns rows created — EMBARGO-2 untouched.
-next: **S1 exit-layer factorial** (OWNER GATE after S1, not before it). Start with `trend-breakout`;
-pre-register ≤8 variants in LEDGER.md BEFORE running anything scored (D5); one-cell-per-run (D13),
-sv2-scored, family-level evaluation. Read PLAN.md §3 S1 + §0 D5 first.
+last: **S1.1 DONE (2026-07-16) — trend-breakout exit factorial, 96/96 runs, experiment `862C5D04`.
+VERDICT: no exit variant survives D5** (best dollar sign-consistency 6/12; every variant fails
+split-half; WF moot). **F69** census baseline had BE+2.5×ATR trail ON for 7/9 families (RESEARCH.md
+corrected). **F70** PartialTp row-splitting inflates expR — R3's 8/8 was that artifact + H1 regime;
+family evaluation is position-level DOLLARS from now on. **F71** TakeProfit.Method is a dead knob in
+trend-breakout/rsi-divergence/macd-momentum (strategy reads RrMultiple directly) — no-TP arm ran as
+trail-only duplicate; fix before re-testing. **F72** control == census exactly (0/12 drift, refactor
+behavior-preserving). Full tables + execution record in LEDGER.md S1.1.
+gate: no code changed; S0 baseline stands (0/5 · 767 · 153 · 144). EMBARGO-2 untouched (all runs end
+2026-05-05).
+next: **S1.2** — owner call: fix F71 first (small change + tests, makes no-TP testable everywhere),
+or proceed to `ema-alignment` factorial with dollar-based discipline. Then super-trend,
+mean-reversion (contrast), mtf-trend + D7 park decision. OWNER GATE after all of S1.
 
 ## Checkpoints
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
 | S0 | Truth infra — sv2 scoring + research tools + LEDGER/TRACKER; Gate G0 | DONE | 27b22b2 | LEDGER.md S0 entry: G0 legs 1–3 pasted (F64 exact reproduction + suite counts); tools/research/; SetupScoreSv2Tests + SplitHalfPersistenceTests + DailyCapBreach_Dominates_TargetHit |
-| S1 | Exit-layer factorial — per-family component verdict (D5 legs); Gate G1 | TODO | | |
+| S1 | Exit-layer factorial — per-family component verdict (D5 legs); Gate G1 | IN PROGRESS | | S1.1 trend-breakout DONE (LEDGER.md: no D5 survivor; F69–F72); ema-alignment / super-trend / mean-reversion / mtf-trend+D7 remain |
 | S2 | Entry noise floor + regime gating; Gate G2 | TODO | | |
 | S3 | Cost-aware knobs — cost-drag table; Gate G3 | TODO | | |
 | S4 | Re-census under winning config — pooled expR + WF; Gate G4 | TODO | | |
