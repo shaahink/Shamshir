@@ -340,3 +340,71 @@ dollar sign-consistency (≥75% = ≥5/6), split-half both halves, MFE-capture/g
 6-fold WF only if a variant passes the first two legs. **Note:** ema-alignment/EURJPY/H1 was
 R3's v6a star (runner-aggressive +82% ExpectancyR) — this factorial retests that claim on
 dollars at family level.
+
+### S1.2 results (48/48 runs, experiment `23DA6546`, 0 failed, 0 warnings, 20 D13 nulls)
+
+```
+variant           n   expR  dExpR     net$ sign+      H1$      H2$      dH1      dH2 MFEcap gvbk%   SL   TP
+control         215  0.048 +0.000    -1038     -     2236    -3274       +0       +0   0.42  23.1  163   52
+bare            111 -0.042 -0.090    -4713   2/6    -1778    -2935    -4015     +340   0.48  43.3   77   34
+be-only         184  0.011 -0.038    -3570   1/6     4026    -7596    +1789    -4322   0.49  31.2  128   56
+trail-only      107 -0.027 -0.075    -4406   1/6    -1941    -2464    -4178     +810   0.40  41.5   82   25
+trail-ride      107 -0.019 -0.067    -3971   2/6    -1169    -2801    -3406     +473   0.41  43.4   81   26
+partial-only    241  0.394 +0.345    -3731   5/6    -1007    -2724    -3243     +550   0.67  20.6  114   58
+runner-full     323  0.349 +0.301    -4459   6/6     1555    -6014     -681    -2740   0.59  14.1  184   60
+no-tp-trail     106 -0.165 -0.213   -10127   1/6    -6232    -3895    -8468     -621   0.19  40.4  106    0
+
+dollar sign-consistency vs control: best 3/6 (trail-only, partial-only) — coin flip.
+engine drift: 0/6 (control == census exactly, again).
+```
+
+**Verdict: no D5 survivor for ema-alignment either — control (already net-negative on the
+year, −$1,038) beats EVERY variant in dollars.** The F70 artifact replicates exactly:
+`runner-full` +0.301 expR with 6/6 per-cell expR sign-wins, but 2/6 dollar wins and −$3.4k.
+**R3's star v6a reproduced its +82% ExpectancyR on EURJPY/H1 (0.384→0.698 — R3's exact
+number) while LOSING $1,109 vs its own control ($6,450 → $5,341).** The alpha-loop's single
+strongest alpha claim is now demonstrated, on its own cell, to be the row-splitting artifact.
+`no-tp-trail` again catastrophic (−$10.1k, MFE capture 0.19, 0 TP exits — F71 fix confirmed
+working here too).
+
+### Concurrency determinism probe (speed work, owner-requested)
+
+`tools/research/determinism_probe.py --reference 2a914d70,20e90a70`: 4 tape runs launched
+concurrently (2 copies × 2 cells) — **all byte-identical to their sequential references**
+(trades exact; net to the 12th decimal: $13,082.435819450915 / $660.3900024746592).
+**VERDICT: PASS — `exit_factorial_driver.py --parallel N` is safe on this machine/build.**
+Validated for S4's re-census (3–4× wall-time cut on ~250-run batches).
+
+### S1 CLOSE — early stop with reason (PLAN §2: "any stage may end early with a null-with-reason")
+
+**Gate G1 verdict: the exit layer holds NO D5-surviving structural component in this bank.**
+Evidence: the two HIGHEST-PRIOR families both refuted decisively — `trend-breakout` (D2's
+designated start family, 12 cells, 8 arms: best dollar sign-consistency 6/12, every arm fails
+split-half, no-TP −$25.8k swing) and `ema-alignment` (carrier of R3's best single result,
+which replicated as an artifact: +82% expR / −$1.1k dollars). Both factorials show the same
+mechanism (F70) with independent data.
+
+**Why the remaining factorials (super-trend, mean-reversion, session-breakout-class) are NOT
+run:** (1) Power — the 2026-07-16 quant review (`docs/QUANT-REVIEW-RESPONSE-2026-07.md`,
+delivered in a parallel session) computes ~6,300 trades/arm needed to resolve effects of this
+size; family arms deliver 100–900. A positive from a smaller family could not clear D5's own
+bar even at 6/6 sign-consistency — the instrument cannot produce a bankable positive there,
+only more confirmatory negatives. (2) The two families already run carried ALL of the prior
+evidence (R3's 8/8 lived entirely in trend-style cells; v6a was ema-alignment). (3)
+mean-reversion's "contrast" arm is near-degenerate anyway: its control IS bare (F69 — BE off,
+trail None). Remaining engine-hours are better spent at the owner gate deciding between the
+quant review's recommendations (Dukascopy 2019–24 backfill for pure-OOS power; exit-lab
+entry-stream-identical calibration) and S2.
+
+**D7 EXECUTED — mtf-trend parked at family level (4 census-scoreable cells: BTCUSD/H1,
+EURJPY/H1, EURUSD/H4, USDJPY/H4; reversible `StrategyCellParks` rows).** D7's condition ("if
+S1's exit fix does not lift it to ≥ 0 pooled expR") is met in the strongest form: S1 found no
+exit fix at all, so no rescue lever exists for the bank-wide-worst family (F68, −0.22 expR).
+
+**OWNER GATE (after S1, per plan) — what the owner decides next:**
+1. Accept G1's negative verdict + the early stop (or order the remaining factorials anyway).
+2. Direction for S2+: as planned (entry noise floor / regime conditioning on existing census
+   trades — no new runs needed for hypothesis (b)), and/or fold in the quant review's
+   data-power recommendation (Dukascopy backfill) which also unblocks honest power for
+   everything downstream.
+3. Ratify the D7 park (reversible).

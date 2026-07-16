@@ -316,12 +316,15 @@ The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** **iter-structural-edge OPEN (2026-07-16). S0 DONE (G0 passed). S1 IN PROGRESS: S1.1
-trend-breakout exit factorial DONE — verdict: NO exit variant survives D5 (dollar-based; R3's 8/8
-was the F70 PartialTp row-splitting artifact + H1 regime). New findings F69–F72 in LEDGER.md S1.1;
-F71 (TakeProfit.Method dead knob) blocks the no-TP arm until fixed. Next: S1.2 — owner call between
-fixing F71 first or proceeding to ema-alignment; then super-trend, mean-reversion (contrast),
-mtf-trend + D7 park. Owner gate AFTER all of S1.**
+**Phase:** **iter-structural-edge OPEN (2026-07-16). S0 DONE (G0 passed). S1 CLOSED early-with-reason
+— Gate G1: the exit layer holds NO D5-surviving component.** Trend-breakout AND ema-alignment both
+refuted in dollars; R3's 8/8 + v6a star are the F70 PartialTp row-splitting artifact (replicated,
+then killed, on their own cells); no-TP strongly value-destroying (F65 qualified); remaining
+families skipped for power (quant review: ~6.3k trades/arm needed vs 100–900 available). F71 FIXED
+in code; D7 park EXECUTED (mtf-trend, 4 cells, reversible). **AT THE OWNER GATE: accept G1 + early
+stop; choose S2-as-planned (regime conditioning on existing trades, no new runs) and/or
+quant-review Dukascopy backfill; ratify D7.** Full gate pack: LEDGER.md "S1 CLOSE". Do NOT start
+S2 before the owner rules.
 Background: the alpha-loop close had decided portfolio-of-cells gated on an OOS-honesty Phase 0;
 the 2026-07-16 research session ran that gate's moral equivalent on recorded data (split-half
 selection test, **F64**) and it FAILED — 38 H1-positive cells earned $116,518 in H1 and −$880 in
