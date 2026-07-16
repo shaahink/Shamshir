@@ -375,6 +375,36 @@ with these values — V2's pre-registration needs real venue spread estimates (l
 or FTMO published typicals). Filed for L1/V2; no code change this session (the fix belongs
 with the V2 spread-policy decision, not buried here).
 
+### Owner directions logged mid-session (2026-07-16 evening) — deployment/ops architecture, NO action this session
+
+Owner statements, recorded verbatim in intent and mapped to where they land; these shape L2/L3
+design and any future deployment iteration:
+
+1. **Separate the live engine from backtest/research.** Partially in plan already (D9 lane
+   separation; L3 puts live on its own always-on box; "one app per DB file" doctrine). Owner
+   elevates it to a DEPLOYMENT principle: the live trading process must not share a process —
+   and ideally not a machine — with research/backtest workloads. Lands in: L3 design.
+2. **Docker-friendly.** Constraint recorded so nobody plans a fantasy: the LIVE leg cannot be
+   containerized — unattended live requires cTrader **Desktop** in listen mode (Windows GUI;
+   the headless CLI is backtest-only, F-established). Docker therefore applies to the
+   research/backtest/web side (.NET 10 + SQLite volumes are container-clean). Live stays a
+   Windows VPS with cTrader Desktop + engine service. Lands in: L3.
+3. **Logs sufficient for full trace** — running unattended on a VPS means the logs ARE the
+   debugger. Structured pipe-format logging exists (e.g. `SETUP_SCORE|…`); L3 already requires
+   alerting on disconnect / order-rejection rate / breach proximity / missed heartbeat; owner
+   adds: end-to-end traceability of every order decision from signal to venue ack. Lands in:
+   L1 (heartbeat) + L3 (runbook/alerting).
+4. **Telegram integration** for remote alert + control from anywhere. New item — alerts first
+   (cheap, read-only), control commands only with explicit auth design (a control channel is an
+   attack surface). Lands in: L3.
+5. **Dashboard:** either a minimal live dashboard or the existing web dashboard with live
+   cleanly separated from backtest — without duplicating the stack (owner: no DRY violation).
+   Lands in: L3/UI backlog; note `RunQueryService` is already split behind `ILiveRunReader`
+   (god-classes refactor), which is the seam such a separation would build on.
+
+No code or plan-stage changes made for these this session — logged for the L-track design
+sessions (the EMBARGO-2 wait window, Aug–Sep, is the natural slot per PLAN §7).
+
 ### Evidence — era-holdout guard baseline (run BEFORE import)
 
 ```
