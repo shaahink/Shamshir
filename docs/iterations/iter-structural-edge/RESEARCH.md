@@ -63,6 +63,14 @@ future portfolio phase must measure joint-tail risk, not Pearson averages.
 **Method:** all 4,461 census trades (default configs: fixed SL = 1.5×ATR, TP = 2R, breakeven
 OFF, trailing None — packs were `PackId: null` throughout the census).
 
+> **Correction (2026-07-16, F69 — see LEDGER.md S1.1):** the "breakeven OFF, trailing None"
+> claim above is wrong for 7 of 9 families. PackId-null runs fall back to each strategy's OWN
+> add-ons, and the stored configs (verified against census `EffectiveConfigJson`, run
+> `22ca21af`) have BE@1R + a 2–2.5×ATR trail enabled for every family except `mean-reversion`
+> and `rsi-divergence`. The numbers in this section stand; the interpretation shifts — they
+> describe a baseline that already had exit management, and R3's 8/8 effect is
+> {trail 1.0 + Ride relax + PartialTp} vs {fixed 2.5×ATR trail}, both with BE.
+
 ```
 Exit reasons:  SL n=3161 avgR=-0.67 · TP n=982 avgR=+2.06 · TimeFlatten n=318 avgR=+0.33
 MFE capture (trades with MfeR>0.5): n=2865, mean captured R/MFE = 0.42
