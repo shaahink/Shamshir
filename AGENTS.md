@@ -316,15 +316,23 @@ The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** **iter-structural-edge OPEN (2026-07-16). S0 DONE (G0 passed). S1 CLOSED early-with-reason
-— Gate G1: the exit layer holds NO D5-surviving component.** Trend-breakout AND ema-alignment both
-refuted in dollars; R3's 8/8 + v6a star are the F70 PartialTp row-splitting artifact (replicated,
-then killed, on their own cells); no-TP strongly value-destroying (F65 qualified); remaining
-families skipped for power (quant review: ~6.3k trades/arm needed vs 100–900 available). F71 FIXED
-in code; D7 park EXECUTED (mtf-trend, 4 cells, reversible). **AT THE OWNER GATE: accept G1 + early
-stop; choose S2-as-planned (regime conditioning on existing trades, no new runs) and/or
-quant-review Dukascopy backfill; ratify D7.** Full gate pack: LEDGER.md "S1 CLOSE". Do NOT start
-S2 before the owner rules.
+**Phase:** **iter-viability OPEN (2026-07-16) — Session 1 (V0 + regime analysis) ready to start.**
+The iter-structural-edge S1 owner gate RULED (its LEDGER.md final entry): G1 accepted (no
+D5-surviving exit component — trend-breakout + ema-alignment refuted in dollars; R3's 8/8 and
+v6a were the F70 artifact; no-TP value-destroying), early stop accepted (power: ~6.3k trades/arm
+needed vs 100–900 available), D7 park ratified (mtf-trend, reversible), and
+**`docs/iterations/iter-viability/PLAN.md` adopted as the successor program** (V0–V7, decisions
+D1–D8: MDE line in every pre-registration, D5′ bootstrap gates, auto-tune doctrine, parallel
+guards, 2024 era-holdout + EMBARGO-2).
+**Session 1 mandate:** (a) **V0 — challenge-model truth**: verify FTMO current terms (Phase-1/2
+time limits, Swing account, daily-loss definition/intraday/reset, scaling) against
+`config/prop-firms/ftmo-standard.json`; correct config + `ChallengeSimulator`; add P(bust) and
+E[time-to-target] as sv2 outputs; owner signs account type [gate GV0]. (b) **Regime-conditioning
+analysis** (old S2(b), zero new runs): 2×2 family-class × census-half interaction over existing
+census trades, external regime variables (realized-vol percentile + efficiency ratio), block
+bootstrap on the interaction. Pre-register BOTH in `docs/iterations/iter-viability/LEDGER.md`
+(with MDE lines per D1) before anything scored. **Session 2:** V1 Dukascopy 2019–24 bid/ask
+backfill (importer + overlap-year validation). Findings continue at **F73**.
 Background: the alpha-loop close had decided portfolio-of-cells gated on an OOS-honesty Phase 0;
 the 2026-07-16 research session ran that gate's moral equivalent on recorded data (split-half
 selection test, **F64**) and it FAILED — 38 H1-positive cells earned $116,518 in H1 and −$880 in
@@ -339,13 +347,16 @@ deliver stages one at a time; the conductor plan (`conductor-structural-edge.pla
 stays committed and TRACKER.md stays in its parseable checkpoint format so the owner can hand the
 remaining stages to conductor later. Follow the session protocol in PLAN.md §4 — QA the previous
 session's claims against artifacts before building.
-**Read first:** `docs/iterations/iter-structural-edge/TRACKER.md` (Handoff block) →
-`docs/iterations/iter-structural-edge/PLAN.md` (S0–S7, decisions D1–D8) →
-`docs/iterations/iter-structural-edge/RESEARCH.md` (the evidence, pasted outputs) →
-`docs/iterations/iter-structural-edge/LEDGER.md` (append-only session log, read the tail) →
+**Read first:** `docs/iterations/iter-viability/TRACKER.md` (Handoff block) →
+`docs/iterations/iter-viability/PLAN.md` (V0–V7 + L-track §7, decisions D1–D9, owner-asks map
+§6, concurrency §8) → `docs/reference/RESEARCH-PROCESS.md` (NORMATIVE: units, evidence ladder,
+MDE/pre-registration discipline, failure-mode museum, adaptation doctrine) →
+`docs/QUANT-REVIEW-RESPONSE-2026-07.md` (the rationale: power math, FTMO reframing) →
+`docs/iterations/iter-structural-edge/LEDGER.md` (tail: S1 close + owner-gate ruling) →
+`docs/iterations/iter-structural-edge/RESEARCH.md` (F64–F68) →
 `docs/iterations/iter-alpha-loop/HANDOVER.md` (what the machine already proved).
-**Tracker:** `docs/iterations/iter-structural-edge/TRACKER.md`
-**Branch:** `iter/structural-edge` (from `main` @ e3c96e1; merge back to `main` at owner gates)
+**Tracker:** `docs/iterations/iter-viability/TRACKER.md`
+**Branch:** `iter/viability` (from `main` at the S1-gate merge; merge back to `main` at owner gates)
 **Gate baseline (re-verified live at S0 close, 2026-07-16):** build 0err/5warn · Unit 767/0/6 ·
 Integration 153/0/0 · Sim-fast 144/0/0. (S0 added 6 tests: sv2 survival pins + F64 machinery.)
 **Live parity:** **EURUSD `VERDICT: PASS`** (tape `a89d37b5` / ctrader `e497806d`) — TradeCount exact ·

@@ -1,210 +1,159 @@
 # Backtest Architecture
 
-**Last updated**: 2026-06-18 (post iter-31/32)
+**Last updated**: 2026-07-16 (post iter-alpha-loop close + refactor/god-classes merge)
 
-> **2026-07-15 (branch refactor/god-classes):** the orchestrator was decomposed. Venue execution
-> now lives behind the `IVenueRunner` seam in `TradingEngine.Web/Services/Venues/` —
-> `ReplayVenueRunner` (replay + tape) and `CTraderVenueRunner` (NetMQ + ctrader-cli) — resolved
-> per run by `VenueRunnerRegistry` from the run's `Venue` custom param (**not** the old
-> `CTrader:UseForBacktest` flag; ports are dynamic, not 15555/15556). Run-scoped services live in
-> `TradingEngine.Web/Services/Runs/` (RunRegistry, RunRecordStore, RunConfigAssembler,
-> RunMarketContextLoader, RunProgressProjector, EngineHostLifecycle). Method names below such as
-> `RunEngineReplayAsync`/`RunEngineNetMqAsync` refer to code that moved verbatim into those
-> runners; the flows themselves are unchanged. See
-> `docs/iterations/iter-refactor-godclasses/SURVEY.md`.
-
-This document explains how backtesting actually works — both venue paths, data flow,
-cost computation, limit orders, and journal capture. Read this before touching any
-backtest-related code.
+This document explains how backtesting actually works — venue paths, data flow, fill and cost
+semantics, and journaling. Read this before touching any backtest-related code. Companions:
+`SYSTEM-REFERENCE.md` (system overview), `RESTING-ORDER-CONTRACT.md` (normative fill rules),
+the `shamshir-ctrader` skill (cTrader path in depth).
 
 ---
 
-## The two venue paths
+## Venue selection
 
-### Path A — BacktestReplayAdapter (default, credential-free)
+Venue is a **per-run custom param** (`CustomParams["Venue"]`), resolved by the `IVenueRunner`
+seam (`TradingEngine.Web/Services/Venues/`) — not by any global config flag. `ctrader` is an
+explicit opt-in; everything else runs credential-free through `ReplayVenueRunner`. Every venue
+drives the same kernel loop (`Host/KernelBacktestLoop`).
 
-```
-BacktestOrchestrator.Start()
-  → RunEngineReplayAsync() (when CTrader:UseForBacktest=false)
-    → spins up engine in-process via IHostBuilder
-      → registers BacktestReplayAdapter as IBrokerAdapter
-      → engine uses EngineMode.Backtest
-    ↓
-BacktestReplayAdapter.ConnectAsync()
-  → loads bars from SQLite Bars table for (symbol, timeframe, from, to)
-  → feeds bars + synthetic ticks to engine
-  → for each bar:
-      → evaluates strategies via TradingLoop
-      → EntryPlanner resolves limit/market orders
-      → fills market orders at bar close, rests limit orders
-      → cancels expired limit orders (OrderCancelled event)
-      → computes commission + swap via TradeCostCalculator
-      → stamps ExecutionEvent with GrossProfit/Commission/Swap/NetProfit
-      → emits AccountUpdate with net-updated balance
-      → drains execution events
-  ↓
-Journal captured: PipelineEvents (SIGNAL/ORDER/FILL/CLOSE/ENTRY_EXPIRED)
-  with itemized cost detail on every close
-```
+| `Venue` | Adapter | Bars from | Speed | Use |
+|---|---|---|---|---|
+| `tape` | `TapeReplayAdapter` | `IMarketDataStore` (downloaded canonical history, deduped, auto-synced) | sub-second/run | **All scored research** |
+| `replay` (default) | `BacktestReplayAdapter` | legacy `Bars` table | fast | Legacy/dev |
+| `sim`/`simulated` | `SimulatedBrokerAdapter` | CSV + synthetic ticks (4/bar) | fast | Test harnesses |
+| `ctrader` | `CTraderBrokerAdapter` + cBot over NetMQ | cTrader itself | ~50–80 s/run | Parity guard, E2E, live |
 
-**Status**: Working. Default path when `CTrader:UseForBacktest=false` (Development profile currently has this at `true` — set to `false` for credential-free). Produces honest cost-inclusive results. Supports limit orders with resting/expiry semantics.
-
-### Path B — SimulatedBrokerAdapter (synthetic, tick-driven)
+### Path A — Tape (research default)
 
 ```
-DataFeedService (IHostedService)
-  → reads CSV from HistoricalDataProvider (committed test data in tests/data/)
-  → synthesizes 4 ticks per bar (0%/25%/50%/75% duration)
-  → writes to SimulatedBrokerAdapter's TickWriter / BarWriter
-  ↓
-SimulatedBrokerAdapter.OnTickReceived()
-  → fills market orders on next tick
-  → rests limit orders until price reached or expiry
-  → computes costs via TradeCostCalculator
-  → checks SL/TP hits per tick
-  ↓
-Used primarily by EngineTestHarness in simulation tests.
-Also registered for EngineMode.Backtest in Host Program.cs, but the default
-UI path (RunEngineReplayAsync) uses BacktestReplayAdapter.
+RunsController → BacktestOrchestrator (queue) → ReplayVenueRunner
+  → EngineHostFactory (inner IHost, RunDataCache handoff)
+  → TapeReplayAdapter streams bars from IMarketDataStore
+  → KernelBacktestLoop per bar: BarEvaluator → Kernel (PreTradeGate + KernelSizing)
+    → EffectExecutor → fills via VenueFillModel → costs via TradeCostCalculator
+  → StepRecord journal + TradeResults + EquitySnapshots (write-through to RunDataCache)
 ```
 
-### Path C — cTrader (production-equivalent, requires credentials)
+Key semantics (all measured against recorded cTrader behaviour, not assumed):
+
+- **Fills**: a resting order (limit/stop/SL/TP) fills at the **first M1 O/H/L/C tick to breach
+  its level — never at the level itself** (`VenueFillModel.FirstBreachingTick`, F43). Stops fill
+  through; limits fill better; gap-through opens are the `Open` branch of the same rule. Buy-side
+  touch tests use the ask (`SpreadConvention`); exit levels get no double spread.
+- **HonestFills** (default ON): honest entry timing — no same-bar clairvoyance; opt out only for
+  diagnostics (`CustomParams["HonestFills"]="false"`).
+- **Entries**: `LimitOffset` is the research default (D11) — entry price reproducible by
+  construction. Expiry counted in bars → `OrderCancelled`/`ENTRY_EXPIRED`.
+- **Spread**: constant per run (research standard: 1.0 pip). Per-bar recorded spread is roadmap.
+- **Excursions** (opt-in `RecordExcursions`): per-bar excursion paths for the exit lab.
+
+### Path B — cTrader (truth venue)
 
 ```
-BacktestOrchestrator.Start() (CTrader:UseForBacktest=true)
-  → BacktestRunner.RunAsync()
-    → launches ctrader-cli as external Process
-      → cBot connects to engine via NetMQ
-      → engine uses NetMQBrokerAdapter (lock-step protocol)
-      → cTrader handles fill simulation, costs, SL/TP
+BacktestOrchestrator → CTraderVenueRunner
+  → CTraderProcessOwner launches ctrader-cli on DYNAMIC ports (PID-owned, orphan-reaped)
+  → cBot (TradingEngineCBot) connects via NetMQ, lock-step per bar:
+      bar → engine … engine → bar_done{commands} → cBot executes natively → bar_result
+  → cTrader owns fills/SL-TP/costs; engine reconciles to the venue's open set per bar
+    (ExitMode: VenueManaged)
+  → cBot also writes its own ledger (shamshir-report.json) — survives CLI crashes
 ```
 
-**Status**: Requires CTrader credentials (`CTrader:CtId`, `CTrader:PwdFile`, `CTrader:Account`). Cannot be automated in CI. NetMQ ports 15555/15556 must be free.
+Desktop capture variant: `CTraderListenService` listens on fixed ports 15555/15556; a human runs
+the cBot in cTrader Desktop. cTrader runs are strictly serial; tape runs pool concurrently.
+Protocol + gotchas: `shamshir-ctrader` skill.
+
+### Parity between A and B
+
+Permanent gate (`research parity`, `ParityGateService`/`LedgerReconciler`) with a pre-registered
+tolerance budget: trade count exact · entry ≤1 tick · lots exact · exit ≤1 tick on ≥95% ·
+commission ≤2% · swap ≤5% · net ≤1% of gross. EURUSD `VERDICT: PASS`. Open residuals: F47
+(venue's one-spot commission pricing — accepted), F48 (XAUUSD ~1.37% pip cross-rate timing).
+Owner-facing candidates need a parity verdict ≤ 14 days old (D12).
 
 ---
 
-## Cost computation (iter-31)
+## Cost computation (D9/D10)
 
-Both credential-free venues use a shared `TradeCostCalculator` (in `TradingEngine.Services/Helpers/`):
-
-```
-closeExecutionEvent.GrossProfit = PipCalculator.GrossPnL(entry, exit, direction, lots, symbolInfo, crossRate)
-closeExecutionEvent.Commission   = lots × commissionPerLotPerSide × 2  (round turn)
-closeExecutionEvent.Swap         = nightsHeld × swapRate(direction) × lots
-closeExecutionEvent.NetProfit    = GrossProfit − Commission − Swap
-```
-
-- `nightsHeld` counts daily-rollover boundaries crossed between open/close
-- Triple-swap day (default Wednesday) counts ×3
-- Cost data lives in `SymbolInfo` (+ `config/symbols.json`): `CommissionPerLotPerSide`, `SwapLongPerLotPerNight`, `SwapShortPerLotPerNight`, `TripleSwapWeekday`
-- All fields default to 0 (costs off, back-compatible)
-
----
-
-## Limit order support (iter-31 C0/C1)
-
-`EntryPlanner` (single place, in TradingLoop after `strategy.Evaluate()`) reads `OrderEntryOptions` from config:
-
-| Method | Behavior |
-|--------|----------|
-| `Market` | Immediate fill at bar close + slippage |
-| `LimitOffset` | Place limit `offsetPips` more favorable; rest until price reaches limit; expire after `limitOrderExpiryBars` |
-| `MarketWithSlippage` | Immediate fill capped at `maxSlippagePips` |
-
-- Buy limit fills when `Ask ≤ limitPrice`, at limit price (no slippage)
-- Sell limit fills when `Bid ≥ limitPrice`, at limit price
-- Expired limits emit `OrderCancelled` → journal as `ENTRY_EXPIRED`
-- SL/TP re-derived off the planned limit so R stays consistent
-- Default: all strategies `Market`; `mean-reversion` on `LimitOffset` as demonstration
-
----
-
-## Journal taxonomy
-
-All pipeline events are normalized via `JournalNormalizer` into one taxonomy:
-
-| Kind | Meaning |
-|------|---------|
-| `SIGNAL` | Strategy emitted a TradeIntent (reason + direction + indicators) |
-| `ORDER` | Order accepted by dispatcher (size, risk, profile) |
-| `FILL` | Order filled / position opened |
-| `CLOSE` | Position closed (SL/TP/FORCE/DailyDD/MaxDD) with itemized costs |
-| `REJECTED` | Order rejected by risk gate |
-| `BREACH` | Drawdown limit breach detected |
-| `GOVERNOR` | Governor (session) state change |
-| `ENTRY_EXPIRED` | Limit order expired unfilled |
-
-API: `GET /api/backtest/{runId}/journal?kind=&afterSeq=&limit=50`
-
----
-
-## Data flow: where RunId comes from and how it reaches the DB
+One convention everywhere: **costs are NEGATIVE**, `Net = Gross + Commission + Swap`,
+invariant-tested on every `TradeResult` row on both venues.
 
 ```
-BacktestOrchestrator.Start()
-  → generates RunId = Guid.NewGuid().ToString("N")[..8]
-  → BacktestOrchestrator.RunEngineReplayAsync()
-    ↓
-creates inner IHost with EngineHostOptions(runId)
-    ↓
-EngineWorker gets EngineRunContext injected
-  → all handlers stamp RunId on every record
-    ↓
-TradePersistenceHandler  → Trades table (RunId)
-BarEvaluationHandler     → BarEvaluations table (RunId)
-EquityPersistenceHandler → EquitySnapshots table (RunId)
-PipelineEventWriter      → PipelineEvents table (RunId)
-BacktestRunEntity        → BacktestRuns table (RunId, EffectiveConfigJson)
+Gross      = PipCalculator.GrossPnL(entry, exit, direction, lots, symbolInfo, crossRate)
+Commission = per CommissionType — this broker: USD per million USD notional, charged per SIDE
+             (half at entry price on open, half at exit price on close); research runs: $30/M RT
+Swap       = nightsHeld × venue-declared signed rate(direction) × lots
+             (weekends free; triple on TripleSwapWeekday, default Wednesday)
 ```
 
----
-
-## Key channel modes
-
-| Channel | Location | Mode | Capacity | Why |
-|---------|----------|------|----------|-----|
-| BarStream | IBrokerAdapter | DropOldest | 2,000 | Market data; replay uses separate pacing |
-| TickStream | IBrokerAdapter | DropOldest | 10,000 | Ticks for fills only; can drop |
-| ExecutionStream | IBrokerAdapter | Wait | 1,000 | Never drop fills |
-| _executionEventChannel | EngineWorker | Wait | 1,000 | Internal relay for execution events |
-| TradePersistenceHandler._channel | Handler | Wait | 1,000 | Never drop trade events |
-| BarEvaluationHandler._channel | Handler | DropOldest | 50,000 | Analytics; dropping old is OK |
+Symbol economics are **venue-declared**: the cBot emits `symbol_spec` on connect
+(commission+type, swap rates+calc type, lot/pip/tick size, digits);
+`SymbolInfoRegistry.MergeVenueSpec` merges everything **except spread** (F24 — spread would
+poison the ATR-based `MaxSlPips` heuristic). `config/symbols.json` is a loudly-logged fallback
+only. Caveats: specs are process-lifetime in-memory (F25); `SwapCalculationType` captured but not
+dispatched on (F28); the pre-trade gate's worst-case commission ignores `CommissionType` (F26).
 
 ---
 
-## Where bars come from in each mode
+## Journal
 
-| Mode | Bar source | Seeded by |
-|------|-----------|-----------|
-| BacktestReplayAdapter | `IBarRepository.GetAsync()` → SQLite `Bars` table | Prior cTrader backtest or fixture data |
-| SimulatedBrokerAdapter | `HistoricalDataProvider` → CSV files (`tests/data/`) | `CsvDataGenerator` (seeded deterministic) |
-| cTrader backtest | cBot via NetMQ | ctrader-cli replay |
-| Live | cBot via NetMQ | Live market |
+The **StepRecord stream is the only journal** (D83): `ChannelJournalWriter` (Wait-mode, lossless)
+→ `ScopedStepRecordSink` → `SqliteStepRecordSink` (`JournalEntries`, batched, cache-pushed).
+`PipelineEvents`/`BarEvaluations` are dead. API: `GET /api/runs/{id}/journal?afterSeq=&limit=`
+(+ `/journal/export` NDJSON). Rejections carry `GuardResult` reasons (e.g. `SL_TOO_WIDE:...`);
+closes carry itemized costs.
+
+---
+
+## Data flow: RunId → DB
+
+```
+BacktestOrchestrator: RunId (8-char) → RunRecordStore (BacktestRuns row incl. EffectiveConfigJson,
+  DatasetId/ConfigSetId/Seed identity, Venue, ParentRunId for duplicates)
+Inner host (EngineHostOptions): every writer stamps RunId —
+  SqliteStepRecordSink   → JournalEntries
+  TradePersistenceHandler→ TradeResults  (StrategyId + Symbol + EntryTimeframe attribution)
+  EquityPersistenceHandler→ EquitySnapshots
+Finalization: single FinalizeRunAsync (orchestrator) → terminal status + totals.
+"No lies" invariant (completed runs): TotalTrades == COUNT(TradeResults) — see PLAN.md §6 query.
+```
+
+Reads are cache-first (`RunDataCache`, write-through singleton shared Web ↔ inner host); the
+live monitor is SignalR push from in-memory state (zero DB). Research tables: `Experiments`
+(SpecJson = pre-registration), `ExperimentRuns` (ScoreJson), `StrategyCellParks`,
+walk-forward jobs/window results.
+
+---
+
+## PartialTp row-splitting (F70 — read before analyzing trades)
+
+A `PartialTp` close writes **two `TradeResult` rows per position** (the 50%-at-1R row is a
+mechanically near-guaranteed positive R). Row-level `ExpectancyR` is therefore **not comparable
+across partial/non-partial configs** — it inflated R3's "8/8 runner-aggressive" result. Family-
+or variant-level evaluation must use **position-level dollars** (rows minus PARTIAL rows for
+position counts). See `iter-structural-edge/LEDGER.md` S1.1.
 
 ---
 
 ## Schema management
 
-Schema is maintained via EF Core migrations only. The raw SQL `ALTER TABLE` patches
-in startup files were removed in Iteration 18. Current migration: single `InitialCreate`
-capturing the full schema.
+EF Core migrations only — no raw SQL patches.
 
-**Rule**: All schema changes via EF migrations. Run:
 ```
 dotnet ef migrations add <Name> --startup-project src/TradingEngine.Web --project src/TradingEngine.Infrastructure
 ```
 
 ---
 
-## Current test status
+## Test status (baseline 2026-07-16)
 
-| Suite | Count | Requires credentials |
-|-------|-------|---------------------|
-| Unit | ~207 pass, 4 skipped | No |
-| Simulation (FtmoGolden) | 4 pass | No |
-| Simulation (Replay) | Several E2E | No |
-| Architecture | 3 pass | No |
-| Integration | 35 pass | No |
-| cTrader E2E | Requires credentials | Yes |
+| Suite | Count | Credentials |
+|-------|-------|-------------|
+| Unit | 767 pass / 6 skip | No |
+| Integration | 153 | No |
+| Simulation fast (`RequiresCTrader!=true`) incl. determinism + golden + resting-order contract | 144 | No |
+| Architecture | few, seconds | No |
+| cTrader E2E (`RequiresCTrader=true`) | — | Yes (+ desktop install) |
 
-Run: `dotnet test tests/TradingEngine.Tests.Unit` + `tests/TradingEngine.Tests.Simulation`
+Credential-free green does **not** prove cTrader behaviour — venue-path changes require a live
+compare-both smoke (F24 doctrine; `docs/reference/INVESTIGATION-METHOD.md`).
