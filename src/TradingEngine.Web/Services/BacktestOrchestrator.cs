@@ -21,7 +21,7 @@ using TradingEngine.Services;
 
 namespace TradingEngine.Web.Services;
 
-    public sealed class BacktestOrchestrator : IBacktestCommandService
+public sealed class BacktestOrchestrator : IBacktestCommandService, ILiveRunReader
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<BacktestOrchestrator> _logger;
@@ -476,50 +476,7 @@ namespace TradingEngine.Web.Services;
                 result = await runner.ExecuteAsync(runId, cfg, state, ct);
             }
 
-            // P2.1 (F8): the engine loop has returned a result; enter the transient `finalizing` state for
-            // the barrier + stats + end-record write. Every terminal transition below goes finalizing->terminal
-            // through the state machine (never running->completed directly), so the lifecycle is enforced.
-            TransitionRun(state, RunStateMachine.Finalizing);
-
-            // P0.3 (F6): trade-persistence integrity barrier. BEFORE computing stats, reconcile the run's
-            // journalled closes against persisted TradeResults and backfill any that were lost (the audited
-            // BTC scenario: fills journalled, venue killed before closes settled → 0 TradeResults, reported
-            // TotalTrades=0). A shortfall attaches a TRADES_LOST warning → completed-with-warnings; the
-            // backfill happens first so GetTradeStatsAsync counts the restored trades.
-            // F19 (R0.1): scope to cTrader venue only — the barrier's journal pairing assumes cTrader's
-            // OrderFilled close-fill shape; tape/replay venues produce a different journal shape that
-            // triggers false-positive TRADES_PARTIALLY_UNRECONSTRUCTABLE warnings on perfectly healthy runs.
-            if (result.Success && string.Equals(state.Venue, "ctrader", StringComparison.OrdinalIgnoreCase))
-                await RunTradePersistenceBarrierAsync(runId, state, ct);
-
-            var tradeStats = await _records.GetTradeStatsAsync(runId, cfg.Balance);
-
-            result = result with
-            {
-                NetProfit = tradeStats.NetProfit,
-                MaxDrawdownPct = tradeStats.MaxDrawdownPct,
-                TotalTrades = tradeStats.TotalTrades,
-                WinningTrades = tradeStats.WinningTrades,
-                WinRatePct = tradeStats.WinRatePct,
-            };
-            // P0.2 (F5, Q5): fold any teardown/persistence warnings collected during the run (e.g. the
-            // in-process cTrader leg's transport teardown) into the result. A run that produced a
-            // complete result but hit a teardown fault is `completed-with-warnings`, never `failed`.
-            var warningsJson = RunRecordStore.MergeWarningsJson(state, result.WarningsJson);
-            result = result with { WarningsJson = warningsJson };
-
-            state.Result = result;
-            TransitionRun(state, result.Success
-                ? (RunStatusResolver.HasWarnings(warningsJson)
-                    ? RunStateMachine.CompletedWithWarnings
-                    : RunStateMachine.Completed)
-                : RunStateMachine.Failed);
-            state.Error = result.ErrorMessage;
-
-            EnqueueLog(runId, state.LogLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Done. Status={state.Status} Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1} Gross={tradeStats.GrossPnL:N2} Comm={tradeStats.CommissionTotal:N2} Swap={tradeStats.SwapTotal:N2}");
-
-            finalized = await _records.WriteEndRecordAsync(runId, cfg, startedAt, result, tradeStats, effectiveConfigJson, status: state.Status);
+            finalized = await FinalizeRunAsync(runId, cfg, state, result, effectiveConfigJson, ct);
         }
         catch (OperationCanceledException)
         {
@@ -610,6 +567,63 @@ namespace TradingEngine.Web.Services;
         }
     }
 
+    /// <summary>
+    /// THE finalize sequence for an engine leg that returned a result — the single copy shared by
+    /// <see cref="RunAsync"/> and the compare-both cTrader child leg (which used to hand-maintain a
+    /// drift-prone duplicate of this block). Sets the terminal state on <paramref name="state"/> and
+    /// returns whether the end record was durably written.
+    ///
+    /// P2.1 (F8): enters the transient `finalizing` state for the barrier + stats + end-record write.
+    /// Every terminal transition goes finalizing->terminal through the state machine (never
+    /// running->completed directly), so the lifecycle is enforced.
+    /// </summary>
+    private async Task<bool> FinalizeRunAsync(
+        string runId, BacktestConfig cfg, BacktestRunState state, BacktestResult result,
+        string? effectiveConfigJson, CancellationToken ct)
+    {
+        TransitionRun(state, RunStateMachine.Finalizing);
+
+        // P0.3 (F6): trade-persistence integrity barrier. BEFORE computing stats, reconcile the run's
+        // journalled closes against persisted TradeResults and backfill any that were lost (the audited
+        // BTC scenario: fills journalled, venue killed before closes settled → 0 TradeResults, reported
+        // TotalTrades=0). A shortfall attaches a TRADES_LOST warning → completed-with-warnings; the
+        // backfill happens first so GetTradeStatsAsync counts the restored trades.
+        // F19 (R0.1): scope to cTrader venue only — the barrier's journal pairing assumes cTrader's
+        // OrderFilled close-fill shape; tape/replay venues produce a different journal shape that
+        // triggers false-positive TRADES_PARTIALLY_UNRECONSTRUCTABLE warnings on perfectly healthy runs.
+        if (result.Success && string.Equals(state.Venue, "ctrader", StringComparison.OrdinalIgnoreCase))
+            await RunTradePersistenceBarrierAsync(runId, state, ct);
+
+        var tradeStats = await _records.GetTradeStatsAsync(runId, cfg.Balance);
+
+        result = result with
+        {
+            NetProfit = tradeStats.NetProfit,
+            MaxDrawdownPct = tradeStats.MaxDrawdownPct,
+            TotalTrades = tradeStats.TotalTrades,
+            WinningTrades = tradeStats.WinningTrades,
+            WinRatePct = tradeStats.WinRatePct,
+        };
+        // P0.2 (F5, Q5): fold any teardown/persistence warnings collected during the run (e.g. the
+        // in-process cTrader leg's transport teardown) into the result. A run that produced a
+        // complete result but hit a teardown fault is `completed-with-warnings`, never `failed`.
+        var warningsJson = RunRecordStore.MergeWarningsJson(state, result.WarningsJson);
+        result = result with { WarningsJson = warningsJson };
+
+        state.Result = result;
+        TransitionRun(state, result.Success
+            ? (RunStatusResolver.HasWarnings(warningsJson)
+                ? RunStateMachine.CompletedWithWarnings
+                : RunStateMachine.Completed)
+            : RunStateMachine.Failed);
+        state.Error = result.ErrorMessage;
+
+        EnqueueLog(runId, state.LogLines,
+            $"[{DateTime.UtcNow:HH:mm:ss}] Done. Status={state.Status} Trades={result.TotalTrades} PnL={result.NetProfit:N2} DD={result.MaxDrawdownPct:P1} Gross={tradeStats.GrossPnL:N2} Comm={tradeStats.CommissionTotal:N2} Swap={tradeStats.SwapTotal:N2}");
+
+        return await _records.WriteEndRecordAsync(runId, cfg, state.StartedAt, result, tradeStats, effectiveConfigJson, status: state.Status);
+    }
+
     // P0.2 (F5, Q5): record a teardown/persistence anomaly against the run without failing it.
     private void AddTeardownWarning(string runId, string code, string detail)
     {
@@ -694,60 +708,71 @@ namespace TradingEngine.Web.Services;
             EnqueueLog(ctraderRunId, ctraderState.LogLines, $"[{DateTime.UtcNow:HH:mm:ss}] Running via in-process cTrader engine...");
             var ctraderResult = await _venues.Resolve("ctrader").ExecuteAsync(ctraderRunId, ctraderCfg, ctraderState, ct);
 
-            TransitionRun(ctraderState, RunStateMachine.Finalizing);
+            // This leg is the one every parity comparison is measured against. It used to hand-maintain
+            // a parallel copy of RunAsync's finalize block (a copy that had already drifted once: no
+            // barrier, no warnings merge, no persisted Status). It now shares the single FinalizeRunAsync.
+            await FinalizeRunAsync(ctraderRunId, ctraderCfg, ctraderState, ctraderResult, effectiveConfigJson: null, ct);
 
-            // This leg is the one every parity comparison is measured against, and it was the only leg
-            // with no integrity checks on it: this path is a parallel copy of RunAsync's finalize block
-            // that never ran the trade-persistence barrier and never merged the run's warnings, so a
-            // compare-both cTrader leg could lose trades, or declare a EUR account, and still be stored
-            // as a clean `completed` run with WarningsJson NULL. Both steps now run here, as they do in
-            // RunAsync — barrier first, so its backfilled trades are counted by GetTradeStatsAsync.
-            if (ctraderResult.Success)
-                await RunTradePersistenceBarrierAsync(ctraderRunId, ctraderState, ct);
-
-            var tradeStats = await _records.GetTradeStatsAsync(ctraderRunId, cfg.Balance);
-            var ctraderWarnings = RunRecordStore.MergeWarningsJson(ctraderState, ctraderResult.WarningsJson);
-            ctraderResult = ctraderResult with
-            {
-                NetProfit = tradeStats.NetProfit,
-                MaxDrawdownPct = tradeStats.MaxDrawdownPct,
-                TotalTrades = tradeStats.TotalTrades,
-                WinningTrades = tradeStats.WinningTrades,
-                WinRatePct = tradeStats.WinRatePct,
-                WarningsJson = ctraderWarnings,
-            };
-
-            ctraderState.Result = ctraderResult;
-            ctraderState.Error = ctraderResult.ErrorMessage;
-            TransitionRun(ctraderState, ctraderResult.Success
-                ? (RunStatusResolver.HasWarnings(ctraderWarnings)
-                    ? RunStateMachine.CompletedWithWarnings
-                    : RunStateMachine.Completed)
-                : RunStateMachine.Failed);
-
-            await _records.WriteEndRecordAsync(ctraderRunId, ctraderCfg, ctraderState.StartedAt, ctraderResult, tradeStats, null);
-
+            var finalResult = ctraderState.Result!;
             EnqueueLog(runId, logLines,
-                $"[{DateTime.UtcNow:HH:mm:ss}] Compare complete. Tape={runId} ({tapeResult.TotalBars} bars) / cTrader={ctraderRunId} ({ctraderResult.TotalBars} bars / {ctraderResult.TotalTrades}t) — reconcile: GET /api/backtest/analytics/reconcile?left={runId}&right={ctraderRunId}");
+                $"[{DateTime.UtcNow:HH:mm:ss}] Compare complete. Tape={runId} ({tapeResult.TotalBars} bars) / cTrader={ctraderRunId} ({finalResult.TotalBars} bars / {finalResult.TotalTrades}t) — reconcile: GET /api/backtest/analytics/reconcile?left={runId}&right={ctraderRunId}");
         }
         catch (OperationCanceledException)
         {
             TransitionRun(ctraderState, RunStateMachine.Cancelled);
             ctraderState.Error = "Cancelled";
             EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader leg cancelled.");
+            await WriteChildTerminalRecordAsync(ctraderRunId, ctraderCfg, ctraderState, exitCode: 0, errorMessage: null);
         }
         catch (Exception ex)
         {
             TransitionRun(ctraderState, RunStateMachine.Failed);
             ctraderState.Error = ex.Message;
             EnqueueLog(ctraderRunId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader leg failed: {ex.Message}");
+            await WriteChildTerminalRecordAsync(ctraderRunId, ctraderCfg, ctraderState, exitCode: 1, errorMessage: ex.Message);
         }
         finally
         {
             ctraderState.CancellationSource?.Dispose();
+
+            // The child run is finalized (terminal record written above) — mirror RunAsync's finalize
+            // cleanup for the child id. Before this block the child's BacktestRunState stayed Register'ed
+            // forever (one leaked state + broadcaster throttle entry per compare-both run), and a live
+            // viewer of the child leg never received the terminal frame.
+            _broadcaster.PublishDone(RunProgressProjector.Build(ctraderState, ctraderState.Status switch
+            {
+                "failed" => "failed",
+                "cancelled" => "cancelled",
+                _ => "completed"
+            }));
+            _runDataCache?.MarkCompleted(ctraderRunId);
+            _broadcaster.RemoveRun(ctraderRunId);
+            _registry.Remove(ctraderRunId);
+            _memoryCache?.Remove(RunsListCacheKey);
         }
 
         return tapeResult;
+    }
+
+    /// <summary>Terminal end record for a compare-both child leg that ended via cancel/exception. The
+    /// child used to get NO end record on these paths, leaving its row at ExitCode=-1 /
+    /// CompletedAtUtc=MinValue forever (RunAsync has the P4.1 finally-net for the parent; this is the
+    /// child leg's equivalent). Trades persisted during the run are counted as-is; cancellation is not
+    /// an error (T9), so the cancel path passes a null <paramref name="errorMessage"/>.</summary>
+    private async Task WriteChildTerminalRecordAsync(
+        string runId, BacktestConfig cfg, BacktestRunState state, int exitCode, string? errorMessage)
+    {
+        try
+        {
+            var tradeStats = await _records.GetTradeStatsAsync(runId, cfg.Balance);
+            await _records.WriteEndRecordAsync(runId, cfg, state.StartedAt,
+                new BacktestResult { RunId = runId, ExitCode = exitCode, ErrorMessage = errorMessage },
+                tradeStats, effectiveConfigJson: null, status: state.Status);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Terminal write for compare-both child {RunId} failed", runId);
+        }
     }
 
     /// <summary>Acquire a tape-lane slot as an <see cref="IDisposable"/> lease, mirroring the owner lane
