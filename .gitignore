@@ -43,3 +43,4 @@ tests/data/*.csv
 artifacts/
 publish/
 .ng-build-stamp
+__pycache__/
