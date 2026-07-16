@@ -9,29 +9,27 @@ Status ∈ TODO / IN PROGRESS / DONE / BLOCKED. Sessions are MANUAL (owner call 
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **Iteration opened at the iter-structural-edge S1 owner gate (2026-07-16).** G1 accepted
-(no D5-surviving exit component; R3's 8/8 + v6a = F70 artifact), D7 park ratified, this plan
-adopted. All work through the gate merged to `main`; branch `iter/viability` cut from that merge.
-Baseline gates: build 0err/5warn · Unit 770/0/6 · Integration 153/0/0 · Sim-fast 144/0/0.
-EMBARGO-2 untouched; 2024 era-holdout (D3) in force from V1 onward. Findings continue at **F73**.
-next: **Session 1 = V0 + regime analysis** (Lane R, main worktree on `iter/viability`). (a) V0
-challenge-model truth: verify FTMO current terms (time limits / Swing / daily-loss intraday
-definition + reset / scaling) vs `config/prop-firms/ftmo-standard.json`; correct config +
-`ChallengeSimulator`; add P(bust) + E[time-to-target] to sv2 outputs; owner signs account type
-[GV0]. (b) Old-S2(b) regime conditioning, zero new runs: 2×2 family-class × census-half
-interaction, external regime vars, block bootstrap. Pre-register both in LEDGER.md here (MDE
-lines per D1) BEFORE anything scored. **Concurrent Lane D allowed per D9/PLAN §8** (separate
-worktree, branch off `iter/viability`): V1 importer and/or L1 fixes (F26/F28/F25, UNIQUE
-start-record, heartbeat) — credential-free gates there, merge at the gate. **L0 (live
-compare-both smoke) is a standing debt for the next cTrader session** (PLAN §7). Session 2 =
-V1 backfill validation + first frozen-bank OOS prep. Normative method doc:
-`docs/reference/RESEARCH-PROCESS.md`.
+last: **Session 1 (V0 + regime analysis) evidence-COMPLETE (2026-07-16).** FTMO terms verified
+against the published contract (LEDGER.md rule-diff, 14 rows cited). **F73**: daily reset was 2 h
+early (22:00 Prague) — configs fixed to 00:00 Prague, live-DB rulesets upserted (seeder is
+one-shot), display bucketing aligned. Simulator corrected: balance-referenced daily floor,
+min(start,close)-equity breach checks, OPENED-day trading-day counting. sv2 extended:
+P(bust-before-target) + E[time-to-target] first-class (30d PassRate kept as velocity index;
+composite unchanged). **F74**: untimed rules invert R4 — 2/4 candidates viable-but-slow (0 busts
+in ANY anchored window; Phase 1 ≈ 4 mo median, Ph1+2 ≈ 6–7 mo at 1×), 2/4 never resolve. **F75**:
+regime conditioning null-with-reason at MDE ($123–165/t ≈ 0.3R); ER-regime mix shift H1→H2 real;
+RV20-Low × contrarian +0.17R split = V4e hypothesis for backfilled data. Zero new runs; embargo +
+era-holdout untouched. Gates: build 0 err · Unit 773/0/6 · Int 155/0/0 · Sim 144/0/0.
+next: **GV0 OWNER SIGNATURE — account type (recommendation: FTMO Swing, $100k, 2-step)**, then
+Session 2 = V1 backfill (Dukascopy 2019–24 bid/ask M1 importer, overlap-2025 validation, 2024
+era-holdout DB flag). Lane D may start the V1 importer concurrently (D9/PLAN §8). **L0 live
+compare-both smoke = standing debt, next cTrader session.** Findings continue at **F76**.
 
 ## Checkpoints
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
-| V0 | Challenge-model truth — FTMO terms verified, sv2 metrics corrected, account type signed; Gate GV0 (OWNER) | TODO | | |
+| V0 | Challenge-model truth — FTMO terms verified, sv2 metrics corrected, account type signed; Gate GV0 (OWNER) | IN PROGRESS — evidence complete, awaiting GV0 owner signature on account type | Session 1 | LEDGER.md Session 1: rule-diff table, F73–F75, gates paste |
 | V1 | Backfill + importer — 2019–2024 bid/ask tape, overlap-validated, era-holdout flagged; Gate GV1 | TODO | | |
 | V2 | Frozen-bank pure OOS census — F68 ranking tested on 6 years; Gate GV2 (OWNER) | TODO | | |
 | V3 | Exit lab — excursion recorder + offline replayer, paired verdicts all families; Gate GV3 | TODO | | |

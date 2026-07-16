@@ -316,37 +316,34 @@ The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** **iter-viability OPEN (2026-07-16) — Session 1 (V0 + regime analysis) ready to start.**
-The iter-structural-edge S1 owner gate RULED (its LEDGER.md final entry): G1 accepted (no
-D5-surviving exit component — trend-breakout + ema-alignment refuted in dollars; R3's 8/8 and
-v6a were the F70 artifact; no-TP value-destroying), early stop accepted (power: ~6.3k trades/arm
-needed vs 100–900 available), D7 park ratified (mtf-trend, reversible), and
-**`docs/iterations/iter-viability/PLAN.md` adopted as the successor program** (V0–V7, decisions
-D1–D8: MDE line in every pre-registration, D5′ bootstrap gates, auto-tune doctrine, parallel
-guards, 2024 era-holdout + EMBARGO-2).
-**Session 1 mandate:** (a) **V0 — challenge-model truth**: verify FTMO current terms (Phase-1/2
-time limits, Swing account, daily-loss definition/intraday/reset, scaling) against
-`config/prop-firms/ftmo-standard.json`; correct config + `ChallengeSimulator`; add P(bust) and
-E[time-to-target] as sv2 outputs; owner signs account type [gate GV0]. (b) **Regime-conditioning
-analysis** (old S2(b), zero new runs): 2×2 family-class × census-half interaction over existing
-census trades, external regime variables (realized-vol percentile + efficiency ratio), block
-bootstrap on the interaction. Pre-register BOTH in `docs/iterations/iter-viability/LEDGER.md`
-(with MDE lines per D1) before anything scored. **Session 2:** V1 Dukascopy 2019–24 bid/ask
-backfill (importer + overlap-year validation). Findings continue at **F73**.
-Background: the alpha-loop close had decided portfolio-of-cells gated on an OOS-honesty Phase 0;
-the 2026-07-16 research session ran that gate's moral equivalent on recorded data (split-half
-selection test, **F64**) and it FAILED — 38 H1-positive cells earned $116,518 in H1 and −$880 in
-H2, 24% persistence (worse than coin flip), independently corroborated by R4's embargo result. Per
-the close decision's own stop rule, the portfolio is demoted to a conditional final phase (S6).
-Direction: hunt **rule-level structural edges** (exit layer first — F65 MFE-capture 0.42 + R3's
-8/8 `runner-aggressive` are two independent lines at one lever), cells as instances, family-pooled
-evaluation, D5-tightened anti-overfit, EMBARGO-2 = everything after 2026-07-05 (first touch at S5,
-≥45 accrued days, 60d complete ~2026-09-04). Findings continue at F69 (F64–F68 pre-filed in
-RESEARCH.md). Sessions run MANUALLY for now (owner call 2026-07-16): interactive Claude sessions
-deliver stages one at a time; the conductor plan (`conductor-structural-edge.plan.json`, repo root)
-stays committed and TRACKER.md stays in its parseable checkpoint format so the owner can hand the
-remaining stages to conductor later. Follow the session protocol in PLAN.md §4 — QA the previous
-session's claims against artifacts before building.
+**Phase:** **iter-viability — Session 1 (V0 + regime analysis) evidence-COMPLETE (2026-07-16);
+GV0 owner gate OPEN.** FTMO's terms were verified against the published contract (rule-diff
+table with 14 cited rows in `docs/iterations/iter-viability/LEDGER.md`, Session 1). Shipped:
+**F73** — daily reset was 2 h early (config said 22:00 interpreted in Europe/Prague; FTMO resets
+at midnight CE(S)T); configs fixed to `00:00:00` Prague, live-DB `PropFirmRuleSets` rows
+upserted (the seeder is ONE-SHOT — JSON edits alone never reach a seeded DB), display bucketing
+(`RunDataQuery.PropFirmDayOf`) aligned. `ChallengeSimulator` corrected to verified semantics:
+daily floor = previous day's close BALANCE − 5%·initial (was day-start-equity drop),
+min(start,close)-equity breach checks (intraday envelope stays V6), trading day = day with a
+trade OPENED (was closed). sv2 extended (D4-safe): `ScoreComponents` now carries
+P(bust-before-target), E/median[time-to-target] (calendar days), untimed pass/bust/censored
+counts; 30d PassRate retained as a velocity index at unchanged composite weight. New rulesets
+`ftmo-verification` (5% Phase-2 target) + `ftmo-swing`. **F74** — untimed rules invert R4:
+2/4 candidates (`9c98ce41`, `6d8c8fa0`) are viable-but-slow (ZERO busts in any anchored window,
+Phase 1 ≈ 4 mo median, Ph1+2 ≈ 6–7 mo at 1× sizing); 2/4 never reach target in 10 months —
+still dead. **F75** — regime conditioning (old S2(b), zero new runs, pre-registered with MDE):
+class×half and class×regime interactions NOT detectable at n (MDE $123–165/trade ≈ 0.3R); the
+ER20 regime-mix shift H1→H2 IS real (+0.12 day-share, trade-share CI excludes 0); descriptive
+RV20-Low × contrarian +0.17R split goes to V4e as a hypothesis for backfilled data. Zero new
+BacktestRuns; EMBARGO-2 + 2024 era-holdout untouched.
+**Next:** (1) **GV0 owner signature — account type. Recommendation: FTMO Swing, $100k, 2-step**
+(evaluation terms identical to Standard; Swing removes the funded-stage weekend/news tax; bank
+holds multi-day; V4 gap family wants Monday entries). (2) **Session 2 = V1 backfill**: Dukascopy
+2019–2024 bid/ask M1 importer, overlap-2025 reconciliation vs recorded tape, 2024 era-holdout
+flag in DB [gate GV1]. Lane D may build the importer concurrently (D9/PLAN §8). **L0 (live
+compare-both smoke) remains standing debt for the next cTrader session.** Findings continue at
+**F76**. Sessions run MANUALLY (owner call 2026-07-16). Follow the session protocol in PLAN.md
+§4 — QA the previous session's claims against artifacts before building.
 **Read first:** `docs/iterations/iter-viability/TRACKER.md` (Handoff block) →
 `docs/iterations/iter-viability/PLAN.md` (V0–V7 + L-track §7, decisions D1–D9, owner-asks map
 §6, concurrency §8) → `docs/reference/RESEARCH-PROCESS.md` (NORMATIVE: units, evidence ladder,
@@ -357,8 +354,10 @@ MDE/pre-registration discipline, failure-mode museum, adaptation doctrine) →
 `docs/iterations/iter-alpha-loop/HANDOVER.md` (what the machine already proved).
 **Tracker:** `docs/iterations/iter-viability/TRACKER.md`
 **Branch:** `iter/viability` (from `main` at the S1-gate merge; merge back to `main` at owner gates)
-**Gate baseline (re-verified live at S0 close, 2026-07-16):** build 0err/5warn · Unit 767/0/6 ·
-Integration 153/0/0 · Sim-fast 144/0/0. (S0 added 6 tests: sv2 survival pins + F64 machinery.)
+**Gate baseline (re-verified at Session 1 close, 2026-07-16):** build 0err/5warn · Unit 773/0/6 ·
+Integration 155/0/0 · Sim-fast 144/0/0. (Session 1 added 3 unit + 2 integration tests: V0
+rule-truth pins — balance-referenced floor, opened-day counting, gap-through start-equity
+breach, untimed metrics, daily-point balance/opened fill.)
 **Live parity:** **EURUSD `VERDICT: PASS`** (tape `a89d37b5` / ctrader `e497806d`) — TradeCount exact ·
 EntryPrice **0.0 ticks** · Lots exact · ExitPrice **100% within, 0.0 ticks** · Commission 0.53% ·
 Swap 0.44% · NetPnL 0.45%. **Tolerance budget UNTOUCHED.** XAUUSD (14 trades) green on everything
