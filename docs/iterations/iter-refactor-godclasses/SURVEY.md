@@ -139,6 +139,13 @@ merging — `RunCompareBothAsync`'s finalize/cleanup changed (mechanically, but 
 itself moved, and the child-leg cleanup can only be OBSERVED live). No adapter/cBot/cost-model code
 was touched.
 
+> **Merged on owner instruction 2026-07-16 WITHOUT the live compare-both smoke** (no cTrader
+> session was run from this worktree). Per INVESTIGATION-METHOD doctrine the green credential-free
+> gates + tape run above say nothing about the cTrader leg — **run one live compare-both at the
+> next cTrader session and check the child run: terminal `Status` persisted, no ExitCode=-1 row,
+> child gone from the live registry after finalize, terminal SignalR frame delivered.** Until that
+> smoke passes, treat compare-both child-leg behavior as unverified-live.
+
 **Still nominated, still deliberately untouched:** `TapeReplayAdapter` (806) and
 `CTraderBrokerAdapter` (719) — parity-guarded, refactor only with a fresh live compare-both gate
 budgeted; `ResearchCli/Program.cs` (828) / `HttpStepRunner` (765) — linear CLI wiring, low fan-in;
