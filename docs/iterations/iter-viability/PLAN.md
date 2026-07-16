@@ -48,6 +48,7 @@ refutation, S1.2 pre-reg) → `iter-structural-edge/RESEARCH.md` (F64–F68) →
 | D6 | **No trailing-performance selection at any level, ever** — no dynamic strategy/cell picker, no re-ranking on recent results, no adaptation window < 6 months. What MAY adapt (the auto-tune doctrine, review §5): Tier-1 risk structure (vol targeting, DD scaling, challenge-state risk policy, portfolio intraday stop) freely; Tier-2 exit-calibration tables only with walk-forward proof that refit beats frozen; Tier-3 portfolio weights EB-shrunk, turnover-capped, quarterly. | F64: 24% persistence — trailing performance anti-selects. The doctrine gives "dynamic" a safe, testable meaning. |
 | D7 | **Parallel execution is embraced with two guards:** idempotency keys persisted to DB (S1.1's in-memory keys caused 23 duplicate runs across restarts), and either per-run scoping of `SymbolInfoRegistry` or process-per-run isolation before in-process parallel tape runs. | Kernel purity makes parallelism safe by design; the two known hazards are operational (S1.1 execution record, F24). |
 | D8 | **New-material families enter as bank members under identical discipline** (config-seeded, pre-registered, family-level pooled evaluation) — the 9 incumbents are not rewritten on new research (development contamination of the only data is the cost); dead knobs get fixed (F71-style), residence is decided by V2's OOS verdict + parks (D7 of structural-edge carries over for `mtf-trend`). | Churning incumbent logic re-contaminates; membership decisions belong to out-of-sample evidence. |
+| D9 | **Two-lane worktree concurrency** (detail in §8): Lane R = the DB-owning worktree on `iter/viability`, sole writer of scored runs + ledger result entries, one app instance per DB file, parallelism *inside* the app/driver only; Lane D = separate worktree on a branch off `iter/viability` for code stages (importer, exit lab, control layer, L1 fixes), credential-free gates there, merge at stage gates. Docs-only lanes always safe. | Kernel purity makes parallel runs safe (determinism probe PASS); SQLite single-writer + the append-only ledger make multi-writer *sessions* unsafe. Quicker development without truth-risk. |
 
 ## 2. Phase map
 
@@ -66,7 +67,9 @@ V7 era-holdout + EMBARGO-2 + portfolio + audit → structural-edge S5–S7 shape
 ```
 
 Sessions are ceilings. V1/V3/V4 can interleave; V2 must precede any V4 *claim* (V4 build work
-may start earlier). V6 is edge-independent and can run any time after V0.
+may start earlier). V6 is edge-independent and can run any time after V0. The **L-track (§7)**
+interleaves throughout — L0 is a standing debt executable immediately; L3 deliberately fills
+the EMBARGO-2 accrual wait.
 
 ## 3. Stages
 
@@ -178,3 +181,34 @@ anything scored; append LEDGER.md; paste gate outputs, never assert; fast suites
 | Economic factors, noise, gaps, gap exploitation | V4: weekend-gap family (Monday entry, no weekend hold), post-news family (needs historical calendar data), F67 never-ran filter analysis; regime covariates kept simple (vol percentile + efficiency ratio) |
 | Runner / maximiser — chase big profits when available | Exit-layer uncapping is refuted (no-TP: −$25.8k; the 2R cap protects). Conditional runner (Ride) gets its fair **paired** test in V3; "chase when available" is built as the V6 challenge-state risk policy — opportunism as optimized policy, not exit hope |
 | Benefit from the kernel/engine | Kernel purity → parallel tape (D7), byte-identical replay (determinism probe), deterministic policy layer (V6) — all stages lean on it |
+| Live-ready on cTrader, and when | §7 L-track: L0 parity smoke now → L1 correctness-before-money (folds into V0/V6) → L2 demo forward-run at first V2 candidate → L3 ops hardening during the embargo wait → L4 challenge after GV7 |
+| Concurrent worktrees for speed | D9 + §8: research lane owns the DB, dev lane builds code in a separate worktree, merge at gates |
+
+## 7. L-track — live readiness on cTrader (interleaved; mostly edge-independent)
+
+| Phase | What | When | Gate |
+|---|---|---|---|
+| **L0** | Live compare-both parity smoke — the standing debt from the god-classes merge | Next cTrader session, before any venue-path change ships | GL0: smoke verdict pasted |
+| **L1** | Correctness-before-money: **F26** (pre-trade gate commission estimate must dispatch on `CommissionType`), **F28** (`SwapCalculationType` dispatch), **F25** (persist `VenueSymbolSpecs` to DB so spec truth survives restarts), the UNIQUE start-record bug, daily-reset timezone (with V0), and a **sub-bar account heartbeat** (cBot → engine, 30–60 s equity/positions event) so the governor and the V6 portfolio stop see intraday troughs, not bar closes | Folds into the V0/V6 sessions | GL1: fixes + tests green; heartbeat event golden-tested |
+| **L2** | Continuous **demo forward-run** (cTrader demo / FTMO free trial, desktop-capture listen mode): candidate(s) run unattended; weekly oracle reconcile (roadmap Q4 habit); daily automated report (equity, trades, tape-expectation drift) | Starts the moment V2 yields any candidate — calendar time is unfakeable, start early | GL2: first weekly reconcile green |
+| **L3** | Ops hardening, timed to the EMBARGO-2 accrual wait: always-on box/VPS with cTrader Desktop + engine (unattended live = **listen mode**; headless CLI is backtest-only), process supervision + reconnect, **crash-recovery drill** (kill engine mid-position → restart → journal rebuild + venue reconcile verified), alerting on disconnect / order-rejection rate (the F24 lesson) / breach proximity / missed heartbeat, runbook | Aug–Sep 2026 (the embargo wait **is** the window) | GL3: drill + alert-test evidence pasted |
+| **L4** | Funded challenge, V6 sizing policy active, parity verdict ≤ 14 days old | After GV7 | GL4: candidate card + owner go |
+
+## 8. Concurrency / worktree protocol (D9 detail)
+
+- **Lane R (research/truth):** the DB-owning worktree (currently `C:\Code\Shamshir`) checks out
+  `iter/viability`. The census/experiment DB (`src/TradingEngine.Web/data/trading.db`) lives
+  ONLY there — fresh worktrees start with no research data. All scored runs, sv2 scoring, and
+  ledger scored-result entries happen in this lane, **one app instance per DB file**;
+  parallelism happens *inside* the app/driver (`exit_factorial_driver.py --parallel`,
+  determinism-probe-validated) — never as two apps on one SQLite file.
+- **Lane D (dev):** a separate worktree (e.g. `C:\Code\shamshir-viability-dev`) on a branch off
+  `iter/viability` (`iter/viability-dev` or per-stage). Builds V1 importer, V3
+  recorder/replayer, V5 tools, V6 control layer, L1 fixes — with the credential-free gates
+  (Unit / Integration / Sim-fast) run there. Anything needing research data reads the Lane-R
+  DB path explicitly (`--db`) read-only, or waits for merge.
+- **Merge discipline:** Lane D merges into `iter/viability` at stage gates; Lane R pulls before
+  any scored batch. `LEDGER.md` stays append-only with one writer at a time — a dev session
+  appends its entry at merge time, never concurrently with a research batch entry.
+- **Docs lanes** (like `docs/quant-review`) are always safe in parallel; merge to `main` at
+  owner gates.

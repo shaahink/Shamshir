@@ -14,13 +14,18 @@ last: **Iteration opened at the iter-structural-edge S1 owner gate (2026-07-16).
 adopted. All work through the gate merged to `main`; branch `iter/viability` cut from that merge.
 Baseline gates: build 0err/5warn · Unit 770/0/6 · Integration 153/0/0 · Sim-fast 144/0/0.
 EMBARGO-2 untouched; 2024 era-holdout (D3) in force from V1 onward. Findings continue at **F73**.
-next: **Session 1 = V0 + regime analysis.** (a) V0 challenge-model truth: verify FTMO current
-terms (time limits / Swing / daily-loss intraday definition + reset / scaling) vs
-`config/prop-firms/ftmo-standard.json`; correct config + `ChallengeSimulator`; add P(bust) +
-E[time-to-target] to sv2 outputs; owner signs account type [GV0]. (b) Old-S2(b) regime
-conditioning, zero new runs: 2×2 family-class × census-half interaction, external regime vars,
-block bootstrap. Pre-register both in LEDGER.md here (MDE lines per D1) BEFORE anything scored.
-Session 2 = V1 backfill (importer + overlap-year validation).
+next: **Session 1 = V0 + regime analysis** (Lane R, main worktree on `iter/viability`). (a) V0
+challenge-model truth: verify FTMO current terms (time limits / Swing / daily-loss intraday
+definition + reset / scaling) vs `config/prop-firms/ftmo-standard.json`; correct config +
+`ChallengeSimulator`; add P(bust) + E[time-to-target] to sv2 outputs; owner signs account type
+[GV0]. (b) Old-S2(b) regime conditioning, zero new runs: 2×2 family-class × census-half
+interaction, external regime vars, block bootstrap. Pre-register both in LEDGER.md here (MDE
+lines per D1) BEFORE anything scored. **Concurrent Lane D allowed per D9/PLAN §8** (separate
+worktree, branch off `iter/viability`): V1 importer and/or L1 fixes (F26/F28/F25, UNIQUE
+start-record, heartbeat) — credential-free gates there, merge at the gate. **L0 (live
+compare-both smoke) is a standing debt for the next cTrader session** (PLAN §7). Session 2 =
+V1 backfill validation + first frozen-bank OOS prep. Normative method doc:
+`docs/reference/RESEARCH-PROCESS.md`.
 
 ## Checkpoints
 

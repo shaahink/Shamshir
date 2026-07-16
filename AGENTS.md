@@ -348,8 +348,10 @@ stays committed and TRACKER.md stays in its parseable checkpoint format so the o
 remaining stages to conductor later. Follow the session protocol in PLAN.md §4 — QA the previous
 session's claims against artifacts before building.
 **Read first:** `docs/iterations/iter-viability/TRACKER.md` (Handoff block) →
-`docs/iterations/iter-viability/PLAN.md` (V0–V7, decisions D1–D8, owner-asks map §6) →
-`docs/QUANT-REVIEW-RESPONSE-2026-07.md` (the rationale: power math, FTMO reframing, doctrine) →
+`docs/iterations/iter-viability/PLAN.md` (V0–V7 + L-track §7, decisions D1–D9, owner-asks map
+§6, concurrency §8) → `docs/reference/RESEARCH-PROCESS.md` (NORMATIVE: units, evidence ladder,
+MDE/pre-registration discipline, failure-mode museum, adaptation doctrine) →
+`docs/QUANT-REVIEW-RESPONSE-2026-07.md` (the rationale: power math, FTMO reframing) →
 `docs/iterations/iter-structural-edge/LEDGER.md` (tail: S1 close + owner-gate ruling) →
 `docs/iterations/iter-structural-edge/RESEARCH.md` (F64–F68) →
 `docs/iterations/iter-alpha-loop/HANDOVER.md` (what the machine already proved).
