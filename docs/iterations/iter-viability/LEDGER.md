@@ -438,6 +438,21 @@ sessions (the EMBARGO-2 wait window, Aug–Sep, is the natural slot per PLAN §7
   behind the L0 smoke debt). Gates after: build 0 err · Unit 778/0/6 · Integration 156/0/0 ·
   Sim-fast 144/0/0.
 
+### Delivered while the backfill downloads — V5 tooling pre-delivery: stationary block bootstrap + MDE calculator
+
+`tools/research/block_bootstrap.py` (stdlib-only, importable): Politis–Romano stationary
+bootstrap SE/CI + the D1 MDE formula. GV5 discipline honored ahead of schedule — synthetic
+hand-checks pasted, not asserted:
+```
+(a) iid N(0,1) n=2000: block-bootstrap SE=0.02336  theory=0.02236  err=4.5%
+(b) AR(1) phi=0.6 n=2000: block SE=0.04090  theory=0.04472  err=8.5%  | naive iid SE=0.02196 (must understate)
+(c) MDE(SE=1) = 2.8016  (expected 2.8016);  z(0.975)=1.9600 (expected 1.9600)
+SELFTEST PASS
+```
+Case (b) is the reason the tool exists: on serially dependent data the naive bootstrap
+understates the SE by ~2× — exactly the overconfidence D5′ is designed to kill. V2's gate
+tables use this module; the V5 session still owes EB shrinkage + stitched walk-forward.
+
 ### Evidence — era-holdout guard baseline (run BEFORE import)
 
 ```
