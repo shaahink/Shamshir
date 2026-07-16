@@ -24,7 +24,7 @@ sv2-scored, family-level evaluation. Read PLAN.md §3 S1 + §0 D5 first.
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
-| S0 | Truth infra — sv2 scoring + research tools + LEDGER/TRACKER; Gate G0 | DONE | (this commit) | LEDGER.md S0 entry: G0 legs 1–3 pasted (F64 exact reproduction + suite counts); tools/research/; SetupScoreSv2Tests + SplitHalfPersistenceTests + DailyCapBreach_Dominates_TargetHit |
+| S0 | Truth infra — sv2 scoring + research tools + LEDGER/TRACKER; Gate G0 | DONE | 27b22b2 | LEDGER.md S0 entry: G0 legs 1–3 pasted (F64 exact reproduction + suite counts); tools/research/; SetupScoreSv2Tests + SplitHalfPersistenceTests + DailyCapBreach_Dominates_TargetHit |
 | S1 | Exit-layer factorial — per-family component verdict (D5 legs); Gate G1 | TODO | | |
 | S2 | Entry noise floor + regime gating; Gate G2 | TODO | | |
 | S3 | Cost-aware knobs — cost-drag table; Gate G3 | TODO | | |
