@@ -282,3 +282,42 @@ family session (needs that family's own exit-factorial result first).
 session's dollar-based discipline, or (ii) fix F71 first so the no-TP arm is testable across
 all remaining families in one pass — owner's call; (ii) is one small code change + tests and
 makes the remaining factorials complete.
+
+---
+
+## S1.1-addendum + S1.2 — 2026-07-16 — F71 fixed; ema-alignment factorial (same session, owner delegated: "continue and i trust your vote")
+
+### F71 fix (option ii chosen)
+
+- `SlTpHelpers.TakeProfitFor(opts, entry, sl, direction, atr, symbol)` added — dispatches on
+  `TpOptions.Method`: `"None"` → null TP; `"AtrMultiple"` → ATR distance; anything else →
+  historical `RRMultiple(opts.RrMultiple)` (every seeded config uses RrMultiple, so the fix is
+  behavior-preserving by construction). Call sites: `TrendBreakoutStrategy.cs`,
+  `RsiDivergenceStrategy.cs` (both directions); `MacdMomentumStrategy.cs` honors `"None"` only
+  (its TP distance stays its own `TpRrMultiple` parameter, unchanged). 3 unit tests pin
+  None→null, RrMultiple→identical-to-historical, AtrMultiple→ATR distance.
+- Gates after fix: build 0err/5warn · Unit **770**/0/6 · Integration 153/0/0 · Sim-fast 144/0/0.
+- **Live behavior-preservation check:** `control/XAUUSD/H4` re-run post-fix (run `8a899381`):
+  39 trades, net $13,082.44 — EXACTLY the census original. VERDICT: PASS.
+- The 12 invalid-as-executed `no-tp-trail` ExperimentRun rows were deleted (their BacktestRuns
+  stay as audit trail) and the arm re-executed post-fix under the same pre-registered labels.
+  First corrected results confirm TP=None is now real: XAUUSD/H4 36→10 trades, ETHUSD/H4
+  12→11, all long-hold profiles. Corrected family verdict appended below when the arm
+  completes.
+
+### S1.2 pre-registration (D5 — BEFORE any ema-alignment run; same discipline as S1.1)
+
+**Family:** `ema-alignment` (routes TP via `SlTpResolver` natively — no-TP arm valid without
+the F71 fix, and valid with it). **Cells (all 6 census-scoreable):** EURJPY/H1, USDJPY/H1,
+AUDUSD/H1, ETHUSD/H1, EURGBP/H1, USDCHF/H1. **Control** = strategy's own add-ons (F69: BE@1R +
+2.5×ATR trail). **Variants:** the identical 8 arms as S1.1 (control, bare, be-only,
+trail-only, trail-ride, partial-only, runner-full, no-tp-trail) with identical pack configs —
+S1.1's packs reused verbatim. **Constants:** identical to S1.1 (census window, split
+2025-12-03, tape, standard risk, 100k, 30/M, 1 pip, HonestFills, governor+regime on, D13).
+**Runs:** 8 × 6 = 48, experiment `s1-exit-factorial-ema` (SpecJson = this entry), labels
+`<variant>/ema-alignment/<SYM>/<TF>`, keys `s1-ema-alignment-<variant>-<sym>-<tf>`.
+**Evaluation:** position-level DOLLARS (F70 discipline): pooled net$ delta vs control, per-cell
+dollar sign-consistency (≥75% = ≥5/6), split-half both halves, MFE-capture/giveback deltas;
+6-fold WF only if a variant passes the first two legs. **Note:** ema-alignment/EURJPY/H1 was
+R3's v6a star (runner-aggressive +82% ExpectancyR) — this factorial retests that claim on
+dollars at family level.

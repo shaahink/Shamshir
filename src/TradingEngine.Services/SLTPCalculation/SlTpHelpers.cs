@@ -35,6 +35,23 @@ public static class SlTpHelpers
         }
     }
 
+    /// <summary>
+    /// F71 (iter-structural-edge S1): resolve a take-profit honoring <see cref="TpOptions.Method"/>.
+    /// Hand-rolled strategies used to call <see cref="RRMultiple"/> with <c>opts.RrMultiple</c>
+    /// directly, which made Method — including "None" — a silently dead knob: a per-run/pack
+    /// override to "None" was recorded in the run's effective config but never reached the intent.
+    /// "None" ⇒ no TP (the position exits via SL/trail/flatten only).
+    /// </summary>
+    public static Price? TakeProfitFor(TpOptions opts, Price entry, Price stopLoss, TradeDirection direction, double atrValue, SymbolInfo symbol)
+        => opts.Method switch
+        {
+            "None" => null,
+            "AtrMultiple" => AtrMultiple(entry, direction, atrValue, opts.AtrMultiple, symbol),
+            // "RrMultiple" and anything unrecognized keep the historical behavior — every seeded
+            // config uses RrMultiple; "FixedPips" TP has never been wired for these strategies.
+            _ => RRMultiple(entry, stopLoss, direction, opts.RrMultiple, symbol),
+        };
+
     public static Price? RRMultiple(Price entry, Price stopLoss, TradeDirection direction, double rrRatio, SymbolInfo symbol)
     {
         if (rrRatio <= 0) return null;

@@ -119,7 +119,7 @@ public sealed class RsiDivergenceStrategy : IStrategy
 
         var entry = new Price(barsWindow[^1].Close);
         var sl = new Price(recent.Price - (decimal)(pm.StopLoss.AtrMultiple * atr));
-        var tp = SlTpHelpers.RRMultiple(entry, sl, TradeDirection.Long, pm.TakeProfit.RrMultiple, symbolInfo);
+        var tp = SlTpHelpers.TakeProfitFor(pm.TakeProfit, entry, sl, TradeDirection.Long, atr, symbolInfo);
 
         intent = new TradeIntent(symbolInfo.Symbol, TradeDirection.Long, OrderType.Market, null, sl, tp,
             _config.Id, _config.RiskProfileId,
@@ -151,7 +151,7 @@ public sealed class RsiDivergenceStrategy : IStrategy
 
         var entry = new Price(barsWindow[^1].Close);
         var sl = new Price(recent.Price + (decimal)(pm.StopLoss.AtrMultiple * atr));
-        var tp = SlTpHelpers.RRMultiple(entry, sl, TradeDirection.Short, pm.TakeProfit.RrMultiple, symbolInfo);
+        var tp = SlTpHelpers.TakeProfitFor(pm.TakeProfit, entry, sl, TradeDirection.Short, atr, symbolInfo);
 
         intent = new TradeIntent(symbolInfo.Symbol, TradeDirection.Short, OrderType.Market, null, sl, tp,
             _config.Id, _config.RiskProfileId,
