@@ -1,0 +1,201 @@
+{
+  "version": "1.0",
+  "planVersion": 1,
+  "name": "Shamshir iter-structural-edge (Claude)",
+  "repo": "C:/Code/Shamshir",
+  "tracker": "docs/iterations/iter-structural-edge/TRACKER.md",
+  "planDoc": "docs/iterations/iter-structural-edge/PLAN.md",
+  "branchPattern": "^iter/structural-edge$",
+  "pauseOnBlocked": true,
+  "agent": {
+    "command": "claude",
+    "args": [
+      "-p",
+      "{prompt}",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--dangerously-skip-permissions",
+      "--model",
+      "{model}",
+      "--session-id",
+      "{sessionId}"
+    ],
+    "resumeArgs": [
+      "-p",
+      "{prompt}",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--dangerously-skip-permissions",
+      "--model",
+      "{model}",
+      "--resume",
+      "{claudeSessionId}"
+    ],
+    "provider": "claude",
+    "output": "stream-json",
+    "model": "claude-sonnet-5",
+    "tokenCeiling": 64000
+  },
+  "readOrder": [
+    "AGENTS.md",
+    "docs/iterations/iter-structural-edge/PLAN.md",
+    "docs/iterations/iter-structural-edge/RESEARCH.md",
+    "docs/iterations/iter-structural-edge/LEDGER.md",
+    "docs/iterations/iter-structural-edge/TRACKER.md"
+  ],
+  "conventions": {
+    "stageIdPattern": "(?<stage>[A-Za-z]+\\d+)(?:\\.\\d+)?[a-z]?",
+    "handoffMarker": "## Handoff",
+    "humanToken": "HUMAN:",
+    "status": {
+      "done": [
+        "DONE"
+      ],
+      "blocked": [
+        "BLOCKED"
+      ],
+      "inProgress": [
+        "IN PROGRESS"
+      ],
+      "todo": [
+        "TODO"
+      ]
+    }
+  },
+  "stages": [
+    {
+      "id": "S0",
+      "title": "Truth infrastructure - sv2 scoring + committed research tools",
+      "sessions": 1,
+      "notes": "Deliver S0 per PLAN.md section 3 S0. (1) Replace ComputeFtmoSurvival with ChallengeSimulator-backed survival, versioned sv2 (sv1 rows untouched); unit tests pin 0/N->0, N/N->1, daily-cap dominates. (2) Port quant_research.py + split_half.py to tools/research/, add a `research persistence` CLI verb. (3) Create LEDGER.md + expand TRACKER.md (alpha-loop format). Gate G0: sv2 tests green; `research persistence --experiment 075D5240 --split 2025-12-03` reproduces the RESEARCH.md F64 numbers (+/-$1); fast suites green.",
+      "agent": {
+        "model": "claude-opus-4-8"
+      }
+    },
+    {
+      "id": "S1",
+      "title": "Exit-layer factorial - which exit component is real, per family",
+      "sessions": 3,
+      "dependsOn": [
+        "S0"
+      ],
+      "ownerGate": true,
+      "notes": "Deliver S1 per PLAN.md section 3 S1 + D5 anti-overfit discipline. Per family (trend-breakout, then ema-alignment, super-trend, mean-reversion contrast): pre-register <=8 variants in the ledger BEFORE running; one-cell-per-run (D13), sv2-scored; evaluate at FAMILY level (pooled expR delta, sign consistency, split-half both-halves-positive, MFE-capture/giveback); walk-forward the best variant. Execute the mtf-trend park decision (D7) either way. Gate G1: per-family ledger verdict with the pasted family-level table (all three D5 legs).",
+      "agent": {
+        "model": "claude-opus-4-8"
+      }
+    },
+    {
+      "id": "S2",
+      "title": "Entry noise floor + regime gating",
+      "sessions": 2,
+      "dependsOn": [
+        "S1"
+      ],
+      "notes": "Deliver S2 per PLAN.md section 3 S2. Pre-register: (a) SpreadVolNoTradeFilter / session-window filters cut never-ran rate without cutting pooled expR; (b) regime-conditioning as an analysis on EXISTING census trades first (no new runs) - only a large conditional split earns a filter variant. Gate G2: never-ran + pooled expR deltas per family; regime-conditioning table; any surviving filter meets D5 in full."
+    },
+    {
+      "id": "S3",
+      "title": "Cost-aware knobs - swap/commission structural rules",
+      "sessions": 1,
+      "dependsOn": [
+        "S2"
+      ],
+      "notes": "Deliver S3 per PLAN.md section 3 S3 (may merge into S1/S2 if effects small). Pre-registered: swap-aware hold-cap/flatten for multi-day families (rsi-divergence 87h median) + per-trade expectancy floor for high-frequency families; evaluate net-vs-gross gap delta at family level, D5. Gate G3: cost-drag table (gross/commission/swap/net) before vs after, pasted."
+    },
+    {
+      "id": "S4",
+      "title": "Re-census under the winning structural config",
+      "sessions": 2,
+      "dependsOn": [
+        "S3"
+      ],
+      "ownerGate": true,
+      "notes": "Deliver S4 per PLAN.md section 3 S4. Full R1'-shaped census (one cell per run, D13 null-with-reason, sv2) under the S1-S3 surviving config as the new default; walk-forward the top decile. The census-level pooled expR is the headline, not any cell rank. Gate G4: census complete with the D13 query pasted; pooled expR vs the 075D5240 baseline; top-decile walk-forward table.",
+      "agent": {
+        "model": "claude-opus-4-8"
+      }
+    },
+    {
+      "id": "S5",
+      "title": "EMBARGO-2 dress rehearsal - first touch of post-2026-07-05 data",
+      "sessions": 1,
+      "dependsOn": [
+        "S4"
+      ],
+      "ownerGate": true,
+      "notes": "Deliver S5 per PLAN.md section 3 S5 + D3. GATE ON DATA: do NOT run before >=45 accrued days after 2026-07-05 exist (60 complete ~2026-09-04); if not yet accrued, park with reason. First & only touch of embargo data; run S4 survivors AND the family-level pooled config; sv2 windows; report R4-format candidate cards. The pooled family verdict matters more than any cell. Gate G5: candidate cards + pooled-family embargo table. No re-touch, no re-tune."
+    },
+    {
+      "id": "S6",
+      "title": "Portfolio phase (CONDITIONAL on >=1 rule-level edge holding at G5)",
+      "sessions": 3,
+      "dependsOn": [
+        "S5"
+      ],
+      "ownerGate": true,
+      "notes": "Deliver S6 per PLAN.md section 3 S6 - ONLY if G5 showed a rule-level edge held; otherwise skip. (1) Paper-aggregation with joint-tail metrics (worst combined day, tail co-occurrence), not Pearson. (2) Portfolio risk machinery: dedicated risk profile, ExposureGroups by currency/asset, per-cell attribution in one multi-row run. (3) One real multi-row tape run; reconcile attribution vs solo runs; ChallengeSimulator at 1x/1.5x/2x. Gate G6: aggregate challenge table + attribution reconciliation pasted.",
+      "agent": {
+        "model": "claude-opus-4-8"
+      }
+    },
+    {
+      "id": "S7",
+      "title": "Final audit + close - R5-style artifact audit",
+      "sessions": 1,
+      "dependsOn": [
+        "S6"
+      ],
+      "notes": "Deliver S7 per PLAN.md section 3 S7. Fresh session audits every stage against PLAN.md from artifacts; compile a <=5-item bugfix queue; update AGENTS.md RESUME; hand the owner pack. Apply the section 6 stop rule verdict if S1-S4 found no structural edge."
+    }
+  ],
+  "gates": [
+    {
+      "name": "build",
+      "command": "dotnet build TradingEngine.slnx -c Debug",
+      "tier": "fast",
+      "timeoutMinutes": 5
+    },
+    {
+      "name": "unit",
+      "command": "dotnet test tests/TradingEngine.Tests.Unit",
+      "tier": "fast",
+      "timeoutMinutes": 5
+    },
+    {
+      "name": "sim-fast",
+      "command": "dotnet test tests/TradingEngine.Tests.Simulation --filter \"RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ\"",
+      "tier": "fast",
+      "timeoutMinutes": 5
+    }
+  ],
+  "gatePolicy": "perPhase",
+  "advisor": {
+    "enabled": true,
+    "command": "claude",
+    "args": [
+      "-p",
+      "{prompt}",
+      "--output-format",
+      "stream-json",
+      "--model",
+      "claude-fable-5"
+    ],
+    "provider": "claude",
+    "output": "stream-json",
+    "timeoutMinutes": 6
+  },
+  "limits": {
+    "stallMinutes": 15,
+    "sessionTimeoutMinutes": 240,
+    "maxResumesPerSession": 3,
+    "stageSlackFactor": 3,
+    "stallPatternTermination": true
+  },
+  "report": {
+    "commit": true,
+    "push": false
+  }
+}

@@ -316,20 +316,24 @@ The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** iter-alpha-loop — **CLOSED 2026-07-15. Iteration is DONE.** R0–R5 all shipped, and the
-two cheap DB-hygiene items from R5's bugfix queue (#3 invariant scope, #4 stuck-Running experiments)
-were delivered in the close-out session. No agent-driven work remains. **Direction is DECIDED
-(owner call 2026-07-15, `HANDOVER.md` §0): close now banking the negative result; the follow-up —
-when opened — is a portfolio-of-cells iteration whose Phase 0 re-proves the edges out-of-sample
-before any multi-cell machinery is built.** F63/F48/s2a are deferred per that decision. If you are a
-fresh session, do not start the portfolio build without the owner explicitly opening it — and when
-they do, start with the OOS-honesty gate, not construction.
-**Read first:** `docs/iterations/iter-alpha-loop/HANDOVER.md` (the close-out pack — what's done,
-what's open, where to start if continuing), then `R5-AUDIT.md` (full stage audit + bugfix queue),
-then `TRACKER.md` (checkpoint table + Handoff block), then `LEDGER.md` (append-only session log,
-read the tail for R3/R4/R5 narrative).
-**Tracker:** `docs/iterations/iter-alpha-loop/TRACKER.md`
-**Branch:** `iter/alpha-loop`
+**Phase:** **iter-structural-edge OPEN (owner gate opened 2026-07-16). Current stage: S0.**
+Background: the alpha-loop close had decided portfolio-of-cells gated on an OOS-honesty Phase 0;
+the 2026-07-16 research session ran that gate's moral equivalent on recorded data (split-half
+selection test, **F64**) and it FAILED — 38 H1-positive cells earned $116,518 in H1 and −$880 in
+H2, 24% persistence (worse than coin flip), independently corroborated by R4's embargo result. Per
+the close decision's own stop rule, the portfolio is demoted to a conditional final phase (S6).
+Direction: hunt **rule-level structural edges** (exit layer first — F65 MFE-capture 0.42 + R3's
+8/8 `runner-aggressive` are two independent lines at one lever), cells as instances, family-pooled
+evaluation, D5-tightened anti-overfit, EMBARGO-2 = everything after 2026-07-05 (first touch at S5,
+≥45 accrued days, 60d complete ~2026-09-04). Findings continue at F69 (F64–F68 pre-filed in
+RESEARCH.md). Sessions are conductor-driven (`conductor-structural-edge.plan.json` at repo root);
+follow the session protocol in PLAN.md §4 — QA the previous session's claims before building.
+**Read first:** `docs/iterations/iter-structural-edge/PLAN.md` (S0–S7, decisions D1–D8) →
+`docs/iterations/iter-structural-edge/RESEARCH.md` (the evidence, pasted outputs) →
+`docs/iterations/iter-structural-edge/TRACKER.md` (checkpoints + Handoff) →
+`docs/iterations/iter-alpha-loop/HANDOVER.md` (what the machine already proved).
+**Tracker:** `docs/iterations/iter-structural-edge/TRACKER.md` (LEDGER.md created at S0).
+**Branch:** `iter/structural-edge` (from `main` @ plan-commit; merge back to `main` at owner gates)
 **Gate baseline (re-verified live during R5, 2026-07-15):** build 0err/5warn · Unit 766/0/6 ·
 Integration 148/0/0 · Sim-fast 144/0/0.
 **Live parity:** **EURUSD `VERDICT: PASS`** (tape `a89d37b5` / ctrader `e497806d`) — TradeCount exact ·
