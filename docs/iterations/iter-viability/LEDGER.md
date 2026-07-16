@@ -241,3 +241,95 @@ contradiction, but worth remembering when quoting "H2 was a bad regime".
   ```
 
 ---
+
+## Session 2 — 2026-07-16 — V1 backfill + importer (Lane R; same conversation as Session 1, context carried)
+
+**Baseline QA:** tree clean at `1e827a7`; Session-1 gates (above) are 30 min old with no code
+changes since — accepted as current baseline.
+
+### Pre-registration — V1 import + overlap validation (criteria fixed BEFORE reconciliation)
+
+**Source:** Dukascopy public datafeed, per-day per-symbol `BID_candles_min_1.bi5` +
+`ASK_candles_min_1.bi5` (raw-LZMA; URL months are 0-BASED). 14 census symbols (EURUSD GBPUSD
+USDJPY USDCHF USDCAD AUDUSD NZDUSD EURGBP EURJPY GBPJPY XAUUSD XAGUSD BTCUSD ETHUSD).
+**Index CFDs: DEFERRED with reason** — no captured cTrader venue specs exist for index symbols;
+the tape would price them off fabricated specs (the F44 failure mode). Shortlisting moves to the
+V4 build-out after a one-run venue-spec capture per index.
+
+**Decode discipline (evidence pasted before bulk import):** 24-byte big-endian records; field
+order ([t,o,c,l,h,v] vs [t,o,h,l,c,v]) chosen by OHLC invariants on real data; per-symbol price
+scale (10^k) determined empirically by ratio against the recorded cTrader tape's same-day close;
+day-offset base (UTC vs venue time) verified by the reconciliation alignment check.
+
+**Storage semantics (matches `TapeReplayAdapter` P0.2/D3):** bars are **BID** OHLC;
+`Spread = askClose − bidClose` per M1 bar, in PRICE units (ask = bid + spread); derived bars'
+spread = **median** of constituent M1 spreads; volume = Dukascopy lot-volume sum (unit differs
+from cTrader tick-volume — recorded, never compared across sources). `Source='dukascopy'`,
+`Quality=0`; the (Symbol,Timeframe,OpenTimeUtc) unique index makes every import idempotent
+(INSERT OR IGNORE).
+
+**Import scope:** 2019-01-01 → 2024-12-31 ONLY into `MarketDataBars`. The 2025+ overlap
+download stays in the staging archive (`data/backfill/`) — the recorded cTrader tape remains
+the sole 2025+ truth in the engine DB. **Disk constraint (recorded):** C: has 5.7 GB free;
+the full M1 import (~32M rows ≈ ~6 GB) does NOT fit. This session imports **H1/H4/D1/M15**
+derived bars (~2.8M rows ≈ ~0.5 GB) plus the raw compressed archive (~1 GB source of truth,
+re-importable any time). **M1 + M5 import is DEFERRED-with-reason** (disk) — command ready
+(`python tools/backfill/dukascopy.py import --timeframes M1,M5`); consequence stated plainly:
+until M1 lands, 2019–24 tape runs fill on decision-bar granularity instead of M1 fine bars —
+a fidelity difference vs the 2025 census that V2's pre-registration must either remove (owner
+frees ~8 GB) or carry as a stated sensitivity caveat.
+
+**Overlap reconciliation (2025-07-04 → 2026-05-05, derived H1 + H4 vs recorded cTrader tape),
+criteria fixed now:**
+1. **Time alignment:** best close-match offset over {−3..+3} h must be 0 for every symbol
+   (a nonzero best offset = timestamp-base finding).
+2. **Bar-count parity** on common trading days, per symbol (venue session/holiday differences
+   reported, not silently absorbed).
+3. **Matched-bar close deltas:** median |Δclose| per symbol in pips — expectation ≤ ~1 pip for
+   FX majors (different liquidity pools); metals/crypto reported on their own scales. A
+   one-sided sign bias (>60% same sign) = systematic finding.
+4. **Spread sanity:** per-symbol median per-bar spread reported next to the venue
+   `TypicalSpread`; every spread ≥ 0; spread medians wildly off venue reality (>5×) = finding.
+Any systematic divergence is a **finding, not a shrug** (PLAN V1).
+
+**Era-holdout guard (D3, gate GV1):** after import, paste
+`SELECT COUNT(*) FROM BacktestRuns WHERE BacktestFrom <= '2024-12-31' AND BacktestTo >= '2024-01-01'`
+— must be 0 and stays 0 until the V-final gate ledger entry exists. (2024 bars EXIST in the DB
+by design; the holdout is on *runs*, exactly like EMBARGO-2.)
+
+### Evidence — decode discipline pinned (probe 2025-07-07, all 14 symbols; `tools/backfill/dukascopy.py probe`)
+
+- **Field order = [t, open, close, low, high, volume]**: 0 OHLC-invariant violations on every
+  symbol vs 1,188–1,356 violations/1,440 bars for the [t,o,h,l,c] alternative. Decisive.
+- **Timestamp base**: offsets 0..86340, all divisible by 60 → seconds from the file's UTC day
+  start, 1,440 M1 candles/day (final cross-check = reconciliation offset leg, must be 0 h).
+- **Per-symbol price scales** (ratio vs recorded-tape same-day H1 close median, all ≈1.000):
+  1e5 EURUSD GBPUSD USDCHF USDCAD AUDUSD NZDUSD EURGBP · 1e3 USDJPY EURJPY GBPJPY XAUUSD XAGUSD
+  · 1e1 BTCUSD ETHUSD. Stored in the archive's `Meta` table with evidence strings.
+- **Ops note:** HTTPS to `datafeed.dukascopy.com` stalls ~75 s/request from this network while
+  plain HTTP answers in ~0.1 s (measured; 503s under 16-way HTTPS parallelism). The tool uses
+  HTTP deliberately — public data, and every bar is validated against the recorded venue tape.
+
+**Cost-conservatism decision point flagged for V2's pre-registration (D3):** the imported
+Spread column stores Dukascopy's TRUE recorded per-bar spread. Dukascopy is an ECN-style feed —
+its spreads are likely TIGHTER than the CFD venue's constant (`VenueSymbolSpecs.TypicalSpread`,
+all 14 symbols captured 2026-07-15). Using them raw would be cost-OPTIMISTIC. Era-conservative
+semantics (D3 "recorded per-bar spread where available, else ≥ today's") therefore belong in
+the RUN layer — V2 must pre-register its spread policy (recommended: per-bar
+`max(barSpread, TypicalSpread)`), never by distorting stored data.
+
+### Evidence — era-holdout guard baseline (run BEFORE import)
+
+```
+era-holdout guard (runs intersecting 2024): 4
+embargo-2 guard (runs from >= 2026-07-06): 0
+```
+The 4 rows are pre-D3 debris, examined individually: `209a08f1`, `8f3d8367`, `3ddd35e4`,
+`44797180` — all replay-venue EURUSD/h1 attempts on 2024-01 dated 2026-07-08, all errored
+"No bars found for any symbol/timeframe combination", 0 trades. They could not have touched
+2024 data because none existed in any DB before this import. Kept (park-never-delete), named
+here as the guard's permanent baseline. **Guard condition from this entry forward:** zero rows
+from `SELECT COUNT(*) FROM BacktestRuns WHERE BacktestFrom <= '2024-12-31' AND BacktestTo >=
+'2024-01-01' AND StartedAtUtc >= '2026-07-16'` until the V7 era-holdout gate entry exists.
+
+---
