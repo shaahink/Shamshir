@@ -1,6 +1,6 @@
 ﻿# Conductor — Shamshir iter-structural-edge (Claude) run report
 
-_Updated 2026-07-16 00:17 UTC · branch `main` · HEAD `1c893d6`_
+_Updated 2026-07-16 00:17 UTC · branch `main` · HEAD `2a60e35`_
 
 **Status:** NeedsHuman — tracker docs/iterations/iter-structural-edge/TRACKER.md has no parseable checkpoint rows — check the table format
 **Stage:** - · attempts used 0
@@ -30,7 +30,7 @@ _Live git snapshot (branch, working tree, sync vs upstream)._
 
 ```
 branch: main
-working tree: M AGENTS.md, ?? conductor-structural-edge.plan.json, ?? docs/iterations/iter-structural-edge/
+working tree: M .conductor/REPORT.md, M AGENTS.md, ?? conductor-structural-edge.plan.json, ?? docs/iterations/iter-structural-edge/
 ```
 
 ## Phase handovers (audit)
