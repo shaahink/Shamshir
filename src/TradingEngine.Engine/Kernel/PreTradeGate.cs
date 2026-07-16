@@ -238,13 +238,35 @@ public static class PreTradeGate
     // M7: include round-trip commission in the candidate worst case. Swap is night-count dependent and
     // unknown at entry. Commission rate is absolute (always a cost), so use Math.Abs to guard the
     // worst-case projection regardless of the rate's sign convention.
-    // TODO(P1): compute notional-based commission for UsdPerMillionUsdVolume when the gate has entry price.
+    // F26 (L1): dispatch on CommissionType — a UsdPerMillionUsdVolume rate of 45 read as $45/lot/side
+    // overstated an FX round-trip ~9x, so the gate rejected trades near the daily floor that the venue
+    // would charge cents for. The pure kernel has no cross-rate service and doesn't need one:
+    // PipValuePerLot is already in ACCOUNT currency, so notional(account) = lots × price ×
+    // pipValuePerLot / pipSize. The USD-vs-account residual on per-million/percent rates is accepted
+    // for a worst-case projection.
     private static decimal CandidateWorstCase(OrderProposed p, decimal lots, SymbolInfo symbol)
     {
         var slLoss = p.SlPips * p.PipValuePerLot * lots;
-        var commission = Math.Abs(symbol.CommissionPerLotPerSide) * lots * 2m;
-        return slLoss + commission;
+        return slLoss + Math.Abs(RoundTripCommission(p, lots, symbol));
     }
+
+    private static decimal RoundTripCommission(OrderProposed p, decimal lots, SymbolInfo symbol)
+    {
+        var rate = symbol.CommissionPerLotPerSide;
+        var perSide = symbol.CommissionType switch
+        {
+            CommissionType.UsdPerMillionUsdVolume => NotionalInAccount(p, lots, symbol) * rate / 1_000_000m,
+            CommissionType.PercentOfNotionalValue => NotionalInAccount(p, lots, symbol) * rate / 100m,
+            CommissionType.Pips => lots * rate * p.PipValuePerLot,
+            _ => lots * rate,
+        };
+        return perSide * 2m;
+    }
+
+    private static decimal NotionalInAccount(OrderProposed p, decimal lots, SymbolInfo symbol)
+        => symbol.PipSize > 0
+            ? lots * p.SignalPriceMid * (p.PipValuePerLot / symbol.PipSize)
+            : lots * symbol.ContractSize * p.SignalPriceMid;
 
     private readonly record struct BudgetResult(bool Ok, decimal BudgetCap, decimal HeatCap, decimal TotalRisk);
 

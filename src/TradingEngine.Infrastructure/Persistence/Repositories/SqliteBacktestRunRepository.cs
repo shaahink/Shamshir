@@ -8,20 +8,38 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
     {
         await RetryOnBusyAsync(async () =>
         {
-            var existing = await db.BacktestRuns.FindAsync([run.RunId], ct);
-            if (existing is not null)
+            try
             {
-                MapToEntity(run, existing);
+                var existing = await db.BacktestRuns.FindAsync([run.RunId], ct);
+                if (existing is not null)
+                {
+                    MapToEntity(run, existing);
+                }
+                else
+                {
+                    var entity = new BacktestRunEntity();
+                    MapToEntity(run, entity);
+                    db.BacktestRuns.Add(entity);
+                }
+                await db.SaveChangesAsync(ct);
             }
-            else
+            catch (DbUpdateException ex) when (IsUniqueViolation(ex))
             {
-                var entity = new BacktestRunEntity();
-                MapToEntity(run, entity);
-                db.BacktestRuns.Add(entity);
+                // L1 (god-classes SURVEY): queued-start vs run-start race — another writer inserted
+                // this RunId between our Find and SaveChanges, so the INSERT hit the UNIQUE index and
+                // the Status upgrade (queued → running) was silently lost. Drop the failed Add and
+                // re-apply the write as an update against the row that won the race.
+                db.ChangeTracker.Clear();
+                var winner = await db.BacktestRuns.FindAsync([run.RunId], ct);
+                if (winner is null) throw;
+                MapToEntity(run, winner);
+                await db.SaveChangesAsync(ct);
             }
-            await db.SaveChangesAsync(ct);
         }, ct);
     }
+
+    private static bool IsUniqueViolation(DbUpdateException ex) =>
+        ex.InnerException is Microsoft.Data.Sqlite.SqliteException { SqliteErrorCode: 19 };
 
     private static void MapToEntity(BacktestRunSummary run, BacktestRunEntity entity)
     {

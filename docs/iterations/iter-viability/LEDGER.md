@@ -405,6 +405,39 @@ design and any future deployment iteration:
 No code or plan-stage changes made for these this session — logged for the L-track design
 sessions (the EMBARGO-2 wait window, Aug–Sep, is the natural slot per PLAN §7).
 
+6. **Multi-prop replication (owner, added later same session):** once a pass exists, open
+   accounts at OTHER prop firms with the same engine — small per-firm returns × several firms'
+   capital beats waiting on one firm's scaling plan. Machinery note: the rule model is already
+   firm-generic (`PropFirmRuleSets` config + `ChallengeSimulator` take any ruleset), so a new
+   firm costs one verified-terms JSON (a V0-style rule-truth pass against THAT firm's contract —
+   never assume FTMO semantics transfer; trailing-drawdown firms are materially harsher for a
+   multi-day bank and some firms keep time limits/consistency rules). Also multiplies L3 ops
+   surface (one VPS/process per firm session) and payout/firm-solvency risk is diversified.
+   Lands in: V6 (per-firm P(bust)/E[time] under each firm's verified rules) + L3/L4.
+
+### Delivered while the backfill downloads — L1 correctness-before-money fixes (PLAN §7 L1; sanctioned concurrent work)
+
+- **F26 FIXED:** `PreTradeGate.CandidateWorstCase` now dispatches on `CommissionType`. The old
+  per-lot read of a $45/M rate overstated FX round-trip commission ~9× and rejected trades near
+  the daily floor that cost cents. The pure kernel needs no cross-rate service:
+  `notional(account) = lots × price × PipValuePerLot / PipSize` (PipValuePerLot is already
+  account-currency). Pinned by `PreTradeGateCommissionTests` — same near-floor scenario accepts
+  under per-million math AND still rejects under genuine per-lot pricing.
+- **F28 FIXED (fail-loudly form):** venue-declared `SwapCalculationType` now travels
+  `VenueSymbolSpec → SymbolInfo`; `TradeCostCalculator` throws `NotSupportedException` on any
+  non-Pips denomination with a nonzero rate instead of silently pricing it with the
+  Pips formula (the only venue-verified one, P4.4/F45). Adapter catches → run warned →
+  unscoreable. Zero rates pass (0 is 0 in every denomination). Pinned by
+  `TradeCostSwapTypeTests` incl. the −$24.45 Pips regression value.
+- **UNIQUE start-record race FIXED** (god-classes SURVEY debt): `SqliteBacktestRunRepository.
+  SaveAsync` catches the UNIQUE violation from the queued-record writer winning the race and
+  re-applies the write as an update — the queued→running status upgrade can no longer be
+  silently lost. Race reproduced deterministically via a save-interceptor rival writer
+  (`BacktestRunStartRecordRaceTests`).
+- NOT touched: sub-bar account heartbeat (cBot change → requires live compare-both; queued
+  behind the L0 smoke debt). Gates after: build 0 err · Unit 778/0/6 · Integration 156/0/0 ·
+  Sim-fast 144/0/0.
+
 ### Evidence — era-holdout guard baseline (run BEFORE import)
 
 ```
