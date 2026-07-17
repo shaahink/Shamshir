@@ -9,28 +9,32 @@ Status ∈ TODO / IN PROGRESS / DONE / BLOCKED. Sessions are MANUAL (owner call 
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **Session 1 (V0 + regime analysis) evidence-COMPLETE (2026-07-16).** FTMO terms verified
-against the published contract (LEDGER.md rule-diff, 14 rows cited). **F73**: daily reset was 2 h
-early (22:00 Prague) — configs fixed to 00:00 Prague, live-DB rulesets upserted (seeder is
-one-shot), display bucketing aligned. Simulator corrected: balance-referenced daily floor,
-min(start,close)-equity breach checks, OPENED-day trading-day counting. sv2 extended:
-P(bust-before-target) + E[time-to-target] first-class (30d PassRate kept as velocity index;
-composite unchanged). **F74**: untimed rules invert R4 — 2/4 candidates viable-but-slow (0 busts
-in ANY anchored window; Phase 1 ≈ 4 mo median, Ph1+2 ≈ 6–7 mo at 1×), 2/4 never resolve. **F75**:
-regime conditioning null-with-reason at MDE ($123–165/t ≈ 0.3R); ER-regime mix shift H1→H2 real;
-RV20-Low × contrarian +0.17R split = V4e hypothesis for backfilled data. Zero new runs; embargo +
-era-holdout untouched. Gates: build 0 err · Unit 773/0/6 · Int 155/0/0 · Sim 144/0/0.
-next: **GV0 OWNER SIGNATURE — account type (recommendation: FTMO Swing, $100k, 2-step)**, then
-Session 2 = V1 backfill (Dukascopy 2019–24 bid/ask M1 importer, overlap-2025 validation, 2024
-era-holdout DB flag). Lane D may start the V1 importer concurrently (D9/PLAN §8). **L0 live
-compare-both smoke = standing debt, next cTrader session.** Findings continue at **F76**.
+last: **Sessions 1+2 COMPLETE (2026-07-16/17, one conversation).** S1 = V0 rule-truth (F73 reset
+2h early fixed everywhere; simulator corrected to verified FTMO semantics; sv2 + P(bust)/E[time];
+F74 untimed inversion: 2/4 R4 candidates viable-but-slow; F75 regime null at MDE) — GV0 owner
+signature still pending (rec: Swing $100k 2-step). S2 = V1 backfill DONE: Dukascopy archive
+99.976% (75,078/75,096 files, durable at `C:\ShamshirData\backfill\` + read-only snapshot);
+overlap reconciliation PASS (offset 0 everywhere, FX deltas sub-pip; **F76** half-spread feed
+offset; **F77** venue TypicalSpread = 1-pip placeholder → metals/crypto tape costs were
+optimistic); 2019–24 imported: 2.87M M15/H1/H4/D1 bars with per-bar spread (99.99%), M1 (~32M)
+imported after disk freed to 11.9 GB — 2019–24 runs fill on fine bars like the census. Guards
+pasted: era-holdout 0, embargo 0. **GV1 evidence complete.** L1 delivered concurrently: F26 +
+F28 fixed, start-record race fixed (all test-pinned); V5 block-bootstrap + MDE tool selftest
+PASS. Gates: build 0 err · Unit 778/0/6 · Int 156/0/0 · Sim 144/0/0. Owner ops directions
+logged (live/research separation, Docker limits, trace logs, Telegram, dashboard split,
+multi-prop replication). Findings continue at **F78**.
+next: (1) **GV0 owner signature** — account type. (2) **Session 3 = V2 pre-registration + the
+frozen-bank pure-OOS census 2019–2023** (2024 untouched): MUST pre-register the spread policy
+(F77 — venue floor values are degenerate; recommend per-bar Dukascopy spread, stated
+raw-vs-floored sensitivity), MDE line via `tools/research/block_bootstrap.py`, D13 one-cell-
+per-run, sv2 scoring. **L0 live compare-both smoke = standing debt, next cTrader session.**
 
 ## Checkpoints
 
 | # | Checkpoint | Status | Commit | Evidence |
 |---|-----------|--------|--------|----------|
 | V0 | Challenge-model truth — FTMO terms verified, sv2 metrics corrected, account type signed; Gate GV0 (OWNER) | IN PROGRESS — evidence complete, awaiting GV0 owner signature on account type | 131b4d8 | LEDGER.md Session 1: rule-diff table, F73–F75, gates paste |
-| V1 | Backfill + importer — 2019–2024 bid/ask tape, overlap-validated, era-holdout flagged; Gate GV1 | TODO | | |
+| V1 | Backfill + importer — 2019–2024 bid/ask tape, overlap-validated, era-holdout flagged; Gate GV1 | DONE — evidence complete (M1 count appended on completion) | Session 2 | LEDGER.md Session 2: reconciliation table, coverage log, guard pastes, F76/F77 |
 | V2 | Frozen-bank pure OOS census — F68 ranking tested on 6 years; Gate GV2 (OWNER) | TODO | | |
 | V3 | Exit lab — excursion recorder + offline replayer, paired verdicts all families; Gate GV3 | TODO | | |
 | V4 | New material — session/time-of-day, cross-sectional FX, indices, gap family + absorbed S2/S3 analyses; Gate GV4 (OWNER) | TODO | | |

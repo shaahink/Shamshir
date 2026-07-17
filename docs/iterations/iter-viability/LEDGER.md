@@ -453,6 +453,47 @@ Case (b) is the reason the tool exists: on serially dependent data the naive boo
 understates the SE by ~2× — exactly the overconfidence D5′ is designed to kill. V2's gate
 tables use this module; the V5 session still owes EB shrinkage + stitched walk-forward.
 
+### Results — V1 download complete + import executed (gate GV1 evidence, part 2; owner asked "once all the download done, log it" — this is that log)
+
+**Archive (durable, outside repo — `C:\ShamshirData\backfill\dukascopy-raw.db`, 708 MB blobs;
+read-only snapshot `dukascopy-raw.snapshot-20260717.db`, 778 MB):**
+```
+75,078 / 75,096 files (99.976%) — 2019-01-01 -> 2026-05-05, 14 symbols, BID+ASK M1 daily files
+per symbol: EURUSD/GBPUSD/USDCAD/USDCHF/USDJPY/AUDUSD 100% · XAUUSD/GBPJPY/EURGBP/ETHUSD -1
+· XAGUSD -2 · BTCUSD/EURJPY -3 · NZDUSD -6   (18 sticky-301 files ≈ 18 symbol-days of 37,548;
+retryable any time via `download`; the earlier 61 overlap stragglers all recovered in sweeps)
+```
+Range note: sweeps also filled 2025-01-01→07-03 (a gap between the two planned windows) —
+archive-only by construction; the import refuses ≥ 2025.
+
+**Import into `MarketDataBars` (Source='dukascopy', 2019-01-01 → 2024-12-31 ONLY), verified:**
+```
+D1     23,034 (spread 100%)      2019-01-01 22:00 -> 2024-12-30 22:00   [venue-day 21/22:00 UTC opens]
+H1    541,519 (spread 99.99%)    2019-01-01 22:00 -> 2024-12-31 21:00
+H4    136,529 (spread 99.99%)
+M15 2,165,344 (spread 99.99%)
+total 2,866,426 bars; dukascopy rows >= 2025-01-01: 0; ctrader rows: 6,906,483 (untouched)
+sample EURUSD H1 2020-03-16 00:00: O 1.1156 C 1.11177 spread 0.00011 (1.1 pips — COVID-era
+width captured; era-conservative costs per D3 are now DATA, not assumption)
+```
+
+**Era-holdout + embargo guards (post-import paste):**
+```
+era-holdout guard (runs intersecting 2024, started >= 2026-07-16): 0
+embargo-2 guard (runs from >= 2026-07-06): 0
+```
+
+**M1 amendment (append-note, reason recorded):** the pre-registration deferred M1/M5 on disk
+(5.7 GB free). During the session a WAL checkpoint + temp cleanup freed the drive to 11.9 GB —
+the deferral's sole reason lapsed, so the **M1 import was executed** (~32M rows, reversible via
+`DELETE ... WHERE Source='dukascopy' AND Timeframe='M1'`); result appended below when it
+completes. M5 stays deferred — nothing consumes it. With M1 present, 2019–24 tape runs fill on
+fine bars exactly like the 2025 census — the V2 fill-granularity caveat DISSOLVES.
+
+**GV1 gate checklist:** overlap reconciliation table pasted (above) ✓ · per-bar spread present ✓
+· era-holdout flagged as a standing guard query with named baseline ✓ · importer + archive
+durable and re-runnable ✓. **GV1: evidence complete.**
+
 ### Evidence — era-holdout guard baseline (run BEFORE import)
 
 ```

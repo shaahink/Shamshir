@@ -282,6 +282,8 @@ def venue_offset_hours(t):
 
 
 def bucket_open(t, tf):
+    if tf == "M1":
+        return t.replace(second=0)   # the M1 record IS the bar; aggregation degenerates to identity
     if tf == "M15":
         return t.replace(minute=t.minute - t.minute % 15, second=0)
     if tf == "H1":
