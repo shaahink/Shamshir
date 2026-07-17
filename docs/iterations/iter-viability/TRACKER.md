@@ -9,23 +9,26 @@ Status ∈ TODO / IN PROGRESS / DONE / BLOCKED. Sessions are MANUAL (owner call 
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **Session 3 (2026-07-17): V2 PRE-REGISTERED + census launched.** Pre-reg in LEDGER.md
-Session 3 (committed BEFORE run 1): 252 cells (9 strat × 14 sym × {H1,H4}, parked cells
-included — parks bind candidacy not research), window 2019-01-01→2023-12-31T00:00 (era-holdout
-clean by construction), config = 075D5240 exact replica on dukascopy tape (M1 fine bars,
-99.99% per-bar spread). Spread policy: raw per-bar duka primary + 1.5×/2× post-hoc analytic
-stress (F77 floor values degenerate; FTMO published spreads not citable/static). MDE (D1,
-block_bootstrap, blinded): per-family $30–41/t ≈ 0.06–0.09R at 6× n — powered for the 0.10R
-question; bank-pooled $13/t caveat stated. H-MR / H-RANK / H-BANK verdict rules pinned; frozen
-census vectors pasted ($/t AND expR — they disagree on rsi-div, F70). **Disk finding:** V2
-journal would be 10–12 GB vs 5.1 GB free → pre-registered deviation: `census_driver.py
---prune-journal` (delete Journal per run after completed+scored; ALL result records kept);
-owner decision "Both" (also frees disk). GV0: owner queried 1-step Swing — doesn't exist
-(Swing = 2-step only, re-verified); rec stands Swing $100k 2-step; **GV0 still open**.
-next: (1) Census batch to completion (resume: `python tools/research/census_driver.py
---experiment <id in LEDGER> --parallel 3 --prune-journal`; H4 tranche first; disk guard at
-1.5 GB). (2) Verdict tables + spread stress + GV2 owner gate. (3) GV0 signature. (4) L0 live
-compare-both smoke = standing debt, next cTrader session. Findings continue at **F78**.
+last: **Session 3 (2026-07-17): V2 pre-registered; pilot fired TWICE → F78 + F79 found and
+FIXED; census batch RUNNING.** Pre-reg committed before run 1 (252 cells = 075D5240 replica on
+2019–2023 duka tape; spread = raw per-bar + 1.5×/2× post-hoc stress; MDE $30–41/t at 6× n;
+H-MR/H-RANK/H-BANK pinned; journal-prune disk deviation, owner "Both"). Pilot exposed **F78**
+(governor cooling-off deadlock: streak counter only reset on wins, unreachable during the
+pause → permanent lockout after any 5-loss streak) and **F79** ("daily" DD = cumulative-from-
+initial in InitialBalance mode: protection latched below −4.75% forever + static $95k gate
+floor, under-protective above HWM). BOTH fixed + test-pinned (bug-pinning tests rewritten to
+verified FTMO single-day semantics); gates 780/156/144 green. **The 2025 census's 8× monthly
+trade decay is these two bugs** — F68/F64/F75/R3/R4 all carry the suppression overlay (re-read
+at GV2; 2025 census re-run under fixed engine proposed, embargo-clean). Pilot #3 clean: MR/EUR
+8→113 trades, TB/XAU 15→460, uniform years. **Batch: experiment `95F32D08-BAFE-415E-9492-
+28BD9B4CD89B`, 250 cells, detached (survives session close), ~8–9 h, log
+`C:\ShamshirData\logs\v2-census.log`.** GV0: 1-step Swing doesn't exist (verified); rec stands
+Swing $100k 2-step; **GV0 still open**.
+next: (1) Harvest batch → verdict tables (era × family + D5′ legs + spread stress) → GV2 owner
+gate (incl. F78/F79 blast-radius re-read + 2025-census-rerun decision). Resume if needed:
+`python tools/research/census_driver.py --experiment 95F32D08-BAFE-415E-9492-28BD9B4CD89B
+--parallel 3 --prune-journal`. (2) GV0 signature. (3) L0 live compare-both smoke = standing
+debt, next cTrader session. Findings continue at **F80**.
 
 ## Checkpoints
 
