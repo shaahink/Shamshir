@@ -1009,3 +1009,32 @@ construction, not by luck or by remembering to restart the app.
 old gate-ON runs, not research-mode re-runs) — same precedent as Amendment 6. Fourth experiment:
 **`4F56B1AE-7269-41CC-8D6C-60E920742EE7`**. Re-pilot under it produced FRESH run ids
 (`2da50c97`, `e156fad5`), confirming the namespace works.
+
+### F84 — WAL bloat from a large concurrent delete filled the disk (recovered)
+
+While freeing headroom for the research-mode batch, the retired-experiment prune deleted 1.33M
+Bars + 2.10M EquitySnapshots (136 runs) from `trading.db` **in WAL mode, concurrently with the
+running batch**, WITHOUT an intervening checkpoint. Every deleted frame lands in `trading.db-wal`
+until a checkpoint folds it back — so the WAL ballooned to **11 GB** and OS free disk fell from
+~9.5 GB to **84 MB (disk 100% full)**. The batch's `DISK GUARD` (checks OS free via
+`shutil.disk_usage`, not the file's internal freelist) correctly fired at RUN 12 —
+`free < 1.5 GB` — and halted resume-safe with 236 cells left.
+
+Recovered with `PRAGMA wal_checkpoint(TRUNCATE)` from a writer connection (app idle, batch
+halted): returned `(0,0,0)` — the app had already checkpointed the frames, but the WAL FILE stayed
+allocated at its 11 GB high-water mark until TRUNCATE. Result: `-wal` 11 GB → 0.01 GB, **OS free
+84 MB → 11 GB**, `trading.db` unchanged at 6.63 GB with 191,046 free pages (0.78 GB recyclable
+inside the file). Retired evidence intact by design (TradeResults + scores kept:
+95F32D08 15,103 trades / 136 scores, CCA30637 270 / 2).
+
+**Lessons (both now true operational constraints):**
+1. Freeing pages inside a SQLite file does NOT return disk to the OS — it only lets the file
+   REUSE them before growing. To reclaim to the OS you must checkpoint(TRUNCATE) the WAL (cheap,
+   safe, no lock) or VACUUM (expensive, 2× space, exclusive lock — never mid-batch).
+2. A large delete against a WAL database that another process is actively writing must be
+   **chunked with periodic `wal_checkpoint(TRUNCATE)`**, or the WAL grows to the full size of the
+   change set and can fill the disk. The per-cell journal prune (~80k rows) never triggers this;
+   a 3.4M-row out-of-band delete does.
+
+Net effect on the batch: paused at 12/250, resume-safe, no data loss, no corruption. Relaunched
+after the reclaim (same command; resumes by label).

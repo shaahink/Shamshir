@@ -15,18 +15,28 @@ handoff for the full context (F82/F83).
 
 - **Experiment:** `4F56B1AE-7269-41CC-8D6C-60E920742EE7` (research mode, `maxDdEnabled:false`).
   Two predecessors are RETIRED, park-never-delete: `95F32D08` (gate-ON), `CCA30637` (F83-tainted).
-- **Progress:** `grep -c '^RUN ' C:\ShamshirData\logs\v2-census-rm.log` (250 total; ~10 min/H1
-  cell, ~2.5 min/H4). `tail` that log for the live cell.
-- **DO NOT KILL** the two processes this depends on:
-  - **dotnet app** on `http://localhost:5134` (was PID 33060) — the engine the driver POSTs to.
-    Re-find: `Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'"`. **Do not reboot.**
-  - **census driver** (was PID 13756, `census_driver.py --experiment 4F56B1AE …`) — detached.
+- **Progress (resume-proof — survives driver restarts):** count scored cells in the experiment,
+  NOT a log file (the log rotates on each resume: `v2-census-rm.log`, `-rm2.log`, …):
+  `python -c "import sqlite3;print(sqlite3.connect('file:src/TradingEngine.Web/data/trading.db?mode=ro',uri=True).execute(\"SELECT COUNT(*) FROM ExperimentRuns WHERE ExperimentId='4F56B1AE-7269-41CC-8D6C-60E920742EE7' COLLATE NOCASE\").fetchone()[0])"`
+  of 252. `tail` the newest `C:\ShamshirData\logs\v2-census-rm*.log` for the live cell
+  (~10 min/H1, ~2.5 min/H4).
+- **DO NOT KILL** the two processes this depends on (PIDs change on restart — re-find, don't trust
+  these numbers):
+  - **dotnet app** on `http://localhost:5134` — the engine the driver POSTs to.
+    `Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'"`. **Do not reboot.**
+  - **census driver** — `Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+    ? { $_.CommandLine -like '*census_driver*' }`. Detached; survives session close.
 - **DO NOT** start a second app instance on the same DB (Lane-R doctrine: one app per DB file),
   launch another backtest through the UI, or `VACUUM`/schema-migrate `trading.db` while it runs.
 - **Read-only is fine:** query `trading.db` with `?mode=ro`, tail logs, watch progress.
-- **If it stalls on disk** (`DISK GUARD: free < 1.5 GB` in the log): the driver halted cleanly and
-  is resume-safe. Free space, then resume with the exact command in the TRACKER handoff. A scripted
-  single-writer prune of RETIRED-experiment bulk rows is safe (WAL, run-by-run) — never the live one.
+- **If it stalls on disk** (`DISK GUARD: free < 1.5 GB` in the log): the driver clears its queue,
+  drains in-flight, prints `BATCH DONE`, and EXITS — resume-safe by label. Wait for it to exit
+  (don't run two drivers), free disk, then RELAUNCH the same command; it resumes from the DB count.
+- **F84 disk trap:** freeing rows inside `trading.db` does NOT return space to the OS — it fills
+  `trading.db-wal` instead. A big out-of-band delete (retired-experiment bulk) ballooned the WAL to
+  11 GB and filled the disk. Reclaim with `PRAGMA wal_checkpoint(TRUNCATE)` (cheap, safe, no lock;
+  app can stay up). NEVER `VACUUM` mid-batch (2× space + exclusive lock). Any bulk prune must be
+  chunked with periodic `wal_checkpoint(TRUNCATE)`, and only ever against RETIRED experiments.
 - **At `BATCH DONE`:** run `census_driver.py … --rescore-nulls` (F80 stragglers) → then
   `python tools/research/v2_harvest.py --experiment 4F56B1AE-…`. **Gate on §0: it must report ~0
   truncated cells** — if not, F82 is not actually off and the batch is void.
