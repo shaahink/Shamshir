@@ -688,3 +688,79 @@ era-holdout guard (2024 runs since 2026-07-16): 0
 embargo-2 guard (runs from >= 2026-07-06): 0
 ```
 ---
+
+## Session 3 (continued) — 2026-07-17 — F78: the pilot fires — governor cooling-off deadlock
+
+### F78 — GovernorMachine cooling-off never releases: permanent entry lockout after any 5-loss streak
+
+**The pilot did its job.** Both pre-registered pilot runs starved: `census/mean-reversion/
+EURUSD/H1` (65fc6f83) = 8 trades in 5 years, ALL in Jan 2019; `census/trend-breakout/XAUUSD/H4`
+(e66fc1d0) = 15 trades, ALL Jan–Mar 2019 — while `BarClosed`/`EquityObserved` journal events
+continue uniformly through 2023 (engine alive, entries dead).
+
+**Evidence chain (all read-only, pasted from the orphan run's surviving journal):**
+1. e66fc1d0 journal: `OrderProposed` steady at 111/116/115/131/128 per year 2019–2023 —
+   signal generation healthy for all 5 years. `OrderFilled`: 30 in 2019, **zero after**.
+2. Every post-2019-03 proposal carries `DecisionReason` alternating between
+   `GOVERNOR:CoolingOff: N bars remaining` and
+   `GOVERNOR:CoolingOff: 5 consecutive losses >= pause 5` — for 4.7 years.
+3. Code (`GovernorMachine.cs`): `ApplyTradeClosed` resets `ConsecutiveLosses` **only on a
+   win**; `ApplyBar` expires the pause but leaves the counter; `EvaluateStatic` re-arms
+   CoolingOff whenever `ConsecutiveLosses >= StreakPauseAt` (default 5; CoolingOffBars=24).
+   During the pause no trade can open ⇒ no win can occur ⇒ **deadlock by construction**. The
+   existing unit test verified pause-expiry → Normal but never Evaluated after expiry.
+4. **The 2025 census has the same disease** — 075D5240 trades by month:
+   1069 → 975 → 624 → 511 → 321 → 281 → 192 → 174 → 173 → 132 (monotonic ~8× decay).
+   Cells fall permanently silent as each hits its first 5-loss streak. The pilot merely ran
+   long enough (5y) for ~all cells to hit one.
+
+**Blast radius (to be re-read at GV2 with this lens; no re-litigation tonight):** every
+long-window result to date ran under this governor — 075D5240 (F68 family stats are
+early-window-biased and truncated at first 5-streak; F64's "H2 thinner" is at least partly
+mechanical; F75's leg-(ii) H1→H2 trade-mix shift likewise — H2 n was 944 vs H1 2625), R3/R4
+candidate velocity ("too slow", 0/12 windows) partly mechanical, F74's untimed E[t] overstated.
+Direction of bias on per-trade stats is UNKNOWN (post-streak entries are excluded — a
+selection at streak boundaries), so $/t comparisons against the census carry a stated
+mechanical-truncation caveat from here on. Live trading would have hit the same lockout
+(L-track dodged a bullet).
+
+**Fix (L1 correctness-before-money pattern, F26/F28/F71 precedent — behavior corrected to the
+rule's own stated intent, no logic rewrite):** `ApplyBar` clears `ConsecutiveLosses` when the
+cooling-off completes ("served the pause = fresh slate"; without it the stale counter re-arms
+the pause forever). Pinned by `CoolingOff_Expiry_ClearsStreak_AndDoesNotRearm` (repro-shaped:
+fails on the old code via the post-pause Evaluate).
+
+**Ops fixes shipped alongside (pilot exposure):** (a) run-submission re-validates coverage via
+`GetInventoryAsync` — a full-table GROUP BY that costs ~2 min at the new 35M-row scale; the
+20 s cache TTL made every submission re-pay it and timed out the pilot's second POST (orphaning
+e66fc1d0 — adopted below). `BootstrapMarketDataStore` TTL → 60 min + invalidate-on-write/delete
+(out-of-process importers are already forbidden during batches by the one-writer doctrine);
+driver POST timeout → 360 s. (b) Driver prune verified: 64,671 journal rows reclaimed on the
+scored pilot run; e66fc1d0's journal is deliberately KEPT as F78 evidence.
+
+### Pre-registration amendments (recorded BEFORE the batch, Session-1 amendment precedent)
+
+1. **Frozen-bank definition** now = configs + engine as of the F78-fix commit (includes
+   F71/F26/F28/F78 — D8: dead knobs get fixed, logic is not rewritten). All V2 runs execute
+   under the FIXED governor.
+2. **Experiment `2E1BDB18` is retired** — it contains only the two F78-contaminated pilot rows
+   (kept, park-never-delete, named F78 evidence). The census runs under a fresh experiment,
+   same spec (id pasted at creation below).
+3. **H-RANK caveat strengthened:** the frozen census comparison vectors were measured under
+   F78 suppression; the rank test stands but a weak/absent correlation is now also explainable
+   by the census's own truncation — verdict language must say so.
+4. **MDE line unchanged and conservative:** census trades (the SE source) were F78-truncated;
+   the fixed engine should produce MORE trades per cell, so actual OOS n ≥ n_proj and actual
+   MDE ≤ the pre-registered $30–41/t.
+5. **Pilot is re-run under the new experiment before the batch; expectation revised:** cell
+   trade counts should now EXCEED census-rate × 6 (the census rate itself was suppressed).
+
+**Gates after F78 fix (paste):**
+```
+Build succeeded. 0 Error(s)
+Unit         Passed! Failed: 0, Passed: 779, Skipped: 6   (+CoolingOff_Expiry_ClearsStreak_AndDoesNotRearm)
+Integration  Passed! Failed: 0, Passed: 156, Skipped: 0
+Sim-fast     Passed! Failed: 0, Passed: 144, Skipped: 0
+```
+Golden/sim results unmoved — the pinned short windows never reached a 5-loss lockout, which is
+also why the bug survived every prior gate.

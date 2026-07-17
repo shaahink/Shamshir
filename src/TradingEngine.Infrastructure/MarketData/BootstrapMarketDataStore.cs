@@ -12,12 +12,15 @@ public sealed class BootstrapMarketDataStore : IMarketDataStore
     // real 1.2GB MarketDataBars table) that every RunsController.Start call re-runs to validate data
     // coverage. Serialized starts hid the cost; once X0 removed the one-run-at-a-time guard, N
     // concurrent starts fired N parallel scans and stacked up into request-timeout 500s (found live
-    // in the X0 smoke test). Coalesce concurrent callers onto one in-flight query and cache briefly —
-    // downloads are a rare, multi-minute operation, so 20s staleness is invisible in practice.
+    // in the X0 smoke test). Coalesce concurrent callers onto one in-flight query and cache.
+    // V2 backfill scale (35M rows / 8.2GB): the scan is now ~2 minutes, so a short TTL made every
+    // run submission re-pay it (timed out the V2 pilot's second POST). Writes and deletes through
+    // this store invalidate the cache immediately, so the long TTL only bounds staleness against
+    // OUT-OF-PROCESS importers — which the one-writer doctrine forbids while the app is serving runs.
     private readonly object _inventoryLock = new();
     private Task<IReadOnlyList<MarketDataInventoryEntry>>? _inventoryTask;
     private DateTime _inventoryCachedAtUtc;
-    private static readonly TimeSpan InventoryCacheTtl = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan InventoryCacheTtl = TimeSpan.FromMinutes(60);
 
     public BootstrapMarketDataStore(IMarketDataStore inner)
     {
@@ -31,7 +34,17 @@ public sealed class BootstrapMarketDataStore : IMarketDataStore
             _bootstrapBars[source] = bars;
             return bars.Count;
         }
-        return await _inner.WriteBarsAsync(source, bars, ct, progress);
+        var written = await _inner.WriteBarsAsync(source, bars, ct, progress);
+        InvalidateInventory();
+        return written;
+    }
+
+    private void InvalidateInventory()
+    {
+        lock (_inventoryLock)
+        {
+            _inventoryTask = null;
+        }
     }
 
     public async Task<IReadOnlyList<Bar>> ReadBarsAsync(Symbol symbol, Timeframe tf, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
@@ -76,6 +89,10 @@ public sealed class BootstrapMarketDataStore : IMarketDataStore
     public Task<IReadOnlyList<MarketDataGap>> GetGapsAsync(Symbol symbol, Timeframe tf, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
         => _inner.GetGapsAsync(symbol, tf, fromUtc, toUtc, ct);
 
-    public Task<int> DeleteBarsAsync(Symbol symbol, Timeframe tf, DateTime? fromUtc, DateTime? toUtc, string? source, CancellationToken ct = default)
-        => _inner.DeleteBarsAsync(symbol, tf, fromUtc, toUtc, source, ct);
+    public async Task<int> DeleteBarsAsync(Symbol symbol, Timeframe tf, DateTime? fromUtc, DateTime? toUtc, string? source, CancellationToken ct = default)
+    {
+        var deleted = await _inner.DeleteBarsAsync(symbol, tf, fromUtc, toUtc, source, ct);
+        InvalidateInventory();
+        return deleted;
+    }
 }

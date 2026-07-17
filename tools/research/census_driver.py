@@ -176,7 +176,9 @@ def main():
                 queue.clear()
                 break
             vl, body = queue.pop(0)
-            st, resp = http("POST", "/api/runs", body, timeout=120)
+            # 360s: run submission re-validates data coverage; at 35M-row scale a cold inventory
+            # cache costs ~2 min (the pilot's second POST timed out at 120s and orphaned a run).
+            st, resp = http("POST", "/api/runs", body, timeout=360)
             rid = (resp or {}).get("runId")
             if not rid:
                 finished += 1
