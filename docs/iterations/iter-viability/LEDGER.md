@@ -928,3 +928,84 @@ engine's three-case pip logic and misprice every JPY-cross/USDCAD/metal trade (c
 Algebraically identical; verified 0.000000 error across all six symbol classes.
 "Weekly-scale blocks" was never pinned in committed code — now pinned (mean_block = median
 positions per ISO week per family); MDE restated at ACTUAL n throughout.
+
+### Amendment 7 — F82: research mode, overall max-DD floor OFF (owner call 2026-07-17)
+
+**Recorded BEFORE the re-run launches** (pre-registration discipline; the pilot below is
+verification, not census).
+
+**Trigger:** F82 — `PreTradeGate.cs:174` (`WorstCaseDDWouldBreachOverall`) is absorbing. 35/122
+trading cells of experiment `95F32D08` stopped trading years early, 34 pinned at ≥9% DD (median
+9.82%), because an account within one worst-case of the $90k floor rejects every entry forever.
+Truncation selects the LOSING cells ⇒ later eras survivorship-biased upward.
+
+**Owner decision (2026-07-17): option (a) "research mode — floor gate off."** Rationale: V2's
+question is *does the F68 ranking hold out-of-sample over 2019–2023*. A cell that stops trading
+in 2020 answers a different question (*how long until a 10% drawdown*). Challenge SURVIVAL is
+V6's question (control layer), and FTMO pass-rate remains measurable post-hoc by
+`ChallengeSimulator`, which runs independently of the engine gate.
+
+**The deviation:** every census run now posts `maxDdEnabled: false`.
+- No engine change and no rebuild — the toggle already exists and is fully plumbed
+  (`StartRunRequest.MaxDdEnabled` → `RunsController.cs:162` → `RunConfigAssembler.cs:193`:
+  `MaxDdEnabled = pf.Toggles.MaxDdEnabled && perRunMaxDd`). iter-strategy-system P5 built it
+  precisely so per-run overrides could disable this.
+- Also disables the `Kernel.cs:159` force-flatten watchdog (same flag) — intended.
+- **Daily DD stays ON.** It re-anchors at each day start, so it is not absorbing (that was F79's
+  bug, fixed). Only the overall floor latches.
+
+**Experiment `95F32D08-BAFE-415E-9492-28BD9B4CD89B` RETIRED** (park-never-delete; 136 cells,
+gate ON). New experiment **`CCA30637-E9A3-4370-8204-4062EE317C4C`**. The two must never be
+pooled: their cells ran under different risk semantics.
+
+**Consequences, stated up front:**
+- **sv2 composites are NOT comparable across the two experiments.** With the floor off, MaxDD can
+  exceed 10%, so the Drawdown component (weight 0.2) will fall on cells that previously froze
+  just above the floor. Composites move for a mechanical reason, not an edge reason.
+- **H-RANK is unaffected in kind** — it compares `$/trade` vectors, not composites — but its OOS
+  side is now measured without truncation, which is the point.
+- **NOT fixed by this amendment:** `KernelSizing.ComputeScaleFactor` still scales lots down as
+  drawdown grows (`DrawdownScaleThreshold`/`DrawdownScaleFloor`). That is a confound on $/trade
+  (risk-per-trade varies with drawdown) but it is NOT absorbing — lots were healthy (2.42) at the
+  moment F82's proof cell died, so scaling was never the binding constraint. Logged, not changed.
+- Accounts may now run below $90k. Intended: in research mode the account is a measuring device,
+  not a challenge.
+
+**Pilot re-pointed at cells that PROVABLY DIED under F82** — a pilot that cannot fail the
+hypothesis proves nothing, which is exactly how the original pilot passed while 29% of the census
+was silently dying (its 2 cells never approached the floor):
+```
+trend-breakout/NZDUSD/H4    died 2019-06 @ 9.98% DD, 38 trades   -> must now trade into 2023
+session-breakout/AUDUSD/H1  died 2020-01 @ 9.18% DD, 232 trades  -> must now trade into 2023
+```
+Gate to proceed to the full batch: BOTH cells' last trade lands in 2023.
+
+### Amendment 8 — F83: idempotency reattach nearly faked the whole re-run
+
+**F83 — the app's IN-MEMORY idempotency store reattaches across a semantics change.** Amendment
+7's pilot posted `maxDdEnabled: false` under key `v2-census-session-breakout-audusd-h1` — the same
+key the previous batch used. The app (up since 05:05, same process, same store) returned **the
+original completed runs**: `ca332ae7` (started 12:18 UTC, 232 trades, last trade 2020-01-28) and
+`a19fec05` (started 05:39 UTC, 38 trades, last trade 2019-06-21). The new toggle was never
+applied; the driver simply re-scored gate-ON data into the new experiment.
+
+**Blast radius had the pilot not caught it:** `already_done()` finds no rows for a fresh
+experiment ⇒ all 252 cells are "todo" ⇒ every POST reattaches to its old run ⇒ the driver scores
+252 OLD gate-ON runs into the new experiment and prints `BATCH DONE`. The result would have been a
+byte-identical census presented as a research-mode re-run — F82 "fixed" on paper, unchanged in
+fact, with no error anywhere. This is the most dangerous class of failure in this program: a
+silent false negative that looks like work.
+
+**Caught only because Amendment 7 re-pointed the pilot at cells that PROVABLY DIED** and stated a
+falsifiable gate ("both must trade into 2023"). The original pilot design — two healthy cells —
+would have sailed through. Doctrine confirmed: *a pilot that cannot fail the hypothesis proves
+nothing.*
+
+**Fix:** idempotency keys are now namespaced by experiment —
+`v2-census-{exp_id[:8]}-{strategy}-{sym}-{tf}`. A new experiment now means new runs by
+construction, not by luck or by remembering to restart the app.
+
+**Experiment `CCA30637-E9A3-4370-8204-4062EE317C4C` RETIRED** (park-never-delete; its 2 rows are
+old gate-ON runs, not research-mode re-runs) — same precedent as Amendment 6. Fourth experiment:
+**`4F56B1AE-7269-41CC-8D6C-60E920742EE7`**. Re-pilot under it produced FRESH run ids
+(`2da50c97`, `e156fad5`), confirming the namespace works.

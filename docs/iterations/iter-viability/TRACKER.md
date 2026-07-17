@@ -32,25 +32,44 @@ not per-symbol** (BTCUSD/H1 first touch ran at full speed) → batch ETA **~6.5 
 no intervention. Driver hardened: scores only once the persisted row is terminal, warns instead
 of abandoning, new `--rescore-nulls` recovery mode.
 
-**F82 (session 4) — V2's headline risk.** `PreTradeGate.cs:174` (`WorstCaseDDWouldBreachOverall`)
-is ABSORBING: an account parked within one worst-case of the $90k floor rejects every entry
-forever (no trade ⇒ no recovery ⇒ no trade), silently — `completed`, no error, no warning.
-**35/122 trading cells (29%) stopped years early**, 34 of them pinned at ≥9% DD (median 9.82%);
-`trend-breakout` lost 12/15 cells by median 2021-06. Truncation selects the LOSING cells ⇒ later
-eras are survivorship-biased upward and era columns are NOT comparable across time. The gate is
-defensible; the **census design** (5 y, one $100k account, no reset) is the defect. **GV2 owner
-call: (a) research mode w/ overall-floor gate off, (b) per-era reset, or (c) accept + report.**
-Harvest leads with a §0 integrity section. `v2_harvest.py` built + validated (all 5 deliverables);
+**F82 (session 4) — V2's headline risk, RESOLVED by owner call → re-running.**
+`PreTradeGate.cs:174` (`WorstCaseDDWouldBreachOverall`) is ABSORBING: an account parked within one
+worst-case of the $90k floor rejects every entry forever (no trade ⇒ no recovery ⇒ no trade),
+silently — `completed`, no error, no warning. **35/122 trading cells (29%) stopped years early**,
+34 pinned at ≥9% DD (median 9.82%); `trend-breakout` lost 12/15 cells by median 2021-06.
+Truncation selects the LOSING cells ⇒ later eras survivorship-biased upward. The gate is
+defensible; the **census design** (5 y, one $100k account, no reset) was the defect.
+**Owner chose (a) research mode** → `maxDdEnabled: false` per run (Amendment 7). NO engine change:
+the toggle already existed and is plumbed (`StartRunRequest` → `RunsController:162` →
+`RunConfigAssembler:193`). **Pilot on two PROVABLY-DEAD cells PASSED**: trend-breakout/NZDUSD/H4
+38 trades dead 2019-06 → **477 trades, last 2023-12-29**, maxDD 21.4% (research mode = account is
+a measuring device, not a challenge); wall unchanged 2.5m.
+
+**F83 (session 4) — the near-miss that nearly faked the entire re-run.** The app's idempotency
+store is **IN-MEMORY, process-lifetime**, so a bare `v2-census-<cell>` key REATTACHED Amendment 7's
+pilot to the ORIGINAL gate-ON runs (`ca332ae7`, `a19fec05`) — `maxDdEnabled` never applied.
+Unnoticed, all 252 cells would have reattached and the driver would have scored a byte-identical
+census into the new experiment and printed `BATCH DONE`: F82 "fixed" on paper, unchanged in fact,
+no error anywhere. Keys now namespaced by experiment (`v2-census-{exp[:8]}-...`). **Caught ONLY
+because the pilot was re-pointed at cells that had to change, with a falsifiable gate** — two
+healthy cells would have sailed through, exactly as the original pilot did while 29% of the census
+died. Doctrine: *a pilot that cannot fail the hypothesis proves nothing.*
+
+Experiments: `95F32D08` RETIRED (gate-ON) · `CCA30637` RETIRED (F83-contaminated) · **live =
+`4F56B1AE-7269-41CC-8D6C-60E920742EE7`** (park-never-delete throughout). sv2 composites are NOT
+comparable across experiments (DD component moves mechanically once the floor is off).
+`v2_harvest.py` built + validated (all 5 deliverables, §0 F82 integrity section, partial banner);
 **F81** — `block_bootstrap.py` was never importable (unguarded module-level `parse_args`), fixed.
 
-next: (1) On `BATCH DONE`, sweep with `--rescore-nulls` (recovers any F80 stragglers the running
-old-code driver still hits) before harvesting. (2) **Resolve F82 (a/b/c) — a re-run under (a)/(b)
-would supersede the batch's era tables.** (3) Harvest batch → verdict tables (era × family +
-D5′ legs + spread stress) → GV2 owner gate (incl. F78/F79 blast-radius re-read +
-2025-census-rerun decision). Resume if needed:
-`python tools/research/census_driver.py --experiment 95F32D08-BAFE-415E-9492-28BD9B4CD89B
---parallel 3 --prune-journal`. (3) GV0 signature. (4) L0 live compare-both smoke = standing
-debt, next cTrader session. Findings continue at **F83**.
+next: (1) **252-cell research-mode census running under `4F56B1AE`** (~9 h, detached, survives
+session close), log `C:\ShamshirData\logs\v2-census-rm.log`. Resume/monitor:
+`python tools/research/census_driver.py --experiment 4F56B1AE-7269-41CC-8D6C-60E920742EE7
+--parallel 3 --prune-journal`. (2) On `BATCH DONE`: `--rescore-nulls` sweep (F80 stragglers),
+then `python tools/research/v2_harvest.py --experiment 4F56B1AE-...` → the 5 GV2 tables. Expect
+§0 to report ~0 truncated cells — if it does NOT, F82 is not actually off and the batch is void.
+(3) GV2 owner gate (incl. F78/F79 blast-radius re-read + 2025-census-rerun decision). (4) **GV0
+signature — open 4 sessions, blocking V0** (rec: Swing $100k 2-step). (5) L0 live compare-both
+smoke = standing debt, next cTrader session. Findings continue at **F84**.
 
 ## Checkpoints
 

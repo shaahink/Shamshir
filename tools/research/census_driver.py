@@ -50,8 +50,13 @@ SYMBOLS = ["AUDUSD", "BTCUSD", "ETHUSD", "EURGBP", "EURJPY", "EURUSD", "GBPJPY",
            "NZDUSD", "USDCAD", "USDCHF", "USDJPY", "XAGUSD", "XAUUSD"]
 TIMEFRAMES = ["H1", "H4"]
 
-# 2 pilot cells to measure 5-year wall time before committing to the ~30-40 h batch
-PILOT = [("mean-reversion", "EURUSD", "H1"), ("trend-breakout", "XAUUSD", "H4")]
+# Pilot cells. Amendment 7 re-points these at two cells that PROVABLY DIED under F82 in
+# experiment 95F32D08, because a pilot that cannot fail the hypothesis proves nothing (the
+# original pilot passed while 29% of the census was silently dying — its 2 cells never came
+# near the floor). Expectation: both must now trade into 2023 instead of stopping dead.
+#   trend-breakout/NZDUSD/H4  — died 2019-06 at 9.98% DD after 38 trades
+#   session-breakout/AUDUSD/H1 — died 2020-01 at 9.18% DD after 232 trades ($90,822 vs $90k)
+PILOT = [("trend-breakout", "NZDUSD", "H4"), ("session-breakout", "AUDUSD", "H1")]
 
 EXPERIMENT_NAME = "v2-frozen-bank-oos"
 HYPOTHESIS = ("V2 frozen-bank pure OOS census 2019-2023 (D13, one cell per run); pre-registered "
@@ -110,7 +115,7 @@ def already_done(db, exp_id):
     return {r[0] for r in rows}
 
 
-def run_body(strategy, sym, tf):
+def run_body(strategy, sym, tf, exp_id):
     return {
         "start": START, "end": END, "balance": 100000,
         "commissionPerMillion": 30, "spreadPips": 1,
@@ -118,7 +123,24 @@ def run_body(strategy, sym, tf):
         "rows": [{"strategyId": strategy, "symbol": sym, "timeframe": tf,
                   "packId": None, "enabled": True}],
         "speed": 10, "honestFills": True,
-        "idempotencyKey": f"v2-census-{strategy}-{sym}-{tf}".lower(),
+        # F82 / Amendment 7 (owner call 2026-07-17 "research mode"): disable the overall max-DD
+        # floor. PreTradeGate.cs:174 rejects any entry whose worst case would breach the $90k
+        # floor; an account parked within one worst-case of it therefore rejects EVERY entry
+        # forever — no trade => no recovery => no trade. That absorbing state silently killed
+        # 35/122 cells of experiment 95F32D08 (trend-breakout 12/15 dead by median 2021-06) and
+        # biased every later era upward by survivorship. V2 asks whether the F68 ranking holds
+        # out-of-sample; challenge SURVIVAL is V6's question, not V2's. Also gates the
+        # Kernel.cs:159 force-flatten watchdog. Daily DD stays ON (it re-anchors each day, so it
+        # is not absorbing — cf. F79).
+        "maxDdEnabled": False,
+        # F83: the app's idempotency store is IN-MEMORY and lives as long as the app process, so a
+        # bare `v2-census-<cell>` key REATTACHES to whatever run that key started earlier in the
+        # process — even across a semantics change. That is how Amendment 7's pilot silently
+        # "re-ran" two cells and got back the ORIGINAL gate-ON runs (ca332ae7, a19fec05), dead
+        # dates and all. Unnoticed, the full batch would have reattached all 252 cells and scored
+        # a byte-identical census into the new experiment while appearing to prove the fix.
+        # Namespacing by experiment makes a new experiment mean new runs, by construction.
+        "idempotencyKey": f"v2-census-{exp_id[:8]}-{strategy}-{sym}-{tf}".lower(),
     }
 
 
@@ -223,7 +245,7 @@ def main():
         if vl in done:
             print(f"SKIP {vl} (already done)", flush=True)
             continue
-        todo.append((vl, run_body(s, sym, tf)))
+        todo.append((vl, run_body(s, sym, tf, args.experiment)))
 
     total, finished = len(todo), 0
     inflight = {}   # runId -> (variantLabel, startedAt)
