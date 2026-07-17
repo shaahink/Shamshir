@@ -809,3 +809,29 @@ bust should be terminal; ChallengeSimulator handles busts independently so sv2 i
 **Amendment 6:** experiment `19EB5D91` retired (its 2 pilot rows ran F78-fixed but F79-broken;
 kept, park-never-delete). Third experiment created post-F79; pilot re-run under it (expectation
 unchanged: trades must now span all five years).
+
+### Evidence — pilot #3 (fully fixed engine) + batch launch
+
+**Experiment `95F32D08-BAFE-415E-9492-28BD9B4CD89B`** (v2-frozen-bank-oos, third id — see
+amendments 2 and 6 for the two retired predecessors).
+```
+census/mean-reversion/EURUSD/H1  875a3163  113 trades  8.6m  sv2 PASS(11)   [was 8 -> 54 -> 113]
+census/trend-breakout/XAUUSD/H4  3ebee811  460 trades  2.3m  sv2 PASS(21)   [was 15 -> 76 -> 460]
+trades by year:
+  MR/EURUSD/H1  2019:38  2020:29  2021:0   2022:12  2023:34
+  TB/XAUUSD/H4  2019:83  2020:92  2021:90  2022:103 2023:92
+```
+TB's uniform spread confirms both suppressors are gone. MR's 2021 zero RECOVERS in 2022–23 —
+non-absorbing, consistent with a genuinely quiet EURUSD year for a mean-reversion cell;
+flagged here, not shrugged. Wall times match the pre-registered extrapolation (batch ≈ 8–9 h
+at --parallel 3).
+
+**Batch launched 2026-07-17** (detached process, survives session close): 250 remaining cells,
+H4 tranche first, `--parallel 3 --prune-journal`, driver log `C:\ShamshirData\logs\
+v2-census.log`, app log `C:\ShamshirData\logs\v2-app.log` (single Lane-R instance, Warning-level
+logging). Resume from any session:
+`python tools/research/census_driver.py --experiment 95F32D08-BAFE-415E-9492-28BD9B4CD89B --parallel 3 --prune-journal`
+
+**Recorded proposal for GV2 (not executed):** re-run the 2025 census (075D5240 spec, window
+2025-07-04 → 2026-05-05, embargo-clean) under the fixed engine so the H-RANK comparison vectors
+are measured without F78/F79 suppression (~3–4 h at parallel 3). Owner decides at the gate.
