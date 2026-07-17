@@ -490,9 +490,17 @@ the deferral's sole reason lapsed, so the **M1 import was executed** (~32M rows,
 completes. M5 stays deferred — nothing consumes it. With M1 present, 2019–24 tape runs fill on
 fine bars exactly like the 2025 census — the V2 fill-granularity caveat DISSOLVES.
 
+**M1 import completed (append):**
+```
+M1 rows: 32,170,346  withSpread: 32,167,301 (99.99%)  range 2019-01-01 22:00 -> 2024-12-31 21:59
+leak >= 2025: 0   disk after: 5.2 GB free
+```
+2019–24 tape runs now fill on M1 fine bars with true per-bar spreads — same fill machinery as
+the 2025 census, better cost truth. Total backfill in `MarketDataBars`: **35,036,772 bars**.
+
 **GV1 gate checklist:** overlap reconciliation table pasted (above) ✓ · per-bar spread present ✓
 · era-holdout flagged as a standing guard query with named baseline ✓ · importer + archive
-durable and re-runnable ✓. **GV1: evidence complete.**
+durable and re-runnable ✓ · M1 fine bars imported ✓. **GV1: evidence complete.**
 
 ### Evidence — era-holdout guard baseline (run BEFORE import)
 
