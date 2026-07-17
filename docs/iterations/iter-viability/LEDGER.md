@@ -517,3 +517,174 @@ from `SELECT COUNT(*) FROM BacktestRuns WHERE BacktestFrom <= '2024-12-31' AND B
 '2024-01-01' AND StartedAtUtc >= '2026-07-16'` until the V7 era-holdout gate entry exists.
 
 ---
+## Session 3 — 2026-07-17 — V2 frozen-bank pure-OOS census: pre-registration (Lane R)
+
+**Session mode:** MANUAL. Baseline QA (protocol step 1): gates re-run on `iter/viability` @
+`bfa1bfd` before any work — build 0 err · Unit 778/0/6 · Integration 156/0/0 · Sim-fast
+144/0/0 (`scripts/gates.ps1`) — matches the Session-2 close and TRACKER handoff exactly.
+Session-2's M1 append-note was closed out by the import-owning session before this entry was
+appended (LEDGER one-writer, D9).
+
+### Pre-registration — V2 frozen-bank pure-OOS census 2019–2023 (gate GV2, OWNER)
+
+Everything in this section was fixed BEFORE any 2019–2023 run was created. The 2019–2023
+window has never been scored by any strategy in this repo's history (the data itself arrived
+in Session 2, postdating all strategy development) — this is the program's cleanest OOS test
+and the gate that decides its center of gravity (PLAN V2).
+
+**Census definition (replicates experiment `075D5240` exactly, new window):**
+- Cells: the frozen bank — 9 strategies × 14 symbols × {H1, H4} = **252 one-cell runs** (D13).
+  Strategies: bb-squeeze, ema-alignment, macd-momentum, mean-reversion, mtf-trend,
+  rsi-divergence, session-breakout, super-trend, trend-breakout. Symbols: the 14 census
+  symbols. **Parked cells are included** (4 mtf-trend D7 cells + 2 R3 cell-parks): parks bind
+  candidacy, not research — verified in code that `StrategyCellParks` has no run-creation
+  enforcement; symmetric evidence is the point, and GV2 is where residence/park decisions get
+  updated.
+- Window: **2019-01-01T00:00 → 2023-12-31T00:00** (To < 2024-01-01 keeps the era-holdout guard
+  clean by construction; Friday 2023-12-29 is the last tradable day either way). 2024 untouched
+  (era-holdout, D3); 2025+ terminal holdout; EMBARGO-2 untouched.
+- Run config, identical to 075D5240: venue=tape, $100k solo, riskProfileId=standard
+  (0.5%/trade), CommissionPerMillion=30, SpreadPips=1 (inert on tape — kept for exactness),
+  Seed=42, honestFills, governor+regime enabled, PackId=null (bank defaults), speed=10.
+  Indicator warmup is cold-start from window start, same as the census. Strategy configs are
+  the frozen bank as of `bfa1bfd` — which INCLUDES the F71/F26/F28 dead-knob and cost-truth
+  fixes (D8: dead knobs get fixed, logic is not rewritten). The shared `ConfigSetId` of the
+  batch will be pasted in results as the frozen-bank fingerprint.
+- Data: `MarketDataBars` Source='dukascopy' 2019–2024 (bid OHLC + per-bar Spread, 99.99%
+  coverage; M1 fine bars present → fill granularity identical to the 2025 census). No source
+  mixing is possible inside the window (import refuses ≥2025; unique (Symbol,TF,OpenTimeUtc)).
+- Scoring: sv2 into a new experiment (`v2-frozen-bank-oos`), same Scoring weights as 075D5240
+  ({PassProbability:0.4, ExpectancyR:0.3, MaxDrawdown:0.2, FoldConsistency:0.1}) so composites
+  stay comparable (D4). Driver: `tools/research/census_driver.py` (committed this session;
+  exit_factorial_driver pattern: resume-by-VariantLabel, label `census/{strategy}/{sym}/{tf}`,
+  per-run timeout 90 min, `--parallel 3` — determinism probe PASS from S1 covers concurrent
+  tape runs on this machine).
+
+**Spread policy (the F77 decision, fixed now):**
+- **Primary: raw recorded per-bar Dukascopy spread** — this is what the engine already does
+  (`TapeReplayAdapter` P6.2: per-bar Spread when present; `TypicalSpread` fallback is reachable
+  on <0.01% of bars, so F77's degenerate constants are immaterial here). D3's letter
+  ("recorded per-bar spread where available") is satisfied by data, not assumption.
+- **Why raw is defensible as the base case:** F76 measured the venue's effective bid offset at
+  Dukascopy half-spread scale for FX (venue spread ≈ duka spread scale); duka's XAUUSD median
+  ($0.63, 2025 overlap) is at/above the real-world venue range (~$0.30–0.60, F77); FX medians
+  0.4–0.7 pip sit at/above typical raw-account majors' spreads while runs also charge $30/M
+  commission (≈ $6/lot round trip). The known residual risk is duka-tighter-than-venue on some
+  symbols/eras — bounded by the stress below, not by an unverifiable floor table (FTMO's
+  published per-symbol spreads are dynamic/JS-only, nothing citable to pre-register; noted for
+  L-track live tick capture to close properly).
+- **Sensitivity (pre-registered, post-hoc analytic): re-report every family verdict under
+  1.5× and 2× spread stress.** Per trade: ask-side fill minute m (entry for Long, exit for
+  Short — P0.2 full-spread convention), s_m = duka M1 bar spread at m (fallback: nearest prior
+  M1 within 2 h, else symbol-median), Δ$ = (k−1) × (s_m / PipSize) × PipValuePerLot × lots,
+  subtracted from NetPnl; family re-pooled, CIs recomputed. Limitation stated plainly: analytic
+  stress prices the cost channel only, not path effects (wider spread → different SL/TP
+  touches); **escalation rule:** if any family's raw verdict is within ±1 MDE of flipping
+  under 1.5× stress, that family is flagged "cost-fragile" and an in-run stressed rerun of its
+  cells is proposed at GV2 (owner call — needs a small spread-multiplier knob, not built now).
+
+**Primary hypotheses (PLAN V2's three questions, made operational; metric = pooled family
+$/trade, position-level dollars, F70 convention; expR always reported as descriptive):**
+- **H-MR (does mean-reversion's edge survive?):** mean-reversion pooled $/trade over 2019–2023
+  > 0 with 95% stationary-block-bootstrap CI excluding 0 (weekly-scale blocks; committed
+  `block_bootstrap.py`).
+- **H-RANK (does the F68 ranking hold?):** Spearman ρ between the frozen census family vector
+  and the OOS family vector, same metric on both sides, primary = $/trade; positive with 95%
+  cluster-bootstrap CI (resample ISO weeks, recompute family means, 2,000 reps) excluding 0.
+  Honesty note: 9 families is a coarse rank test — only strong persistence is detectable; a
+  wide CI straddling 0 reads "not detectable at n", not "ranking is noise".
+- **H-BANK (is the bank mean real?):** bank-pooled $/trade CI vs 0. Stated caveat (D1): at
+  census sizing the bank-pooled MDE is ≈ $13/t ≈ 0.03R — the +0.02R question stays below MDE
+  even at 6× n unless the true effect is larger; a null here is "not detectable at n".
+- **Frozen census-comparison vectors (2025-07-04→2026-05-05, 075D5240, pasted so the OOS
+  comparison is against numbers fixed today):**
+  $/trade: MR +19.6 · macd +4.0 · trend-breakout +3.2 · session-breakout −24.1 ·
+  rsi-divergence −28.6 · super-trend −38.7 · bb-squeeze −49.3 · ema-alignment −52.0 ·
+  mtf-trend −119.1 (bank-pooled **−$26.0/t**, n=4,461).
+  expR (F68): MR +0.10 · rsi +0.08 · macd +0.05 · tb +0.04 · st −0.00 · sb −0.02 · bb −0.04 ·
+  ema −0.05 · mtf −0.22 (bank ≈ +0.02R). The two metrics ALREADY disagree on rsi-divergence in
+  the census (+0.08R vs −$28.6/t) — the F70 lesson; both will be shown, dollars decide.
+
+**MDE line (D1) — blinded by construction (computed from census trades only; no 2019–23 run
+existed when computed). Stationary block bootstrap (`block_bootstrap.py`, weekly-scale blocks,
+4,000 reps, seed 42) on 075D5240 per-family $/trade; n_proj = 6× census n (60 vs 10 months,
+census trade-rate assumption — MDE restated at ACTUAL n in results):**
+```
+family                n  mean$/t   sd$/t  SEboot   MDE@n  n_proj   MDE@6n
+trend-breakout      731      3.2     614    26.6      75    4386       30
+macd-momentum       544      4.0     585    34.1      96    3264       39
+rsi-divergence      497    -28.6     657    30.2      85    2982       35
+session-breakout    492    -24.1     447    27.5      77    2952       31
+mean-reversion      491     19.6     541    29.4      82    2946       34
+bb-squeeze          487    -49.3     549    28.9      81    2922       33
+super-trend         460    -38.7     605    31.4      88    2760       36
+ema-alignment       422    -52.0     620    33.0      93    2532       38
+mtf-trend           337   -119.1     571    36.1     101    2022       41
+BANK-POOLED        4461    -26.0            11.1      31   26766       13
+```
+At census sizing 1R ≈ $450–500 → per-family MDE@6n ≈ **0.06–0.09R**: V2 is genuinely powered
+for the 0.10R-class question it was built to answer (the review §2.1 deficit, closed by data).
+
+**Deliverables (gate GV2 evidence tables):**
+1. Era × family table: pooled $/trade + n per family per calendar year (2019, 2020-vol, 2021,
+   2022-trend, 2023-chop) with block-bootstrap 95% CIs; family totals with CIs (raw + 1.5× +
+   2× spread stress).
+2. D5′ legs applicable to frozen configs: bootstrap CI on pooled family dollars (leg 1); sign
+   agreement at family × instrument-class level (FX-major / JPY-cross / metal / crypto, leg 2);
+   drop-any-month jackknife sign stability over the 60 months (leg 4). Stitched walk-forward
+   (leg 3) does not apply — nothing is refit; noted, not skipped silently.
+3. H-MR / H-RANK / H-BANK verdicts per the rules above; per-cell signs demoted to descriptive
+   (D5′).
+4. Residence/park recommendations per family for the owner (GV2 decides V3/V4 weighting).
+5. sv2 scores in experiment `v2-frozen-bank-oos` (id pasted at creation); `research
+   persistence` runnable against it (owner 5-minute check, PLAN §5).
+
+**Guards (pasted before launch, re-pasted after):** era-holdout `SELECT COUNT(*) FROM
+BacktestRuns WHERE BacktestFrom <= '2024-12-31' AND BacktestTo >= '2024-01-01' AND
+StartedAtUtc >= '2026-07-16'` = 0 and stays 0 (V2 windows end 2023-12-31T00:00 by
+construction); EMBARGO-2 `... WHERE BacktestFrom >= '2026-07-06'` = 0 and stays 0. D13
+one-cell-per-run holds by driver construction (every run body has exactly one row).
+
+**Operational plan (stated, not evidence):** M1-import completion confirmed (456bc81 +
+independent re-count this session: M1 32,170,346 rows, spread 99.99%, dukascopy ≥2025 = 0)
+before any run starts (one-writer doctrine: the census reads marketdata.db). App = single
+Lane-R instance. Pilot = 2 runs (mean-reversion/EURUSD/H1, trend-breakout/XAUUSD/H4) measuring
+5-year wall time AND per-run DB growth (census anchor: 10-month H1 ≈ 124 s at 41.5
+decision-bars/s → ballpark 30–40 h sequential, ~10–14 h at --parallel 3); extrapolation pasted
+before the batch proceeds. Batch tranched H4-first, resume-safe (resume-by-label) across
+app/session restarts.
+
+**Pre-launch disk finding + pre-registered deviation (owner decision 2026-07-17: "Both"):**
+trading.db = 4.8 GB, C: free = 5.1 GB (99% full). Measured census weight: the 252 runs of
+075D5240 wrote 1,389,819 EquitySnapshots + 1,842,414 Journal + 855,873 Bars rows; Journal
+averages ~851 content-bytes/row (vs ~195 equity, ~140 bars) — the kernel event journal is the
+dominant mass. At 6× windows, V2 projects ≈ 11M Journal rows ≈ 10–12 GB: **the batch as-is
+cannot fit.** Deviation, pre-registered BEFORE launch: `census_driver.py --prune-journal`
+deletes each run's Journal rows only after the run is terminal-completed AND sv2-scored.
+Journal is a backtest replay/debug artifact — sv2 scoring, verdict tables, ChallengeSimulator,
+and `research persistence` read TradeResults/EquitySnapshots only; every result-bearing record
+(trades, equity, per-run Bars, scores) is kept in full, capping batch growth at ≈ 3.5 GB.
+Failed/unscored runs keep their journal for debugging; 075D5240's journal is untouched. Driver
+also refuses new submissions below 1.5 GB free (resume-safe stop). Owner frees additional C:
+space in parallel ("Both"). No local trading.db snapshot is possible before the batch (4.8 GB
+copy vs 5.1 GB free) — stated plainly; resume-by-label + append-only results are the
+mitigation, and the **off-machine backup decision is now urgent** (~13 GB
+irreplaceable/expensive-to-rebuild data, single copy on C:).
+
+### GV0 note — owner query answered, gate still OPEN
+
+Owner asked (2026-07-17): "swing 100 one step?" Answer, per Session-1 verified terms
+(rule-diff row 14) re-confirmed today against ftmo.com/en/trading-objectives: **FTMO's 1-step
+evaluation has no Swing variant** (Swing = 2-step only), and 1-step carries **3% max daily
+loss** vs the 2-step's 5% — the harshest possible constraint for a bank whose median winner
+holds multi-day, and one our simulator models optimistically until V6's intraday envelope
+exists (Session-1 recommendation against 1-step stands). Recommendation remains **FTMO Swing
+$100k 2-step**; GV0 awaits explicit signature. V2 does not depend on the account type.
+
+### Evidence — guards pasted BEFORE launch (pre-registration commit precedes run 1)
+
+```
+era-holdout guard (2024 runs since 2026-07-16): 0
+embargo-2 guard (runs from >= 2026-07-06): 0
+```
+---
