@@ -61,15 +61,23 @@ comparable across experiments (DD component moves mechanically once the floor is
 `v2_harvest.py` built + validated (all 5 deliverables, §0 F82 integrity section, partial banner);
 **F81** — `block_bootstrap.py` was never importable (unguarded module-level `parse_args`), fixed.
 
-next: (1) **252-cell research-mode census running under `4F56B1AE`** (~9 h, detached, survives
-session close), log `C:\ShamshirData\logs\v2-census-rm.log`. Resume/monitor:
-`python tools/research/census_driver.py --experiment 4F56B1AE-7269-41CC-8D6C-60E920742EE7
---parallel 3 --prune-journal`. (2) On `BATCH DONE`: `--rescore-nulls` sweep (F80 stragglers),
-then `python tools/research/v2_harvest.py --experiment 4F56B1AE-...` → the 5 GV2 tables. Expect
-§0 to report ~0 truncated cells — if it does NOT, F82 is not actually off and the batch is void.
-(3) GV2 owner gate (incl. F78/F79 blast-radius re-read + 2025-census-rerun decision). (4) **GV0
-signature — open 4 sessions, blocking V0** (rec: Swing $100k 2-step). (5) L0 live compare-both
-smoke = standing debt, next cTrader session. Findings continue at **F84**.
+**S4 close (2026-07-17):** research-mode census `4F56B1AE` running detached at **43/252**, 33 GB
+free (owner freed OS disk), driver + app up, ALL PASS, ~6 h left. Incident-and-recovery this
+session: F84 (I filled disk pruning retired bulk in WAL mode → 11 GB WAL → `wal_checkpoint(TRUNCATE)`
+reclaimed → 33 GB). Progress metric = scored-cell count in 4F56B1AE (log rotates rm.log/rm2.log…).
+
+next (owner intent — resume next session, bump parallel):
+(1) **INCREASE PARALLELISM — owner's explicit ask.** Diagnosis: NOT CPU-bound (app 4.5 % on 8
+cores; wall is shared-SQLite write I/O). Kill ONLY the driver, relaunch `--parallel 6`, watch 4–6
+cells: scales → keep/raise; doesn't scale or F80-nulls/WAL spike → revert to 3. **Exact commands
+in AGENTS.md → "To INCREASE PARALLELISM".** Resume-safe, per-run results unaffected (pure kernel).
+(2) On `BATCH DONE`: `census_driver.py … --rescore-nulls` (F80 stragglers) → `v2_harvest.py
+--experiment 4F56B1AE-…` → 5 GV2 tables. **Gate §0: must report ~0 truncated cells** else F82 not
+off ⇒ batch void. (3) GV2 owner gate (F78/F79 blast-radius re-read + 2025-census-rerun decision).
+(4) **GV0 STILL OPEN** — I mis-recorded "yes to your vote" as a Swing signature, RETRACTED. Owner
+leans **1-step / standard, options open.** Swing≡Standard for backtests (news gate dead code); NO
+1-step ruleset exists — authoring `ftmo-1step` (3 % daily) is clean independent V0 work.
+(5) L0 live compare-both smoke = standing debt, next cTrader session. Findings continue at **F85**.
 
 ## Checkpoints
 

@@ -41,6 +41,27 @@ handoff for the full context (F82/F83).
   `python tools/research/v2_harvest.py --experiment 4F56B1AE-…`. **Gate on §0: it must report ~0
   truncated cells** — if not, F82 is not actually off and the batch is void.
 
+### To INCREASE PARALLELISM (owner asked; do this next session)
+
+Diagnosis (S4, measured): NOT CPU-bound — the app (in-process engine) sat at **4.5 % CPU on 8
+cores** while running 3 cells; ~50 bars/sec ⇒ the wall is per-run **SQLite write I/O** to the
+shared `trading.db`, not computation. So more parallel *may* scale (if per-run-serial) or *may
+not* (if all runs serialize on the single WAL write lock) — **it must be tested, not assumed.**
+
+Procedure (resume-safe, reversible; per-run results are unaffected — pure replay kernel, each run
+independent, so this is an OPS change, not a science change — just note the switch in the LEDGER):
+1. **Kill ONLY the driver, never the app:**
+   `Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ? { $_.CommandLine -like '*census_driver*' } | % { Stop-Process -Id $_.ProcessId -Force }`
+2. Confirm it's gone, then **relaunch at higher parallel** (resumes by label from the DB count):
+   `Start-Process C:\Python312\python.exe -ArgumentList '-u','tools/research/census_driver.py','--experiment','4F56B1AE-7269-41CC-8D6C-60E920742EE7','--parallel','6','--prune-journal' -WorkingDirectory C:\code\shamshir -RedirectStandardOutput C:\ShamshirData\logs\v2-census-rm3.log -RedirectStandardError C:\ShamshirData\logs\v2-census-rm3.err -WindowStyle Hidden`
+3. **Watch 4–6 cells.** Compare per-cell wall + cells/hour vs the ~10 min/cell at parallel 3.
+   - Scales (throughput up, wall/cell steady) → keep 6, consider 7–8 (leave ≥1 core).
+   - Doesn't scale (wall/cell rises ~proportionally, or a spike in `run status 'running'` F80
+     nulls, or WAL growing fast) → revert to `--parallel 3`. No harm done.
+4. **Disk under higher parallel:** more concurrent writers grow `trading.db-wal` faster (F84).
+   Watch `df`; if `-wal` balloons, `PRAGMA wal_checkpoint(TRUNCATE)` reclaims it (app can stay up).
+   33 GB free now — ample, but the WAL grows quicker at 6.
+
 ---
 
 ## Read this first (mandatory, in order)
