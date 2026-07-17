@@ -835,3 +835,44 @@ logging). Resume from any session:
 **Recorded proposal for GV2 (not executed):** re-run the 2025 census (075D5240 spec, window
 2025-07-04 → 2026-05-05, embargo-clean) under the fixed engine so the H-RANK comparison vectors
 are measured without F78/F79 suppression (~3–4 h at parallel 3). Owner decides at the gate.
+
+### Batch mid-flight audit — 2026-07-17 (session 4, batch still running)
+
+Audited the running batch at 131/250 rather than waiting for `BATCH DONE`. Seven cells had
+fallen out of the census; **all seven were recovered without re-running anything** (every one was
+`completed` in the DB with real trades — the losses were bookkeeping, not compute). Census is
+now clean: zero duplicate `ExperimentRuns` rows (score upsert confirmed live), and all 14
+remaining nulls are the legitimate D3 `trades=0 below floor 20` gate — no infrastructure nulls.
+
+**F80 — finalize race nulls good cells (4/134 so far).** `GET /api/runs/{id}` reports terminal
+from the in-memory registry; `SetupScoreService` gates on the *persisted* `BacktestRuns.Status`.
+Scoring inside that window stores `sv2-null / "run status 'running' is not completed"` on a cell
+with real trades (38/57/39/256), which then drops out of the census — and `already_done()` would
+SKIP it on resume, so the loss is silent and permanent. Re-scored after terminal → PASS 24.4 /
+32.7 / 2.2 / 9.8. Same race as iter-alpha-loop `18621a31` (1/252) but **4× the rate at
+`--parallel 3`** — the null gate itself is correct and working as designed; the driver was
+scoring too eagerly. Driver now waits for the persisted row to agree before scoring, and
+`--rescore-nulls` recovers any that slip through (exercised live: 0 stale of 136).
+Corroborating evidence that `Status` lags reality: run `20911b11` read `status='queued'` while
+actively executing with 14,500 bars written.
+
+**S3.1 — the 90m timeout was destroying cells for nothing.** There is **no cancel endpoint**, so
+abandoning a slow run frees no engine slot; it only (a) throws away a cell that goes on to
+complete and (b) desynchronises the driver, which then submits a run that silently queues behind
+the one it "gave up" on. The 3 abandoned AUDUSD/H1 cells all completed at 344m with 103/69/535
+trades and were never scored or pruned; recovered → PASS 3.3 / 6.9 / 25.9, 202,500 journal rows
+reclaimed. Timeout is now a WARN at 90m; hard ceiling 12 h purely to break a genuine hang.
+
+**H1 warm-up is a ONE-TIME cost, not per-symbol — batch ETA unchanged.** The first H1 trio
+(AUDUSD, cold) took 344m each; the very next AUDUSD/H1 trio took 9–15m. The decisive test was
+BTCUSD/H1 — a fresh symbol *and* the ~44k-bar long pole — whose first-touch cell ran at the full
+~3,300 bars/min (7k bars in 2.3m), same rate as warm cells. So the penalty is paid once, not
+13× more times: remaining ~118 cells project to **~6.5 h** at 3 concurrent (~10m/cell), not the
+~74 h a per-symbol penalty would have implied. **No intervention taken — batch left running.**
+Not root-caused (a one-off ~5.7 h global warm-up); logged, and cheap to avoid re-diagnosing
+because the driver no longer loses cells to it. Cost profile now measured: H4 ~2.5–4m, H1
+~9–15m, ~3.3k bars/min.
+
+`Bars` was checked for duplication (AUDUSD/H1 = 420k rows vs ~31k expected for 5 years) and is
+**clean** — the table is keyed by `RunId` (a per-run audit artifact, kept by the pre-registered
+disk policy), so the counts are accumulated across runs, not duplicated bars.

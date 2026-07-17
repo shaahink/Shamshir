@@ -15,8 +15,11 @@ Operational facts inherited from exit_factorial_driver (S1.1, 2026-07-16):
     (completed run for the label = done), not by idempotency key.
   - --parallel N only after the determinism probe has passed on this machine/build (it has:
     S1 speed kit, determinism_probe.py PASS).
-  - Per-run timeout 90 min (5-year windows; census anchor 124 s / 10-month H1 cell; crypto H1
-    is the long pole at ~44k decision bars).
+  - Slow runs are WARNED at 90 min, never abandoned (S3.1): there is no cancel endpoint, so
+    dropping a run frees nothing and only loses its cell. Observed 5-year costs on this machine:
+    H4 ~2.5-4 min, H1 ~9-15 min (~3.3k bars/min); the batch pays one ~5.7 h H1 warm-up ONCE
+    (first H1 trio), not per symbol — a fresh symbol's first H1 cell runs at full speed.
+  - --rescore-nulls recovers cells lost to the F80 finalize race without re-running them.
 
 Disk discipline (Session 3 pre-registration, owner decision 2026-07-17 "Both"):
   - --prune-journal deletes each run's kernel Journal rows AFTER the run completes AND scores.
@@ -31,7 +34,14 @@ from pathlib import Path
 
 DEFAULT_DB = Path(__file__).resolve().parents[2] / "src" / "TradingEngine.Web" / "data" / "trading.db"
 START, END = "2019-01-01T00:00:00", "2023-12-31T00:00:00"   # To < 2024-01-01: era-holdout clean
-RUN_TIMEOUT_S = 90 * 60
+# S3.1: there is NO cancel endpoint — abandoning a slow run does not free the app's engine slot,
+# it only desynchronises the driver from the app (the driver then submits a run that silently
+# queues behind the one it just "gave up" on) AND throws away a cell that goes on to complete.
+# So the 90m mark only WARNS now; the hard ceiling exists purely to break a genuine hang.
+RUN_SLOW_WARN_S = 90 * 60
+RUN_HARD_CEILING_S = 12 * 3600
+# Grace for the end-record write to land after the in-memory registry reports terminal (see F80).
+FINALIZE_GRACE_S = 5 * 60
 MIN_FREE_GB = 1.5
 
 STRATEGIES = ["bb-squeeze", "ema-alignment", "macd-momentum", "mean-reversion", "mtf-trend",
@@ -112,6 +122,17 @@ def run_body(strategy, sym, tf):
     }
 
 
+def persisted_status(db, run_id):
+    """The status the SCORER will see. GET /api/runs reports the in-memory registry, which turns
+    terminal before the end-record write commits; SetupScoreService gates on this persisted row."""
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        row = con.execute("SELECT Status FROM BacktestRuns WHERE RunId = ?", (run_id,)).fetchone()
+        return row[0] if row else None
+    finally:
+        con.close()
+
+
 def prune_journal(db, run_id):
     """Post-score disk discipline: drop the completed run's kernel event journal (see header)."""
     con = sqlite3.connect(db, timeout=60)
@@ -127,11 +148,49 @@ def free_gb(db):
     return shutil.disk_usage(Path(db).anchor).free / 1e9
 
 
+def rescore_nulls(db, exp_id, http, do_prune):
+    """Recover cells nulled by the F80 finalize race: the scorer saw 'running' because the
+    end-record write had not landed, so a completed cell carries `sv2-null` and drops out of the
+    census. The run itself is fine — re-scoring after terminal restores the real composite
+    (precedent: iter-alpha-loop 18621a31 null->PASS 56.9). Score upserts, so this is idempotent.
+    Legitimate D3 nulls (trades below floor) are left alone."""
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    rows = con.execute("""SELECT er.BacktestRunId, er.VariantLabel, er.ScoreJson, br.Status
+        FROM ExperimentRuns er JOIN BacktestRuns br ON br.RunId = er.BacktestRunId
+        WHERE er.ExperimentId = ? COLLATE NOCASE""", (exp_id,)).fetchall()
+    con.close()
+
+    stale = [(rid, vl, status) for rid, vl, sj, status in rows
+             if json.loads(sj).get("Composite") is None
+             and "is not completed" in (json.loads(sj).get("NullReason") or "")]
+    print(f"RESCORE: {len(stale)} infrastructure-nulled cells of {len(rows)}", flush=True)
+
+    recovered = 0
+    for rid, vl, status in stale:
+        if status not in TERMINAL:
+            print(f"  SKIP {vl} — still {status}", flush=True)
+            continue
+        st, score = http("POST", "/api/experiments/score",
+                         {"backtestRunId": rid, "experimentId": exp_id, "variantLabel": vl},
+                         timeout=120)
+        verdict = (score or {}).get("verdict", f"HTTP{st}")
+        extra = (score or {}).get("score") if verdict == "PASS" else (score or {}).get("reason")
+        pruned = ""
+        if do_prune and st == 200 and status.startswith("completed"):
+            pruned = f" journal-pruned={prune_journal(db, rid)}"
+        if st == 200:
+            recovered += 1
+        print(f"  {vl} id={rid[:8]} {verdict}({extra}){pruned}", flush=True)
+    print(f"RESCORE DONE: {recovered}/{len(stale)} recovered", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--experiment", default=None)
     ap.add_argument("--create-experiment", action="store_true")
     ap.add_argument("--pilot", action="store_true", help="run only the 2 pre-registered pilot cells")
+    ap.add_argument("--rescore-nulls", action="store_true",
+                    help="recover F80 finalize-race nulls in --experiment, then exit (no runs)")
     ap.add_argument("--parallel", type=int, default=1)
     ap.add_argument("--timeframes", default=None, help="comma filter, e.g. H4 (tranche the batch)")
     ap.add_argument("--prune-journal", action="store_true",
@@ -147,6 +206,10 @@ def main():
         print("--experiment <guid> required (or --create-experiment first)"); sys.exit(2)
 
     http = make_http(args.base_url)
+    if args.rescore_nulls:
+        rescore_nulls(args.db, args.experiment, http, args.prune_journal)
+        return
+
     tfs = args.timeframes.split(",") if args.timeframes else TIMEFRAMES
     cells = PILOT if args.pilot else [
         (s, sym, tf) for tf in tfs for sym in SYMBOLS for s in STRATEGIES]
@@ -187,15 +250,23 @@ def main():
                 if consecutive_failures >= 3:
                     print("ABORT: three consecutive start failures", flush=True); sys.exit(3)
                 continue
-            inflight[rid] = (vl, time.time())
+            inflight[rid] = [vl, time.time(), False]
             print(f"START {vl} id={rid[:8]}", flush=True)
 
         time.sleep(5)
         for rid in list(inflight):
-            vl, t0 = inflight[rid]
+            vl, t0, warned = inflight[rid]
             st2, run = http("GET", f"/api/runs/{rid}", timeout=30)
             status = (run or {}).get("status") if st2 == 200 else None
             if status in TERMINAL:
+                # F80 (finalize race): score only once the PERSISTED row agrees the run is
+                # terminal, else the scorer nulls a perfectly good cell
+                # (`run status 'running' is not completed`) and the census silently loses it.
+                # Bounded: after the grace we score anyway — a null is recoverable by
+                # --rescore-nulls, a wedged driver is not.
+                if (persisted_status(args.db, rid) not in TERMINAL
+                        and time.time() - t0 < RUN_HARD_CEILING_S + FINALIZE_GRACE_S):
+                    continue
                 del inflight[rid]
                 finished += 1
                 consecutive_failures = 0
@@ -212,10 +283,16 @@ def main():
                 print(f"RUN {finished}/{total} {vl} id={rid[:8]} status={status} trades={trades} "
                       f"wall={wall/60000:.1f}m score={verdict}({extra}){pruned} "
                       f"free={free_gb(args.db):.1f}GB", flush=True)
-            elif time.time() - t0 > RUN_TIMEOUT_S:
+            elif time.time() - t0 > RUN_HARD_CEILING_S:
                 del inflight[rid]
                 finished += 1
-                print(f"RUN {finished}/{total} {vl} id={rid[:8]} TIMEOUT after {RUN_TIMEOUT_S//60}m", flush=True)
+                print(f"RUN {finished}/{total} {vl} id={rid[:8]} ABANDONED after "
+                      f"{RUN_HARD_CEILING_S//3600}h (hard ceiling; run may still complete — "
+                      f"recover with --rescore-nulls)", flush=True)
+            elif not warned and time.time() - t0 > RUN_SLOW_WARN_S:
+                inflight[rid][2] = True
+                print(f"SLOW {vl} id={rid[:8]} still running after {RUN_SLOW_WARN_S//60}m "
+                      f"— still held, still scoreable", flush=True)
 
     print("BATCH DONE", flush=True)
 

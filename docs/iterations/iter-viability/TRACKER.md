@@ -24,11 +24,21 @@ at GV2; 2025 census re-run under fixed engine proposed, embargo-clean). Pilot #3
 28BD9B4CD89B`, 250 cells, detached (survives session close), ~8–9 h, log
 `C:\ShamshirData\logs\v2-census.log`.** GV0: 1-step Swing doesn't exist (verified); rec stands
 Swing $100k 2-step; **GV0 still open**.
-next: (1) Harvest batch → verdict tables (era × family + D5′ legs + spread stress) → GV2 owner
-gate (incl. F78/F79 blast-radius re-read + 2025-census-rerun decision). Resume if needed:
+**Session 4 (2026-07-17, batch mid-flight):** audited the running batch at 131/250. **F80**
+(finalize race) had nulled 4 good cells and the 90m timeout had abandoned 3 more (S3.1) — **all 7
+recovered by re-scoring, none re-run** (all were `completed` with real trades). Census clean: no
+duplicate rows, all 14 nulls are the legitimate D3 floor. **H1's 344m warm-up proved one-time,
+not per-symbol** (BTCUSD/H1 first touch ran at full speed) → batch ETA **~6.5 h**, left running,
+no intervention. Driver hardened: scores only once the persisted row is terminal, warns instead
+of abandoning, new `--rescore-nulls` recovery mode.
+
+next: (1) On `BATCH DONE`, sweep with `--rescore-nulls` (recovers any F80 stragglers the running
+old-code driver still hits) before harvesting. (2) Harvest batch → verdict tables (era × family +
+D5′ legs + spread stress) → GV2 owner gate (incl. F78/F79 blast-radius re-read +
+2025-census-rerun decision). Resume if needed:
 `python tools/research/census_driver.py --experiment 95F32D08-BAFE-415E-9492-28BD9B4CD89B
---parallel 3 --prune-journal`. (2) GV0 signature. (3) L0 live compare-both smoke = standing
-debt, next cTrader session. Findings continue at **F80**.
+--parallel 3 --prune-journal`. (3) GV0 signature. (4) L0 live compare-both smoke = standing
+debt, next cTrader session. Findings continue at **F81**.
 
 ## Checkpoints
 
