@@ -32,13 +32,25 @@ not per-symbol** (BTCUSD/H1 first touch ran at full speed) → batch ETA **~6.5 
 no intervention. Driver hardened: scores only once the persisted row is terminal, warns instead
 of abandoning, new `--rescore-nulls` recovery mode.
 
+**F82 (session 4) — V2's headline risk.** `PreTradeGate.cs:174` (`WorstCaseDDWouldBreachOverall`)
+is ABSORBING: an account parked within one worst-case of the $90k floor rejects every entry
+forever (no trade ⇒ no recovery ⇒ no trade), silently — `completed`, no error, no warning.
+**35/122 trading cells (29%) stopped years early**, 34 of them pinned at ≥9% DD (median 9.82%);
+`trend-breakout` lost 12/15 cells by median 2021-06. Truncation selects the LOSING cells ⇒ later
+eras are survivorship-biased upward and era columns are NOT comparable across time. The gate is
+defensible; the **census design** (5 y, one $100k account, no reset) is the defect. **GV2 owner
+call: (a) research mode w/ overall-floor gate off, (b) per-era reset, or (c) accept + report.**
+Harvest leads with a §0 integrity section. `v2_harvest.py` built + validated (all 5 deliverables);
+**F81** — `block_bootstrap.py` was never importable (unguarded module-level `parse_args`), fixed.
+
 next: (1) On `BATCH DONE`, sweep with `--rescore-nulls` (recovers any F80 stragglers the running
-old-code driver still hits) before harvesting. (2) Harvest batch → verdict tables (era × family +
+old-code driver still hits) before harvesting. (2) **Resolve F82 (a/b/c) — a re-run under (a)/(b)
+would supersede the batch's era tables.** (3) Harvest batch → verdict tables (era × family +
 D5′ legs + spread stress) → GV2 owner gate (incl. F78/F79 blast-radius re-read +
 2025-census-rerun decision). Resume if needed:
 `python tools/research/census_driver.py --experiment 95F32D08-BAFE-415E-9492-28BD9B4CD89B
 --parallel 3 --prune-journal`. (3) GV0 signature. (4) L0 live compare-both smoke = standing
-debt, next cTrader session. Findings continue at **F81**.
+debt, next cTrader session. Findings continue at **F83**.
 
 ## Checkpoints
 

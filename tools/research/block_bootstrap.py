@@ -136,9 +136,19 @@ def selftest():
     return 0 if ok else 1
 
 
-ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-ap.add_argument("--selftest", action="store_true")
-args = ap.parse_args()
-if args.selftest:
-    raise SystemExit(selftest())
-ap.print_help()
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--selftest", action="store_true")
+    args = ap.parse_args()
+    if args.selftest:
+        raise SystemExit(selftest())
+    ap.print_help()
+
+
+# F81: this MUST stay guarded. Unguarded, the module-level parse_args() consumed the argv of any
+# script that imported it and killed it on the spot — which made the header's "importable by
+# other tools/research scripts" promise false from the day it was written (nothing imported it
+# until v2_harvest.py did). The V5 pre-delivery's --selftest PASS never exercised the import path.
+if __name__ == "__main__":
+    main()

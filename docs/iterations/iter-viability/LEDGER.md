@@ -876,3 +876,55 @@ because the driver no longer loses cells to it. Cost profile now measured: H4 ~2
 `Bars` was checked for duplication (AUDUSD/H1 = 420k rows vs ~31k expected for 5 years) and is
 **clean** — the table is keyed by `RunId` (a per-run audit artifact, kept by the pre-registered
 disk policy), so the counts are accumulated across runs, not duplicated bars.
+
+### V2 harvest tooling + F81/F82 — 2026-07-17 (session 4, batch still running)
+
+Built `tools/research/v2_harvest.py` (all five pre-registered GV2 deliverables, read-only against
+trading.db + marketdata.db, safe to run mid-batch) and validated it against the 136 cells scored
+so far. Building it surfaced two findings, one of them serious.
+
+**F81 — `block_bootstrap.py` was never importable.** It ran `argparse.parse_args()` at module
+level with no `if __name__ == "__main__":` guard, so importing it consumed the IMPORTING script's
+argv and killed it. Its own header promised "importable by other tools/research scripts" and
+documented `from block_bootstrap import stationary_bootstrap_se, mde` — false from the day it was
+written; nothing had imported it until now, and the V5 pre-delivery's `--selftest PASS` only ever
+exercised the CLI path. Guarded; both paths verified (selftest PASS + import OK).
+
+**F82 — the census silently truncates 29% of its cells, and NOT at random.**
+`PreTradeGate.cs:174` rejects any entry whose worst case would breach the overall max-DD floor
+(`WorstCaseDDWouldBreachOverall`). Once an account grinds to within one worst-case of the $90k
+floor, every entry is rejected; no trade can open, so the balance can never recover, so every
+future entry is rejected. **Absorbing** — the identical structural trap as F78 (cooling-off
+deadlock) and F79 (daily-DD latch), and invisible: status `completed`, no error, no warning, all
+31k bars processed.
+```
+136 cells → 87 traded to the end · 35 STOPPED EARLY · 14 zero-trade
+stopped-early maxDD: min 3.51  median 9.82  max 9.98   (34/35 are >= 9%)
+ran-to-end    maxDD: min 0.02  median 4.82  max 11.12
+worst family: trend-breakout 12/15 cells dead (median death 2021-06)
+              bb-squeeze 7/15 · mtf-trend 5/15 · macd-momentum 4/15 · ema-alignment 0/15
+proof cell: session-breakout/AUDUSD/H1 (ca332ae7) — 232 trades, last 2020-01-28, then inert for
+  4 years; ends $90,822 vs the $90,000 floor = $822 headroom, less than one trade's worst case.
+  Lots were HEALTHY at the last trade (2.42) — this is not risk-scaling-to-zero, it is the gate.
+```
+Unlike F78/F79 the gate is defensible (never risk breaching a terminal floor) — **the defect is
+the census DESIGN**: 5 years, one $100k account, no reset. Because truncation selects exactly the
+LOSING cells, every later era is survivorship-biased upward and era columns are not comparable
+across time; `trend-breakout`'s 2022–23 means rest on 3 surviving cells of 15. As it stands the
+census measures *time-until-first-10%-drawdown* as much as edge. The pilot could not have caught
+this: its 2 cells never approached the floor.
+**GV2 owner decision required** — (a) research mode with the overall-floor gate disabled
+(measures edge, not challenge survival), (b) per-era account reset, or (c) accept and report
+truncation explicitly. The harvest now leads with a §0 integrity section so no table can be read
+without it. Batch left running: its data diagnoses the truncation and re-running needs (a)/(b)/(c)
+decided first.
+
+**Also measured:** F70 split factor = 1.0000 on this census (packId=None ⇒ no PartialTp rows) —
+the position-level fold is correctly applied but is a no-op here; it binds only if a future
+census enables packs. Ask-side M1 spread join: 99.7% exact, 43 nearest-prior-2h, 2 symbol-median.
+Method deviation (deliberate): spread stress uses each trade's realized
+`dpu = |Gross/(Exit-Entry)|` instead of re-deriving `PipValuePerLot`, which would fork the
+engine's three-case pip logic and misprice every JPY-cross/USDCAD/metal trade (cf. F48).
+Algebraically identical; verified 0.000000 error across all six symbol classes.
+"Weekly-scale blocks" was never pinned in committed code — now pinned (mean_block = median
+positions per ISO week per family); MDE restated at ACTUAL n throughout.
