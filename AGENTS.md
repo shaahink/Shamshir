@@ -1,9 +1,35 @@
 # AGENTS.md — Session Startup Guide
 
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `iter/alpha-loop`
+**Branch:** `iter/viability`
 **Created:** 2026-06-18
-**Updated:** 2026-07-10 (iter-alpha-loop r0 — session setup)
+**Updated:** 2026-07-17 (iter-viability S4 — V2 research-mode census running)
+
+---
+
+## ⚠ ACTIVE BACKGROUND JOB — WATCH, DO NOT TOUCH (2026-07-17)
+
+A **detached V2 census batch is running** and must finish undisturbed (~9 h from ~14:30 local,
+ETA ~00:20). It survives session close by design. Read `docs/iterations/iter-viability/TRACKER.md`
+handoff for the full context (F82/F83).
+
+- **Experiment:** `4F56B1AE-7269-41CC-8D6C-60E920742EE7` (research mode, `maxDdEnabled:false`).
+  Two predecessors are RETIRED, park-never-delete: `95F32D08` (gate-ON), `CCA30637` (F83-tainted).
+- **Progress:** `grep -c '^RUN ' C:\ShamshirData\logs\v2-census-rm.log` (250 total; ~10 min/H1
+  cell, ~2.5 min/H4). `tail` that log for the live cell.
+- **DO NOT KILL** the two processes this depends on:
+  - **dotnet app** on `http://localhost:5134` (was PID 33060) — the engine the driver POSTs to.
+    Re-find: `Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'"`. **Do not reboot.**
+  - **census driver** (was PID 13756, `census_driver.py --experiment 4F56B1AE …`) — detached.
+- **DO NOT** start a second app instance on the same DB (Lane-R doctrine: one app per DB file),
+  launch another backtest through the UI, or `VACUUM`/schema-migrate `trading.db` while it runs.
+- **Read-only is fine:** query `trading.db` with `?mode=ro`, tail logs, watch progress.
+- **If it stalls on disk** (`DISK GUARD: free < 1.5 GB` in the log): the driver halted cleanly and
+  is resume-safe. Free space, then resume with the exact command in the TRACKER handoff. A scripted
+  single-writer prune of RETIRED-experiment bulk rows is safe (WAL, run-by-run) — never the live one.
+- **At `BATCH DONE`:** run `census_driver.py … --rescore-nulls` (F80 stragglers) → then
+  `python tools/research/v2_harvest.py --experiment 4F56B1AE-…`. **Gate on §0: it must report ~0
+  truncated cells** — if not, F82 is not actually off and the batch is void.
 
 ---
 
