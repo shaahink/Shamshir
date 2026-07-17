@@ -11,13 +11,14 @@ public sealed class KernelDailyDdGuardEvaluator(decimal maxDailyLossFraction, Da
         if (maxDailyLossFraction <= 0) return [];
 
         var equity = state.Account.Equity;
-        var dailyBaseEquity = dailyDdBase == DailyDdBase.DailyStart
+        // F79: anchor at day start; DailyDdBase only sizes the allowance (see DrawdownReducer.Apply).
+        var dailyAllowanceBase = dailyDdBase == DailyDdBase.DailyStart
             ? state.Drawdown.DailyStartEquity
             : state.Drawdown.InitialAccountBalance;
 
-        if (dailyBaseEquity <= 0) return [];
+        if (dailyAllowanceBase <= 0 || state.Drawdown.DailyStartEquity <= 0) return [];
 
-        var floor = dailyBaseEquity * (1m - maxDailyLossFraction);
+        var floor = state.Drawdown.DailyStartEquity - maxDailyLossFraction * dailyAllowanceBase;
         if (equity > floor) return [];
 
         List<(Guid, string)> flattens = [];

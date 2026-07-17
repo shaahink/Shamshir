@@ -49,8 +49,10 @@ public sealed class BacktestTradesAndHaltsTests
     [Fact]
     public async Task DailyDdBreach_EntersProtectionAndHaltsTrading()
     {
-        // 250 bars, steep drop (20 pips/bar), RepeatingSignalStrategy fires ~2/3 of bars.
-        // Each trade loses ~50 pips at 0.01 lots = ~$5. With ~160 trades, loss ≈ $800 (8% DD).
+        // F79 rewrite: the old expectation (small per-trade losses accumulating to a "daily" breach
+        // over ~10 days) pinned the cumulative-DD bug. A genuine daily breach needs the loss inside
+        // one day: seed a 1-lot long into the 20-pip/bar down-leg — floating −$400 (4% ≥ 0.8 × 5%)
+        // within the first day's bars.
         var bars = MakeSteepDownLeg(250, 0.0020m);
         var strategy = new RepeatingSignalStrategy();
 
@@ -60,6 +62,7 @@ public sealed class BacktestTradesAndHaltsTests
             .WithInitialBalance(10_000m)
             .WithRuleSet("ftmo-standard")
             .WithFlattenAtFraction(0.8m)
+            .WithSeedPosition(Eurusd, TradeDirection.Long, entryPrice: 1.1000m, lots: 1.0m, slPrice: 1.0000m, tpPrice: 1.2000m)
             .BuildAsync();
 
         await harness.DriveBarsAsync(bars);

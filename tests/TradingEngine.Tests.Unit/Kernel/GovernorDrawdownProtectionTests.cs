@@ -156,27 +156,43 @@ public sealed class DrawdownGateTests
         dd.GetMaxDrawdownFloor(0.10m).Should().Be(9_000m, "fixed floor anchors to InitialAccountBalance even after growth");
     }
 
-    [Fact] // Guards H3 (daily floor honors DailyDdBase: same proposal, base flips accept/reject)
-    public void Drawdown_DailyBase_Configurable()
+    [Fact] // Guards H3 + F79: DailyDdBase selects the ALLOWANCE BASE only; the anchor is always day start.
+    public void Drawdown_DailyBase_SelectsAllowanceBase_NotAnchor()
     {
-        // Day opened at 9,000 (down from a 10,000 initial). A small entry projects worst-case ≈ 8,910.
-        //   • DailyStart base: floor = 9,000 * 0.95 = 8,550 → 8,910 passes.
-        //   • InitialBalance base: floor = 10,000 * 0.95 = 9,500 → 8,910 breaches.
-        // maxTotal widened to 0.20 (floor 8,000) so only the DAILY base drives the difference.
+        // Day opened at 9,000 (down from a 10,000 initial), equity dips to 8,700 intraday.
+        //   • DailyStart base:     (9,000 − 8,700) / 9,000  = 3.33% of the day-start allowance.
+        //   • InitialBalance base: (9,000 − 8,700) / 10,000 = 3.00% of the initial-capital allowance.
+        // F79 regression: the old InitialBalance arm anchored at initial too — flat at day start it
+        // reported (10,000 − 9,000)/10,000 = 10% "daily" DD, i.e. cumulative DD relabeled daily,
+        // which re-breached the daily limit every day forever once an account sat below initial.
+        var dayStart = DrawdownReducer.CreateInitial(10_000m, "Fixed") with { DailyStartEquity = 9_000m };
+
+        var flatDaily = DrawdownReducer.Apply(dayStart with { DailyDdBaseMode = "DailyStart" }, 9_000m);
+        var flatInitial = DrawdownReducer.Apply(dayStart with { DailyDdBaseMode = "InitialBalance" }, 9_000m);
+        flatDaily.CurrentDailyDrawdown.Should().Be(0m);
+        flatInitial.CurrentDailyDrawdown.Should().Be(0m, "a flat day has zero DAILY drawdown regardless of base (F79)");
+
+        var dipDaily = DrawdownReducer.Apply(dayStart with { DailyDdBaseMode = "DailyStart" }, 8_700m);
+        var dipInitial = DrawdownReducer.Apply(dayStart with { DailyDdBaseMode = "InitialBalance" }, 8_700m);
+        dipDaily.CurrentDailyDrawdown.Should().BeApproximately(0.0333m, 0.0002m);
+        dipInitial.CurrentDailyDrawdown.Should().Be(0.03m);
+    }
+
+    [Fact] // F79 gate leg: the worst-case daily floor hangs off day start, not statically off initial.
+    public void Drawdown_DailyFloor_IsDayAnchored_InInitialBalanceMode()
+    {
+        // Same scenario the old test pinned the BUG with: day start 9,000 on a 10,000 initial,
+        // proposal worst-case ≈ 8,910. Old floor = 10,000 * 0.95 = 9,500 (static) → rejected forever
+        // below initial. F79 floor = 9,000 − 0.05 × 10,000 = 8,500 → the day's true FTMO budget passes.
         var dd = DrawdownReducer.CreateInitial(10_000m, "Fixed") with { DailyStartEquity = 9_000m };
         var state = GFx.State(dd: dd) with { Account = new AccountView(9_000m, 9_000m, 0m) };
-        var p = GFx.Proposal();
 
-        var dailyStart = PreTradeGate.Evaluate(state, p,
-            GFx.Constraints(maxTotal: 0.20m, dailyBase: DailyDdBase.DailyStart),
-            GFx.Profile, GFx.Sizing, GFx.SymInfo, []);
-        var initialBase = PreTradeGate.Evaluate(state, p,
+        var initialBase = PreTradeGate.Evaluate(state, GFx.Proposal(),
             GFx.Constraints(maxTotal: 0.20m, dailyBase: DailyDdBase.InitialBalance),
             GFx.Profile, GFx.Sizing, GFx.SymInfo, []);
 
-        dailyStart.Accepted.Should().BeTrue("DailyStart base measures the day's own loss budget");
-        initialBase.Accepted.Should().BeFalse("InitialBalance base measures against the run start");
-        initialBase.RejectReason.Should().Be("WorstCaseDDWouldBreachDaily");
+        initialBase.Accepted.Should().BeTrue(
+            "the daily floor is day-start − 5% × initial (verified FTMO semantics), not a static 95% of initial (F79)");
     }
 
     [Fact] // Guards H2 (weekly + monthly DD enforced in the production gate)

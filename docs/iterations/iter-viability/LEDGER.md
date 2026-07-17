@@ -764,3 +764,48 @@ Sim-fast     Passed! Failed: 0, Passed: 144, Skipped: 0
 ```
 Golden/sim results unmoved — the pinned short windows never reached a 5-loss lockout, which is
 also why the bug survived every prior gate.
+
+### F79 — "daily" drawdown was cumulative: static floor + protection latch (the second suppressor)
+
+The post-F78 pilot rerun (experiment `19EB5D91`, runs d3a1e138 / 3793e3b5) improved (8→54,
+15→76 trades, both sv2 PASS) but still truncated: MR/EURUSD stopped mid-2020, TB/XAUUSD still
+all-2019. A deliberately unpruned diagnostic rerun (`5e358281`, adopted as evidence, journal
+kept) shows proposals steady all 5 years and, from 2019-11-22, every one rejected:
+`PROTECTION_MODE_ACTIVE` ×427 + `WorstCaseDDWouldBreachDaily` ×63 — `protectionCause:
+DailyDrawdown` latched at equity $95,227 (−4.77% CUMULATIVE; never a bust, never a real 5%
+day) and still identical at the last 2023 proposal.
+
+**Root cause (code, three sites sharing one mistake):** `DailyDdBase.InitialBalance` was used
+as the *anchor*, not just the *allowance base* —
+- `DrawdownReducer.Apply`: daily DD = (initial − equity)/initial — cumulative DD relabeled
+  "daily"; any account below ~4.75% of initial re-breached the daily cap every day forever
+  (protection cleared each midnight per `ClearsOn`, then instantly re-entered).
+- `PreTradeGate` worst-case floor: `initial × (1 − 5%)` — a STATIC $95k floor. Over-protects
+  below initial (the 63 rejections) and **UNDER-protects above high-water** (day start $110k
+  would still have a $95k floor — a 13.6% one-day loss allowed; caught before any live run).
+- `KernelDailyDdGuardEvaluator`: same static floor for the flatten watchdog.
+**Verified FTMO semantics (V0 rule-diff rows 4–5):** floor = day-start balance − 5% × initial —
+day-anchored numerator, initial-denominated allowance. Fixed in all three sites (`DailyStart`
+mode unchanged — it was already day-anchored).
+
+**Tests:** old pins encoding the bug were rewritten, not deleted: `Drawdown_DailyBase_
+Configurable` (unit) pinned the static floor → replaced by `Drawdown_DailyBase_SelectsAllowance
+Base_NotAnchor` + `Drawdown_DailyFloor_IsDayAnchored_InInitialBalanceMode`; three sim scenarios
+(`MaxDailyLossBreach_Midday_HaltsTrading`, `MaxTotalLoss_PermanentHalts`,
+`DailyDdBreach_EntersProtectionAndHaltsTrading`) breached only via CUMULATIVE decline spread
+over 8–12 days — under verified semantics that is correctly a non-breach; rewritten to realize
+genuine single-day losses (seeded positions stopped out intra-day). Gates after:
+```
+Build succeeded. 0 Error(s)
+Unit 780/0/6 · Integration 156/0/0 · Sim-fast 144/0/0
+```
+
+**Blast radius addendum:** the census/prior-run suppression is F78 + F79 JOINTLY (streak
+lockout + cumulative-daily latch); every statement in the F78 blast-radius paragraph carries
+both. Parked observation (one line, V6/rule-model scope): `ProtectionState.ClearsOn` lets a
+MaxDrawdown breach clear on the next day under "NextTradingDay" policy — an FTMO total-loss
+bust should be terminal; ChallengeSimulator handles busts independently so sv2 is unaffected.
+
+**Amendment 6:** experiment `19EB5D91` retired (its 2 pilot rows ran F78-fixed but F79-broken;
+kept, park-never-delete). Third experiment created post-F79; pilot re-run under it (expectation
+unchanged: trades must now span all five years).

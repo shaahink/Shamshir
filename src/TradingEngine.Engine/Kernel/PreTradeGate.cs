@@ -157,10 +157,12 @@ public static class PreTradeGate
 
             if (c.DailyDdEnabled)
             {
-                var dailyBaseEquity = c.DailyDdBase == DailyDdBase.DailyStart
+                // F79: the floor hangs off the DAY START; DailyDdBase only sizes the allowance
+                // (5% of initial for FTMO, 5% of day-start for DailyStart-based firms).
+                var dailyAllowanceBase = c.DailyDdBase == DailyDdBase.DailyStart
                     ? state.Drawdown.DailyStartEquity
                     : state.Drawdown.InitialAccountBalance;
-                var dailyFloor = dailyBaseEquity * (1m - c.MaxDailyLoss);
+                var dailyFloor = state.Drawdown.DailyStartEquity - c.MaxDailyLoss * dailyAllowanceBase;
                 if (projectedEquity < dailyFloor)
                 {
                     return GateResult.Reject("WorstCaseDDWouldBreachDaily");
