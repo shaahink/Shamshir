@@ -9,9 +9,10 @@
 
 ## ⚠ ACTIVE BACKGROUND JOB — WATCH, DO NOT TOUCH (2026-07-17)
 
-A **detached V2 census batch is running** and must finish undisturbed (~9 h from ~14:30 local,
-ETA ~00:20). It survives session close by design. Read `docs/iterations/iter-viability/TRACKER.md`
-handoff for the full context (F82/F83).
+A **detached V2 census batch is running** and must finish undisturbed. It survives session close by
+design. At S5 close it was at **58/252**, driver at `--parallel 3` (log `v2-census-rm4.log`).
+**Parallelism was tested S5 and does NOT scale — stay at 3, do not retry (see section below).**
+Read `docs/iterations/iter-viability/TRACKER.md` handoff for the full context (F82/F83).
 
 - **Experiment:** `4F56B1AE-7269-41CC-8D6C-60E920742EE7` (research mode, `maxDdEnabled:false`).
   Two predecessors are RETIRED, park-never-delete: `95F32D08` (gate-ON), `CCA30637` (F83-tainted).
@@ -41,26 +42,20 @@ handoff for the full context (F82/F83).
   `python tools/research/v2_harvest.py --experiment 4F56B1AE-…`. **Gate on §0: it must report ~0
   truncated cells** — if not, F82 is not actually off and the batch is void.
 
-### To INCREASE PARALLELISM (owner asked; do this next session)
+### PARALLELISM — TESTED (S5, 2026-07-17): does NOT scale, stay at `--parallel 3`. Do NOT retry.
 
-Diagnosis (S4, measured): NOT CPU-bound — the app (in-process engine) sat at **4.5 % CPU on 8
-cores** while running 3 cells; ~50 bars/sec ⇒ the wall is per-run **SQLite write I/O** to the
-shared `trading.db`, not computation. So more parallel *may* scale (if per-run-serial) or *may
-not* (if all runs serialize on the single WAL write lock) — **it must be tested, not assumed.**
-
-Procedure (resume-safe, reversible; per-run results are unaffected — pure replay kernel, each run
-independent, so this is an OPS change, not a science change — just note the switch in the LEDGER):
-1. **Kill ONLY the driver, never the app:**
-   `Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ? { $_.CommandLine -like '*census_driver*' } | % { Stop-Process -Id $_.ProcessId -Force }`
-2. Confirm it's gone, then **relaunch at higher parallel** (resumes by label from the DB count):
-   `Start-Process C:\Python312\python.exe -ArgumentList '-u','tools/research/census_driver.py','--experiment','4F56B1AE-7269-41CC-8D6C-60E920742EE7','--parallel','6','--prune-journal' -WorkingDirectory C:\code\shamshir -RedirectStandardOutput C:\ShamshirData\logs\v2-census-rm3.log -RedirectStandardError C:\ShamshirData\logs\v2-census-rm3.err -WindowStyle Hidden`
-3. **Watch 4–6 cells.** Compare per-cell wall + cells/hour vs the ~10 min/cell at parallel 3.
-   - Scales (throughput up, wall/cell steady) → keep 6, consider 7–8 (leave ≥1 core).
-   - Doesn't scale (wall/cell rises ~proportionally, or a spike in `run status 'running'` F80
-     nulls, or WAL growing fast) → revert to `--parallel 3`. No harm done.
-4. **Disk under higher parallel:** more concurrent writers grow `trading.db-wal` faster (F84).
-   Watch `df`; if `-wal` balloons, `PRAGMA wal_checkpoint(TRUNCATE)` reclaims it (app can stay up).
-   33 GB free now — ample, but the WAL grows quicker at 6.
+Owner's ask was carried out and settled. Bumped the driver to `--parallel 6`, measured a full
+6-wide wave against parallel 3, reverted. **Result: identical throughput — the engine caps
+effective backtest concurrency at ~3.** Cells complete in bursts of 3, one burst every ~9.5 min,
+in BOTH regimes (measured from `ExperimentRuns.CreatedAtUtc`: p3 ≈ 18.5 cells/hr, p6 ≈ 18.9
+cells/hr). Under p6 the driver held 6 in flight (six concurrent `START`s) but the extra 3 just
+queued on the app's single WAL writer — two cells sat in-flight ~26 min wall-clock while logging
+9.8m engine-time. S4's diagnosis confirmed: the wall is shared-`trading.db` write I/O, not CPU and
+not the driver knob. Full evidence: **LEDGER.md → "Session 5 — parallelism bump."**
+- **Do not bump `--parallel` again** — it buys nothing and doubles F80-race exposure + WAL growth.
+- The real lever is APP-side (raise engine backtest concurrency if a semaphore cap exists in
+  `BacktestOrchestrator`, and/or cut per-run DB write I/O). That's a code change for the DX/ops
+  track, NOT an ops knob for this census. Ceiling on this DB = ~3 concurrent × ~9.5m/H1-cell.
 
 ---
 

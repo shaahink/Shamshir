@@ -1038,3 +1038,48 @@ inside the file). Retired evidence intact by design (TradeResults + scores kept:
 
 Net effect on the batch: paused at 12/250, resume-safe, no data loss, no corruption. Relaunched
 after the reclaim (same command; resumes by label).
+
+## Session 5 — 2026-07-17 — parallelism bump: TESTED, does NOT scale, reverted to 3 (Lane R, ops)
+
+Owner's standing ask (recorded S4): try raising census throughput by bumping the driver's
+`--parallel`. This is an OPS change only — per-run results are identical (pure replay kernel, each
+run independent), so the switch is logged here, not treated as a science change.
+
+**Procedure (resume-safe, reversible).** With the research-mode census `4F56B1AE` at 46/252,
+killed ONLY the driver (app on :5134 left up), relaunched `--parallel 6` (log `v2-census-rm3.log`),
+watched a full 6-wide wave complete, measured, then reverted to `--parallel 3` (log
+`v2-census-rm4.log`). Two driver restarts total; the app was never touched; each restart resumed by
+label from the DB count with zero re-scoring of completed cells.
+
+**Result — no throughput gain. The engine caps effective backtest concurrency at ~3.** Measured
+two ways:
+- *Per-cell engine time is invariant.* Cells log `wall≈9.1–9.8m` whether the driver runs 3 or 6
+  wide — the backtest itself does not go faster or slower under load; the logged `wall` is engine
+  compute time, not queue-to-done wall-clock.
+- *Wall-clock completion rate is identical (the decisive measure).* From `ExperimentRuns.CreatedAtUtc`
+  (real per-cell completion timestamps, no sleeping needed), cells complete in **bursts of 3, one
+  burst every ~9.5 min, in BOTH regimes**:
+  - parallel-3 bursts (UTC): 16:54:53 → 17:04:22 → 17:14:10 → 17:24:07 ⇒ 3 cells / 9.5m ≈ **18.5 cells/hr**
+  - parallel-6 bursts (UTC): 17:33:27 → 17:42:58 → 17:52:29 ⇒ 3 cells / 9.5m ≈ **18.9 cells/hr**
+  Under parallel-6 the driver demonstrably held 6 runs in flight (log `TODO … parallel=6`, six
+  concurrent `START`s), yet the six EURUSD/H1 strategies split into two 3-cell bursts 9.5m apart
+  instead of finishing together — direct proof the app runs only ~3 backtests at a time and the
+  extra POSTs queue. Two of the first six (`session-breakout`, `super-trend`) sat in-flight ~26 min
+  wall-clock while logging 9.8m engine-time: queued, not slow.
+
+**Diagnosis confirmed (S4 was right).** The wall is the shared-`trading.db` write path (WAL write
+lock / effective concurrency ~3), NOT CPU and NOT the driver's `--parallel`. WAL held flat at
+0.73 GB across the 6-wide window (checkpointing kept up); disk steady ~33 GB. Turning the driver
+knob past ~3 buys nothing and doubles in-flight runs → 2× exposure to the F80 finalize race and
+faster WAL growth. **Reverted to `--parallel 3` (PID 15592); census resumed at 58/252.**
+
+**To actually speed the census (future, not this run):** the lever is APP-side, not the driver —
+either raise the engine's real backtest concurrency (if a semaphore/thread cap exists in
+`BacktestOrchestrator`) AND/OR cut per-run DB write I/O (the census already journal-prunes ~80k
+rows/run; the remaining writes serialize on the single WAL writer). Both are code changes to
+investigate under the DX/ops track, not an ops knob. Until then, ~3 concurrent × ~9.5m/H1-cell is
+the machine's ceiling on this DB.
+
+**Doctrine reaffirmed:** the owner asked for this to be *tested, not assumed* — it was, with a
+falsifiable measurement (identical burst cadence in both regimes), and the pre-registered revert
+rule fired cleanly. No per-run result was affected.

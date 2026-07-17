@@ -66,18 +66,23 @@ free (owner freed OS disk), driver + app up, ALL PASS, ~6 h left. Incident-and-r
 session: F84 (I filled disk pruning retired bulk in WAL mode → 11 GB WAL → `wal_checkpoint(TRUNCATE)`
 reclaimed → 33 GB). Progress metric = scored-cell count in 4F56B1AE (log rotates rm.log/rm2.log…).
 
-next (owner intent — resume next session, bump parallel):
-(1) **INCREASE PARALLELISM — owner's explicit ask.** Diagnosis: NOT CPU-bound (app 4.5 % on 8
-cores; wall is shared-SQLite write I/O). Kill ONLY the driver, relaunch `--parallel 6`, watch 4–6
-cells: scales → keep/raise; doesn't scale or F80-nulls/WAL spike → revert to 3. **Exact commands
-in AGENTS.md → "To INCREASE PARALLELISM".** Resume-safe, per-run results unaffected (pure kernel).
-(2) On `BATCH DONE`: `census_driver.py … --rescore-nulls` (F80 stragglers) → `v2_harvest.py
+**S5 close (2026-07-17):** parallelism bump DONE + settled. Bumped driver `--parallel 3→6`,
+measured a full 6-wide wave, reverted to 3. **No throughput gain — engine caps effective backtest
+concurrency at ~3** (cells complete in bursts of 3 every ~9.5 min in BOTH regimes: p3 ≈ 18.5, p6 ≈
+18.9 cells/hr, from `ExperimentRuns.CreatedAtUtc`). Shared-`trading.db` WAL writer is the wall, not
+CPU/driver — S4 diagnosis confirmed. Reverted to `--parallel 3` (log `v2-census-rm4.log`); census
+resumed 58/252, app never touched, WAL flat 0.73 GB, disk 33 GB. Full evidence: LEDGER "Session 5".
+**Do NOT bump `--parallel` again**; the real lever is APP-side (engine concurrency / per-run write
+I/O), a DX/ops code change, not this census.
+
+next (owner intent — census running, hands-off until BATCH DONE):
+(1) On `BATCH DONE`: `census_driver.py … --rescore-nulls` (F80 stragglers) → `v2_harvest.py
 --experiment 4F56B1AE-…` → 5 GV2 tables. **Gate §0: must report ~0 truncated cells** else F82 not
-off ⇒ batch void. (3) GV2 owner gate (F78/F79 blast-radius re-read + 2025-census-rerun decision).
-(4) **GV0 STILL OPEN** — I mis-recorded "yes to your vote" as a Swing signature, RETRACTED. Owner
+off ⇒ batch void. (2) GV2 owner gate (F78/F79 blast-radius re-read + 2025-census-rerun decision).
+(3) **GV0 STILL OPEN** — I mis-recorded "yes to your vote" as a Swing signature, RETRACTED. Owner
 leans **1-step / standard, options open.** Swing≡Standard for backtests (news gate dead code); NO
 1-step ruleset exists — authoring `ftmo-1step` (3 % daily) is clean independent V0 work.
-(5) L0 live compare-both smoke = standing debt, next cTrader session. Findings continue at **F85**.
+(4) L0 live compare-both smoke = standing debt, next cTrader session. Findings continue at **F85**.
 
 ## Checkpoints
 
