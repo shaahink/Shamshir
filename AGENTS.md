@@ -3,37 +3,47 @@
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
 **Branch:** `iter/viability`
 **Created:** 2026-06-18
-**Updated:** 2026-07-18 (iter-viability S6 — V2 census COMPLETE + harvested, clean negative, GV2 owner call pending)
+**Updated:** 2026-07-18 (iter-viability S8 — GV2 closed, V4 built+merged, V4 session/TOD census RUNNING)
 
 ---
 
-## ✅ NO ACTIVE BACKGROUND JOB — GV2 CLOSED, V4 session/time-of-day launched (2026-07-18, Session 7)
+## 🔴 ACTIVE BACKGROUND JOB — V4 session/time-of-day census RUNNING (2026-07-18, Session 8)
 
-The V2 census is done and its gate is closed. **GV2 ruling (owner, 2026-07-18): the whole-bank OOS
-negative is accepted → the 9-strategy bank PARKS** (park-never-delete; every family config + census
-experiment `4F56B1AE` retained untouched — no family earns a live seat). This is **F85** (whole-bank
-pure-OOS negative = structural-edge G1 confirmed at scale). The app may still be up on :5134 — safe
-to stop; nothing depends on it. Retired park-never-delete: `95F32D08` (gate-ON), `CCA30637`
-(F83-tainted). Evidence unchanged: `evidence/v2-harvest.md` (5 GV2 tables); verdict recap —
-H-BANK −$20.06/pos (CI [−23.23,−16.97]) REFUTED, H-MR REFUTED, H-RANK not detectable, all 9 park.
+**WATCH — DON'T TOUCH.** A detached 80-cell V4 census is running against a detached app. Do NOT stop
+the app, stop the driver, start a second app on `trading.db`, or `git checkout` away the merged
+strategies while it runs.
+- **App (detached):** `dotnet run … TradingEngine.Web` on `http://localhost:5134`, PID in
+  `…/scratchpad/webapp.pid` (was 12872). Started detached via PowerShell `Start-Process` so it
+  survives turn boundaries (harness-tracked `run_in_background` jobs get KILLED at the boundary — use
+  `Start-Process` for anything long-lived here).
+- **Driver (detached):** `python tools/research/v4_census_driver.py --experiment
+  5D06CE0B-DDB2-49EF-B93E-43FCBF7828C8 --parallel 3 --prune-journal`, PID in `…/scratchpad/census.pid`
+  (was 3732). Log: `…/scratchpad/v4-census.log`. Resumable by VariantLabel — if it dies, just re-run
+  the same command; completed cells are skipped.
+- **Cells:** 4 strat × 10 FX × {M15,H1} = **80**. ETA ~10 h (**measured**: ~33 min/M15 cell,
+  ~630 trades/yr — healthy, F78/F79 starvation ruled out; H1 faster). Experiment `v4-session-tod` =
+  `5D06CE0B-DDB2-49EF-B93E-43FCBF7828C8`.
 
-**Program pivoted to V4 — one decisive, well-powered shot: the SESSION/TIME-OF-DAY family.** Owner
-delegated the family pick; chosen for fewest knobs (highest power), clock-keyed (maximally different
-from the dead indicator bank), M15 execution now honest (V1 per-bar spread). **Pre-registered** in
-`LEDGER.md` Session 7: 4 net-new strategies `london-orb`/`ny-open-drive`/`asia-range`/`day-of-week` ×
-10 FX symbols (7 majors + 3 JPY; no metals/crypto) × {M15,H1} = **80 cells**, 2019–2023 IS window,
-raw per-bar spread, `maxDdEnabled` off, family-pooled MDE ≈ $5–6/pos. M15 data confirmed present
-(dukascopy 2.17M M15 bars, spread ~100%). **Stop rule BINDING:** if the family is refuted under D5′,
-that is the program's clean stop — not another family.
+**WHEN `BATCH DONE` appears in the log:** (1) `python tools/research/v4_census_driver.py --experiment
+5D06CE0B-DDB2-49EF-B93E-43FCBF7828C8 --rescore-nulls --prune-journal` (recover any F80 finalize-race
+nulls); (2) re-paste guards (both must still be 0); (3) `python tools/research/v4_harvest.py
+--experiment 5D06CE0B-DDB2-49EF-B93E-43FCBF7828C8 --out evidence/v4-harvest.md` → the GV4 deliverable
+(H-SESSION family verdict + per-strategy + H-TF); (4) **GV4 owner call**. Findings → **F86**. **Stop
+rule BINDING:** family refuted under D5′ ⇒ clean program stop.
 
-**NEXT:** (1) **Lane D — OpenCode agent** builds the 4 strategies per
-`docs/iterations/iter-viability/V4-SESSION-TOD-PLAN.md` (Phases 0–4; clone `session-breakout`; the
-session windows are FROZEN by the pre-reg). Merge at gate: **golden 63/63 byte-identical** +
-Unit/Integration/Sim green + determinism-probe PASS. (2) **Lane R** (after merge): clone
-`census_driver.py`, run the 80-cell census + harvest → **GV4 owner call**. (3) GV0 still open
-(1-step vs standard; no `ftmo-1step` ruleset). Findings continue at **F86**. Docs for Session 7 were
-uncommitted at hand-off (offer-to-commit pending). Full context:
-`docs/iterations/iter-viability/TRACKER.md` (Handoff, Session 7) + `LEDGER.md` (Session 7).
+**Lane D DONE + MERGED** to `iter/viability` (merge `2dc8f22`). Four net-new strategies
+(`london-orb`/`ny-open-drive`/`asia-range`/`day-of-week`) built per `V4-SESSION-TOD-PLAN.md`, one
+commit per phase. Gate green: build 0-warn, **Unit 805**, **Integration 156**, credential-free
+**Simulation 138 + golden 61/61 byte-identical** (kernel untouched — strategies moved zero replay
+bytes), discovery 3/3. 4 configs auto-seeded into `trading.db` via `ConfigSyncService` on app start
+(13 total; V2/F85 evidence untouched). Pre-launch guards passed (era-holdout 0, EMBARGO-2 0).
+**asia-range entry window realized as the pre-registered 07:00–10:00 via an explicit
+`entryWindowStartUtc`** (the plan's knob list omitted the start; LEDGER + plan prose fix it at 07:00).
+**Determinism basis (probe NOT re-run — satisfied by stronger evidence):** the engine already ran the
+full 252-cell V2 census at `--parallel 3` coherently on this machine, golden 61/61 byte-identical
+proves the replay engine is untouched, and the 4 strategies hold only per-instance state (no shared/
+static mutability ⇒ no cross-run interference). GV0 still open (1-step vs standard; no `ftmo-1step`
+ruleset). Full context: `LEDGER.md` Session 7 (pre-reg) + `TRACKER.md`.
 
 **Ops facts banked (still true for any FUTURE census — not an active constraint now):** the engine
 caps effective backtest concurrency at ~3 (S5: `--parallel 6` bought nothing — the shared
