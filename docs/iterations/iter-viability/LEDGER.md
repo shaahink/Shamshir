@@ -1083,3 +1083,62 @@ the machine's ceiling on this DB.
 **Doctrine reaffirmed:** the owner asked for this to be *tested, not assumed* — it was, with a
 falsifiable measurement (identical burst cadence in both regimes), and the pre-registered revert
 rule fired cleanly. No per-run result was affected.
+
+## Session 6 — 2026-07-18 — V2 census COMPLETE + harvested: the GV2 verdict (Lane R)
+
+The research-mode census `4F56B1AE-7269-41CC-8D6C-60E920742EE7` reached **252/252** and printed
+`BATCH DONE` on a clean full completion (disk 32.0 GB free — not a disk-guard bail). The driver
+exited by design. No product code changed this session; gate baseline unchanged (build 0err ·
+Unit 780 · Integration 156 · Sim-fast 144).
+
+**Null sweep — 0 infrastructure nulls.** `census_driver.py --rescore-nulls` reported
+`0 infrastructure-nulled cells of 252` / `0/0 recovered`. The 14 null-scored cells are legitimate
+0-trade cells (D3 floor / signal exhaustion, `NullReason` set for a real reason), **not** F80
+finalize-race casualties. The census is genuinely complete with no stragglers to recover.
+
+**Harvest.** `python tools/research/v2_harvest.py --experiment 4F56B1AE-… --out evidence/v2-harvest.md`
+→ 5 GV2 deliverables. Spread-stress M1 ask-side join: 81,501 exact hits (99.7%), 213 nearest-prior-2h,
+12 symbol-median. F70 position-fold: 101,572 trade rows → 101,572 positions (**split factor 1.0000** —
+packId=None ⇒ no PartialTp, the fold is a correct no-op, so the R3/v6a row-splitting artifact cannot
+be present here).
+
+**§0 — census integrity gate PASSED (F82 genuinely off ⇒ batch VALID).** Only **1 of 238 trading
+cells stopped trading before the window ended** (`mean-reversion/XAGUSD/H4`, last trade 2022-11 at
+**2.30% maxDD**), and **0 of 238 are pinned at the ≥9% floor**. That one early death is signal
+exhaustion at 2.3% DD, categorically not gate absorption. Contrast the gate-ON census F82 exposed
+(**29% truncated, 34 pinned at ≥9% DD, trend-breakout 12/15 dead by 2021-06**): research mode
+(`maxDdEnabled:false`) did what it was meant to. The census now measures edge, not
+time-until-first-drawdown. Guards clean: era-holdout (2024) = 0, EMBARGO-2 = 0.
+
+**The verdict — a clean, robust negative across the entire bank.**
+- **H-BANK REFUTED.** Bank-pooled **−$20.06/position** (n=101,572), 95% CI **[−23.23, −16.97]**,
+  SE 1.62, MDE@n 4.5. Reproduces the frozen census bank (−$26/t, n=4,461) on clean OOS data.
+- **H-MR REFUTED.** Mean-reversion — the frozen census's *only* positive family (+$19.6/t) — is
+  **−$29.0/position** OOS (n=3,656), CI [−45.6, −12.7], strictly < 0. The in-sample edge did not
+  survive out of sample.
+- **H-RANK NOT DETECTABLE.** Spearman ρ(frozen $/t, OOS $/pos) over the 9 families = **+0.10**,
+  95% ISO-week cluster-bootstrap CI [−0.35, +0.60] at n=9. Mean-reversion fell from rank 1 → rank 7.
+  The in-sample census had **no predictive power** for OOS family ordering.
+- **All 9 families negative.** 8/9 have an ALL-column CI excluding 0 ⇒ mechanical **PARK**. The lone
+  exception, session-breakout (−6.4, CI [−13, +0]), is merely indistinguishable from zero at
+  n=16,199 (MDE 9) — and firms to −25.1 under 1.5× spread. Nothing is positive.
+- **Spread stress: nothing cost-fragile.** Because every family is already negative at raw spread,
+  1.5×/2× only deepens the loss (bank −20.1 → −35.4 → −50.7). The per-family crypto positives at
+  leg-2 (ema-alignment +39.7, session-breakout +41.5, macd-momentum +14.2) sit inside already-negative
+  families and are exactly the F77 1-pip-`TypicalSpread` cost artifacts — they would erode under real
+  crypto/metal spreads.
+- **Leg-4 jackknife: all 9 families sign-stable across all 60 months (0 flips).** The negative signs
+  are structural, not driven by any single month or era.
+
+**Meaning.** The 9-strategy frozen bank, tested pure-OOS on clean 2019–2023 Dukascopy data with
+position-level accounting, realistic per-bar spread costs, and the absorbing max-DD gate disabled,
+has **no structural edge — every family parks.** This is the same trustworthy-negative the
+structural-edge iteration reached (G1: no D5-surviving exit component), now confirmed at the
+whole-bank level. Evidence: `evidence/v2-harvest.md`.
+
+**GV2 is an OWNER decision.** The harvest's per-family PARK recommendations are mechanical *input*
+(leg-1 sign + leg-4 stability), not a substitute for the owner's call on what a dead bank means for
+the program: retire these families, form a new material hypothesis for V3+ (exit lab / new-material
+tracks), or proceed to the V6 control layer with the bank as-is. **GV0 still open** (1-step vs
+standard; no `ftmo-1step` ruleset authored yet — clean independent V0 work). L0 live compare-both
+smoke remains standing debt for the next cTrader session. Findings continue at **F85**.

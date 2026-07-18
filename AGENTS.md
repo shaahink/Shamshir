@@ -3,59 +3,43 @@
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
 **Branch:** `iter/viability`
 **Created:** 2026-06-18
-**Updated:** 2026-07-17 (iter-viability S4 — V2 research-mode census running)
+**Updated:** 2026-07-18 (iter-viability S6 — V2 census COMPLETE + harvested, clean negative, GV2 owner call pending)
 
 ---
 
-## ⚠ ACTIVE BACKGROUND JOB — WATCH, DO NOT TOUCH (2026-07-17)
+## ✅ NO ACTIVE BACKGROUND JOB — V2 census COMPLETE + HARVESTED (2026-07-18)
 
-A **detached V2 census batch is running** and must finish undisturbed. It survives session close by
-design. At S5 close it was at **58/252**, driver at `--parallel 3` (log `v2-census-rm4.log`).
-**Parallelism was tested S5 and does NOT scale — stay at 3, do not retry (see section below).**
-Read `docs/iterations/iter-viability/TRACKER.md` handoff for the full context (F82/F83).
+The detached V2 census finished cleanly: **252/252 scored, `BATCH DONE`, driver exited.** The app
+may still be up on :5134 — **safe to stop now; nothing depends on it.** Live experiment
+`4F56B1AE-7269-41CC-8D6C-60E920742EE7` (research mode, `maxDdEnabled:false`); two predecessors
+RETIRED park-never-delete: `95F32D08` (gate-ON), `CCA30637` (F83-tainted).
 
-- **Experiment:** `4F56B1AE-7269-41CC-8D6C-60E920742EE7` (research mode, `maxDdEnabled:false`).
-  Two predecessors are RETIRED, park-never-delete: `95F32D08` (gate-ON), `CCA30637` (F83-tainted).
-- **Progress (resume-proof — survives driver restarts):** count scored cells in the experiment,
-  NOT a log file (the log rotates on each resume: `v2-census-rm.log`, `-rm2.log`, …):
-  `python -c "import sqlite3;print(sqlite3.connect('file:src/TradingEngine.Web/data/trading.db?mode=ro',uri=True).execute(\"SELECT COUNT(*) FROM ExperimentRuns WHERE ExperimentId='4F56B1AE-7269-41CC-8D6C-60E920742EE7' COLLATE NOCASE\").fetchone()[0])"`
-  of 252. `tail` the newest `C:\ShamshirData\logs\v2-census-rm*.log` for the live cell
-  (~10 min/H1, ~2.5 min/H4).
-- **DO NOT KILL** the two processes this depends on (PIDs change on restart — re-find, don't trust
-  these numbers):
-  - **dotnet app** on `http://localhost:5134` — the engine the driver POSTs to.
-    `Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'"`. **Do not reboot.**
-  - **census driver** — `Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-    ? { $_.CommandLine -like '*census_driver*' }`. Detached; survives session close.
-- **DO NOT** start a second app instance on the same DB (Lane-R doctrine: one app per DB file),
-  launch another backtest through the UI, or `VACUUM`/schema-migrate `trading.db` while it runs.
-- **Read-only is fine:** query `trading.db` with `?mode=ro`, tail logs, watch progress.
-- **If it stalls on disk** (`DISK GUARD: free < 1.5 GB` in the log): the driver clears its queue,
-  drains in-flight, prints `BATCH DONE`, and EXITS — resume-safe by label. Wait for it to exit
-  (don't run two drivers), free disk, then RELAUNCH the same command; it resumes from the DB count.
-- **F84 disk trap:** freeing rows inside `trading.db` does NOT return space to the OS — it fills
-  `trading.db-wal` instead. A big out-of-band delete (retired-experiment bulk) ballooned the WAL to
-  11 GB and filled the disk. Reclaim with `PRAGMA wal_checkpoint(TRUNCATE)` (cheap, safe, no lock;
-  app can stay up). NEVER `VACUUM` mid-batch (2× space + exclusive lock). Any bulk prune must be
-  chunked with periodic `wal_checkpoint(TRUNCATE)`, and only ever against RETIRED experiments.
-- **At `BATCH DONE`:** run `census_driver.py … --rescore-nulls` (F80 stragglers) → then
-  `python tools/research/v2_harvest.py --experiment 4F56B1AE-…`. **Gate on §0: it must report ~0
-  truncated cells** — if not, F82 is not actually off and the batch is void.
+**Harvest ran → CLEAN ROBUST NEGATIVE.** `evidence/v2-harvest.md` has all 5 GV2 deliverables.
+§0 integrity gate **PASSED** (F82 genuinely off): only 1/238 cells stopped early
+(`mean-reversion/XAGUSD/H4`, 2.30% DD = signal exhaustion, NOT the floor); **0 cells pinned at the
+≥9% floor** (vs 29% truncation gate-ON); 0 infra-nulls; guards era-holdout 0 + EMBARGO-2 0.
+- **H-BANK REFUTED** — bank −$20.06/position (n=101,572), 95% CI [−23.23, −16.97].
+- **H-MR REFUTED** — mean-reversion (frozen census's only winner +$19.6/t) → −$29.0/pos OOS.
+- **H-RANK not detectable** — Spearman ρ=+0.10, CI [−0.35, +0.60]; frozen ranking has NO OOS
+  predictive power (MR rank 1→7).
+- **All 9 families negative** ⇒ 8/9 CI-excludes-0 = PARK; session-breakout indistinguishable from 0
+  (firms negative at 1.5× spread). Spread stress: nothing cost-fragile (all already negative). The
+  crypto per-family positives are F77 1-pip-cost artifacts. Leg-4 jackknife: all sign-stable 60 mo.
 
-### PARALLELISM — TESTED (S5, 2026-07-17): does NOT scale, stay at `--parallel 3`. Do NOT retry.
+**The bank has no structural edge — same trustworthy-negative as structural-edge G1, now bank-wide.**
 
-Owner's ask was carried out and settled. Bumped the driver to `--parallel 6`, measured a full
-6-wide wave against parallel 3, reverted. **Result: identical throughput — the engine caps
-effective backtest concurrency at ~3.** Cells complete in bursts of 3, one burst every ~9.5 min,
-in BOTH regimes (measured from `ExperimentRuns.CreatedAtUtc`: p3 ≈ 18.5 cells/hr, p6 ≈ 18.9
-cells/hr). Under p6 the driver held 6 in flight (six concurrent `START`s) but the extra 3 just
-queued on the app's single WAL writer — two cells sat in-flight ~26 min wall-clock while logging
-9.8m engine-time. S4's diagnosis confirmed: the wall is shared-`trading.db` write I/O, not CPU and
-not the driver knob. Full evidence: **LEDGER.md → "Session 5 — parallelism bump."**
-- **Do not bump `--parallel` again** — it buys nothing and doubles F80-race exposure + WAL growth.
-- The real lever is APP-side (raise engine backtest concurrency if a semaphore cap exists in
-  `BacktestOrchestrator`, and/or cut per-run DB write I/O). That's a code change for the DX/ops
-  track, NOT an ops knob for this census. Ceiling on this DB = ~3 concurrent × ~9.5m/H1-cell.
+**NEXT = GV2 owner decision** (what to do with a dead bank: retire families / form a new hypothesis /
+move to V6 account-policy). GV0 still open (1-step vs standard; no `ftmo-1step` ruleset authored yet).
+Findings continue at **F85**. Full context: `docs/iterations/iter-viability/TRACKER.md` (Handoff,
+Session 6) + `LEDGER.md`.
+
+**Ops facts banked (still true for any FUTURE census — not an active constraint now):** the engine
+caps effective backtest concurrency at ~3 (S5: `--parallel 6` bought nothing — the shared
+`trading.db` WAL writer is the wall; **do NOT re-bump** — the real lever is APP-side engine
+concurrency / per-run write I/O). **F84 disk trap:** freeing rows in a WAL db fills `trading.db-wal`,
+not OS free space — reclaim with `PRAGMA wal_checkpoint(TRUNCATE)`, NEVER `VACUUM` mid-batch. Lane-R:
+one app per DB file. Progress metric for any resumed batch = scored-cell count in the experiment, not
+a log file (logs rotate `v2-census-rm.log`, `-rm2.log`, …).
 
 ---
 
@@ -368,48 +352,34 @@ The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** **iter-viability — Session 1 (V0 + regime analysis) evidence-COMPLETE (2026-07-16);
-GV0 owner gate OPEN.** FTMO's terms were verified against the published contract (rule-diff
-table with 14 cited rows in `docs/iterations/iter-viability/LEDGER.md`, Session 1). Shipped:
-**F73** — daily reset was 2 h early (config said 22:00 interpreted in Europe/Prague; FTMO resets
-at midnight CE(S)T); configs fixed to `00:00:00` Prague, live-DB `PropFirmRuleSets` rows
-upserted (the seeder is ONE-SHOT — JSON edits alone never reach a seeded DB), display bucketing
-(`RunDataQuery.PropFirmDayOf`) aligned. `ChallengeSimulator` corrected to verified semantics:
-daily floor = previous day's close BALANCE − 5%·initial (was day-start-equity drop),
-min(start,close)-equity breach checks (intraday envelope stays V6), trading day = day with a
-trade OPENED (was closed). sv2 extended (D4-safe): `ScoreComponents` now carries
-P(bust-before-target), E/median[time-to-target] (calendar days), untimed pass/bust/censored
-counts; 30d PassRate retained as a velocity index at unchanged composite weight. New rulesets
-`ftmo-verification` (5% Phase-2 target) + `ftmo-swing`. **F74** — untimed rules invert R4:
-2/4 candidates (`9c98ce41`, `6d8c8fa0`) are viable-but-slow (ZERO busts in any anchored window,
-Phase 1 ≈ 4 mo median, Ph1+2 ≈ 6–7 mo at 1× sizing); 2/4 never reach target in 10 months —
-still dead. **F75** — regime conditioning (old S2(b), zero new runs, pre-registered with MDE):
-class×half and class×regime interactions NOT detectable at n (MDE $123–165/trade ≈ 0.3R); the
-ER20 regime-mix shift H1→H2 IS real (+0.12 day-share, trade-share CI excludes 0); descriptive
-RV20-Low × contrarian +0.17R split goes to V4e as a hypothesis for backfilled data. Zero new
-BacktestRuns; EMBARGO-2 + 2024 era-holdout untouched.
-**Next:** (1) **GV0 owner signature — account type. Recommendation: FTMO Swing, $100k, 2-step**
-(evaluation terms identical to Standard; Swing removes the funded-stage weekend/news tax; bank
-holds multi-day; V4 gap family wants Monday entries). (2) **Session 2 = V1 backfill**: Dukascopy
-2019–2024 bid/ask M1 importer, overlap-2025 reconciliation vs recorded tape, 2024 era-holdout
-flag in DB [gate GV1]. Lane D may build the importer concurrently (D9/PLAN §8). **L0 (live
-compare-both smoke) remains standing debt for the next cTrader session.** Findings continue at
-**F76**. Sessions run MANUALLY (owner call 2026-07-16). Follow the session protocol in PLAN.md
-§4 — QA the previous session's claims against artifacts before building.
-**Read first:** `docs/iterations/iter-viability/TRACKER.md` (Handoff block) →
-`docs/iterations/iter-viability/PLAN.md` (V0–V7 + L-track §7, decisions D1–D9, owner-asks map
-§6, concurrency §8) → `docs/reference/RESEARCH-PROCESS.md` (NORMATIVE: units, evidence ladder,
-MDE/pre-registration discipline, failure-mode museum, adaptation doctrine) →
-`docs/QUANT-REVIEW-RESPONSE-2026-07.md` (the rationale: power math, FTMO reframing) →
-`docs/iterations/iter-structural-edge/LEDGER.md` (tail: S1 close + owner-gate ruling) →
-`docs/iterations/iter-structural-edge/RESEARCH.md` (F64–F68) →
-`docs/iterations/iter-alpha-loop/HANDOVER.md` (what the machine already proved).
+**Phase:** **iter-viability — Session 6 (2026-07-18): V2 frozen-bank OOS census COMPLETE + HARVESTED.
+Result = CLEAN ROBUST NEGATIVE; GV2 owner decision is the ONLY open step.** The full state,
+per-family CI tables, and the §0 integrity gate live in the top block of this file and in
+`docs/iterations/iter-viability/TRACKER.md` (Handoff, Session 6) + `evidence/v2-harvest.md`.
+Headline: bank −$20.06/position (CI [−23.23, −16.97], **H-BANK REFUTED**); mean-reversion — the
+frozen census's only in-sample winner — flipped to −$29/pos OOS (**H-MR REFUTED**); frozen ranking
+has no OOS predictive power (**H-RANK not detectable**, ρ=+0.10); all 9 families negative → 8/9 PARK;
+spread-stress deepens every family; jackknife sign-stable across 60 months. §0 gate PASSED (F82
+genuinely off — 0 cells pinned at the floor vs 29% gate-ON), so the batch is VALID, not void. This
+confirms the structural-edge G1 negative at the whole-bank level: **the 9-strategy bank has no
+durable edge.**
+**Next (owner-gated, no agent work queued):** (1) **GV2 owner call** — what a dead bank means for the
+program (retire families / form a new hypothesis for V3+ / move to V6 account-policy). The harvest's
+per-family PARK recommendations are mechanical INPUT, not the decision. (2) **GV0 still open** — owner
+leans 1-step / standard; Swing≡Standard for backtests (news gate is dead code); no `ftmo-1step`
+ruleset exists yet — authoring `ftmo-1step` (3% daily) is clean independent V0 work. (3) **L0 live
+compare-both smoke** = standing debt, next cTrader session. Findings continue at **F85**. Sessions
+run MANUALLY (owner call 2026-07-16); QA prior-session claims against artifacts before building.
+**Read first:** `docs/iterations/iter-viability/TRACKER.md` (Handoff, Session 6) →
+`docs/iterations/iter-viability/PLAN.md` (V0–V7 + L-track §7, decisions, owner-asks map §6) →
+`docs/iterations/iter-viability/LEDGER.md` (Sessions 1–6; F73–F85) →
+`evidence/v2-harvest.md` (the 5 GV2 deliverable tables) →
+`docs/reference/RESEARCH-PROCESS.md` (NORMATIVE: units, evidence ladder, MDE/pre-registration).
 **Tracker:** `docs/iterations/iter-viability/TRACKER.md`
 **Branch:** `iter/viability` (from `main` at the S1-gate merge; merge back to `main` at owner gates)
-**Gate baseline (re-verified at Session 1 close, 2026-07-16):** build 0err/5warn · Unit 773/0/6 ·
-Integration 155/0/0 · Sim-fast 144/0/0. (Session 1 added 3 unit + 2 integration tests: V0
-rule-truth pins — balance-referenced floor, opened-day counting, gap-through start-equity
-breach, untimed metrics, daily-point balance/opened fill.)
+**Gate baseline (unchanged since S3 — census work touched no product code):** build 0err/5warn ·
+Unit 780 · Integration 156 · Sim-fast 144. The census/harvest are research tooling
+(`tools/research/*.py`) + a read-only evidence file; no engine/domain code changed this session.
 **Live parity:** **EURUSD `VERDICT: PASS`** (tape `a89d37b5` / ctrader `e497806d`) — TradeCount exact ·
 EntryPrice **0.0 ticks** · Lots exact · ExitPrice **100% within, 0.0 ticks** · Commission 0.53% ·
 Swap 0.44% · NetPnL 0.45%. **Tolerance budget UNTOUCHED.** XAUUSD (14 trades) green on everything
