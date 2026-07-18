@@ -1,0 +1,60 @@
+{
+    "id":  "day-of-week",
+    "displayName":  "Day-of-Week Bias",
+    "enabled":  true,
+    "riskProfileId":  "standard",
+    "thesis":  "A fixed weekday carries a persistent directional bias; enter once at 00:00 UTC on that weekday and hold to the 23:00 flatten.",
+    "expectedTradesPerWeek":  1,
+    "expectedHoldBars":  92,
+    "regimeFilter":  {
+                         "allowTrending":  true,
+                         "allowRanging":  true,
+                         "allowHighVolatility":  true,
+                         "allowLowVolatility":  true,
+                         "allowUnknown":  true
+                     },
+    "orderEntry":  {
+                        "method":  "LimitOffset",
+                        "limitOffsetPips":  3.0,
+                        "limitOffsetAtrFraction":  0.15,
+                        "limitOrderExpiryBars":  12,
+                        "maxSlippagePips":  2.0,
+                        "maxSlippageSpreadMultiple":  2.0
+                    },
+    "positionManagement":  {
+                               "stopLoss":  {
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  1.5,
+                                                "maxSlAtrMultiple":  5.0
+                                            },
+                               "takeProfit":  {
+                                                  "method":  "RrMultiple",
+                                                  "rrMultiple":  2.0
+                                              },
+                               "breakeven":  {
+                                                 "enabled":  true,
+                                                 "triggerRMultiple":  1.0,
+                                                 "offsetPips":  1.0,
+                                                 "offsetSpreadMultiple":  1.0
+                                             },
+                               "trailing":  {
+                                                "enabled":  true,
+                                                "mode":  "Auto",
+                                                "method":  "AtrMultiple",
+                                                "atrMultiple":  2.0
+                                            }
+                           },
+    "parameters":  {
+                       "atrPeriod":  14,
+                       "entryHourUtc":  "00:00:00",
+                       "flattenTimeUtc":  "23:00:00",
+                       "weekdays":  ["Monday"],
+                       "direction":  "Long"
+                   },
+    "reentry":  {
+                    "blockWhileSameDirectionOpen":  true,
+                    "cooldownBarsAfterSl":  5,
+                    "cooldownBarsAfterTp":  2,
+                    "cooldownBarsAfterEntry":  3
+                }
+}
