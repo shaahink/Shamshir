@@ -7,31 +7,33 @@
 
 ---
 
-## ✅ NO ACTIVE BACKGROUND JOB — V2 census COMPLETE + HARVESTED (2026-07-18)
+## ✅ NO ACTIVE BACKGROUND JOB — GV2 CLOSED, V4 session/time-of-day launched (2026-07-18, Session 7)
 
-The detached V2 census finished cleanly: **252/252 scored, `BATCH DONE`, driver exited.** The app
-may still be up on :5134 — **safe to stop now; nothing depends on it.** Live experiment
-`4F56B1AE-7269-41CC-8D6C-60E920742EE7` (research mode, `maxDdEnabled:false`); two predecessors
-RETIRED park-never-delete: `95F32D08` (gate-ON), `CCA30637` (F83-tainted).
+The V2 census is done and its gate is closed. **GV2 ruling (owner, 2026-07-18): the whole-bank OOS
+negative is accepted → the 9-strategy bank PARKS** (park-never-delete; every family config + census
+experiment `4F56B1AE` retained untouched — no family earns a live seat). This is **F85** (whole-bank
+pure-OOS negative = structural-edge G1 confirmed at scale). The app may still be up on :5134 — safe
+to stop; nothing depends on it. Retired park-never-delete: `95F32D08` (gate-ON), `CCA30637`
+(F83-tainted). Evidence unchanged: `evidence/v2-harvest.md` (5 GV2 tables); verdict recap —
+H-BANK −$20.06/pos (CI [−23.23,−16.97]) REFUTED, H-MR REFUTED, H-RANK not detectable, all 9 park.
 
-**Harvest ran → CLEAN ROBUST NEGATIVE.** `evidence/v2-harvest.md` has all 5 GV2 deliverables.
-§0 integrity gate **PASSED** (F82 genuinely off): only 1/238 cells stopped early
-(`mean-reversion/XAGUSD/H4`, 2.30% DD = signal exhaustion, NOT the floor); **0 cells pinned at the
-≥9% floor** (vs 29% truncation gate-ON); 0 infra-nulls; guards era-holdout 0 + EMBARGO-2 0.
-- **H-BANK REFUTED** — bank −$20.06/position (n=101,572), 95% CI [−23.23, −16.97].
-- **H-MR REFUTED** — mean-reversion (frozen census's only winner +$19.6/t) → −$29.0/pos OOS.
-- **H-RANK not detectable** — Spearman ρ=+0.10, CI [−0.35, +0.60]; frozen ranking has NO OOS
-  predictive power (MR rank 1→7).
-- **All 9 families negative** ⇒ 8/9 CI-excludes-0 = PARK; session-breakout indistinguishable from 0
-  (firms negative at 1.5× spread). Spread stress: nothing cost-fragile (all already negative). The
-  crypto per-family positives are F77 1-pip-cost artifacts. Leg-4 jackknife: all sign-stable 60 mo.
+**Program pivoted to V4 — one decisive, well-powered shot: the SESSION/TIME-OF-DAY family.** Owner
+delegated the family pick; chosen for fewest knobs (highest power), clock-keyed (maximally different
+from the dead indicator bank), M15 execution now honest (V1 per-bar spread). **Pre-registered** in
+`LEDGER.md` Session 7: 4 net-new strategies `london-orb`/`ny-open-drive`/`asia-range`/`day-of-week` ×
+10 FX symbols (7 majors + 3 JPY; no metals/crypto) × {M15,H1} = **80 cells**, 2019–2023 IS window,
+raw per-bar spread, `maxDdEnabled` off, family-pooled MDE ≈ $5–6/pos. M15 data confirmed present
+(dukascopy 2.17M M15 bars, spread ~100%). **Stop rule BINDING:** if the family is refuted under D5′,
+that is the program's clean stop — not another family.
 
-**The bank has no structural edge — same trustworthy-negative as structural-edge G1, now bank-wide.**
-
-**NEXT = GV2 owner decision** (what to do with a dead bank: retire families / form a new hypothesis /
-move to V6 account-policy). GV0 still open (1-step vs standard; no `ftmo-1step` ruleset authored yet).
-Findings continue at **F85**. Full context: `docs/iterations/iter-viability/TRACKER.md` (Handoff,
-Session 6) + `LEDGER.md`.
+**NEXT:** (1) **Lane D — OpenCode agent** builds the 4 strategies per
+`docs/iterations/iter-viability/V4-SESSION-TOD-PLAN.md` (Phases 0–4; clone `session-breakout`; the
+session windows are FROZEN by the pre-reg). Merge at gate: **golden 63/63 byte-identical** +
+Unit/Integration/Sim green + determinism-probe PASS. (2) **Lane R** (after merge): clone
+`census_driver.py`, run the 80-cell census + harvest → **GV4 owner call**. (3) GV0 still open
+(1-step vs standard; no `ftmo-1step` ruleset). Findings continue at **F86**. Docs for Session 7 were
+uncommitted at hand-off (offer-to-commit pending). Full context:
+`docs/iterations/iter-viability/TRACKER.md` (Handoff, Session 7) + `LEDGER.md` (Session 7).
 
 **Ops facts banked (still true for any FUTURE census — not an active constraint now):** the engine
 caps effective backtest concurrency at ~3 (S5: `--parallel 6` bought nothing — the shared
@@ -352,27 +354,27 @@ The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** **iter-viability — Session 6 (2026-07-18): V2 frozen-bank OOS census COMPLETE + HARVESTED.
-Result = CLEAN ROBUST NEGATIVE; GV2 owner decision is the ONLY open step.** The full state,
-per-family CI tables, and the §0 integrity gate live in the top block of this file and in
-`docs/iterations/iter-viability/TRACKER.md` (Handoff, Session 6) + `evidence/v2-harvest.md`.
-Headline: bank −$20.06/position (CI [−23.23, −16.97], **H-BANK REFUTED**); mean-reversion — the
-frozen census's only in-sample winner — flipped to −$29/pos OOS (**H-MR REFUTED**); frozen ranking
-has no OOS predictive power (**H-RANK not detectable**, ρ=+0.10); all 9 families negative → 8/9 PARK;
-spread-stress deepens every family; jackknife sign-stable across 60 months. §0 gate PASSED (F82
-genuinely off — 0 cells pinned at the floor vs 29% gate-ON), so the batch is VALID, not void. This
-confirms the structural-edge G1 negative at the whole-bank level: **the 9-strategy bank has no
-durable edge.**
-**Next (owner-gated, no agent work queued):** (1) **GV2 owner call** — what a dead bank means for the
-program (retire families / form a new hypothesis for V3+ / move to V6 account-policy). The harvest's
-per-family PARK recommendations are mechanical INPUT, not the decision. (2) **GV0 still open** — owner
-leans 1-step / standard; Swing≡Standard for backtests (news gate is dead code); no `ftmo-1step`
-ruleset exists yet — authoring `ftmo-1step` (3% daily) is clean independent V0 work. (3) **L0 live
-compare-both smoke** = standing debt, next cTrader session. Findings continue at **F85**. Sessions
-run MANUALLY (owner call 2026-07-16); QA prior-session claims against artifacts before building.
-**Read first:** `docs/iterations/iter-viability/TRACKER.md` (Handoff, Session 6) →
+**Phase:** **iter-viability — Session 7 (2026-07-18): GV2 CLOSED → V4 session/time-of-day launched.**
+Owner accepted the whole-bank V2 negative → the 9-strategy bank **PARKS** (F85; park-never-delete,
+configs + experiment `4F56B1AE` retained). The program pivots to **one decisive, well-powered V4
+shot: the session/time-of-day family** (`london-orb`, `ny-open-drive`, `asia-range`, `day-of-week`),
+pre-registered in `LEDGER.md` Session 7 (80 cells = 4 strat × 10 FX symbols × {M15,H1}, 2019–2023 IS,
+raw per-bar spread, `maxDdEnabled` off, family-pooled MDE ≈ $5–6/pos; **M15 data confirmed present**).
+Implementation is delivered as `docs/iterations/iter-viability/V4-SESSION-TOD-PLAN.md` for the
+OpenCode agent (Lane D). **Stop rule BINDING:** family refuted under D5′ ⇒ clean program stop. Full
+V2 verdict recap + machinery notes live in the top block of this file + TRACKER Handoff (Session 7).
+**Next:** (1) **Lane D — OpenCode agent** builds the 4 strategies per `V4-SESSION-TOD-PLAN.md`
+(Phases 0–4; clone `session-breakout`; windows FROZEN by the pre-reg). Merge at gate: golden 63/63
+byte-identical + Unit/Integration/Sim green + determinism probe PASS. (2) **Lane R** (post-merge):
+clone `census_driver.py`, run the 80-cell census + harvest → **GV4 owner call**. (3) **GV0 still
+open** — 1-step vs standard; no `ftmo-1step` ruleset authored yet (clean independent V0 work). (4)
+**L0 live compare-both smoke** = standing debt, next cTrader session. Findings continue at **F86**.
+Sessions run MANUALLY (owner call 2026-07-16); QA prior-session claims against artifacts before
+building. Session 7 docs were uncommitted at hand-off (offer-to-commit pending owner).
+**Read first:** `docs/iterations/iter-viability/TRACKER.md` (Handoff, Session 7) →
 `docs/iterations/iter-viability/PLAN.md` (V0–V7 + L-track §7, decisions, owner-asks map §6) →
-`docs/iterations/iter-viability/LEDGER.md` (Sessions 1–6; F73–F85) →
+`docs/iterations/iter-viability/LEDGER.md` (Sessions 1–7; F73–F85) →
+`docs/iterations/iter-viability/V4-SESSION-TOD-PLAN.md` (the Lane-D implementation contract) →
 `evidence/v2-harvest.md` (the 5 GV2 deliverable tables) →
 `docs/reference/RESEARCH-PROCESS.md` (NORMATIVE: units, evidence ladder, MDE/pre-registration).
 **Tracker:** `docs/iterations/iter-viability/TRACKER.md`

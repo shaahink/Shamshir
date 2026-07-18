@@ -1142,3 +1142,188 @@ the program: retire these families, form a new material hypothesis for V3+ (exit
 tracks), or proceed to the V6 control layer with the bank as-is. **GV0 still open** (1-step vs
 standard; no `ftmo-1step` ruleset authored yet — clean independent V0 work). L0 live compare-both
 smoke remains standing debt for the next cTrader session. Findings continue at **F85**.
+
+## Session 7 — 2026-07-18 — GV2 owner ruling: bank parks → V4 session/time-of-day (Lane R, direction)
+
+**QA of Session 6 (light spot-check per the AGENTS.md protocol — S6 ended clean with all gates
+green, so no full re-QA).** Verified the harvest against artifacts before acting on it:
+`evidence/v2-harvest.md` is committed at `d9071f2`, working tree clean; the file's §0 integrity gate
+shows 1/238 early deaths and 0 floor-pins (F82 genuinely off); the BANK-POOLED row (§1) and H-BANK
+(§3) both read −$20.06/position (n=101,572), matching the Session 6 verdict. The census stands; no
+re-run.
+
+### GV2 ruling (owner, 2026-07-18)
+
+The owner **accepted the negative**. Decision: **PARK the entire 9-strategy frozen bank**
+(park-never-delete per D7/D8 — every family config and the `4F56B1AE` experiment are retained
+untouched; nothing is deleted or rewritten). The bank's residence question is now answered by
+out-of-sample evidence exactly as D8 requires: **no incumbent family earns a live seat.** This
+closes GV2.
+
+The program's center of gravity moves to **V4 new material** — the branch V2 pre-registered
+("nothing holds → V4 is the program", PLAN §3). Per owner direction, V4 runs as **one decisive,
+well-powered shot, not an open hunt**: a single pre-registered family, MDE-lined per D1, chosen as
+the most plausible *structurally-different* bet. Owner delegated the family pick ("your vote") →
+**session/time-of-day**. Rationale on the record: fewest knobs ⇒ highest statistical power + lowest
+overfit surface; clock-keyed ⇒ maximally different from the indicator-based dead bank; M15 execution
+is now honest via V1 per-bar spread (the old honesty gate that kept 15m/30m unscored is satisfied
+for clock-keyed families, PLAN §6). **Stop rule inherited and made explicit:** if the
+session/time-of-day family is *also* refuted under D5′, that is the program's clean stop (V7
+stop-rule spirit — "data/market class, not more search" — now backed by the whole-bank V2 negative),
+not a prompt for another family.
+
+**Delivery mode (feedback-deliver-as-agent-plans):** the four new session strategies are net-new C#
+and are delivered as a **phased implementation plan for the OpenCode/DeepSeek agent**
+(`docs/iterations/iter-viability/V4-SESSION-TOD-PLAN.md`), not implemented in this research lane. The
+research design (hypotheses, MDE, cells, stop rule) is pre-registered below and is the agent's
+truth-side contract. The census run + harvest happen in Lane R once the code merges.
+
+### F85 — the frozen 9-strategy bank has no structural edge (whole-bank pure-OOS negative)
+
+**Finding.** Tested pure out-of-sample on clean 2019–2023 Dukascopy data (post-dating all strategy
+development, PLAN D3), with position-level accounting (F70), realistic per-bar spread costs, and the
+absorbing overall max-DD gate disabled (F82 research mode), **the 9-strategy frozen bank as
+configured at `bfa1bfd` has no durable edge — every family parks.**
+
+- **H-BANK REFUTED** — bank-pooled −$20.06/position (n=101,572), 95% CI [−23.23, −16.97], MDE@n 4.5.
+- **H-MR REFUTED** — mean-reversion, the frozen in-sample census's *only* winner (+$19.6/t), inverts
+  to −$29.0/position OOS (CI [−45.6, −12.7], strictly < 0). The lone positive did not survive.
+- **H-RANK NOT DETECTABLE** — Spearman ρ(frozen $/t, OOS $/pos) = +0.10 over 9 families (CI
+  [−0.35, +0.60]); MR fell rank 1 → 7. The in-sample census had **no predictive power** for OOS
+  family ordering — so there is no "pick the good ones" salvage.
+- **8/9 families CI-excludes-0 negative = mechanical PARK**; the 9th (session-breakout) is merely
+  indistinguishable from 0 (−6.4, CI [−13, +0]) and firms to −25.1 under 1.5× spread.
+- **Spread stress deepens every family** (bank −20.1 → −35.4 → −50.7 at raw/1.5×/2×); the crypto
+  per-family positives are F77 1-pip-`TypicalSpread` artifacts inside already-negative families.
+- **Leg-4 jackknife: all 9 sign-stable across all 60 months** (0 flips) — the negatives are
+  structural, not era/month-driven.
+
+**Meaning.** This confirms the structural-edge iteration's G1 negative (no D5-surviving exit
+component) **at the whole-bank level**, with 6× the evidence. The nine indicator-based single-
+instrument technical families do not carry edge net of realistic costs on this universe. That is a
+trustworthy negative, not an underpowered one (MDE@n 4.5 vs a −$20 effect). It does **not** refute
+edge in *structurally different* strategy classes never tested here — which is precisely what V4's
+session/time-of-day shot examines. Evidence: `evidence/v2-harvest.md`.
+
+### Pre-registration — V4 session/time-of-day family (gate GV4, OWNER)
+
+Everything in this section is fixed BEFORE the four strategies are authored and BEFORE any run
+exists. Per PLAN §3 V4, 2019–2023 is the **in-sample (IS) development window for new material**;
+2024 is the era-holdout (D3, untouched until V7), 2025+ the terminal holdout. The overfit protection
+on the IS window is: (a) pre-registration of session windows to **fixed, literature-standard UTC
+clock times — no fitting to 2019–2023**, (b) minimal knobs, (c) D5′ family-level pooled evaluation,
+(d) the 2024 era-holdout as the honest confirmation at V7. This is the *one decisive shot* the owner
+authorized at GV2; the stop rule below is binding.
+
+**Machinery assessment (verified 2026-07-18, this session, read-only):**
+- Strategy contract: `IStrategy` (`src/TradingEngine.Domain/Interfaces/IStrategy.cs`); families are
+  auto-discovered by `[StrategyId]` + static `Create` (`StrategyRegistry.cs:14-50`); config is
+  `config/strategies/{id}.json` → `StrategyConfigEntry`. `session-breakout`
+  (`SessionBreakoutStrategy.cs`) is a working ORB whose range-build/entry skeleton the new members
+  clone. Reusable infra confirmed: `SlTpResolver` + ATR sizing, `FlattenAtUtc` +
+  `KernelTimeFlattenEvaluator` (session-end flatten), `SessionFilter.IsInSession` (overnight-wrap,
+  for the Asian window), `MarketContext.EngineTimeUtc` (strategies read time here, never a clock).
+- Census machinery: clone `tools/research/census_driver.py`; a cell = `(strategy, symbol, timeframe)`
+  one-row backtest (D13); the `exp_id[:8]` idempotency namespacing (`census_driver.py:143`) is the
+  **F83 safeguard and must be kept**. sv2 gate `MinimumTrades = 20` (`SetupScoreService.cs:27`);
+  per-position dollars = `TradeResults.NetPnLAmount` folded by `(RunId, PositionId)` (F70).
+- **M15 data confirmed present** (the honesty gate): dukascopy M15 = 2,165,344 bars, all 10 FX
+  symbols 2019-01-01→2023-12-29, per-bar `Spread` on ~100% of bars. No importer work needed.
+- **F78/F79 caveat carried forward:** session strategies are exactly the family that exposed the F78
+  governor cooling-off deadlock and F79 daily-DD latch in the V2 pilot (starved `session-breakout` to
+  8 trades). The build already carries both fixes (post-F78/F79 commits). The pilot below **must**
+  target cells that can fail the hypothesis and confirm healthy trade counts (not starvation).
+
+**Census definition:**
+- Cells: **4 session strategies × 10 FX symbols × {M15, H1} = 80 one-cell runs** (D13).
+  - Strategies (net-new, authored per `V4-SESSION-TOD-PLAN.md`): `london-orb`, `ny-open-drive`,
+    `asia-range`, `day-of-week`.
+  - Symbols (FX only): FX-majors AUDUSD, EURGBP, EURUSD, GBPUSD, NZDUSD, USDCAD, USDCHF (7) +
+    JPY-crosses EURJPY, GBPJPY, USDJPY (3). **Metals/crypto excluded** — session/time-of-day is an
+    FX-session phenomenon (London/NY/Tokyo), and XAG/XAU/BTC/ETH carry the F77 1-pip-`TypicalSpread`
+    cost artifacts + trade ~24/7 with different session dynamics. The two FX classes give the D5′
+    leg-2 sign-agreement test (FX-major vs JPY-cross).
+  - Timeframes: **M15** (the family's native execution TF, honesty gate satisfied) + **H1**
+    (robustness cross-check + directly answers the owner's "why aren't 15m/30m successful" ask, PLAN
+    §6 — 15m was never scored before because per-bar spread didn't exist; it does now).
+- Window: **2019-01-01T00:00 → 2023-12-31T00:00** (To < 2024-01-01 keeps the era-holdout guard clean
+  by construction). 2024 era-holdout untouched (D3); 2025+ terminal holdout; EMBARGO-2 untouched.
+- Run config, identical to V2 except the strategy set and timeframes: venue=tape, $100k solo,
+  riskProfileId=standard (0.5%/trade), CommissionPerMillion=30, **raw recorded per-bar dukascopy
+  spread** (primary; `TypicalSpread` fallback unreachable — spread present on ~100% of FX M15/H1
+  bars), **maxDdEnabled=false** (F82 research mode — measures edge, not time-to-first-drawdown; same
+  as the valid V2 census), Seed=42, honestFills, governor+regime enabled (F78/F79 fixes present),
+  PackId=null, speed=10. Indicator warmup cold-start from window start.
+- Scoring: sv2 into a new experiment (`v4-session-tod`), same weights as V2
+  ({PassProbability:0.4, ExpectancyR:0.3, MaxDrawdown:0.2, FoldConsistency:0.1}). Driver: a cloned
+  `census_driver.py` with STRATEGIES/SYMBOLS/TIMEFRAMES swapped, F83 namespacing kept, `--parallel 3`
+  (S5: the engine caps effective concurrency at ~3; do not bump).
+
+**Pre-registered session windows (fixed UTC, literature-standard, NOT fitted):**
+- `london-orb`: range-build 07:00–08:00, breakout-entry window 08:00–11:00, flatten 16:00.
+- `ny-open-drive`: momentum-continuation signal window 13:30–15:00, flatten 20:00.
+- `asia-range`: Tokyo range-build 00:00–06:00 (overnight, `SessionFilter.IsInSession` wrap), breakout
+  entry 07:00–10:00, flatten 16:00.
+- `day-of-week`: no intraday window — one entry at 00:00 UTC on the pre-registered weekday(s), fixed
+  hold to end-of-day flatten. Lowest-frequency member.
+- **DST is deliberately NOT modelled** (fixed UTC windows = zero fitting surface). DST-aware windows
+  are a Tier-2 refinement reserved for a survivor, never part of this first shot.
+
+**Spread policy (F77 decision, inherited from V2):** primary = raw recorded per-bar dukascopy spread;
+sensitivity = re-report every verdict under 1.5× and 2× analytic spread stress (ask-side fill-minute
+M1 lookup, Δ$ = (k−1)·(s_m/PipSize)·PipValuePerLot·lots subtracted from NetPnl). FX-only ⇒ the F77
+metals/crypto artifact does not apply here. Escalation rule (V2): any family within ±1 MDE of
+flipping under 1.5× stress is flagged cost-fragile.
+
+**Primary hypotheses (metric = pooled $/position, F70; expR reported descriptive):**
+- **H-SESSION (does the family carry edge?) — PRIMARY:** session/time-of-day family-pooled
+  $/position over 2019–2023 > 0, with 95% stationary-block-bootstrap CI (weekly-scale blocks,
+  `block_bootstrap.py`, seed 42) excluding 0. This is the one-shot verdict.
+- **Per-strategy (D5′ leg-1 + residence input):** each of the 4 strategies' pooled $/position with
+  95% block-bootstrap CI; survival = CI excludes 0 on the positive side.
+- **H-TF (the owner's 15m question):** M15-pooled vs H1-pooled $/position per strategy, both reported;
+  dollars decide whether finer execution helps or the spread eats it.
+- Honesty note (D1): a family-pooled CI straddling 0 reads "not detectable at n", never "no effect";
+  a single positive strategy means nothing until it independently passes D5′ **and** the 2024
+  era-holdout at V7 (multiple-comparisons discipline — no per-cell cherry-picking, D5′).
+
+**MDE line (D1) — projected (strategies do not yet exist; blinded by construction), anchored on
+`session-breakout`'s V2 numbers (SD ≈ $447/trade, block-bootstrap SE inflation ≈ 1.36× over naive
+SD/√n). MDE = 2.8016 × SE_boot (`block_bootstrap.py:55-62`):**
+```
+scope              projected n   SE_boot(≈)   MDE (≈$/pos)   ≈ R @ 1R≈$500
+per-strategy       8,000–16,000   4.0–4.8        11–16          0.02–0.03R
+family-pooled     40,000–60,000   1.8–2.2         5–6           0.010–0.012R
+```
+Session strategies fire ~once per session per day ⇒ ~400–800 positions/cell; day-of-week fires less.
+**MDE restated at ACTUAL n in the harvest** (enforced by `v2_harvest.py`). The family-pooled primary
+verdict is powered well below the 0.10R-class effect V4 is built to detect; per-strategy tests are
+powered for ~0.03R.
+
+**Deliverables (gate GV4 evidence — reuse/extend `v2_harvest.py`):**
+1. Era × strategy table: pooled $/position + n per strategy per calendar year (2019, 2020-vol, 2021,
+   2022-trend, 2023-chop) with block-bootstrap 95% CIs; strategy totals with CIs (raw + 1.5× + 2×).
+2. D5′ legs: leg-1 bootstrap CI on pooled strategy dollars; leg-2 sign agreement at
+   strategy × FX-class (FX-major / JPY-cross); leg-4 drop-any-month jackknife over the 60 months.
+   Leg-3 stitched walk-forward **does not apply** (fixed configs, nothing refit) — noted, not skipped.
+3. H-SESSION family verdict + per-strategy verdicts + H-TF (M15-vs-H1) table.
+4. Residence recommendations per strategy (GV4 owner call; survivors → 2024 era-holdout at V7).
+5. sv2 scores in experiment `v4-session-tod` (id pasted at creation); `research persistence` runnable.
+
+**Guards (paste before launch, re-paste after):** era-holdout
+`SELECT COUNT(*) FROM BacktestRuns WHERE BacktestFrom <= '2024-12-31' AND BacktestTo >= '2024-01-01'
+AND StartedAtUtc >= '2026-07-16'` = 0 (V4 windows end 2023-12-31T00:00 by construction); EMBARGO-2
+`... WHERE BacktestFrom >= '2026-07-06'` = 0. D13 one-cell-per-run holds by driver construction.
+
+**Operational plan (stated, not evidence):** implementation delivered as
+`V4-SESSION-TOD-PLAN.md` for the OpenCode/DeepSeek agent (Lane D, off `iter/viability`); merged at the
+stage gate with credential-free gates green (Unit/Integration/Sim) + golden 63/63 byte-identical
+(these are strategies — kernel untouched) + determinism probe PASS. Census runs in Lane R after
+merge: pilot = 2 cells chosen to be able to FAIL the hypothesis (a strategy×symbol that should trade
+often on M15) measuring trade count (guard against F78/F79 starvation) + 5-year wall time, pasted
+before the 80-cell batch. `--prune-journal` on (disk discipline, F84); disk ≥ 1.5 GB free.
+
+**Stop rule (binding, inherited from GV2):** if the family-pooled H-SESSION verdict is refuted under
+D5′ (CI ≤ 0), that is the program's **clean stop** — the whole-bank V2 negative + this session shot
+together exhaust the honest search on this data/market class (PLAN §3 V7 stop-rule spirit). Not a
+prompt for a fifth strategy or a knob sweep.
