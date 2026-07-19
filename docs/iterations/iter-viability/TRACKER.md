@@ -1,4 +1,4 @@
-# iter-viability — TRACKER (resume here)
+# iter-viability — TRACKER — **ITERATION CLOSED at GV4 (2026-07-19, program stop)**
 
 **Branch:** `iter/viability` | **Plan:** `PLAN.md` (V0–V7) | **Rationale:** `../../QUANT-REVIEW-RESPONSE-2026-07.md`
 
@@ -7,27 +7,23 @@
 owner-gate ruling) → `../iter-structural-edge/RESEARCH.md` (F64–F68) → `../../../AGENTS.md`.
 Status ∈ TODO / IN PROGRESS / DONE / BLOCKED. Sessions are MANUAL (owner call 2026-07-16).
 
-## Handoff  (overwrite this block, ≤12 lines, no history)
+## Handoff  (final — iteration closed, no further sessions)
 
-last: **Session 7 (2026-07-18): GV2 CLOSED.** Owner accepted the whole-bank OOS negative → the
-9-strategy bank **PARKS** (park-never-delete; configs + experiment `4F56B1AE` retained untouched, no
-family earns a live seat). **F85** written (whole-bank pure-OOS negative = structural-edge G1 at
-scale). Program pivots to **V4 as one decisive, well-powered shot: the session/time-of-day family**
-(owner delegated the pick → agent chose it: fewest knobs ⇒ highest power, clock-keyed ⇒ maximally
-different from the dead indicator bank, M15 execution now honest). **V4 pre-registered** (LEDGER
-Session 7): 4 net-new strategies `london-orb`/`ny-open-drive`/`asia-range`/`day-of-week` × 10 FX
-symbols (7 majors + 3 JPY, no metals/crypto) × {M15,H1} = **80 cells**, 2019–2023 IS window, raw
-per-bar dukascopy spread, `maxDdEnabled` off, MDE ≈ $5–6/pos family-pooled (≈0.01R). **M15 data
-CONFIRMED present** (dukascopy 2.17M M15 bars, all 10 FX symbols 2019–2023, per-bar spread ~100%).
-Implementation delivered as **`V4-SESSION-TOD-PLAN.md`** (5 phases, clone `session-breakout`; windows
-FROZEN by the pre-reg). **Stop rule BINDING:** family refuted under D5′ ⇒ clean program stop. Docs
-uncommitted at session end (offer-to-commit pending owner).
+last: **Session 8 (2026-07-18/19): V4 census COMPLETE → GV4 CLOSED → PROGRAM STOP.** The 80-cell
+session/time-of-day census ran clean (80/80 scored, 0 nulls, F82 absent; completeness re-verified
+post power-loss, harvest regeneration byte-identical). **H-SESSION REFUTED**: family-pooled
+**−$20.01/position** (n=119,670), 95% CI [−22.40, −17.78], MDE@n $3.3 — all four strategies
+individually refuted, every era negative, leg-2/leg-4 robust, spread stress only deepens, M15 worse
+than H1 everywhere (H-TF answered). Owner **ratified the pre-registered stop rule**: PARK all 4
+(park-never-delete, experiment `5D06CE0B` retained), **program clean stop** — V2's whole-bank
+negative (F85) + V4's refutation exhaust the honest search on this data/market class. **F86** (ops):
+run-finalize metadata unreliable — trust ScoreJson + UpdatedAtUtc, never Experiments.Status /
+CompletedAtUtc. Evidence: `evidence/v4-harvest.md`. LEDGER Session 8 is the close-out record.
 
-next: (1) **Lane D — OpenCode agent** builds the 4 strategies per `V4-SESSION-TOD-PLAN.md` (Phases
-0–4), merge at gate (golden 63/63 byte-identical + Unit/Integration/Sim green + determinism probe).
-(2) **Lane R** (after merge): clone `census_driver.py` → run the 80-cell V4 census + harvest →
-**GV4 owner call**. (3) **GV0 still open** — 1-step vs standard; no `ftmo-1step` ruleset authored.
-(4) L0 live compare-both = standing debt, next cTrader session. Findings continue at **F86**.
+next: **nothing inside this iteration** — any new plan is drafted from scratch by the owner. Standing
+items that outlive the close: off-machine DB backup (owner; the power loss is the argument), GV0
+dormant (only matters if something earns a live seat), L0 live compare-both smoke at the next
+cTrader session. Findings end at **F86**.
 
 ## Checkpoints
 
@@ -36,8 +32,8 @@ next: (1) **Lane D — OpenCode agent** builds the 4 strategies per `V4-SESSION-
 | V0 | Challenge-model truth — FTMO terms verified, sv2 metrics corrected, account type signed; Gate GV0 (OWNER) | IN PROGRESS — evidence complete, awaiting GV0 owner signature on account type | 131b4d8 | LEDGER.md Session 1: rule-diff table, F73–F75, gates paste |
 | V1 | Backfill + importer — 2019–2024 bid/ask tape, overlap-validated, era-holdout flagged; Gate GV1 | DONE — evidence complete (M1 count appended on completion) | Session 2 | LEDGER.md Session 2: reconciliation table, coverage log, guard pastes, F76/F77 |
 | V2 | Frozen-bank pure OOS census — F68 ranking tested on 6 years; Gate GV2 (OWNER) | **DONE — GV2 CLOSED (owner accepted the whole-bank negative → bank PARKS, F85)** | Session 6 (S7 ruling) | evidence/v2-harvest.md (5 GV2 tables); LEDGER.md Sessions 3–7 |
-| V3 | Exit lab — excursion recorder + offline replayer, paired verdicts all families; Gate GV3 | TODO (deprioritised — GV2 sent the program to V4 first) | | |
-| V4 | New material — session/time-of-day (THE decisive shot), cross-sectional FX, indices, gap family + absorbed S2/S3 analyses; Gate GV4 (OWNER) | IN PROGRESS — V4 session/time-of-day pre-registered (LEDGER S7); impl plan `V4-SESSION-TOD-PLAN.md` delivered to Lane D; awaiting strategy build + census | Session 7 | LEDGER.md Session 7 pre-reg; V4-SESSION-TOD-PLAN.md |
-| V5 | Gate upgrade — bootstrap + MDE + EB shrinkage + stitched WF tooling; Gate GV5 | TODO | | |
-| V6 | Control layer — intraday equity envelope, portfolio −3% stop, challenge-state risk policy MC; Gate GV6 | TODO | | |
-| V7 | Era-holdout → EMBARGO-2 → portfolio → audit; Gates GV7a/b (OWNER) | TODO | | |
+| V3 | Exit lab — excursion recorder + offline replayer, paired verdicts all families; Gate GV3 | CLOSED UNEXECUTED — program stop at GV4 | | |
+| V4 | New material — session/time-of-day (THE decisive shot); Gate GV4 (OWNER) | **DONE — GV4 CLOSED (H-SESSION REFUTED −$20.01/pos CI [−22.40, −17.78] → PARK ×4, PROGRAM STOP per pre-registered stop rule)** | Session 8 | evidence/v4-harvest.md; LEDGER.md Sessions 7 (pre-reg) + 8 (results, ruling, F86) |
+| V5 | Gate upgrade — bootstrap + MDE + EB shrinkage + stitched WF tooling; Gate GV5 | CLOSED UNEXECUTED — program stop at GV4 (bootstrap+MDE tooling was delivered early inside V2/V4 harvests) | | |
+| V6 | Control layer — intraday equity envelope, portfolio −3% stop, challenge-state risk policy MC; Gate GV6 | CLOSED UNEXECUTED — program stop at GV4 | | |
+| V7 | Era-holdout → EMBARGO-2 → portfolio → audit; Gates GV7a/b (OWNER) | CLOSED UNEXECUTED — program stop at GV4 (no survivor to carry to the 2024 era-holdout; holdout remains untouched/clean for any future program) | | |

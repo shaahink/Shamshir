@@ -1327,3 +1327,85 @@ before the 80-cell batch. `--prune-journal` on (disk discipline, F84); disk ≥ 
 D5′ (CI ≤ 0), that is the program's **clean stop** — the whole-bank V2 negative + this session shot
 together exhaust the honest search on this data/market class (PLAN §3 V7 stop-rule spirit). Not a
 prompt for a fifth strategy or a knob sweep.
+
+## Session 8 — 2026-07-18/19 — V4 census COMPLETE + GV4 ruling: family REFUTED → PROGRAM STOP (Lane R)
+
+**Census execution (launched 2026-07-18 ~13:45 UTC, Session 8 first half).** Experiment
+`v4-session-tod` = `5D06CE0B-DDB2-49EF-B93E-43FCBF7828C8`, driver `tools/research/v4_census_driver.py`
+(census_driver clone, F83 `exp_id[:8]` namespacing kept), `--parallel 3 --prune-journal`, detached app
++ detached driver per the AGENTS.md banner. 80 cells ran 13:33 UTC (first run) → **02:28:05 UTC
+2026-07-19** (last run finalized). Harvest written 03:39 UTC → `evidence/v4-harvest.md`.
+
+**Interruption + post-hoc completeness verification (2026-07-19).** The machine lost power during the
+night. Verified this morning that the census and harvest both completed BEFORE the loss — every check
+read-only against `trading.db`:
+- 80/80 runs status `completed`, ExitCode 0, no ErrorMessage, CompletedAtUtc present; **80/80
+  ExperimentRuns carry ScoreJson** (zero F80 finalize-race nulls — `--rescore-nulls` not needed).
+- **80 distinct VariantLabels for 80 runs** — every pre-registered strategy×symbol×TF cell exactly
+  once, no duplicates, no gaps.
+- **119,670 distinct (RunId, PositionId)** — matches the harvest's position count to the digit (F70
+  split factor 1.0000: one row per position in this family). No run with 0/NULL trades or NULL
+  NetProfit.
+- Guards re-verified: **0 trades opened ≥ 2024-01-01** (last simulated close 2023-12-29 21:00);
+  era-holdout guard 0; EMBARGO-2 guard 0.
+- **Decisive check: `v4_harvest.py` re-run from scratch against the DB reproduced
+  `evidence/v4-harvest.md` byte-for-byte identical** (bootstrap seeded ⇒ deterministic). The file on
+  disk IS what the data says.
+
+### GV4 results (full tables: `evidence/v4-harvest.md`)
+
+**H-SESSION (PRIMARY) — REFUTED.** Family-pooled **−$20.01/position** (n=119,670), 95%
+block-bootstrap CI **[−22.40, −17.78]**, SE 1.17, **MDE@n $3.3** — a high-powered detected negative,
+not an underpowered null. Nearly identical to the V2 bank's −$20.06 (F85): a second, structurally
+different family lands on the same number.
+- **Per-strategy (D5′ leg-1): all four REFUTED**, CI strictly < 0 — london-orb −18.3 [−22, −14]
+  (n=48,821), asia-range −19.5 [−23, −16] (n=44,322), ny-open-drive −21.1 [−25, −17] (n=22,358),
+  day-of-week −40.4 [−55, −23] (n=4,169).
+- **Leg 2:** sign agrees FX-major vs JPY-cross for all 4 (all negative both classes). **Leg 4:** 0
+  sign flips across the 60-month drop-any-month jackknife, all 4 strategies. Leg 3 N/A (nothing
+  refit; reported, not skipped).
+- **Every era negative for every strategy** — including 2022-trend. No regime where the family works.
+- **Spread stress:** 1.5×/2× only deepen every strategy (bank −20.0 → −28.3 → −36.5); **nothing is
+  cost-fragile** — the family loses at raw spread already. Ask-side M1 lookups 99.1% exact.
+- **H-TF (the owner's 15m question, answered):** M15 pooled −22.75 (n=72,394) vs H1 −15.81
+  (n=47,276) — M15 is WORSE for all 4 strategies. Finer execution pays more spread and captures
+  nothing; the old instinct that 15m/30m were an untapped seam is now refuted with honest per-bar
+  costs.
+- **Census integrity:** §0 F82 truncation absent; 0 nulls; 0 infra-nulls.
+
+### GV4 ruling (owner, 2026-07-19)
+
+The owner **accepted the negative and ratified the pre-registered stop rule**. Decision:
+- **PARK all four session strategies** (park-never-delete per D7/D8 — configs, code, and experiment
+  `5D06CE0B` retained untouched).
+- **PROGRAM CLEAN STOP.** The whole-bank V2 negative (F85) + the V4 session/time-of-day refutation
+  together exhaust the honest search on this data/market class, exactly as pre-registered at GV2 and
+  in the Session 7 stop rule. Not a prompt for a fifth family, a knob sweep, or a per-cell salvage.
+- **iter-viability CLOSES at GV4.** V5–V7 do not run (no survivor to carry to the 2024 era-holdout).
+  The owner will draft any new plan separately, from scratch — outside this iteration's scope.
+
+**What survives the stop:** the verified FTMO-faithful simulator (V0), the 2019–2024 Dukascopy
+archive + importer (V1, off-machine backup still an open owner item — last night's power loss is the
+argument), the census/harvest machinery, both negative-evidence experiments (`4F56B1AE`, `5D06CE0B`),
+and 13 parked strategy configs. GV0 (1-step vs standard signature) stays open but dormant — it only
+matters if something someday earns a live seat. L0 live compare-both smoke remains standing debt for
+the next cTrader session.
+
+### F86 — run-finalize metadata is unreliable; use UpdatedAtUtc for wall-clock, scores for truth
+
+**Finding (ops, cosmetic — does NOT affect any verdict).** Two metadata quirks surfaced during the
+post-crash verification:
+1. `Experiments.Status` for `5D06CE0B` still reads `Running` / `CompletedUtc` NULL — the driver
+   never flips the experiment-level flag (per-run + per-score records are complete; the DB row is
+   left as-is, documented here rather than hand-edited).
+2. Several `BacktestRuns.CompletedAtUtc` values carry **simulation** time, not wall time (e.g. run
+   `794ebc58` = `2023-12-28 13:32:00` with wall-clock `UpdatedAtUtc` = `2026-07-18 16:45`).
+**Lesson:** completeness/timing questions are answered by ScoreJson presence + `UpdatedAtUtc`
+wall-clock + TradeResults counts — never by `Experiments.Status` or `CompletedAtUtc`. Harvest keys on
+scores + TradeResults, so it was never exposed.
+
+### Iteration close-out
+
+Evidence committed: `evidence/v4-harvest.md`. AGENTS.md background-job banner cleared (job done).
+TRACKER updated: V4 **DONE — GV4 CLOSED (REFUTED → PARK ×4, program stop)**; V3/V5/V6/V7 closed
+unexecuted. Findings end at **F86**.
