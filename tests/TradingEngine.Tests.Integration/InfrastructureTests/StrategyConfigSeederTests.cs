@@ -9,9 +9,10 @@ namespace TradingEngine.Tests.Integration.InfrastructureTests;
 
 /// <summary>
 /// P2.5 gate: proves the seeder actually parses `thesis`/`expectedTradesPerWeek`/`expectedHoldBars` from
-/// the REAL `config/strategies/*.json` files (not a synthetic fixture) — every one of the 9 files was
-/// edited to carry a falsifiable one-sentence thesis; this fails loudly if any of them regresses to
-/// missing/malformed metadata (e.g. a bad edit breaking JSON parsing for that one field).
+/// the REAL `config/strategies/*.json` files (not a synthetic fixture) — every shipped file must carry a
+/// falsifiable one-sentence thesis; this fails loudly if any of them regresses to missing/malformed
+/// metadata (e.g. a bad edit breaking JSON parsing for that one field). The count is asserted against the
+/// actual file count so adding a strategy (e.g. the V4 session family) can't silently drop metadata.
 /// </summary>
 public sealed class StrategyConfigSeederTests : IDisposable
 {
@@ -29,7 +30,7 @@ public sealed class StrategyConfigSeederTests : IDisposable
     }
 
     [Fact]
-    public async Task SeedAsync_AllNineStrategies_HaveNonEmptyThesisMetadata()
+    public async Task SeedAsync_AllShippedStrategies_HaveNonEmptyThesisMetadata()
     {
         var services = new ServiceCollection();
         services.AddDbContext<TradingEngine.Infrastructure.Persistence.TradingDbContext>(o => o.UseSqlite(_mem.Connection));
@@ -45,7 +46,8 @@ public sealed class StrategyConfigSeederTests : IDisposable
         var store = verifyScope.ServiceProvider.GetRequiredService<IStrategyConfigStore>();
         var all = await store.GetAllAsync(CancellationToken.None);
 
-        all.Should().HaveCount(9, "all 9 shipped strategy config files must seed");
+        var shippedFileCount = Directory.GetFiles(Path.Combine(RepoRoot(), "config", "strategies"), "*.json").Length;
+        all.Should().HaveCount(shippedFileCount, "every shipped strategy config file must seed");
         foreach (var entry in all)
         {
             entry.Thesis.Should().NotBeNullOrWhiteSpace($"{entry.Id} must state its falsifiable thesis (P2.5/D-thesis)");

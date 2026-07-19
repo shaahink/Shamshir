@@ -14,9 +14,19 @@ public sealed record ChallengeSimulationSummary(
 /// sv2 (F63): challenge survival for scoring. <c>PassRate</c> = Pass / Windows — an Incomplete
 /// window is a non-pass on purpose: R4's headline failure mode was velocity (windows that never
 /// resolved), and a survival score that ignored incompletes would hide exactly that.
+/// V0 (iter-viability): FTMO removed the evaluation time limits (verified 2026-07-16), so the
+/// 30-day PassRate is retained purely as a VELOCITY INDEX while the untimed fields carry rule
+/// truth — anchored windows run from every daily start to the end of recorded history;
+/// Incomplete there means CENSORED (history exhausted), never failed.
+/// <c>PBustBeforeTarget</c> = Fails / (Passes + Fails) over resolved anchored windows (null when
+/// none resolved); <c>ETimeToTargetDays</c> / <c>MedianTimeToTargetDays</c> are CALENDAR days
+/// from window start to target resolution, inclusive, over passing windows.
 /// </summary>
 public sealed record ChallengeSurvival(
-    double PassRate, int Windows, int Passes, int Fails, int Incompletes, string RuleSetId);
+    double PassRate, int Windows, int Passes, int Fails, int Incompletes, string RuleSetId,
+    double? PBustBeforeTarget = null, double? ETimeToTargetDays = null,
+    double? MedianTimeToTargetDays = null,
+    int UntimedPasses = 0, int UntimedBusts = 0, int UntimedCensored = 0);
 
 /// <summary>
 /// R4 — rolling-window challenge simulation. Buckets a completed run's EquitySnapshots into
@@ -106,8 +116,62 @@ public sealed class ChallengeSimulationService
         var passes = results.Count(r => r.Verdict == ChallengeVerdict.Pass);
         var fails = results.Count(r => r.Verdict == ChallengeVerdict.Fail);
         var incompletes = results.Count(r => r.Verdict == ChallengeVerdict.Incomplete);
+
+        var (pBust, eTime, medTime, uPasses, uBusts, uCensored) = ComputeUntimedMetrics(days, ruleSet);
+
         return new ChallengeSurvival(
-            passes / (double)results.Count, results.Count, passes, fails, incompletes, ruleSet.Id);
+            passes / (double)results.Count, results.Count, passes, fails, incompletes, ruleSet.Id,
+            pBust, eTime, medTime, uPasses, uBusts, uCensored);
+    }
+
+    /// <summary>
+    /// V0 rule truth: the FTMO evaluation has NO time limit (verified 2026-07-16), so pass/bust
+    /// probability must not be computed against an arbitrary 30-day horizon. One anchored window
+    /// starts at every daily bucket and runs to the end of recorded history; a window that ends
+    /// without target or bust is CENSORED, not failed. Time-to-target is in calendar days,
+    /// window start date to resolution date inclusive.
+    /// </summary>
+    internal static (double? PBust, double? ETimeDays, double? MedianTimeDays, int Passes, int Busts, int Censored)
+        ComputeUntimedMetrics(IReadOnlyList<DailyEquityPoint> days, PropFirmRuleSet ruleSet)
+    {
+        var passes = 0;
+        var busts = 0;
+        var censored = 0;
+        var timeToTargetDays = new List<double>();
+
+        for (var start = 0; start < days.Count; start++)
+        {
+            var window = days.Skip(start).ToList();
+            var result = ChallengeSimulator.SimulateWindow(window, ruleSet);
+            switch (result.Verdict)
+            {
+                case ChallengeVerdict.Pass:
+                    passes++;
+                    var resolvedDate = window[result.DayResolved!.Value - 1].Date;
+                    timeToTargetDays.Add((resolvedDate - window[0].Date).TotalDays + 1);
+                    break;
+                case ChallengeVerdict.Fail:
+                    busts++;
+                    break;
+                default:
+                    censored++;
+                    break;
+            }
+        }
+
+        var resolved = passes + busts;
+        var pBust = resolved > 0 ? busts / (double)resolved : (double?)null;
+        double? eTime = timeToTargetDays.Count > 0 ? timeToTargetDays.Average() : null;
+        double? medTime = null;
+        if (timeToTargetDays.Count > 0)
+        {
+            var sorted = timeToTargetDays.OrderBy(t => t).ToList();
+            medTime = sorted.Count % 2 == 1
+                ? sorted[sorted.Count / 2]
+                : (sorted[sorted.Count / 2 - 1] + sorted[sorted.Count / 2]) / 2.0;
+        }
+
+        return (pBust, eTime, medTime, passes, busts, censored);
     }
 
     internal const int SurvivalWindowDays = 30;
@@ -137,7 +201,7 @@ public sealed class ChallengeSimulationService
         IReadOnlyList<EquitySnapshot> snapshots, IReadOnlyList<TradeResultEntity> trades)
     {
         var ordered = snapshots.OrderBy(s => s.TimestampUtc).ToList();
-        var points = new List<DailyEquityPoint>();
+        var buckets = new List<(EquitySnapshot First, EquitySnapshot Last)>();
         var bucketStart = 0;
         for (var i = 1; i <= ordered.Count; i++)
         {
@@ -145,17 +209,30 @@ public sealed class ChallengeSimulationService
             // changes) OR the calendar date rolls over. The reset check alone misses a genuine reset
             // whose new DailyStartEquity happens to numerically equal the old one (a flat multi-day
             // stretch with no open position) — the calendar check alone misses the reset's true
-            // ~22:00 UTC boundary. Together they can't silently merge two real trading days.
+            // boundary. Together they can't silently merge two real trading days.
             var isBoundary = i == ordered.Count
                 || ordered[i].DailyStartEquity != ordered[bucketStart].DailyStartEquity
                 || ordered[i].TimestampUtc.Date != ordered[i - 1].TimestampUtc.Date;
             if (!isBoundary) continue;
 
-            var first = ordered[bucketStart];
-            var last = ordered[i - 1];
-            var tradesClosed = trades.Count(t => t.ClosedAtUtc >= first.TimestampUtc && t.ClosedAtUtc <= last.TimestampUtc);
-            points.Add(new DailyEquityPoint(first.TimestampUtc.Date, first.DailyStartEquity, last.Equity, tradesClosed));
+            buckets.Add((ordered[bucketStart], ordered[i - 1]));
             bucketStart = i;
+        }
+
+        var points = new List<DailyEquityPoint>(buckets.Count);
+        for (var k = 0; k < buckets.Count; k++)
+        {
+            var (first, last) = buckets[k];
+            var tradesClosed = trades.Count(t => t.ClosedAtUtc >= first.TimestampUtc && t.ClosedAtUtc <= last.TimestampUtc);
+            // FTMO truth (V0): a trading day is a day with a trade OPENED (a multi-day hold
+            // counts only its entry day), and the day's close BALANCE anchors the next day's
+            // daily-loss floor. Opened counting tiles forward to the next bucket's start so a
+            // trade entered between two snapshot flushes still lands on the day it opened.
+            var nextBucketStart = k + 1 < buckets.Count ? buckets[k + 1].First.TimestampUtc : DateTime.MaxValue;
+            var tradesOpened = trades.Count(t => t.OpenedAtUtc >= first.TimestampUtc && t.OpenedAtUtc < nextBucketStart);
+            points.Add(new DailyEquityPoint(
+                first.TimestampUtc.Date, first.DailyStartEquity, last.Equity, tradesClosed,
+                tradesOpened, last.Balance));
         }
         return points;
     }

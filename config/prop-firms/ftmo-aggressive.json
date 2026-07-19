@@ -7,7 +7,7 @@
   "profitTargetPercent": 0.20,
   "minTradingDays": 4,
   "equityDefinition": "BalancePlusFloatingMinusFeesAndSwaps",
-  "dailyResetTimeUtc": "22:00:00",
+  "dailyResetTimeUtc": "00:00:00",
   "dailyResetTimezone": "Europe/Prague",
   "allowTradesDuringNews": false,
   "newsImpactFilter": "High",

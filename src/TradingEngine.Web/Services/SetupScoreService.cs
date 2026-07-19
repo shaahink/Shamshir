@@ -147,6 +147,12 @@ public sealed class SetupScoreService
                 FtmoFails = survival?.Fails,
                 FtmoIncompletes = survival?.Incompletes,
                 FtmoRuleSetId = survival?.RuleSetId,
+                FtmoPBustBeforeTarget = survival?.PBustBeforeTarget,
+                FtmoETimeToTargetDays = survival?.ETimeToTargetDays,
+                FtmoMedianTimeToTargetDays = survival?.MedianTimeToTargetDays,
+                FtmoUntimedPasses = survival?.UntimedPasses,
+                FtmoUntimedBusts = survival?.UntimedBusts,
+                FtmoUntimedCensored = survival?.UntimedCensored,
                 Drawdown = drawdownScore,
                 DrawdownPct = (double)drawdownPctValue,
                 Consistency = consistency,
@@ -393,6 +399,17 @@ public sealed record ScoreComponents
     public int? FtmoFails { get; init; }
     public int? FtmoIncompletes { get; init; }
     public string? FtmoRuleSetId { get; init; }
+    // V0 (iter-viability) rule-truth metrics — untimed anchored windows (FTMO evaluation has no
+    // time limit; verified 2026-07-16). The 30d PassRate above stays a velocity index and keeps
+    // its composite weight; these are first-class outputs, not composite inputs.
+    /// <summary>Fails / (Passes + Fails) over resolved anchored windows; null when none resolved.</summary>
+    public double? FtmoPBustBeforeTarget { get; init; }
+    /// <summary>Mean CALENDAR days from window start to target, inclusive, over passing windows.</summary>
+    public double? FtmoETimeToTargetDays { get; init; }
+    public double? FtmoMedianTimeToTargetDays { get; init; }
+    public int? FtmoUntimedPasses { get; init; }
+    public int? FtmoUntimedBusts { get; init; }
+    public int? FtmoUntimedCensored { get; init; }
     public double Drawdown { get; init; }
     public double DrawdownPct { get; init; }
     public double Consistency { get; init; }

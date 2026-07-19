@@ -80,10 +80,14 @@ public sealed class GovernorMachine : ITradingGovernor
         if (state.State == GovernorTradingState.HardStop)
             return state with { CoolingOffBarsRemaining = 0 };
 
+        // F78: the pause is armed by ConsecutiveLosses, and no trade can close while trading is
+        // paused — so the counter must be cleared here or the very next Evaluate re-enters
+        // CoolingOff off the stale streak, locking the account out permanently.
         return state with
         {
             State = GovernorTradingState.Normal,
             CoolingOffBarsRemaining = 0,
+            ConsecutiveLosses = 0,
             Reason = "Cooling-off complete"
         };
     }

@@ -137,15 +137,25 @@ public sealed class RunDataQuery(
     }
 
     /// <summary>
-    /// The prop-firm reset-period date a UTC instant belongs to (default 22:00 UTC roll — matches
-    /// <c>ResetClock.ResetPeriodDate</c> in TradingEngine.Host and every seeded ruleset's
-    /// <c>dailyResetTimeUtc</c>). Before 22:00 you're still in yesterday's period. Daily PnL/DD MUST bucket
-    /// on this boundary, not calendar midnight — see iter-merge-plan PLAN.md "What NOT to do".
+    /// The prop-firm reset-period date a UTC instant belongs to: midnight Europe/Prague — FTMO's
+    /// verified reset (V0, 2026-07-16), matching the corrected rulesets' <c>dailyResetTimeUtc</c>
+    /// of 00:00 in <c>dailyResetTimezone</c> as <c>ResetClock</c> interprets them. Daily PnL/DD
+    /// MUST bucket on this boundary, not calendar UTC midnight — see iter-merge-plan PLAN.md
+    /// "What NOT to do". (Runs recorded before V0 used the old 22:00-Prague boundary; their
+    /// display buckets can differ from engine-truth buckets by up to 2 h at the edges.)
     /// </summary>
     private static DateOnly PropFirmDayOf(DateTime closedAtUtc)
     {
-        var date = DateOnly.FromDateTime(closedAtUtc);
-        return TimeOnly.FromDateTime(closedAtUtc) >= new TimeOnly(22, 0) ? date : date.AddDays(-1);
+        var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(closedAtUtc, DateTimeKind.Utc), PragueTz);
+        return DateOnly.FromDateTime(local);
+    }
+
+    private static readonly TimeZoneInfo PragueTz = ResolvePragueTz();
+
+    private static TimeZoneInfo ResolvePragueTz()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Prague"); }
+        catch { return TimeZoneInfo.Utc; }
     }
 
     public async Task<RunAnalyticsResponse?> GetRunAnalyticsAsync(string runId, CancellationToken ct)

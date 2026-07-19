@@ -8,12 +8,17 @@ public static class DrawdownReducer
 
         var peakEquity = equity > state.PeakEquity ? equity : state.PeakEquity;
 
+        // F79: DailyDdBaseMode selects the ALLOWANCE BASE (what the 5% is a percentage of), never the
+        // anchor — the day's loss is always measured from DailyStartEquity. The old InitialBalance arm
+        // anchored at initial too, turning "daily" DD into cumulative DD: any account sitting below
+        // initial re-breached the daily limit every day forever (verified FTMO semantics: floor =
+        // prev-midnight balance − 5% × initial; V0 rule-diff rows 4–5).
         var currentDailyDrawdown = state.DailyDdBaseMode == "DailyStart"
             ? state.DailyStartEquity > 0
                 ? Math.Max(0m, (state.DailyStartEquity - equity) / state.DailyStartEquity)
                 : 0m
             : state.InitialAccountBalance > 0
-                ? Math.Max(0m, (state.InitialAccountBalance - equity) / state.InitialAccountBalance)
+                ? Math.Max(0m, (state.DailyStartEquity - equity) / state.InitialAccountBalance)
                 : 0m;
 
         var currentWeeklyDrawdown = state.WeeklyStartEquity > 0

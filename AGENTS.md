@@ -1,9 +1,37 @@
 # AGENTS.md — Session Startup Guide
 
 **Project:** Shamshir — Prop-firm algorithmic trading engine (.NET 10, C# 13)
-**Branch:** `iter/alpha-loop`
+**Branch:** `iter/viability`
 **Created:** 2026-06-18
-**Updated:** 2026-07-10 (iter-alpha-loop r0 — session setup)
+**Updated:** 2026-07-19 (iter-viability CLOSED at GV4 — V4 family REFUTED, pre-registered PROGRAM STOP executed)
+
+---
+
+## ⚪ PROGRAM STATE — iter-viability CLOSED at GV4 (2026-07-19): PROGRAM STOP, no active jobs
+
+**No background job is running.** The V4 session/time-of-day census completed 2026-07-19 02:28 UTC
+(80/80 scored, 0 nulls; completeness re-verified after a power loss — harvest regeneration
+byte-identical). **H-SESSION REFUTED**: family-pooled **−$20.01/position** (n=119,670), 95% CI
+[−22.40, −17.78], MDE@n $3.3; all four strategies individually refuted; M15 worse than H1 everywhere.
+Owner ratified the pre-registered stop rule at GV4: **PARK all 4** (park-never-delete), **program
+clean stop** — the V2 whole-bank negative (F85) plus this refutation exhaust the honest search on
+this data/market class. Evidence: `evidence/v4-harvest.md`; full record:
+`docs/iterations/iter-viability/LEDGER.md` Session 8 (incl. **F86**: trust ScoreJson + UpdatedAtUtc,
+never `Experiments.Status`/`CompletedAtUtc`).
+
+**Standing items that outlive the close:** off-machine backup of `trading.db` + the Dukascopy archive
+(owner); GV0 account-type signature dormant; L0 live compare-both smoke at the next cTrader session.
+**Any new research program starts from a fresh owner plan — there is no "next V" to resume.** The
+2024 era-holdout and 2025+ terminal holdout remain untouched and must stay that way for any future
+program (guards in LEDGER Session 7).
+
+**Ops facts banked (still true for any FUTURE census — not an active constraint now):** the engine
+caps effective backtest concurrency at ~3 (S5: `--parallel 6` bought nothing — the shared
+`trading.db` WAL writer is the wall; **do NOT re-bump** — the real lever is APP-side engine
+concurrency / per-run write I/O). **F84 disk trap:** freeing rows in a WAL db fills `trading.db-wal`,
+not OS free space — reclaim with `PRAGMA wal_checkpoint(TRUNCATE)`, NEVER `VACUUM` mid-batch. Lane-R:
+one app per DB file. Progress metric for any resumed batch = scored-cell count in the experiment, not
+a log file (logs rotate `v2-census-rm.log`, `-rm2.log`, …).
 
 ---
 
@@ -316,49 +344,34 @@ The X2/X3 session lost ~50 min to tooling, not thinking. Backlog to fix it:
 
 ## RESUME (overwrite this block each session)
 
-**Phase:** **iter-viability OPEN (2026-07-16) — Session 1 (V0 + regime analysis) ready to start.**
-The iter-structural-edge S1 owner gate RULED (its LEDGER.md final entry): G1 accepted (no
-D5-surviving exit component — trend-breakout + ema-alignment refuted in dollars; R3's 8/8 and
-v6a were the F70 artifact; no-TP value-destroying), early stop accepted (power: ~6.3k trades/arm
-needed vs 100–900 available), D7 park ratified (mtf-trend, reversible), and
-**`docs/iterations/iter-viability/PLAN.md` adopted as the successor program** (V0–V7, decisions
-D1–D8: MDE line in every pre-registration, D5′ bootstrap gates, auto-tune doctrine, parallel
-guards, 2024 era-holdout + EMBARGO-2).
-**Session 1 mandate:** (a) **V0 — challenge-model truth**: verify FTMO current terms (Phase-1/2
-time limits, Swing account, daily-loss definition/intraday/reset, scaling) against
-`config/prop-firms/ftmo-standard.json`; correct config + `ChallengeSimulator`; add P(bust) and
-E[time-to-target] as sv2 outputs; owner signs account type [gate GV0]. (b) **Regime-conditioning
-analysis** (old S2(b), zero new runs): 2×2 family-class × census-half interaction over existing
-census trades, external regime variables (realized-vol percentile + efficiency ratio), block
-bootstrap on the interaction. Pre-register BOTH in `docs/iterations/iter-viability/LEDGER.md`
-(with MDE lines per D1) before anything scored. **Session 2:** V1 Dukascopy 2019–24 bid/ask
-backfill (importer + overlap-year validation). Findings continue at **F73**.
-Background: the alpha-loop close had decided portfolio-of-cells gated on an OOS-honesty Phase 0;
-the 2026-07-16 research session ran that gate's moral equivalent on recorded data (split-half
-selection test, **F64**) and it FAILED — 38 H1-positive cells earned $116,518 in H1 and −$880 in
-H2, 24% persistence (worse than coin flip), independently corroborated by R4's embargo result. Per
-the close decision's own stop rule, the portfolio is demoted to a conditional final phase (S6).
-Direction: hunt **rule-level structural edges** (exit layer first — F65 MFE-capture 0.42 + R3's
-8/8 `runner-aggressive` are two independent lines at one lever), cells as instances, family-pooled
-evaluation, D5-tightened anti-overfit, EMBARGO-2 = everything after 2026-07-05 (first touch at S5,
-≥45 accrued days, 60d complete ~2026-09-04). Findings continue at F69 (F64–F68 pre-filed in
-RESEARCH.md). Sessions run MANUALLY for now (owner call 2026-07-16): interactive Claude sessions
-deliver stages one at a time; the conductor plan (`conductor-structural-edge.plan.json`, repo root)
-stays committed and TRACKER.md stays in its parseable checkpoint format so the owner can hand the
-remaining stages to conductor later. Follow the session protocol in PLAN.md §4 — QA the previous
-session's claims against artifacts before building.
-**Read first:** `docs/iterations/iter-viability/TRACKER.md` (Handoff block) →
-`docs/iterations/iter-viability/PLAN.md` (V0–V7 + L-track §7, decisions D1–D9, owner-asks map
-§6, concurrency §8) → `docs/reference/RESEARCH-PROCESS.md` (NORMATIVE: units, evidence ladder,
-MDE/pre-registration discipline, failure-mode museum, adaptation doctrine) →
-`docs/QUANT-REVIEW-RESPONSE-2026-07.md` (the rationale: power math, FTMO reframing) →
-`docs/iterations/iter-structural-edge/LEDGER.md` (tail: S1 close + owner-gate ruling) →
-`docs/iterations/iter-structural-edge/RESEARCH.md` (F64–F68) →
-`docs/iterations/iter-alpha-loop/HANDOVER.md` (what the machine already proved).
+**Phase:** **iter-viability — Session 7 (2026-07-18): GV2 CLOSED → V4 session/time-of-day launched.**
+Owner accepted the whole-bank V2 negative → the 9-strategy bank **PARKS** (F85; park-never-delete,
+configs + experiment `4F56B1AE` retained). The program pivots to **one decisive, well-powered V4
+shot: the session/time-of-day family** (`london-orb`, `ny-open-drive`, `asia-range`, `day-of-week`),
+pre-registered in `LEDGER.md` Session 7 (80 cells = 4 strat × 10 FX symbols × {M15,H1}, 2019–2023 IS,
+raw per-bar spread, `maxDdEnabled` off, family-pooled MDE ≈ $5–6/pos; **M15 data confirmed present**).
+Implementation is delivered as `docs/iterations/iter-viability/V4-SESSION-TOD-PLAN.md` for the
+OpenCode agent (Lane D). **Stop rule BINDING:** family refuted under D5′ ⇒ clean program stop. Full
+V2 verdict recap + machinery notes live in the top block of this file + TRACKER Handoff (Session 7).
+**Next:** (1) **Lane D — OpenCode agent** builds the 4 strategies per `V4-SESSION-TOD-PLAN.md`
+(Phases 0–4; clone `session-breakout`; windows FROZEN by the pre-reg). Merge at gate: golden 63/63
+byte-identical + Unit/Integration/Sim green + determinism probe PASS. (2) **Lane R** (post-merge):
+clone `census_driver.py`, run the 80-cell census + harvest → **GV4 owner call**. (3) **GV0 still
+open** — 1-step vs standard; no `ftmo-1step` ruleset authored yet (clean independent V0 work). (4)
+**L0 live compare-both smoke** = standing debt, next cTrader session. Findings continue at **F86**.
+Sessions run MANUALLY (owner call 2026-07-16); QA prior-session claims against artifacts before
+building. Session 7 docs were uncommitted at hand-off (offer-to-commit pending owner).
+**Read first:** `docs/iterations/iter-viability/TRACKER.md` (Handoff, Session 7) →
+`docs/iterations/iter-viability/PLAN.md` (V0–V7 + L-track §7, decisions, owner-asks map §6) →
+`docs/iterations/iter-viability/LEDGER.md` (Sessions 1–7; F73–F85) →
+`docs/iterations/iter-viability/V4-SESSION-TOD-PLAN.md` (the Lane-D implementation contract) →
+`evidence/v2-harvest.md` (the 5 GV2 deliverable tables) →
+`docs/reference/RESEARCH-PROCESS.md` (NORMATIVE: units, evidence ladder, MDE/pre-registration).
 **Tracker:** `docs/iterations/iter-viability/TRACKER.md`
 **Branch:** `iter/viability` (from `main` at the S1-gate merge; merge back to `main` at owner gates)
-**Gate baseline (re-verified live at S0 close, 2026-07-16):** build 0err/5warn · Unit 767/0/6 ·
-Integration 153/0/0 · Sim-fast 144/0/0. (S0 added 6 tests: sv2 survival pins + F64 machinery.)
+**Gate baseline (unchanged since S3 — census work touched no product code):** build 0err/5warn ·
+Unit 780 · Integration 156 · Sim-fast 144. The census/harvest are research tooling
+(`tools/research/*.py`) + a read-only evidence file; no engine/domain code changed this session.
 **Live parity:** **EURUSD `VERDICT: PASS`** (tape `a89d37b5` / ctrader `e497806d`) — TradeCount exact ·
 EntryPrice **0.0 ticks** · Lots exact · ExitPrice **100% within, 0.0 ticks** · Commission 0.53% ·
 Swap 0.44% · NetPnL 0.45%. **Tolerance budget UNTOUCHED.** XAUUSD (14 trades) green on everything

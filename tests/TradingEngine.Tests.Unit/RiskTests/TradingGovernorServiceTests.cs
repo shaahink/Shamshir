@@ -112,6 +112,32 @@ public sealed class TradingGovernorServiceTests
     }
 
     [Fact]
+    public void CoolingOff_Expiry_ClearsStreak_AndDoesNotRearm()
+    {
+        // F78: the streak counter only reset on a WIN, but no trade can close during the pause —
+        // so every post-pause Evaluate re-armed CoolingOff off the stale streak, permanently.
+        // Found via the V2 pilot (5-year runs silent after week 3-9) and the 075D5240 census's
+        // 8x monotonic monthly trade decay.
+        var options = StandardOptions() with { StreakPauseAt = 2, CoolingOffBars = 3 };
+        var gov = MakeGovernor(options);
+        var ctx = ContextWithDayPnl(0m);
+
+        gov.OnTradeClosed(LossTrade());
+        gov.OnTradeClosed(LossTrade());
+        gov.Evaluate(ctx).State.Should().Be(GovernorTradingState.CoolingOff);
+
+        var t = new DateTime(2024, 6, 1, 9, 0, 0, DateTimeKind.Utc);
+        gov.OnBar(t);
+        gov.OnBar(t);
+        gov.OnBar(t);
+
+        gov.GetSnapshot().ConsecutiveLosses.Should().Be(0, "serving the pause must clear the streak");
+        var decision = gov.Evaluate(ctx);
+        decision.State.Should().Be(GovernorTradingState.Normal);
+        decision.AllowNewTrades.Should().BeTrue("post-pause evaluation must not re-arm off the stale streak");
+    }
+
+    [Fact]
     public void Governor_BlocksTrading_AtSoftStop_Band()
     {
         var options = StandardOptions() with { LossBandMultipliers = [0.5, 0.0] };

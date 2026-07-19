@@ -91,6 +91,9 @@ public sealed class SymbolInfoRegistry : ISymbolInfoRegistry
             CommissionType = spec.CommissionType,
             SwapLongPerLotPerNight = spec.SwapLong,
             SwapShortPerLotPerNight = spec.SwapShort,
+            // F28 (L1): carry the venue's declared swap denomination so the cost calculator can
+            // refuse a formula it has never verified instead of silently assuming Pips.
+            SwapCalculationType = spec.SwapCalculationType,
             ContractSize = spec.LotSize,
             PipSize = spec.PipSize,
             TickSize = spec.TickSize,

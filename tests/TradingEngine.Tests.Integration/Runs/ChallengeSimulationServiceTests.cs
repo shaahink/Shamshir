@@ -106,6 +106,9 @@ public sealed class ChallengeSimulationServiceTests : IDisposable
                 {
                     Id = Guid.NewGuid(),
                     RunId = "run-2",
+                    // V0: MinTradingDays counts days with a trade OPENED. The open must land
+                    // inside the day's snapshot span (one snapshot at 10:00 here).
+                    OpenedAtUtc = new DateTime(2026, 5, 6).AddDays(i).AddHours(10),
                     ClosedAtUtc = new DateTime(2026, 5, 6).AddDays(i).AddHours(10),
                 });
             }
@@ -183,6 +186,72 @@ public sealed class ChallengeSimulationServiceTests : IDisposable
 
         points.Should().ContainSingle();
         points[0].TradesClosed.Should().Be(1);
+    }
+
+    [Fact]
+    public void BuildDailyPoints_FillsTradesOpenedAndEndBalance()
+    {
+        var snaps = new[]
+        {
+            new EquitySnapshot(new DateTime(2026, 5, 6, 1, 0, 0), 100_200m, -200m, 100_000m, 100_200m, 100_000m, 0, 0, EngineMode.Backtest),
+            new EquitySnapshot(new DateTime(2026, 5, 6, 10, 0, 0), 100_700m, -200m, 100_500m, 100_700m, 100_000m, 0, 0, EngineMode.Backtest),
+        };
+        var trades = new[]
+        {
+            new TradeResultEntity { OpenedAtUtc = new DateTime(2026, 5, 6, 5, 0, 0), ClosedAtUtc = new DateTime(2026, 5, 7, 5, 0, 0) },
+            new TradeResultEntity { OpenedAtUtc = new DateTime(2026, 5, 5, 5, 0, 0), ClosedAtUtc = new DateTime(2026, 5, 6, 5, 0, 0) }, // opened before the bucket
+        };
+
+        var points = ChallengeSimulationService.BuildDailyPoints(snaps, trades);
+
+        points.Should().ContainSingle();
+        points[0].TradesOpened.Should().Be(1);
+        points[0].TradesClosed.Should().Be(1);
+        points[0].EndBalance.Should().Be(100_700m); // closed-only balance, not equity
+    }
+
+    // V0 rule truth: FTMO evaluations are untimed — anchored windows run to the end of history;
+    // unresolved ones are CENSORED (not failed), P(bust) conditions on resolved windows only,
+    // and time-to-target is calendar days inclusive of both endpoints.
+    [Fact]
+    public void ComputeUntimedMetrics_SeparatesPassesBustsAndCensored()
+    {
+        var ruleSet = new PropFirmRuleSet(
+            "ftmo-standard", "FTMO Standard", "Fixed",
+            0.05, 0.10, 0.10, 4,
+            "BalancePlusFloatingMinusFeesAndSwaps", "00:00:00", "Europe/Prague",
+            true, "High", 2, 2, true, "21:00:00", "20:00:00", "NextTradingDay", false);
+
+        DailyEquityPoint D(int offset, decimal start, decimal end) =>
+            new(new DateTime(2026, 5, 6).AddDays(offset), start, end, 1, 1);
+
+        var days = new[]
+        {
+            D(0, 100_000m, 102_000m),
+            D(1, 102_000m, 104_000m),
+            D(2, 104_000m, 107_000m),
+            D(3, 107_000m, 110_500m), // anchor 0 hits +10% here on its 4th trading day → Pass
+            D(4, 110_500m, 104_000m), // floor 110,500 − 5% of each anchor's capital → bust for anchors 1..4
+        };
+
+        var (pBust, eTime, medTime, passes, busts, censored) =
+            ChallengeSimulationService.ComputeUntimedMetrics(days, ruleSet);
+
+        passes.Should().Be(1);
+        busts.Should().Be(4);
+        censored.Should().Be(0);
+        pBust.Should().BeApproximately(0.8, 1e-9);
+        eTime.Should().BeApproximately(4.0, 1e-9);   // 2026-05-06 → 2026-05-09 inclusive
+        medTime.Should().BeApproximately(4.0, 1e-9);
+
+        // A flat tail with no trades resolves nothing — censored, never failed.
+        var flat = Enumerable.Range(0, 5)
+            .Select(i => new DailyEquityPoint(new DateTime(2026, 5, 6).AddDays(i), 100_000m, 100_000m, 0, 0))
+            .ToArray();
+        var flatMetrics = ChallengeSimulationService.ComputeUntimedMetrics(flat, ruleSet);
+        flatMetrics.Censored.Should().Be(5);
+        flatMetrics.PBust.Should().BeNull();
+        flatMetrics.ETimeDays.Should().BeNull();
     }
 
     [Fact]

@@ -1,11 +1,17 @@
 namespace TradingEngine.Risk.Compliance;
 
 /// <summary>
-/// One calendar day of an equity curve, bucketed from EquitySnapshots + closed Trades.
+/// One calendar day of an equity curve, bucketed from EquitySnapshots + Trades.
 /// <c>StartEquity</c> is the equity at the first snapshot of the day (the day's opening mark);
-/// <c>EndEquity</c> is the equity at the day's last snapshot.
+/// <c>EndEquity</c> is the equity at the day's last snapshot. <c>TradesOpened</c> drives the
+/// min-trading-days count (FTMO truth, verified 2026-07-16: a trading day is a CE(S)T day with
+/// at least one trade OPENED; a multi-day hold counts only its entry day). <c>EndBalance</c> is
+/// the closed-only balance at the day's last snapshot — the reference for the next day's
+/// daily-loss floor; null on legacy buckets, in which case EndEquity stands in.
 /// </summary>
-public sealed record DailyEquityPoint(DateTime Date, decimal StartEquity, decimal EndEquity, int TradesClosed);
+public sealed record DailyEquityPoint(
+    DateTime Date, decimal StartEquity, decimal EndEquity, int TradesClosed,
+    int TradesOpened = 0, decimal? EndBalance = null);
 
 public enum ChallengeVerdict { Pass, Fail, Incomplete }
 
@@ -45,11 +51,21 @@ public static class ChallengeSimulator
         var worstDailyLossPercent = 0.0;
         var targetReached = false;
 
+        // FTMO Max Daily Loss (verified 2026-07-16, academy.ftmo.com/lesson/maximum-daily-loss):
+        // the day's equity floor = balance at the previous midnight CE(S)T − MaxDailyLoss% ×
+        // initial capital. At daily granularity the previous day's close balance stands in for
+        // the midnight balance; a fresh challenge window starts flat, so day one references the
+        // initial capital itself. Breaches are checked on the day's observed equity marks
+        // (start + close) — intraday floating troughs between marks are invisible here, so this
+        // stays OPTIMISTIC until the V6 intraday equity envelope lands.
+        var prevCloseBalance = windowStartEquity;
+
         for (var i = 0; i < days.Count; i++)
         {
             var day = days[i];
-            if (day.TradesClosed > 0) tradingDays++;
+            if (day.TradesOpened > 0) tradingDays++;
 
+            var dayMinEquity = Math.Min(day.StartEquity, day.EndEquity);
             var dailyLossAmount = day.StartEquity - day.EndEquity;
             if (dailyLossAmount > worstDailyLossAmount)
             {
@@ -57,13 +73,13 @@ public static class ChallengeSimulator
                 worstDailyLossPercent = (double)(dailyLossAmount / windowStartEquity);
             }
 
-            if (day.EndEquity <= maxLossFloor)
+            if (dayMinEquity <= maxLossFloor)
             {
                 return Resolve(ChallengeVerdict.Fail, i, "max-loss-breach");
             }
 
             var dailyBreach = isBalanceBased
-                ? dailyLossAmount >= dailyLossLimit
+                ? dayMinEquity <= prevCloseBalance - dailyLossLimit
                 : day.StartEquity > 0 && dailyLossAmount / day.StartEquity >= (decimal)ruleSet.MaxDailyLossPercent;
             if (dailyBreach)
             {
@@ -76,6 +92,8 @@ public static class ChallengeSimulator
             {
                 return Resolve(ChallengeVerdict.Pass, i, "target-reached");
             }
+
+            prevCloseBalance = day.EndBalance ?? day.EndEquity;
         }
 
         return Resolve(ChallengeVerdict.Incomplete, days.Count - 1, "window-elapsed-no-resolution");

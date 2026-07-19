@@ -91,6 +91,21 @@ public static class TradeCostCalculator
             ? swapLongPerLotPerNight ?? symbol.SwapLongPerLotPerNight
             : swapShortPerLotPerNight ?? symbol.SwapShortPerLotPerNight;
 
+        // F28 (L1): the venue DECLARES how its swap rates are denominated (SwapCalculationType).
+        // The pips-per-lot-per-night formula below is venue-verified for 'Pips' ONLY (P4.4/F45 —
+        // recorded cTrader charges). Any other declaration with a nonzero rate fails loudly here:
+        // the adapter catches, the run gets a cost warning and becomes unscoreable — better than
+        // silently pricing swap with a formula the venue never confirmed. A zero rate is zero in
+        // every denomination, so it passes.
+        if (swapRatePips != 0m
+            && !string.Equals(symbol.SwapCalculationType, "Pips", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new NotSupportedException(
+                $"SwapCalculationType '{symbol.SwapCalculationType}' for {symbol.Symbol} has no " +
+                "venue-verified money formula (F28) — only 'Pips' is supported. Capture the venue's " +
+                "actual charge before adding a formula.");
+        }
+
         // P4.4 (F45): swap rates are PIPS per lot per night, already SIGNED as a P&L adjustment —
         // negative = the trader pays. The venue declares both facts itself (`SwapCalculationType=Pips`,
         // `swapLong=-2.445` on a EURUSD long that cTrader then charged for). Two bugs lived here:

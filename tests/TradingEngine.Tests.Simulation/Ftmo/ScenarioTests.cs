@@ -10,38 +10,48 @@ public sealed class ScenarioTests
     [Fact]
     public async Task MaxDailyLossBreach_Midday_HaltsTrading()
     {
-        var bars = Bars.Trend(Eurusd, Timeframe.H1, T0, 1.1000m, -300, 200).Build();
+        // F79 rewrite: the old scenario spread 300 pips over 200 bars (8+ days) and relied on the
+        // buggy cumulative "daily" DD to breach. Verified semantics measure each day from its own
+        // start, so a genuine breach needs the loss INSIDE one day: a 5-lot seed stopped out 50 pips
+        // lower realizes −$2,500 (25% of 10k) within the first day's bars, past the 0.5 × 5% floor.
+        var bars = Bars.Trend(Eurusd, Timeframe.H1, T0, 1.1000m, -300, 20).Build();
         var strategy = new RepeatingSignalStrategy();
 
         var harness = await new EngineHarnessBuilder()
             .WithBars(bars).WithStrategy(strategy)
             .WithInitialBalance(10_000m).WithRuleSet("ftmo-standard")
             .WithFlattenAtFraction(0.5m)
+            .WithSeedPosition(Eurusd, TradeDirection.Long, entryPrice: 1.1000m, lots: 5.0m, slPrice: 1.0950m, tpPrice: 1.1500m)
             .BuildAsync();
 
         await harness.DriveBarsAsync(bars);
 
         harness.Risk.CurrentState.InProtectionMode.Should().BeTrue(
-            $"longs must breach daily DD on a 300-pip down-leg. DD={harness.Risk.Drawdown.CurrentDailyDrawdown:P2}");
+            $"a stopped-out 5-lot long must breach daily DD inside one day. DD={harness.Risk.Drawdown.CurrentDailyDrawdown:P2}");
         harness.DecisionJournal.Records.Should().Contain(r => r.Event == "BreachDetected");
     }
 
     [Fact]
     public async Task MaxTotalLoss_PermanentHalts()
     {
-        var bars = Bars.Trend(Eurusd, Timeframe.H1, T0, 1.1000m, -500, 300).Build();
+        // F79 rewrite: sustained decline with a seeded 1-lot long — the SL at −500 pips realizes a
+        // −$5,000 (50%) loss, far past the 0.6 × 10% max-DD flatten floor, so protection must be
+        // active at the end of the drive (the daily cap also trips on the way down; the breach
+        // machinery, not the specific cause, is this test's subject).
+        var bars = Bars.Trend(Eurusd, Timeframe.H1, T0, 1.1000m, -800, 60).Build();
         var strategy = new RepeatingSignalStrategy();
 
         var harness = await new EngineHarnessBuilder()
             .WithBars(bars).WithStrategy(strategy)
             .WithInitialBalance(10_000m).WithRuleSet("ftmo-standard")
             .WithFlattenAtFraction(0.6m)
+            .WithSeedPosition(Eurusd, TradeDirection.Long, entryPrice: 1.1000m, lots: 1.0m, slPrice: 1.0500m, tpPrice: 1.2000m)
             .BuildAsync();
 
         await harness.DriveBarsAsync(bars);
 
         harness.Risk.CurrentState.InProtectionMode.Should().BeTrue(
-            "max DD must eventually breach. DD={Max}", harness.Risk.Drawdown.CurrentMaxDrawdown);
+            $"a realized −50% loss must leave protection active. MaxDD={harness.Risk.Drawdown.CurrentMaxDrawdown:P2}");
     }
 
     [Fact]

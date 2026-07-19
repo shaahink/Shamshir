@@ -25,4 +25,5 @@ public record SymbolInfo(
     decimal SwapLongPerLotPerNight = 0,
     decimal SwapShortPerLotPerNight = 0,
     string TripleSwapWeekday = "Wednesday",
-    CommissionType CommissionType = CommissionType.AbsolutePerLot);
+    CommissionType CommissionType = CommissionType.AbsolutePerLot,
+    string SwapCalculationType = "Pips");
