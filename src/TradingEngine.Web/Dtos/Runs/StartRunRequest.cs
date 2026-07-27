@@ -5,11 +5,13 @@ public sealed record StartRunRequest
     public DateTime Start { get; init; } = new(2024, 1, 1);
     public DateTime End { get; init; } = new(2024, 1, 31);
     public decimal Balance { get; init; } = 100_000;
-    public double CommissionPerMillion { get; init; } = 30;
-    // F87: null (the default) = charge each fill the RECORDED per-bar spread from the market data
-    // (falling back to the symbol's TypicalSpread on bars without one). An explicit value forces a
-    // flat spread — required for the cTrader venue / compare-both, whose CLI needs one number (R4).
-    // Every scored run before F87 silently forced 1 pip via the old non-nullable default.
+    // F87: null (the default) = dispatch commission on each symbol's own venue-captured
+    // CommissionType/rate (F44 overlay; symbols.json fallback is warned per-run) instead of a flat
+    // $/million; null SpreadPips = charge each fill the RECORDED per-bar spread from the market data
+    // (falling back to the symbol's TypicalSpread on bars without one). Explicit values force flat
+    // costs — required for the cTrader venue / compare-both, whose CLI needs one number each (R4).
+    // Every scored run before F87 silently forced $30/M + 1 pip via the old non-nullable defaults.
+    public double? CommissionPerMillion { get; init; }
     public double? SpreadPips { get; init; }
     public List<string>? Symbols { get; init; }
     public List<string>? Periods { get; init; }

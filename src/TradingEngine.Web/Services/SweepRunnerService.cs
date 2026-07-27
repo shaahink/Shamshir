@@ -225,8 +225,9 @@ public sealed class SweepRequest
     public DateTime From { get; init; }
     public DateTime To { get; init; }
     public decimal Balance { get; init; } = 50_000;
-    public double CommissionPerMillion { get; init; } = 30;
-    // F87: sweeps are a tape-only research path — default null = per-bar recorded spread.
+    // F87: sweeps are a tape-only research path — default null = venue-true commission dispatch
+    // and per-bar recorded spread.
+    public double? CommissionPerMillion { get; init; }
     public double? SpreadPips { get; init; }
     public Dictionary<string, string> CustomParams { get; init; } = new();
 }

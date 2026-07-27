@@ -248,9 +248,10 @@ export interface StartRunRequest {
   start: string;
   end: string;
   balance: number;
-  commissionPerMillion: number;
-  // F87: null (blank field) = per-bar recorded spread — the research default. The cTrader venue
-  // and compare-both still require an explicit number (the API rejects null there).
+  // F87: null (blank fields) = venue-true commission dispatch / per-bar recorded spread — the
+  // research defaults. The cTrader venue and compare-both still require explicit numbers (the
+  // API rejects null there).
+  commissionPerMillion: number | null;
   spreadPips: number | null;
   symbols: string[];
   periods: string[];

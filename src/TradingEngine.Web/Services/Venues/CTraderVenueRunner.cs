@@ -60,17 +60,18 @@ public sealed class CTraderVenueRunner(
         var account = _ctraderOptions.Account;
         var wallStart = DateTime.UtcNow;
 
-        // F87 R4 backstop: request validation already rejects null SpreadPips for this venue; if a
-        // path bypasses it, fail loudly rather than handing ctrader-cli an empty --spread.
-        if (cfg.SpreadPips is null)
+        // F87 R4 backstop: request validation already rejects null SpreadPips/CommissionPerMillion
+        // for this venue; if a path bypasses it, fail loudly rather than handing ctrader-cli an
+        // empty --spread/--commission.
+        if (cfg.SpreadPips is null || cfg.CommissionPerMillion is null)
         {
-            EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader venue requires an explicit SpreadPips (per-bar spread is tape-only).");
+            EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader venue requires explicit SpreadPips + CommissionPerMillion (per-bar/venue-true costs are tape-only).");
             return new BacktestResult
             {
                 RunId = runId,
                 ExitCode = 1,
                 AlgoHash = "",
-                ErrorMessage = "cTrader venue requires an explicit SpreadPips — per-bar spread (null) is tape-only."
+                ErrorMessage = "cTrader venue requires explicit SpreadPips + CommissionPerMillion — per-bar spread / venue-true commission (null) is tape-only."
             };
         }
         if (string.IsNullOrWhiteSpace(ctid) || string.IsNullOrWhiteSpace(pwdFile) || string.IsNullOrWhiteSpace(account))

@@ -95,4 +95,20 @@ public sealed class BacktestStartGuardTests : IClassFixture<WebApplicationFactor
         var resp = await Post(ValidBody);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
+
+    [Fact]
+    public async Task Rejects_NullCommission_OnCTraderVenue()
+    {
+        var resp = await Post(new { symbols = new[] { "EURUSD" }, periods = new[] { "H1" }, start = "2024-01-01", end = "2024-01-02", balance = 100_000, venue = "ctrader", spreadPips = 1 });
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("CommissionPerMillion");
+    }
+
+    [Fact]
+    public async Task Rejects_NullCommission_OnCompareBoth()
+    {
+        var resp = await Post(new { symbols = new[] { "EURUSD" }, periods = new[] { "H1" }, start = "2024-01-01", end = "2024-01-02", balance = 100_000, venue = "replay", compareBoth = true, spreadPips = 1 });
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("CommissionPerMillion");
+    }
 }

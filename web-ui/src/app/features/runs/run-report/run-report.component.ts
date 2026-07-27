@@ -192,7 +192,7 @@ type JournalRow = JournalEntry & { outcome?: string | null };
                   @if (d.riskProfileId) { <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-300">Risk: {{ d.riskProfileId }}</span> }
                   <span [class]="chipClass(d.governorEnabled !== false)">Governor: {{ d.governorEnabled === false ? 'Off' : 'On' }}</span>
                   <span [class]="chipClass(d.regimeEnabled !== false)">Regime: {{ d.regimeEnabled === false ? 'Off' : 'On' }}</span>
-                  <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-300">Comm {{ d.commissionPerMillion ?? 0 }}/M &middot; Spread {{ d.spreadPips != null ? d.spreadPips + ' pips' : 'per-bar' }}</span>
+                  <span class="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-300">Comm {{ d.commissionPerMillion != null ? d.commissionPerMillion + '/M' : 'venue-true' }} &middot; Spread {{ d.spreadPips != null ? d.spreadPips + ' pips' : 'per-bar' }}</span>
                 </div>
                 <div class="overflow-hidden rounded border border-gray-800">
                   <table class="w-full text-xs">

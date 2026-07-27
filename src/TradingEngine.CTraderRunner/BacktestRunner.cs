@@ -198,8 +198,8 @@ public sealed class BacktestRunner
         sb.Append($" --symbol={cfg.Symbol}");
         sb.Append($" --period={cfg.Period}");
         sb.Append($" --balance={cfg.Balance}");
-        sb.Append($" --commission={cfg.CommissionPerMillion}");
-        // F87 R4: ctrader-cli has no per-bar spread path — an explicit number is mandatory here.
+        // F87 R4: ctrader-cli has no venue-dispatch/per-bar cost path — explicit numbers are mandatory here.
+        sb.Append($" --commission={cfg.CommissionPerMillion ?? throw new InvalidOperationException("cTrader venue requires an explicit CommissionPerMillion — venue-true dispatch (null) is tape-only.")}");
         sb.Append($" --spread={cfg.SpreadPips ?? throw new InvalidOperationException("cTrader venue requires an explicit SpreadPips — per-bar spread (null) is tape-only.")}");
         sb.Append($" --data-mode={cfg.DataMode}");
         if (cfg.DataDir is not null) sb.Append($" --data-dir=\"{cfg.DataDir}\"");
