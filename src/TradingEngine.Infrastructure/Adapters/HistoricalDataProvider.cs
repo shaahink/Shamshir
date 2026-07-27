@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Infrastructure.Adapters;
 
@@ -58,26 +59,17 @@ public sealed class HistoricalDataProvider : IMarketDataProvider
         Timeframe tf)
     {
         var barDuration = GetBarDuration(tf);
-        var halfSpread = ResolveHalfSpread(symbol);
 
         await foreach (var bar in StreamBarsAsync(symbol, tf, ct))
         {
+            // F87 P4: resolve per bar so a bar carrying a recorded spread prices its own ticks
+            // (CSV bars carry none today ⇒ registry fallback, behaviour unchanged). Number from the
+            // shared resolver; the half-spread OFFSET convention stays here (R3). Fallback preserves
+            // this site's historical 0.0005 half-spread (= 0.001 full).
+            var halfSpread = SpreadResolver.FullSpread(bar.Spread, _symbolRegistry, symbol, fallback: 0.001m) / 2m;
             var ticks = SynthesizeTicks(bar, barDuration, halfSpread);
             foreach (var tick in ticks)
                 yield return tick;
-        }
-    }
-
-    private decimal ResolveHalfSpread(Symbol symbol)
-    {
-        try
-        {
-            var info = _symbolRegistry.Get(symbol);
-            return info.TypicalSpread / 2m;
-        }
-        catch
-        {
-            return 0.0005m;
         }
     }
 

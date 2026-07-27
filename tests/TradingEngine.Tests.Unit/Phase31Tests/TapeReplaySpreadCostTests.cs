@@ -97,6 +97,26 @@ public sealed class TapeReplaySpreadCostTests
         close.NetProfit.Should().Be(close.GrossProfit + close.Commission + close.Swap);
     }
 
+    // F87 P4: floating PnL must read the SAME spread number as fills. Before P4 it read the
+    // registry's TypicalSpread directly (one of the three divergent spread sources), so open-trade
+    // equity — and therefore intrabar drawdown watermarks — was priced off a different spread than
+    // the fills of the very same run.
+    [Fact]
+    public async Task FloatingPnL_UsesPerBarRecordedSpread_NotRegistryTypicalSpread()
+    {
+        var adapter = MakeAdapter();
+        adapter.OnBarObserved(Bar(1.1000m, 1.1005m, 1.0995m, 1.1000m, hour: 0, spread: 0.00030m));
+        await Submit(adapter, TradeDirection.Short, sl: 1.1050m, tp: 1.0900m);
+
+        var updates = new List<AccountUpdate>();
+        while (adapter.AccountStream.TryRead(out var u)) updates.Add(u);
+
+        // Short's exit side is the ask (full-spread convention, R3): bid 1.1000 → ask 1.1003,
+        // floating = −3.0 pips × $10 = −$30 off the RECORDED spread (registry would say −$20).
+        updates[^1].FloatingPnL.Should().Be(-30m);
+        updates[^1].Equity.Should().Be(9_970m);
+    }
+
     [Fact]
     public async Task PartialClose_ProratesSpreadCost_LikeEntryCommission()
     {

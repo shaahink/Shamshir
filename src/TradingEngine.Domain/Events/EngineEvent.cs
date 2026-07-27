@@ -2,7 +2,9 @@ namespace TradingEngine.Domain;
 
 public abstract record EngineEvent(DateTime OccurredAtUtc);
 
-public record BarClosed(Symbol Symbol, Timeframe Timeframe, decimal Open, decimal High, decimal Low, decimal Close, DateTime BarOpenTimeUtc) : EngineEvent(BarOpenTimeUtc);
+// Spread (F87 P4): the bar's RECORDED spread in price units, carried from the venue bar so the
+// evaluators' synthesized close tick prices off the same number as fills. Null = none recorded.
+public record BarClosed(Symbol Symbol, Timeframe Timeframe, decimal Open, decimal High, decimal Low, decimal Close, DateTime BarOpenTimeUtc, decimal? Spread = null) : EngineEvent(BarOpenTimeUtc);
 
 public record BarIngested(string RunId, Bar Bar) : EngineEvent(Bar.OpenTimeUtc);
 

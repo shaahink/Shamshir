@@ -141,7 +141,7 @@ public sealed class KernelBacktestLoop
         {
             await foreach (var bar in _venue.BarStream.ReadAllAsync(ct))
             {
-                var barClosed = new BarClosed(bar.Symbol, bar.Timeframe, bar.Open, bar.High, bar.Low, bar.Close, bar.OpenTimeUtc);
+                var barClosed = new BarClosed(bar.Symbol, bar.Timeframe, bar.Open, bar.High, bar.Low, bar.Close, bar.OpenTimeUtc, bar.Spread);
                 state = await ProcessBarAsync(barClosed, state, ct);
             }
 

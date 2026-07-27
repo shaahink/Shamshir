@@ -61,7 +61,7 @@ public sealed class BarEvaluator(
         // Maintain the incremental indicator window exactly as TradingLoop does.
         var byTf = indicatorSnapshot.Bars.GetOrAdd(symbol, _ => new());
         var list = byTf.GetOrAdd(tf, _ => new());
-        var barModel = new Bar(symbol, tf, simTime, bar.Open, bar.High, bar.Low, bar.Close, 0);
+        var barModel = new Bar(symbol, tf, simTime, bar.Open, bar.High, bar.Low, bar.Close, 0, bar.Spread);
         lock (list)
         {
             list.Add(barModel);
@@ -73,7 +73,7 @@ public sealed class BarEvaluator(
         await indicatorSnapshot.AdvanceAuxBarsAsync(symbol, simTime + GetBarDuration(tf), ct);
         await indicatorSnapshot.RecomputeIndicatorsAsync(symbol, tf, ct);
 
-        var halfSpread = ResolveHalfSpread(symbol);
+        var halfSpread = ResolveHalfSpread(barModel);
         var closeTick = new Tick(symbol, bar.Close, bar.Close + halfSpread, simTime + GetBarDuration(tf));
         var barSnapshot = indicatorSnapshot.BuildBarSnapshot(symbol);
         if (barSnapshot is null)
@@ -280,15 +280,10 @@ public sealed class BarEvaluator(
         return new Guid(bytes);
     }
 
-    private decimal ResolveHalfSpread(Symbol symbol)
-    {
-        try { return symbolRegistry.Get(symbol).TypicalSpread / 2m; }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "ResolveHalfSpread failed for {Symbol} — using fallback 0.5pip", symbol);
-            return 0.00005m;
-        }
-    }
+    // F87 P4: number from the shared resolver (per-bar recorded → registry → this site's historical
+    // fallback); the half-spread OFFSET convention stays here (R3).
+    private decimal ResolveHalfSpread(Bar bar)
+        => SpreadResolver.FullSpread(bar.Spread, symbolRegistry, bar.Symbol, fallback: 0.0001m) / 2m;
 
     private static TimeSpan GetBarDuration(Timeframe tf) => tf switch
     {

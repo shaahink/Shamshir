@@ -85,7 +85,7 @@ public sealed class BarTape : IEventTape
         var bars = await _bars.GetAsync(symbol, tf, Dataset.FromUtc, Dataset.ToUtc, ct);
         foreach (var b in bars)
         {
-            yield return new BarClosed(b.Symbol, b.Timeframe, b.Open, b.High, b.Low, b.Close, b.OpenTimeUtc);
+            yield return new BarClosed(b.Symbol, b.Timeframe, b.Open, b.High, b.Low, b.Close, b.OpenTimeUtc, b.Spread);
         }
     }
 }

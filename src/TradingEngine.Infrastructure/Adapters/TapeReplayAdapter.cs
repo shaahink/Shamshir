@@ -436,11 +436,11 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         if (_spreadPipsOverride is { } pips)
         {
             try { return pips * _symbolRegistry.Get(_symbol).PipSize; }
-            catch { /* fall through to the other sources below */ }
+            catch { /* fall through to the shared resolver below */ }
         }
-        if (_currentSpread is { } s) return s;
-        try { return _symbolRegistry.Get(_symbol).TypicalSpread; }
-        catch { return 0.0001m; }
+        // F87 P4: the non-override chain (per-bar recorded → registry → fallback) lives in the ONE
+        // shared resolver, so fills, floating PnL and the Host tick sites read the same number.
+        return SpreadResolver.FullSpread(_currentSpread, _symbolRegistry, _symbol, fallback: 0.0001m);
     }
 
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots, Price sl, Price? tp)
@@ -813,7 +813,9 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         try
         {
             var symbolInfo = _symbolRegistry.Get(_symbol);
-            var spread = symbolInfo.TypicalSpread;
+            // F87 P4: read the SAME spread number as fills (override → per-bar recorded → registry).
+            // This was a direct TypicalSpread read — the second of three divergent spread sources.
+            var spread = GetSpread();
             var pipValue = PipCalculator.PipValuePerLot(symbolInfo, close, _crossRateProvider);
             var total = 0m;
             foreach (var (_, t) in _openTrades)
