@@ -2,7 +2,9 @@ namespace TradingEngine.Domain;
 
 public abstract record EngineEvent(DateTime OccurredAtUtc);
 
-public record BarClosed(Symbol Symbol, Timeframe Timeframe, decimal Open, decimal High, decimal Low, decimal Close, DateTime BarOpenTimeUtc) : EngineEvent(BarOpenTimeUtc);
+// Spread (F87 P4): the bar's RECORDED spread in price units, carried from the venue bar so the
+// evaluators' synthesized close tick prices off the same number as fills. Null = none recorded.
+public record BarClosed(Symbol Symbol, Timeframe Timeframe, decimal Open, decimal High, decimal Low, decimal Close, DateTime BarOpenTimeUtc, decimal? Spread = null) : EngineEvent(BarOpenTimeUtc);
 
 public record BarIngested(string RunId, Bar Bar) : EngineEvent(Bar.OpenTimeUtc);
 
@@ -33,6 +35,10 @@ public record OrderFilled(Guid OrderId, Symbol Symbol, decimal FilledLots, Price
     public decimal? NetProfit { get; init; }
     public decimal? Commission { get; init; }
     public decimal? Swap { get; init; }
+
+    /// <summary>F87 P3: carried from <see cref="ExecutionEvent.SpreadCost"/> — what crossing the
+    /// spread cost this trade (negative). Null unless the venue computed it.</summary>
+    public decimal? SpreadCost { get; init; }
 
     /// <summary>
     /// Venue-authoritative reason for a close fill (SL / TP / STOPOUT / CLOSED). Carried from the

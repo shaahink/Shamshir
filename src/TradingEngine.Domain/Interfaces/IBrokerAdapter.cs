@@ -108,6 +108,12 @@ public record ExecutionEvent(
     public decimal? Commission { get; init; }
     public decimal? Swap { get; init; }
 
+    /// <summary>F87 P3: what crossing the spread cost this trade in account currency, negative (R2).
+    /// NOT part of the Net identity (spread is already inside Gross via the fill prices) —
+    /// <c>SignalPnL ≡ Gross − SpreadCost</c> is the bid-to-bid PnL. Populated only by venues that
+    /// know their fill-side spread (currently <c>TapeReplayAdapter</c>); null elsewhere.</summary>
+    public decimal? SpreadCost { get; init; }
+
     /// <summary>The instrument this execution belongs to (iter-37 K-GAP-6). Carried by the venue so the
     /// feedback bridge attributes fills/closes to the CORRECT symbol on a multi-symbol run instead of the
     /// old first-open-position / EURUSD guess. Null = unknown (the kernel falls back to resolving by id).</summary>

@@ -70,8 +70,10 @@ public sealed record BacktestRunState
     public string? Venue;
     public bool GovernorEnabled = true;
     public bool RegimeEnabled = true;
-    public double CommissionPerMillion;
-    public double SpreadPips;
+    // F87: null CommissionPerMillion = venue-true dispatch; null SpreadPips = per-bar recorded
+    // spread (no single number exists for the run).
+    public double? CommissionPerMillion;
+    public double? SpreadPips;
 
     // iter-tape-trust T0/B2: memory-served run detail must carry these.
     public decimal InitialBalance;

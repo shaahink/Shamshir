@@ -181,6 +181,53 @@ public sealed class TradeCostCalculatorTests
         costs.Commission.Should().BeApproximately(-19.83m, 0.01m);
     }
 
+    // F87 P2: a NULL commissionPerMillion override means "dispatch on the symbol's own venue-captured
+    // CommissionType/rate" — the honest path that already existed but was unreachable because every
+    // run request defaulted to 30. The venue-true FX rate on the captured broker is $45/M (vs the
+    // fabricated flat $30/M every pre-F87 run charged).
+    [Fact]
+    public void NullCommissionOverride_DispatchesOnVenueTrueCommissionType()
+    {
+        var venueCaptured = Eurusd() with
+        {
+            CommissionPerLotPerSide = 45m,
+            CommissionType = CommissionType.UsdPerMillionUsdVolume,
+        };
+
+        var costs = TradeCostCalculator.Compute(
+            TradeDirection.Long, new Price(1.1000m), new Price(1.1010m), lots: 1m,
+            venueCaptured, NoCross,
+            new DateTime(2024, 1, 2, 10, 0, 0, DateTimeKind.Utc),
+            new DateTime(2024, 1, 2, 12, 0, 0, DateTimeKind.Utc),
+            commissionPerMillion: null);
+
+        // entry: 100,000 × 1.1000 = $110,000 → 45/M = $4.9500
+        // exit:  100,000 × 1.1010 = $110,100 → 45/M = $4.9545  → round-turn -$9.9045
+        costs.Commission.Should().BeApproximately(-9.9045m, 0.0001m);
+    }
+
+    [Fact]
+    public void ExplicitCommissionOverride_StillWins_OverVenueTrueRate()
+    {
+        // R1: an explicit value must behave byte-identically to before — the override's per-million
+        // formula, NOT the symbol's captured 45/M.
+        var venueCaptured = Eurusd() with
+        {
+            CommissionPerLotPerSide = 45m,
+            CommissionType = CommissionType.UsdPerMillionUsdVolume,
+        };
+
+        var costs = TradeCostCalculator.Compute(
+            TradeDirection.Long, new Price(1.1000m), new Price(1.1010m), lots: 1m,
+            venueCaptured, NoCross,
+            new DateTime(2024, 1, 2, 10, 0, 0, DateTimeKind.Utc),
+            new DateTime(2024, 1, 2, 12, 0, 0, DateTimeKind.Utc),
+            commissionPerMillion: 30m);
+
+        // entry $110,000 → $3.30; exit $110,100 → $3.303 → round-turn -$6.603
+        costs.Commission.Should().BeApproximately(-6.603m, 0.0001m);
+    }
+
     [Fact]
     public void ClosingCommission_isBilledAtTheExitPrice_notTheEntryPrice()
     {

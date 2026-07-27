@@ -127,10 +127,19 @@ public sealed class RunsController : ControllerBase
         if (validPeriods.Length == 0) errors.Add("At least one timeframe is required.");
         if (req.Start >= req.End) errors.Add("Start date must be before end date.");
         if (req.Balance <= 0) errors.Add("Balance must be positive.");
+
+        var venue = (!string.IsNullOrWhiteSpace(req.Venue) ? req.Venue!.Trim().ToLowerInvariant() : null) ?? "replay";
+        // F87 R4: the cTrader CLI needs a concrete --spread/--commission; there is no per-bar/
+        // venue-dispatch path on that venue. Reject null rather than silently picking a number
+        // the run never asked for.
+        if (req.SpreadPips is null && (venue == "ctrader" || req.CompareBoth))
+            errors.Add("SpreadPips is required for the cTrader venue / compare-both (the cTrader CLI has no per-bar spread path) — pass an explicit spread, e.g. \"spreadPips\": 1.");
+        if (req.CommissionPerMillion is null && (venue == "ctrader" || req.CompareBoth))
+            errors.Add("CommissionPerMillion is required for the cTrader venue / compare-both (its CLI needs one number) — pass an explicit rate, e.g. \"commissionPerMillion\": 30.");
+
         if (errors.Count > 0)
             return BadRequest(new { error = "Invalid backtest request.", details = errors });
 
-        var venue = (!string.IsNullOrWhiteSpace(req.Venue) ? req.Venue!.Trim().ToLowerInvariant() : null) ?? "replay";
         if (venue == "tape" && _marketDataStore is not null)
         {
             var missing = await ValidateTapeDataAsync(req, validSymbols, validPeriods, ct);
@@ -334,6 +343,15 @@ public sealed class RunsController : ControllerBase
         if (source is null) return NotFound(new { error = $"Run {runId} not found" });
 
         req ??= new DuplicateRunRequest();
+
+        // F87 R4 mirror: duplicating a per-bar-spread / venue-true-commission run onto the cTrader
+        // venue has no number to hand the CLI — reject instead of inventing one.
+        if ((source.SpreadPips is null || source.CommissionPerMillion is null)
+            && string.Equals(req.Venue?.Trim(), "ctrader", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { error = "Source run used per-bar spread / venue-true commission (null overrides); the cTrader venue needs explicit numbers. Start a new run with spreadPips + commissionPerMillion set instead." });
+        }
+
         var symbols = ParseJsonArray(source.Symbols);
         var periods = ParseJsonArray(source.Periods);
 

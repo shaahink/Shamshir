@@ -57,6 +57,7 @@ public static class TradeResultFactory
             EntryRegime: effect.EntryRegime,
             Timeframe: timeframe,
             InitialStopLoss: effect.InitialStopLoss,
+            SpreadCost: effect.SpreadCost is { } spreadCost ? new Money(spreadCost, currency) : null,
             EntrySnapshotJson: System.Text.Json.JsonSerializer.Serialize(new
             {
                 reason = effect.EntryReason,

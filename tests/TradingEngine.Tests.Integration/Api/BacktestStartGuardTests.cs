@@ -69,4 +69,46 @@ public sealed class BacktestStartGuardTests : IClassFixture<WebApplicationFactor
         var resp = await Post(ValidBody);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
+
+    // F87 R4: the cTrader CLI needs a concrete --spread/--commission — there is no per-bar path
+    // there. Null must be rejected at request validation, not silently defaulted to a number.
+    [Fact]
+    public async Task Rejects_NullSpread_OnCTraderVenue()
+    {
+        var resp = await Post(new { symbols = new[] { "EURUSD" }, periods = new[] { "H1" }, start = "2024-01-01", end = "2024-01-02", balance = 100_000, venue = "ctrader", commissionPerMillion = 30 });
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("SpreadPips");
+    }
+
+    [Fact]
+    public async Task Rejects_NullSpread_OnCompareBoth()
+    {
+        var resp = await Post(new { symbols = new[] { "EURUSD" }, periods = new[] { "H1" }, start = "2024-01-01", end = "2024-01-02", balance = 100_000, venue = "replay", compareBoth = true, commissionPerMillion = 30 });
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("SpreadPips");
+    }
+
+    [Fact]
+    public async Task Accepts_NullSpread_OnReplayVenue()
+    {
+        // Null spread on a credential-free venue = "use the recorded per-bar spread" — valid.
+        var resp = await Post(ValidBody);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Rejects_NullCommission_OnCTraderVenue()
+    {
+        var resp = await Post(new { symbols = new[] { "EURUSD" }, periods = new[] { "H1" }, start = "2024-01-01", end = "2024-01-02", balance = 100_000, venue = "ctrader", spreadPips = 1 });
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("CommissionPerMillion");
+    }
+
+    [Fact]
+    public async Task Rejects_NullCommission_OnCompareBoth()
+    {
+        var resp = await Post(new { symbols = new[] { "EURUSD" }, periods = new[] { "H1" }, start = "2024-01-01", end = "2024-01-02", balance = 100_000, venue = "replay", compareBoth = true, spreadPips = 1 });
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("CommissionPerMillion");
+    }
 }

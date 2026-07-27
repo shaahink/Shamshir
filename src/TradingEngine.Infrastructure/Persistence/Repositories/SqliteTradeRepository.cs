@@ -44,6 +44,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db, ISymbolInfoRegist
             CommissionCurrency = trade.Commission.Currency,
             SwapAmount = trade.Swap.Amount,
             SwapCurrency = trade.Swap.Currency,
+            SpreadCostAmount = trade.SpreadCost?.Amount ?? 0m,
             NetPnLAmount = trade.NetPnL.Amount,
             NetPnLCurrency = trade.NetPnL.Currency,
             PnLPips = trade.PnLPips.Value,
@@ -119,6 +120,7 @@ public sealed class SqliteTradeRepository(TradingDbContext db, ISymbolInfoRegist
             Timeframe: e.EntryTimeframe,
             InitialStopLoss: e.InitialStopLoss.HasValue ? new Price(e.InitialStopLoss.Value) : null,
             MaeR: e.MaeR,
-            MfeR: e.MfeR);
+            MfeR: e.MfeR,
+            SpreadCost: e.SpreadCostAmount != 0m ? new Money(e.SpreadCostAmount, e.GrossPnLCurrency) : null);
     }
 }

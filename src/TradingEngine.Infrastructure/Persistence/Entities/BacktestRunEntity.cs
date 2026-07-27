@@ -55,8 +55,10 @@ public sealed class BacktestRunEntity : IAuditableEntity
     public string? RiskProfileId { get; set; }
     public bool GovernorEnabled { get; set; } = true;
     public bool RegimeEnabled { get; set; } = true;
-    public double CommissionPerMillion { get; set; }
-    public double SpreadPips { get; set; }
+    // F87 (M54): both nullable — null CommissionPerMillion = venue-true CommissionType dispatch,
+    // null SpreadPips = per-bar recorded spread. Pre-F87 rows keep the flat numbers they charged.
+    public double? CommissionPerMillion { get; set; }
+    public double? SpreadPips { get; set; }
 
     // P9: run profiling
     public long WallElapsedMs { get; set; }

@@ -148,6 +148,21 @@ public sealed class ReplayVenueRunner(
             scope.ServiceProvider.GetService<IMarketDataStore>(), from, to, runId, logLines, cts.Token);
         var venueSymbolSpecs = await _marketContext.LoadVenueSymbolSpecsAsync(cts.Token);
 
+        // F87 P2: null commission = "dispatch on the symbol's venue-captured CommissionType/rate".
+        // A symbol WITHOUT a venue-spec overlay then prices commission (and swap) off symbols.json,
+        // which is fabricated (D10) — the run must say so on its face (M41 RunWarnings).
+        if (cfg.CommissionPerMillion is null)
+        {
+            var coveredSymbols = venueSymbolSpecs.Select(s => s.Symbol).ToHashSet();
+            foreach (var sym in passes.Select(p => p.Sym).Distinct().Where(s => !coveredSymbols.Contains(s)))
+            {
+                state.Warnings.Enqueue(new RunWarning("COMMISSION_FABRICATED",
+                    $"{sym}: commission is venue-true (null override) but no venue-captured spec exists — symbols.json economics are fabricated. Capture the venue spec (F44) or pass an explicit CommissionPerMillion.",
+                    DateTime.UtcNow));
+                _logger.LogWarning("RUN_WARNING|run={RunId}|code=COMMISSION_FABRICATED|symbol={Symbol}", runId, sym);
+            }
+        }
+
         // P2.1: pre-query actual bar counts so progress shows % of real bars, not calendar estimate.
         // The foreach loop below also sums bar counts, but this locks in barsTotal BEFORE the first pass
         // starts, so the progress bar climbs to 100% smoothly instead of stalling at ~70%.

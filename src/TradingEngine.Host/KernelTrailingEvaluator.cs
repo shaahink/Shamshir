@@ -43,7 +43,7 @@ public sealed class KernelTrailingEvaluator(
     {
         if (state.Positions.Count == 0) return new TrailingDecisions([], [], []);
 
-        var halfSpread = ResolveHalfSpread(bar.Symbol);
+        var halfSpread = ResolveHalfSpread(bar);
         var tick = new Tick(bar.Symbol, bar.Close, bar.Close + halfSpread, bar.OpenTimeUtc + GetBarDuration(bar.Timeframe));
         var recentBars = GetRecentBars(bar.Symbol, bar.Timeframe);
 
@@ -121,11 +121,10 @@ public sealed class KernelTrailingEvaluator(
         return [];
     }
 
-    private decimal ResolveHalfSpread(Symbol symbol)
-    {
-        try { return symbolRegistry.Get(symbol).TypicalSpread / 2m; }
-        catch { return 0.00005m; }
-    }
+    // F87 P4: number from the shared resolver (per-bar recorded → registry → this site's historical
+    // fallback); the half-spread OFFSET convention stays here (R3).
+    private decimal ResolveHalfSpread(Bar bar)
+        => SpreadResolver.FullSpread(bar.Spread, symbolRegistry, bar.Symbol, fallback: 0.0001m) / 2m;
 
     private static TimeSpan GetBarDuration(Timeframe tf) => tf switch
     {

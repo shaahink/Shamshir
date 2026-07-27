@@ -38,7 +38,12 @@ public record TradeResult(
     // with different pip-convention sizes (EURUSD 0.0001 vs XAUUSD 0.01 vs BTC 1.0). Nullable because
     // historical trades predating this field will have null until the backfill runs.
     double? MaeR = null,
-    double? MfeR = null)
+    double? MfeR = null,
+    // F87 P3: what crossing the spread cost this trade, negative (R2). NOT part of the Net identity
+    // (spread lives inside Gross via the fill prices) — SignalPnL ≡ GrossPnL − SpreadCost is the
+    // bid-to-bid PnL. Null when the venue didn't compute it (BacktestReplayAdapter, cTrader, journal
+    // backfill) — persisted as 0.
+    Money? SpreadCost = null)
 {
     public double DurationSeconds => (ClosedAtUtc - OpenedAtUtc).TotalSeconds;
 }

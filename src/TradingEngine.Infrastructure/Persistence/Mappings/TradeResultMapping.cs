@@ -19,6 +19,7 @@ public sealed class TradeResultMapping : IEntityTypeConfiguration<TradeResultEnt
         builder.Property(e => e.GrossPnLAmount).HasColumnType("REAL");
         builder.Property(e => e.CommissionAmount).HasColumnType("REAL");
         builder.Property(e => e.SwapAmount).HasColumnType("REAL");
+        builder.Property(e => e.SpreadCostAmount).HasColumnType("REAL").HasDefaultValue(0m);
         builder.Property(e => e.NetPnLAmount).HasColumnType("REAL");
         builder.Property(e => e.ExitReason).HasColumnType("TEXT").IsRequired();
         builder.Property(e => e.StrategyId).HasColumnType("TEXT").IsRequired();
