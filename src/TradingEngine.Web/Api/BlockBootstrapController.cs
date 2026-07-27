@@ -77,7 +77,8 @@ public sealed class BlockBootstrapController : ControllerBase
                 End = syntheticEnd,
                 Balance = req.Balance ?? 100_000,
                 CommissionPerMillion = req.CommissionPerMillion ?? 30,
-                SpreadPips = req.SpreadPips ?? 1,
+                // F87: tape-only path — null passes through, meaning per-bar recorded spread.
+                SpreadPips = req.SpreadPips,
                 Symbols = [req.Symbol],
                 Periods = [req.Timeframe],
                 CustomParams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

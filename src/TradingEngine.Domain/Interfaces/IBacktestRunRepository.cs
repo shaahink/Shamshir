@@ -35,8 +35,10 @@ public sealed record BacktestRunSummary(
     string? RiskProfileId = null,
     bool GovernorEnabled = true,
     bool RegimeEnabled = true,
-    double CommissionPerMillion = 0,
-    double SpreadPips = 0,
+    // F87: null CommissionPerMillion = venue-true CommissionType dispatch; null SpreadPips =
+    // per-bar recorded spread. Pre-F87 rows carry the flat numbers they actually charged.
+    double? CommissionPerMillion = null,
+    double? SpreadPips = null,
     long WallElapsedMs = 0,
     double BarsPerSec = 0,
     int TotalBars = 0,

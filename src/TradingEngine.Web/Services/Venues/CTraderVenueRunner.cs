@@ -59,6 +59,20 @@ public sealed class CTraderVenueRunner(
         var pwdFile = _ctraderOptions.PwdFile;
         var account = _ctraderOptions.Account;
         var wallStart = DateTime.UtcNow;
+
+        // F87 R4 backstop: request validation already rejects null SpreadPips for this venue; if a
+        // path bypasses it, fail loudly rather than handing ctrader-cli an empty --spread.
+        if (cfg.SpreadPips is null)
+        {
+            EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] cTrader venue requires an explicit SpreadPips (per-bar spread is tape-only).");
+            return new BacktestResult
+            {
+                RunId = runId,
+                ExitCode = 1,
+                AlgoHash = "",
+                ErrorMessage = "cTrader venue requires an explicit SpreadPips — per-bar spread (null) is tape-only."
+            };
+        }
         if (string.IsNullOrWhiteSpace(ctid) || string.IsNullOrWhiteSpace(pwdFile) || string.IsNullOrWhiteSpace(account))
         {
             EnqueueLog(runId, logLines, $"[{DateTime.UtcNow:HH:mm:ss}] CTrader credentials not configured");

@@ -36,8 +36,10 @@ public sealed record RunDetailResponse
     public string? RiskProfileId { get; init; }
     public bool GovernorEnabled { get; init; } = true;
     public bool RegimeEnabled { get; init; } = true;
-    public double CommissionPerMillion { get; init; }
-    public double SpreadPips { get; init; }
+    // F87: null CommissionPerMillion = venue-true dispatch; null SpreadPips = per-bar recorded
+    // spread (render as "venue-true" / "per-bar", not 0).
+    public double? CommissionPerMillion { get; init; }
+    public double? SpreadPips { get; init; }
     public long WallElapsedMs { get; init; }
     public double BarsPerSec { get; init; }
     public int TotalBars { get; init; }

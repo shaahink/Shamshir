@@ -266,9 +266,10 @@ interface CoverageInfo {
                 <div>
                   <label class="block text-xs text-gray-500 mb-1">Spread</label>
                   <div class="relative">
-                    <input type="number" [ngModel]="spread()" (ngModelChange)="spread.set($event)" step="0.1" class="w-full rounded border border-gray-700 bg-gray-800 pr-10 pl-2 py-1.5 text-xs text-gray-100 focus:border-emerald-500 focus:outline-none" />
+                    <input type="number" [ngModel]="spread()" (ngModelChange)="spread.set($event)" step="0.1" placeholder="per-bar (recorded)" class="w-full rounded border border-gray-700 bg-gray-800 pr-10 pl-2 py-1.5 text-xs text-gray-100 placeholder:text-gray-600 focus:border-emerald-500 focus:outline-none" />
                     <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">pips</span>
                   </div>
+                  <p class="mt-0.5 text-[10px] text-gray-600">Blank = recorded per-bar spread (F87). cTrader/compare-both need a number.</p>
                 </div>
                 <div>
                   <label class="block text-xs text-gray-500 mb-1">Risk Profile</label>
@@ -403,7 +404,8 @@ export class NewBacktestComponent implements OnInit {
   endDate = signal('');
   balance = signal(100_000);
   commission = signal(30);
-  spread = signal(1);
+  // F87: null (blank field) = per-bar recorded spread — the research default.
+  spread = signal<number | null>(null);
   riskProfile = signal('standard');
   venue = signal('replay');
   speed = signal(10);
@@ -606,7 +608,8 @@ export class NewBacktestComponent implements OnInit {
       this.endDate.set((src.backtestTo || '').slice(0, 10));
       this.balance.set(src.initialBalance || 100_000);
       if (src.commissionPerMillion != null) this.commission.set(src.commissionPerMillion);
-      if (src.spreadPips != null) this.spread.set(src.spreadPips);
+      // F87: copy null through — the source run's "per-bar spread" IS its configuration.
+      this.spread.set(src.spreadPips ?? null);
       if (src.riskProfileId) this.riskProfile.set(src.riskProfileId);
       if (src.venue) this.venue.set(src.venue);
       this.governorEnabled.set(src.governorEnabled !== false);
@@ -867,7 +870,8 @@ export class NewBacktestComponent implements OnInit {
       this.endDate.set(setup.endDate || this.endDate());
       this.balance.set(setup.balance ?? 100_000);
       this.commission.set(setup.commission ?? 30);
-      this.spread.set(setup.spread ?? 1);
+      // F87: null is a real value (per-bar spread) — only old setups carry explicit numbers.
+      this.spread.set(setup.spread ?? null);
       this.riskProfile.set(setup.riskProfile || 'standard');
       this.venue.set(setup.venue || 'replay');
       this.governorEnabled.set(setup.governorEnabled ?? true);

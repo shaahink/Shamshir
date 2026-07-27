@@ -8,8 +8,11 @@ public sealed record BacktestConfig
     public required DateTime Start { get; init; }
     public required DateTime End { get; init; }
     public decimal Balance { get; init; } = 100_000;
-    public double CommissionPerMillion { get; init; } = 30;
-    public double SpreadPips { get; init; } = 1;
+    // F87: null = venue-true CommissionType dispatch / per-bar recorded spread (tape/replay only).
+    // The cTrader venue requires explicit values — request validation rejects null there (R4), and
+    // the runner fails fast as a backstop.
+    public double? CommissionPerMillion { get; init; } = 30;
+    public double? SpreadPips { get; init; }
     public string DataMode { get; init; } = "m1";
     public string? DataFile { get; init; }
     public string? DataDir { get; init; }

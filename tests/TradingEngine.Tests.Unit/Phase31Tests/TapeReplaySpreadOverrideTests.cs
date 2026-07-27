@@ -33,8 +33,8 @@ public sealed class TapeReplaySpreadOverrideTests
             spreadPipsOverride: spreadPipsOverride);
     }
 
-    private static Bar Bar(decimal open, decimal high, decimal low, decimal close, int hour = 0)
-        => new(Eurusd, Timeframe.H1, T0.AddHours(hour), open, high, low, close, 1000);
+    private static Bar Bar(decimal open, decimal high, decimal low, decimal close, int hour = 0, decimal? spread = null)
+        => new(Eurusd, Timeframe.H1, T0.AddHours(hour), open, high, low, close, 1000, spread);
 
     private static List<ExecutionEvent> Drain(TapeReplayAdapter a)
     {
@@ -76,6 +76,41 @@ public sealed class TapeReplaySpreadOverrideTests
         fill.FillPrice!.Value.Value.Should().Be(1.1001m,
             "the run's spreadPips override (1 pip = 0.0001) must win over the registry's TypicalSpread (0.0002) — " +
             "this is what makes tape and cTrader use the SAME spread number for parity (PLAN.md P3(b))");
+    }
+
+    // F87: the decisive null-path test. Before F87 every run carried a non-null override (the DTO
+    // default was 1), so this branch — recorded per-bar spread pricing the fill — was unreachable.
+    // Null override + a bar carrying Spread must fill at THAT bar's spread, and a later bar with a
+    // different recorded spread must produce a different fill: the flat-spread world is provably gone.
+    [Fact]
+    public async Task NoOverride_BarWithRecordedSpread_FillsAtThatBarsSpread()
+    {
+        var adapter = MakeAdapter(spreadPipsOverride: null);
+        adapter.OnBarObserved(Bar(1.1000m, 1.1005m, 1.0995m, 1.1000m, spread: 0.00015m));
+
+        await SubmitLongMarket(adapter);
+
+        var fill = Drain(adapter).Single();
+        fill.FillPrice!.Value.Value.Should().Be(1.10015m,
+            "null override must fall through to the bar's RECORDED spread (0.00015), not the registry's TypicalSpread (0.0002)");
+    }
+
+    [Fact]
+    public async Task NoOverride_RecordedSpreadVariesPerBar_FillsVaryWithIt()
+    {
+        var adapter = MakeAdapter(spreadPipsOverride: null);
+
+        adapter.OnBarObserved(Bar(1.1000m, 1.1005m, 1.0995m, 1.1000m, hour: 0, spread: 0.00015m));
+        await SubmitLongMarket(adapter);
+
+        adapter.OnBarObserved(Bar(1.1000m, 1.1005m, 1.0995m, 1.1000m, hour: 1, spread: 0.00030m));
+        await SubmitLongMarket(adapter);
+
+        var fills = Drain(adapter);
+        fills.Should().HaveCount(2);
+        fills[0].FillPrice!.Value.Value.Should().Be(1.10015m, "first bar's recorded spread is 1.5 pips");
+        fills[1].FillPrice!.Value.Value.Should().Be(1.10030m,
+            "the SECOND bar's different recorded spread (3.0 pips) must price the second fill — a flat spread cannot do this");
     }
 
     [Fact]

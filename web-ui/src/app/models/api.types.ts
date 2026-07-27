@@ -64,8 +64,9 @@ export interface RunDetail {
   riskProfileId?: string | null;
   governorEnabled?: boolean;
   regimeEnabled?: boolean;
-  commissionPerMillion?: number;
-  spreadPips?: number;
+  // F87: null commission = venue-true dispatch; null spread = per-bar recorded spread.
+  commissionPerMillion?: number | null;
+  spreadPips?: number | null;
   wallElapsedMs: number;
   barsPerSec: number;
   totalBars: number;
@@ -248,7 +249,9 @@ export interface StartRunRequest {
   end: string;
   balance: number;
   commissionPerMillion: number;
-  spreadPips: number;
+  // F87: null (blank field) = per-bar recorded spread — the research default. The cTrader venue
+  // and compare-both still require an explicit number (the API rejects null there).
+  spreadPips: number | null;
   symbols: string[];
   periods: string[];
   strategyIds: string[];
