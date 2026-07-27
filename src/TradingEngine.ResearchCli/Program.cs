@@ -47,6 +47,9 @@ try
             return await PyramidEvalAsync(cli, baseUrl, timeout);
         case "persistence":
             return await PersistenceAsync(cli, baseUrl, timeout);
+        case "challenge-pipeline":
+            // iter-pass-economics E1: fully offline (CSV + config JSONs) — no base-url needed.
+            return await ChallengePipelineVerb.RunAsync(cli);
         case "score":
             return await ScoreAsync(cli, baseUrl, timeout);
         case "scoreboard":
@@ -874,6 +877,14 @@ static void PrintUsage()
           research persistence  --experiment <id-or-prefix> --split <yyyy-MM-dd> [--base 100000] [--json]
                                 (F64 split-half selection test — reproduces RESEARCH.md §1
                                  for any experiment; iter-structural-edge PLAN §5.)
+          research challenge-pipeline --daily-csv <path> --product swing-2step|standard-1step
+                                [--policy RP-A|RP-B|RP-C|all] [--reps 2000] [--seed 20260727]
+                                [--path-days 2500] [--mean-block 10] [--fee N] [--split 0.8]
+                                [--no-refund] [--payout-cycle 21] [--funded-horizon 520]
+                                [--config-dir config/prop-firms]
+                                (iter-pass-economics E1: challenge-pipeline EV MC — OFFLINE,
+                                 reads the extractor's daily CSV; prints EV per retry policy
+                                 next to the pooled daily-$ CI + MDE, D1 two-sided law.)
           research score        <runId> [--experiment <id>] [--variant <label>]
           research scoreboard   --experiment <id> [--top 20] [--out <path.md>]
           research doctor

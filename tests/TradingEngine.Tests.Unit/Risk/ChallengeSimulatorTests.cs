@@ -222,4 +222,120 @@ public sealed class ChallengeSimulatorTests
         result.Verdict.Should().Be(ChallengeVerdict.Fail);
         result.Reason.Should().Be("daily-loss-breach");
     }
+
+    // ---- FTMO Challenge: 1-Step semantics (iter-pass-economics E1, live-verified 2026-07-27) ----
+
+    private static readonly PropFirmRuleSet Ftmo1Step = new(
+        "ftmo-1step", "FTMO 1-Step", ChallengeSimulator.TrailingEodDrawdownType,
+        0.03, 0.10, 0.10, 0,
+        "BalancePlusFloatingMinusFeesAndSwaps", "00:00:00", "Europe/Prague",
+        true, "High", 0, 0, true, "21:00:00", "20:00:00", "NextTradingDay", false)
+    { BestDayMaxShare = 0.5 };
+
+    // The ML floor trails the highest EOD balance (recomputed after each close): banked gains
+    // RAISE the floor. Under the static rule this drawdown would be legal; under EOD-trailing
+    // it busts.
+    [Fact]
+    public void TrailingEodMaxLoss_FloorRisesWithBankedEodBalance()
+    {
+        var days = new[]
+        {
+            Day(0, 100_000, 105_000), // EOD balance 105k -> tomorrow's floor = 105k - 10k = 95k
+            Day(1, 105_000, 94_900),  // above the static 90k floor, below the trailed 95k floor
+        };
+
+        ChallengeSimulator.SimulateWindow(days, Ftmo1Step with { BestDayMaxShare = null })
+            .Verdict.Should().Be(ChallengeVerdict.Fail, "the trailed floor is 95k");
+        ChallengeSimulator.SimulateWindow(days, Ftmo1Step with { BestDayMaxShare = null, DrawdownType = "Fixed" })
+            .Reason.Should().NotBe("max-loss-breach", "the static floor is still 90k");
+    }
+
+    [Fact]
+    public void TrailingEodMaxLoss_GrindDownToTrailedFloor_BustsWhereStaticWouldNot()
+    {
+        // Floor trails the day-0 high close (109k -> 99k) while each later day stays inside
+        // the 3% MDL; the slow grind to 99k busts the trailing account. The same path under
+        // the static rule (floor 90k) never resolves at all.
+        var days = new[]
+        {
+            Day(0, 100_000, 109_000), // hwm 109k -> floor 99k from day 1 on
+            Day(1, 109_000, 106_500), // -2.5k/day: never a 3k daily breach
+            Day(2, 106_500, 104_000),
+            Day(3, 104_000, 101_500),
+            Day(4, 101_500, 99_000),  // 99k <= trailed floor 99k -> bust
+        };
+
+        var trailing = ChallengeSimulator.SimulateWindow(days, Ftmo1Step with { BestDayMaxShare = null });
+        trailing.Verdict.Should().Be(ChallengeVerdict.Fail);
+        trailing.Reason.Should().Be("max-loss-breach");
+        trailing.DayResolved.Should().Be(5);
+
+        ChallengeSimulator.SimulateWindow(days, Ftmo1Step with { BestDayMaxShare = null, DrawdownType = "Fixed" })
+            .Verdict.Should().Be(ChallengeVerdict.Incomplete, "the static floor is 90k and nothing else fires");
+    }
+
+    // Best Day rule: a single day > 50% of Positive Days' Profit is NOT a breach — it defers
+    // the pass until diluted (FTMO: "not considered a rule breach ... continue trading").
+    [Fact]
+    public void BestDayRule_DefersPass_UntilDiluted_ThenPasses()
+    {
+        var days = new[]
+        {
+            Day(0, 100_000, 108_000), // +8k best day
+            Day(1, 108_000, 111_000), // +3k; target reached but best day 8k > 50% of 11k -> deferred
+            Day(2, 111_000, 116_000), // +5k; positives 16k, best 8k = exactly 50% -> pass (50/50 legal)
+        };
+
+        var result = ChallengeSimulator.SimulateWindow(days, Ftmo1Step);
+
+        result.Verdict.Should().Be(ChallengeVerdict.Pass);
+        result.DayResolved.Should().Be(3);
+    }
+
+    [Fact]
+    public void BestDayRule_ExactFiftyFiftyTwoDayPass_IsLegal()
+    {
+        // FTMO's own exceptional case: exactly 50% of the target on each of two days.
+        var days = new[]
+        {
+            Day(0, 100_000, 105_000),
+            Day(1, 105_000, 110_000),
+        };
+
+        var result = ChallengeSimulator.SimulateWindow(days, Ftmo1Step);
+
+        result.Verdict.Should().Be(ChallengeVerdict.Pass);
+        result.DayResolved.Should().Be(2);
+    }
+
+    [Fact]
+    public void BestDayRule_WindowEndsWhileDeferred_IsIncomplete()
+    {
+        var days = new[]
+        {
+            Day(0, 100_000, 111_000), // +11k in one day — target hit, best day 100% of positives
+            Day(1, 111_000, 111_200), // +0.2k — still 11k/11.2k > 50%
+        };
+
+        var result = ChallengeSimulator.SimulateWindow(days, Ftmo1Step);
+
+        result.Verdict.Should().Be(ChallengeVerdict.Incomplete);
+    }
+
+    // Rule sets without the new fields must behave byte-identically (R1-style parity): the
+    // 1-step scenarios above, run under the unchanged ftmo-standard rules, keep their old verdicts.
+    [Fact]
+    public void LegacyRuleSets_AreUnaffectedByNewFields()
+    {
+        var days = new[]
+        {
+            Day(0, 100_000, 105_000),
+            Day(1, 105_000, 94_900), // static floor 90k: no ML breach; daily: 105k-5k=100k floor -> 94.9k breaches daily
+        };
+
+        var result = ChallengeSimulator.SimulateWindow(days, FtmoStandard);
+
+        result.Verdict.Should().Be(ChallengeVerdict.Fail);
+        result.Reason.Should().Be("daily-loss-breach");
+    }
 }

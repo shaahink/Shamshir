@@ -36,6 +36,14 @@ public sealed record ChallengeWindowResult(
 /// </summary>
 public static class ChallengeSimulator
 {
+    /// <summary>
+    /// `DrawdownType` value for the FTMO 1-Step EOD-trailing Max Loss (live-verified
+    /// 2026-07-27): the loss floor is recomputed once per day at the market close off the
+    /// highest end-of-day BALANCE seen so far (never below initial − MaxTotalLoss). All
+    /// pre-2026 rule sets use "Fixed" and keep the static floor byte-identically.
+    /// </summary>
+    public const string TrailingEodDrawdownType = "TrailingEod";
+
     public static ChallengeWindowResult SimulateWindow(IReadOnlyList<DailyEquityPoint> days, PropFirmRuleSet ruleSet)
     {
         if (days.Count == 0) throw new ArgumentException("Window must contain at least one day.", nameof(days));
@@ -45,11 +53,16 @@ public static class ChallengeSimulator
         var maxLossFloor = windowStartEquity * (1m - (decimal)ruleSet.MaxTotalLossPercent);
         var dailyLossLimit = windowStartEquity * (decimal)ruleSet.MaxDailyLossPercent;
         var isBalanceBased = ruleSet.DailyDdBase == DailyDdBase.InitialBalance;
+        var isTrailingEod = string.Equals(ruleSet.DrawdownType, TrailingEodDrawdownType, StringComparison.OrdinalIgnoreCase);
+        var maxLossAmount = windowStartEquity * (decimal)ruleSet.MaxTotalLossPercent;
+        var highestEodBalance = windowStartEquity;
 
         var tradingDays = 0;
         var worstDailyLossAmount = 0m;
         var worstDailyLossPercent = 0.0;
         var targetReached = false;
+        var bestDayPnL = 0m;
+        var positiveDaysProfit = 0m;
 
         // FTMO Max Daily Loss (verified 2026-07-16, academy.ftmo.com/lesson/maximum-daily-loss):
         // the day's equity floor = balance at the previous midnight CE(S)T − MaxDailyLoss% ×
@@ -73,6 +86,14 @@ public static class ChallengeSimulator
                 worstDailyLossPercent = (double)(dailyLossAmount / windowStartEquity);
             }
 
+            // TrailingEod: today's floor derives from the highest EOD balance of PRECEDING days
+            // (the limit is recomputed after each market close, so today trades against
+            // yesterday's high-water mark); it can only rise, never below initial − MaxLoss.
+            if (isTrailingEod)
+            {
+                maxLossFloor = highestEodBalance - maxLossAmount;
+            }
+
             if (dayMinEquity <= maxLossFloor)
             {
                 return Resolve(ChallengeVerdict.Fail, i, "max-loss-breach");
@@ -86,14 +107,29 @@ public static class ChallengeSimulator
                 return Resolve(ChallengeVerdict.Fail, i, "daily-loss-breach");
             }
 
+            var dayPnL = day.EndEquity - day.StartEquity;
+            if (dayPnL > 0)
+            {
+                positiveDaysProfit += dayPnL;
+                if (dayPnL > bestDayPnL) bestDayPnL = dayPnL;
+            }
+
             if (day.EndEquity >= targetEquity) targetReached = true;
 
-            if (targetReached && tradingDays >= ruleSet.MinTradingDays)
+            // Best Day rule (1-Step): pass eligibility requires the best day to be AT OR BELOW
+            // the share of Positive Days' Profit (50/50 on exactly two days is a legal pass);
+            // an over-share day defers the pass — the attempt keeps walking until diluted.
+            var bestDayOk = ruleSet.BestDayMaxShare is not { } share
+                || bestDayPnL <= (decimal)share * positiveDaysProfit;
+
+            if (targetReached && tradingDays >= ruleSet.MinTradingDays && bestDayOk)
             {
                 return Resolve(ChallengeVerdict.Pass, i, "target-reached");
             }
 
             prevCloseBalance = day.EndBalance ?? day.EndEquity;
+            var eodBalance = day.EndBalance ?? day.EndEquity;
+            if (eodBalance > highestEodBalance) highestEodBalance = eodBalance;
         }
 
         return Resolve(ChallengeVerdict.Incomplete, days.Count - 1, "window-elapsed-no-resolution");

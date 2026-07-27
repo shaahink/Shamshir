@@ -1,0 +1,99 @@
+{
+  "product": "swing-2step",
+  "csv": "docs/iterations/iter-pass-economics/data/v2-session-breakout.daily.csv",
+  "tradingDays": 1487,
+  "fee": 540,
+  "split": 0.8,
+  "refundOnFirstPayout": true,
+  "options": {
+    "Replicates": 2000,
+    "PathTradingDays": 2500,
+    "MeanBlockTradingDays": 10,
+    "Seed": 20260727,
+    "InitialBalance": 100000
+  },
+  "policies": {
+    "RP-A": {
+      "ProductId": "swing-2step",
+      "Replicates": 2000,
+      "PFunded": 0.1635,
+      "AttemptPassRate": 0.1635,
+      "FirstAttemptPassRate": 0.1635,
+      "PhasePassRates": [
+        0.323,
+        0.5061919504643962
+      ],
+      "MeanAttempts": 1,
+      "MeanTradingDaysToFunded": 50.70030581039755,
+      "PFundedBust": 1,
+      "MeanPayoutCount": 0.1575,
+      "MeanPipelineNet": 272.209808,
+      "MedianPipelineNet": -540,
+      "P5PipelineNet": -540,
+      "P95PipelineNet": 5591.464,
+      "PipelineNetSd": 3551.89570583046,
+      "McStandardError": 79.42280247226503595350520852,
+      "CensoredReplicates": 0,
+      "FundedHorizonTruncated": 0,
+      "SourceMeanDailyNet": -69.973792871553463349024882313,
+      "SourceDailyNetCiLow": -163.7553665097511768661735037,
+      "SourceDailyNetCiHigh": 24.035050437121721587088096839,
+      "SourceDailyNetMde": 133.68573835500837472
+    },
+    "RP-B": {
+      "ProductId": "swing-2step",
+      "Replicates": 2000,
+      "PFunded": 0.652,
+      "AttemptPassRate": 0.1629185407296352,
+      "FirstAttemptPassRate": 0.1635,
+      "PhasePassRates": [
+        0.32346326836581707,
+        0.503669370413287
+      ],
+      "MeanAttempts": 4.002,
+      "MeanTradingDaysToFunded": 118.06825153374233,
+      "PFundedBust": 1,
+      "MeanPayoutCount": 0.588,
+      "MeanPipelineNet": 847.473692,
+      "MedianPipelineNet": -1620,
+      "P5PipelineNet": -3240,
+      "P95PipelineNet": 15273.592,
+      "PipelineNetSd": 6823.29834204756,
+      "McStandardError": 152.57358923579953662376506078,
+      "CensoredReplicates": 0,
+      "FundedHorizonTruncated": 0,
+      "SourceMeanDailyNet": -69.973792871553463349024882313,
+      "SourceDailyNetCiLow": -163.7553665097511768661735037,
+      "SourceDailyNetCiHigh": 24.035050437121721587088096839,
+      "SourceDailyNetMde": 133.68573835500837472
+    },
+    "RP-C": {
+      "ProductId": "swing-2step",
+      "Replicates": 2000,
+      "PFunded": 0.301,
+      "AttemptPassRate": 0.16389872039205008,
+      "FirstAttemptPassRate": 0.1635,
+      "PhasePassRates": [
+        0.3237135856248298,
+        0.5063078216989066
+      ],
+      "MeanAttempts": 1.8365,
+      "MeanTradingDaysToFunded": 65.97674418604652,
+      "PFundedBust": 1,
+      "MeanPayoutCount": 0.284,
+      "MeanPipelineNet": 449.38484,
+      "MedianPipelineNet": -1080,
+      "P5PipelineNet": -1080,
+      "P95PipelineNet": 10211.560,
+      "PipelineNetSd": 4628.49555165865,
+      "McStandardError": 103.49630687064129481476948286,
+      "CensoredReplicates": 0,
+      "FundedHorizonTruncated": 0,
+      "SourceMeanDailyNet": -69.973792871553463349024882313,
+      "SourceDailyNetCiLow": -163.7553665097511768661735037,
+      "SourceDailyNetCiHigh": 24.035050437121721587088096839,
+      "SourceDailyNetMde": 133.68573835500837472
+    }
+  }
+}
+VERDICT: PASS product=swing-2step days=1487 dailyMean=-69.97 dailyCi=[-163.76,24.04] dailyMde=133.69 evRP-A=272.21 pFundedRP-A=0.16 evRP-B=847.47 pFundedRP-B=0.65 evRP-C=449.38 pFundedRP-C=0.3
