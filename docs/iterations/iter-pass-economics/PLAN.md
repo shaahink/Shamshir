@@ -1,6 +1,6 @@
 # iter-pass-economics — honest costs, a windowed objective, a broader box
 
-**Status: DRAFT (2026-07-27) — owner ratifies at GE0.** Successor program drafted after the GV4
+**Status: RATIFIED — GE0 passed 2026-07-27 (owner "proceed"; D1–D8 adopted unedited).** Successor program drafted after the GV4
 clean stop, from `docs/AUDIT-POST-VIABILITY-2026-07.md` (the four-pass audit) + owner direction
 (2026-07-27). Nothing here relitigates GV4: the parks stand *at the cost model that ran*. This
 program changes the three things the audit shows were actually binding — the cost model (never

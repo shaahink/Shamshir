@@ -61,11 +61,17 @@ venue (IBrokerAdapter)                 Host shell                        Pure ke
 
 ### Multi-symbol / multi-timeframe
 
-`RunPlan` is row-based: `[{StrategyId, Symbol, Timeframe, PackId}]` — a run executes N rows on
-one account (this is also what a future portfolio run is). `StrategyBankService.GetActive`
+`RunPlan` is row-based: `[{StrategyId, Symbol, Timeframe, PackId}]`. **Rows do NOT share one
+account** (corrected 2026-07-27, post-viability audit): the runner groups rows by
+`(symbol, timeframe)` and executes them as **sequential passes, each in its own engine host
+with a fresh starting balance** (`ReplayVenueRunner.cs:175` pass loop, `:250`
+`InitialBalance = cfg.Balance`). Only strategies on the SAME (symbol, timeframe) coexist in a
+pass and share that pass's account. A true shared-account portfolio run (cross-symbol
+positions against one equity) is **unbuilt** — medium lift, tape-only (see
+`docs/AUDIT-POST-VIABILITY-2026-07.md` §5). `StrategyBankService.GetActive`
 filters by run plan + regime; indicator snapshots are keyed
-`(symbol, timeframe, type, period, param)` to prevent cross-strategy bleed. Risk is unified
-across all rows: concurrent-position, exposure, and budget caps are account-global.
+`(symbol, timeframe, type, period, param)` to prevent cross-strategy bleed. Risk caps
+(concurrent-position, exposure, budget) are account-global **within a pass**.
 
 ---
 
