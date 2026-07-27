@@ -565,6 +565,19 @@ and the gate that decides its center of gravity (PLAN V2).
   (`TapeReplayAdapter` P6.2: per-bar Spread when present; `TypicalSpread` fallback is reachable
   on <0.01% of bars, so F77's degenerate constants are immaterial here). D3's letter
   ("recorded per-bar spread where available") is satisfied by data, not assumption.
+
+  > **[CORRECTION 2026-07-27 — F87, post-viability audit. This claim was FALSE for every
+  > scored run.]** The per-bar path exists but was never reached: `StartRunRequest.SpreadPips`
+  > is non-nullable `double = 1` and `ReplayVenueRunner.cs:227` passes it unconditionally, so
+  > the top-priority `spreadPipsOverride` branch in `TapeReplayAdapter.GetSpread()` won on
+  > every V2/V4 census run — **all fills charged a flat 1-pip spread**; the recorded Dukascopy
+  > Spread column was never read on tape. FX majors were over-taxed ~2× (EURUSD median
+  > ≈0.4 pip), JPY ≈wash, metals/crypto under-taxed 60–500×. The sensitivity stress below
+  > therefore stressed the wrong base. Verdict direction for the FX-major censuses is safe
+  > (costs were overstated); metals/crypto positives in V2 were cost-understated via the
+  > override (not via the F77 fallback as §V2 argued — right dismissal, wrong mechanism).
+  > Full decomposition: `docs/AUDIT-POST-VIABILITY-2026-07.md` §2. Fix: F87
+  > (iter-pass-economics E0) makes `SpreadPips` nullable, null ⇒ recorded per-bar spread.
 - **Why raw is defensible as the base case:** F76 measured the venue's effective bid offset at
   Dukascopy half-spread scale for FX (venue spread ≈ duka spread scale); duka's XAUUSD median
   ($0.63, 2025 overlap) is at/above the real-world venue range (~$0.30–0.60, F77); FX medians
