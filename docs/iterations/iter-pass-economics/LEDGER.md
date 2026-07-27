@@ -73,13 +73,37 @@ GE1 closes when: flipped pinned tests green; one probe cell demonstrably charges
 per-bar spread + venue-true commission (queries pasted, not asserted); `Net = Gross + Comm +
 Swap` exact; fast suites green. Lane R re-verifies the agent's P6 evidence before ratifying.
 
-### RESUME (next session)
+### Session 1 addendum — 2026-07-27 (same day, owner rulings)
 
-- **Lane D (implementation agent):** execute `F87-COST-TRUTH-PLAN.md` on a branch
-  (`iter/pass-economics-f87`), P0→P6, handover to `F87-HANDOVER.md`.
-- **Lane R (next research session):** E1 objective truth can start NOW, in parallel, offline —
-  assessment inventory (quantify governor/regime-blocked entries in V2/V4 journals),
-  challenge-pipeline-EV MC on `ChallengeSimulator`/`PassProbabilityEstimator`, zero-edge floor.
-  GV0 resolves inside E1 (owner picks account type; author `ftmo-1step` ruleset if wanted).
-- **Owner:** run the backup (above); GE2 will need your account-type pick (E1.2).
+- **Executor clarification (owner):** there is NO OpenCode/DeepSeek agent — all lanes are
+  driven by Claude sessions (or another model), one session at a time, owner-dispatched.
+  "Lane D" in this program = a separate implementation session executing a phased plan doc.
+  F87 executor: a fresh Claude session running `F87-COST-TRUTH-PLAN.md` as written.
+- **Backup ruling (owner defers, blocker question answered):** the off-machine backup is NOT a
+  blocker for E1/GV0 — that work is offline and creates no new irreplaceable state. It IS
+  mandatory **before E2's scored re-runs** write new results into trading.db. E0(a) stays a
+  standing debt until then; script is ready (`tools/ops/backup-offmachine.ps1`).
+- **GV0 owner directive (final signature still at GE2):** model **BOTH** products at $100k and
+  compare pipeline-EV: **Swing as the 2-step** and **Standard as the 1-step** (owner's
+  understanding of the current FTMO lineup; owner also notes prior measurements ran on
+  partly-broken machinery — anchor nothing on them). E1 must live-verify the current product
+  terms first (V0 practice, citations); if the lineup contradicts the Standard=1-step mapping,
+  STOP and present the actual product table to the owner before authoring rulesets.
+- **E1 handoff prepared:** `E1-SESSION-BRIEF.md` written this session — self-contained brief
+  for a fresh Lane R session (deliverables 1–3, GV0 directive, tooling/data pointers
+  [`ChallengeSimulator`/`PassProbabilityEstimator` at `src/TradingEngine.Risk/Compliance/`,
+  ruleset JSONs at `config/prop-firms/`, V2 exp `4F56B1AE` / V4 exp `5D06CE0B`], observability
+  caveats [census `SkipJournal` may have suppressed journals — check first; regime-gated
+  strategies likely invisible pre-journal], hard constraints).
+
+### RESUME (next session — owner dispatches ONE of these)
+
+- **E1 (Lane R, ready NOW):** fresh session reads `E1-SESSION-BRIEF.md` and executes.
+  Delivers the objective definition, `ftmo-1step` ruleset (or the STOP-and-ask), zero-edge
+  floors, assessment inventory. GV0 signature lands at GE2.
+- **F87 (Lane D, ready NOW):** fresh session executes `F87-COST-TRUTH-PLAN.md` P0→P6 on
+  branch `iter/pass-economics-f87`, handover to `F87-HANDOVER.md`. Closes GE1 after Lane R
+  re-verifies the P6 probe.
+- The two are file-disjoint and may run in either order (or interleaved sessions).
+- **Owner:** backup when a destination drive is available (must precede E2 re-runs).
 - Standing debt unchanged: L0 live compare-both smoke at next cTrader session.
