@@ -29,6 +29,7 @@ public static class KernelFeedback
                 NetProfit = e.NetProfit,
                 Commission = e.Commission,
                 Swap = e.Swap,
+                SpreadCost = e.SpreadCost,
                 CloseReason = e.CloseReason,
                 ExcursionPathJson = e.ExcursionPathJson,
             },

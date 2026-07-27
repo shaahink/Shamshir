@@ -34,6 +34,10 @@ public record OrderFilled(Guid OrderId, Symbol Symbol, decimal FilledLots, Price
     public decimal? Commission { get; init; }
     public decimal? Swap { get; init; }
 
+    /// <summary>F87 P3: carried from <see cref="ExecutionEvent.SpreadCost"/> — what crossing the
+    /// spread cost this trade (negative). Null unless the venue computed it.</summary>
+    public decimal? SpreadCost { get; init; }
+
     /// <summary>
     /// Venue-authoritative reason for a close fill (SL / TP / STOPOUT / CLOSED). Carried from the
     /// <see cref="ExecutionEvent.CloseReason"/> by <see cref="KernelFeedback.FromExecution"/> so the

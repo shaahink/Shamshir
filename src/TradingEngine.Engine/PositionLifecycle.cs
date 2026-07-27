@@ -132,7 +132,7 @@ public static class PositionLifecycle
                     OrderId: state.OrderId, OrderEntryMethod: state.OrderEntryMethod,
                     HighWater: state.HighWater, LowWater: state.LowWater,
                     GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
-                    Commission: evt.Commission, Swap: evt.Swap,
+                    Commission: evt.Commission, Swap: evt.Swap, SpreadCost: evt.SpreadCost,
                     EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
                     InitialStopLoss: state.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
             };
@@ -151,7 +151,7 @@ public static class PositionLifecycle
                 OrderId: closed.OrderId, OrderEntryMethod: state.OrderEntryMethod,
                 HighWater: closed.HighWater, LowWater: closed.LowWater,
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
-                Commission: evt.Commission, Swap: evt.Swap,
+                Commission: evt.Commission, Swap: evt.Swap, SpreadCost: evt.SpreadCost,
                 EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
                 InitialStopLoss: closed.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
         };
@@ -221,7 +221,7 @@ public static class PositionLifecycle
                 OrderId: closed.OrderId, OrderEntryMethod: state.OrderEntryMethod,
                 HighWater: closed.HighWater, LowWater: closed.LowWater,
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
-                Commission: evt.Commission, Swap: evt.Swap,
+                Commission: evt.Commission, Swap: evt.Swap, SpreadCost: evt.SpreadCost,
                 EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
                 InitialStopLoss: closed.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
         };
@@ -257,7 +257,7 @@ public static class PositionLifecycle
                 OrderId: closed.OrderId, OrderEntryMethod: state.OrderEntryMethod,
                 HighWater: closed.HighWater, LowWater: closed.LowWater,
                 GrossProfit: evt.GrossProfit, NetProfit: evt.NetProfit,
-                Commission: evt.Commission, Swap: evt.Swap,
+                Commission: evt.Commission, Swap: evt.Swap, SpreadCost: evt.SpreadCost,
                 EntryReason: state.EntryReason, EntryRegime: state.EntryRegime,
                 InitialStopLoss: closed.InitialStopLoss, ExcursionPathJson: evt.ExcursionPathJson)
         };

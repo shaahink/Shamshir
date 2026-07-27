@@ -40,7 +40,9 @@ public record RecordDecisionEvent(DecisionRecord Decision) : EngineEffect;
 // trailing). EffectExecutor uses InitialStopLoss — never StopLoss — for the R-multiple calculation.
 // ExcursionPathJson (P3.1): the recorded MAE/MFE path (compact JSON array), carried from
 // ExecutionEvent.ExcursionPathJson -> OrderFilled.ExcursionPathJson. Null unless the venue recorded one.
-public record PublishTradeClosed(Guid PositionId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price ExitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, string ExitReason, DateTime ClosedAtUtc, DateTime OpenedAtUtc, Guid OrderId = default, string? RiskProfileId = null, string OrderEntryMethod = "Market", decimal? GrossProfit = null, decimal? NetProfit = null, decimal? Commission = null, decimal? Swap = null, decimal HighWater = 0, decimal LowWater = 0, string? EntryReason = null, string? EntryRegime = null, string? EntrySnapshotJson = null, Price InitialStopLoss = default, string? ExcursionPathJson = null) : EngineEffect;
+// SpreadCost (F87 P3): what crossing the spread cost this trade in account currency, negative —
+// carried from ExecutionEvent.SpreadCost via OrderFilled. Null unless the venue computed it.
+public record PublishTradeClosed(Guid PositionId, Symbol Symbol, TradeDirection Direction, decimal Lots, Price EntryPrice, Price ExitPrice, Price StopLoss, Price? TakeProfit, string StrategyId, string ExitReason, DateTime ClosedAtUtc, DateTime OpenedAtUtc, Guid OrderId = default, string? RiskProfileId = null, string OrderEntryMethod = "Market", decimal? GrossProfit = null, decimal? NetProfit = null, decimal? Commission = null, decimal? Swap = null, decimal HighWater = 0, decimal LowWater = 0, string? EntryReason = null, string? EntryRegime = null, string? EntrySnapshotJson = null, Price InitialStopLoss = default, string? ExcursionPathJson = null, decimal? SpreadCost = null) : EngineEffect;
 
 public record RegisterRisk(Guid PositionId, string StrategyId, decimal RiskAmount) : EngineEffect;
 

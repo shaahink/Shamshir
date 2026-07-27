@@ -93,9 +93,11 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
     private int _exitIndex;
     private DateTime _lastDecisionBarTime = DateTime.MinValue;
 
+    // EntrySpread (F87 P3): the spread (price units) in force at the ENTRY fill. Only a LONG crosses
+    // it there (buys at ask, P0.2/D3), so it is 0 for shorts — a short crosses at EXIT instead.
     private sealed record OpenTrade(
         TradeDirection Direction, decimal EntryPrice, decimal Lots, DateTime OpenedAtUtc, Price StopLoss, Price? TakeProfit,
-        decimal EntryCommission = 0m);
+        decimal EntryCommission = 0m, decimal EntrySpread = 0m);
 
     private sealed class PendingLimit
     {
@@ -448,9 +450,13 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             lots, symbolInfo, fillPrice, _crossRateProvider, _commissionPerMillion);
         _balance += entryCommission;
 
+        // F87 P3: a LONG entry filled at the ask, so it crossed GetSpread() — the same value every
+        // caller used to build the fill price this bar. A short entry fills at raw bid: no crossing.
+        var entrySpread = direction == TradeDirection.Long ? GetSpread() : 0m;
+
         EmitExecutionEvent(
             new ExecutionEvent(orderId, OrderState.Filled, new Price(fillPrice), lots, null, BrokerTimeUtc) { Symbol = _symbol });
-        _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc, sl, tp, entryCommission);
+        _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc, sl, tp, entryCommission, entrySpread);
         EmitAccountUpdate(BrokerTimeUtc);
     }
 
@@ -634,6 +640,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 Commission = costs.Commission,
                 Swap = costs.Swap,
                 NetProfit = costs.NetProfit,
+                // A short's SL/TP fill came off the ask-shifted bar, so its exit crossed `spread`.
+                SpreadCost = ComputeSpreadCost(trade, fillPrice, exitSpreadApplied: spread),
                 Symbol = _symbol,
                 CloseReason = reason,
                 ExcursionPathJson = TakeExcursionPathJson(orderId),
@@ -658,16 +666,22 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
         // Long closes by selling at bid (raw); short closes by buying at ask (bid + full spread).
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
-            var exitPrice = trade.Direction == TradeDirection.Long ? mid : SpreadConvention.AskPrice(mid, spread);
-            return CloseAtAsync(positionId, new Price(exitPrice));
+            var isLong = trade.Direction == TradeDirection.Long;
+            var exitPrice = isLong ? mid : SpreadConvention.AskPrice(mid, spread);
+            // F87 P3: this path applied `spread` to a short's exit itself, so charge it.
+            return CloseAtAsync(positionId, new Price(exitPrice), exitSpreadApplied: isLong ? 0m : spread);
         }
-        return CloseAtAsync(positionId, new Price(mid));
+        return CloseAtAsync(positionId, new Price(mid), exitSpreadApplied: 0m);
     }
 
+    // F87 P3: the engine hands this path a concrete price (e.g. a kernel-detected stop level) — the
+    // venue applies no spread of its own here, so a short's exit crossing is unknowable and recorded
+    // as 0 (under-reports SpreadCost for shorts on this rare path; keeps SignalPnL ≡ Gross − SpreadCost
+    // exact w.r.t. the prices actually used).
     public Task ClosePositionAtAsync(Guid positionId, Price exitPrice, CancellationToken ct)
-        => CloseAtAsync(positionId, exitPrice);
+        => CloseAtAsync(positionId, exitPrice, exitSpreadApplied: 0m);
 
-    private Task CloseAtAsync(Guid positionId, Price fillPrice)
+    private Task CloseAtAsync(Guid positionId, Price fillPrice, decimal exitSpreadApplied)
     {
         if (_openTrades.TryGetValue(positionId, out var trade))
         {
@@ -682,6 +696,7 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 Commission = costs.Commission,
                 Swap = costs.Swap,
                 NetProfit = costs.NetProfit,
+                SpreadCost = ComputeSpreadCost(trade, fillPrice.Value, exitSpreadApplied),
                 Symbol = _symbol,
                 ExcursionPathJson = TakeExcursionPathJson(positionId),
             });
@@ -718,6 +733,10 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 Commission = costs.Commission,
                 Swap = costs.Swap,
                 NetProfit = costs.NetProfit,
+                // F87 P3: this leg fills at raw _lastClose for BOTH directions (existing convention,
+                // R3) — a short's partial exit crosses no spread here, so only a long's prorated
+                // entry toll applies (partialTrade.Lots is the leg's lots).
+                SpreadCost = ComputeSpreadCost(partialTrade, fillPrice.Value, exitSpreadApplied: 0m),
                 Symbol = _symbol,
             });
 
@@ -753,6 +772,31 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
                 ? (exitPrice - trade.EntryPrice) * trade.Lots
                 : (trade.EntryPrice - exitPrice) * trade.Lots;
             return new TradeCosts(grossPnl, 0, 0, grossPnl, 0);
+        }
+    }
+
+    // F87 P3: what crossing the spread cost this (leg of a) trade, in account currency, NEGATIVE (R2).
+    // Exactly one side of a round trip crosses the spread in this venue's fill model (P0.2/D3): a LONG
+    // at entry (recorded on OpenTrade.EntrySpread), a SHORT at exit — priced at the spread the exit
+    // fill actually applied, which the caller passes in (0 when it applied none, e.g. a partial close
+    // at raw bid or an engine-priced ClosePositionAtAsync). Same pip value as the Gross computation
+    // (PipValuePerLot at the exit price), so SignalPnL ≡ Gross − SpreadCost is exact bid-to-bid.
+    // trade.Lots is already the LEG's lots on a partial close, so proration matches EntryCommission.
+    private decimal ComputeSpreadCost(OpenTrade trade, decimal exitPrice, decimal exitSpreadApplied)
+    {
+        var spreadPaid = trade.Direction == TradeDirection.Long ? trade.EntrySpread : exitSpreadApplied;
+        if (spreadPaid == 0m) return 0m;
+        try
+        {
+            var symbolInfo = _symbolRegistry.Get(_symbol);
+            if (symbolInfo.PipSize <= 0m) return 0m;
+            var pipValue = PipCalculator.PipValuePerLot(symbolInfo, exitPrice, _crossRateProvider);
+            return -(spreadPaid / symbolInfo.PipSize) * pipValue * trade.Lots;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "TapeReplay: spread cost calc failed for {Symbol} at exit {ExitPrice} — recording 0", _symbol, exitPrice);
+            return 0m;
         }
     }
 

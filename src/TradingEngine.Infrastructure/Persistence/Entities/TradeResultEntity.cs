@@ -25,6 +25,11 @@ public sealed class TradeResultEntity : IAuditableEntity
     public string CommissionCurrency { get; set; } = "";
     public decimal SwapAmount { get; set; }
     public string SwapCurrency { get; set; } = "";
+    // F87 P3 (M55): what crossing the spread cost this trade, negative (R2). NOT in the Net identity
+    // (spread lives inside Gross via fill prices): SignalPnL = GrossPnLAmount - SpreadCostAmount.
+    // 0 for venues that don't compute it (BacktestReplayAdapter, cTrader, journal backfill) and for
+    // every pre-F87 row.
+    public decimal SpreadCostAmount { get; set; }
     public decimal NetPnLAmount { get; set; }
     public string NetPnLCurrency { get; set; } = "";
     public double PnLPips { get; set; }
