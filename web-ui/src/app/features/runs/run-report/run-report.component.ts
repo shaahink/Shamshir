@@ -733,10 +733,12 @@ export class RunReportComponent implements OnInit {
     const d = this.store.selectedRun();
     return d ? d.totalTrades === this.trades().length : false;
   });
+  // commissionAmount / swapAmount are stored already-signed (costs are negative),
+  // so the gross-minus-costs identity is a sum, not a subtraction.
   recCostOk = computed(
     () =>
       Math.abs(
-        this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + (t.netPnLAmount ?? 0), 0),
+        this.grossTotal() + this.commTotal() + this.swapTotal() - this.trades().reduce((s, t) => s + (t.netPnLAmount ?? 0), 0),
       ) < 0.01,
   );
 
