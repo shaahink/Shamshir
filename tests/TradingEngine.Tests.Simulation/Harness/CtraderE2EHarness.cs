@@ -267,8 +267,10 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
 
                 using var scope = _host.Services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
-                var barEvalCount = await db.BarEvaluations.CountAsync(e => e.RunId == Artifacts.RunId, ct);
-                if (barEvalCount > 0)
+                // iter-36 K5: completion is detected from the single StepRecord journal (JournalEntries) —
+                // the old BarEvaluations table is no longer written by the kernel engine.
+                var journalCount = await db.JournalEntries.CountAsync(e => e.RunId == Artifacts.RunId, ct);
+                if (journalCount > 0)
                 {
                     await Task.Delay(2000, ct); // let final persistence settle
                     return;
@@ -314,7 +316,9 @@ public sealed class CtraderE2EHarness : IAsyncDisposable
                 using var scope = _host.Services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
                 trades = db.Trades.Count(t => t.RunId == Artifacts.RunId);
-                barEvals = db.BarEvaluations.Count(e => e.RunId == Artifacts.RunId);
+                // iter-36 K5: "bars flowed" is now measured by StepRecord journal entries (the single
+                // journal); the BarEvaluations table is no longer written.
+                barEvals = db.JournalEntries.Count(e => e.RunId == Artifacts.RunId);
 
                 var dbTrades = db.Trades.Where(t => t.RunId == Artifacts.RunId)
                     .OrderBy(t => t.ClosedAtUtc).ToList();

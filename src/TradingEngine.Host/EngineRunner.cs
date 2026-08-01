@@ -1,4 +1,6 @@
 using TradingEngine.Engine;
+using Microsoft.Extensions.DependencyInjection;
+using TradingEngine.Infrastructure.Adapters;
 using TradingEngine.Risk.Filters;
 using TradingEngine.Services;
 using TradingEngine.Services.Helpers;
@@ -35,11 +37,14 @@ public sealed class EngineRunner
     private readonly IEffectExecutor _effects;
     private readonly IEventBus _eventBus;
     private readonly IProgress<BacktestProgressEvent>? _progress;
+    private readonly IEquitySink? _equitySink;
+    private readonly IServiceScopeFactory? _scopeFactory;
     private readonly IJournalWriter _journal;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
 
     private readonly IndicatorSnapshotService _indicatorSnapshot;
     private readonly BarEvaluator _evaluator;
+    private readonly KernelTrailingEvaluator _trailing;
 
     private long _barCount;
 
@@ -64,6 +69,8 @@ public sealed class EngineRunner
             ?? throw new InvalidOperationException("EffectExecutor is required for the kernel engine (iter-36 K4).");
         _eventBus = deps.Persistence.EventBus;
         _progress = deps.Persistence.Progress;
+        _equitySink = deps.Persistence.EquitySink;
+        _scopeFactory = deps.Persistence.ScopeFactory;
         _journal = deps.Persistence.StepJournal ?? new NullJournalWriter();
         _logger = logger;
 
@@ -73,6 +80,8 @@ public sealed class EngineRunner
             deps.Strategies.EntryPlanner, _symbolRegistry, _crossRate,
             deps.Risk.NewsFilter, deps.Risk.SessionFilter, _riskManager, _riskProfileResolver,
             deps.Risk.Governor, logger);
+        _trailing = new KernelTrailingEvaluator(
+            deps.Strategies.PositionManager, _symbolRegistry, _indicatorSnapshot, _strategies);
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -85,7 +94,7 @@ public sealed class EngineRunner
                 _signalGate.RegisterStrategy(s.Config);
         }
 
-        _broker.RegisterConnectedHandler(() => { _indicatorSnapshot.Reset(); _evaluator.Reset(); });
+        _broker.RegisterConnectedHandler(() => { _indicatorSnapshot.Reset(); _evaluator.Reset(); _trailing.Reset(); });
         _broker.RegisterReconcileHandler(state =>
         {
             // Keep the RiskManager's risk-amount tracker's equity level fresh (the kernel owns DD/protection).
@@ -120,8 +129,34 @@ public sealed class EngineRunner
 
         var finalState = await loop.RunFromBrokerAsync(initialState, ct);
 
+        await FlushBacktestEquityAsync(ct);
+
         _logger.LogInformation("Kernel engine stopped. Bars={Bars} OpenPositions={Open}",
             Interlocked.Read(ref _barCount), finalState.Positions.Count);
+    }
+
+    // iter-37 K-GAP-2: at the end of a backtest, flush the in-memory BufferedEquitySink to the
+    // EquitySnapshots table in one batched write so GET /api/runs/{id}/equity (which reads the table) is no
+    // longer empty for a finished backtest. Live runs use PersistentEquitySink (per-bar), so this is a no-op.
+    private async Task FlushBacktestEquityAsync(CancellationToken ct)
+    {
+        if (_engineMode != EngineMode.Backtest || _scopeFactory is null) return;
+        if (_equitySink is not BufferedEquitySink buffered) return;
+
+        var snapshots = buffered.GetSnapshots();
+        if (snapshots.Count == 0) return;
+
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var repo = scope.ServiceProvider.GetRequiredService<IEquityRepository>();
+            await EquitySnapshotFlush.FlushAsync(snapshots, repo, _engineMode, _runContext.RunId, ct);
+            _logger.LogInformation("Flushed {Count} backtest equity snapshots to EquitySnapshots", snapshots.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to flush backtest equity snapshots");
+        }
     }
 
     private KernelBacktestLoop BuildKernelLoop(decimal initialBalance)
@@ -145,7 +180,11 @@ public sealed class EngineRunner
             initialBalance, _runContext.RunId, _logger,
             captureRisk: RiskSnapshots.Capture,
             realizedEquity: null,                // production = mark-to-market via the venue AccountStream
-            onBarProcessed: ReportBar);
+            onBarProcessed: ReportBar,
+            evaluateTrailing: _trailing.Evaluate,
+            // iter-36 K-GAP-1: drive the prop-firm day/week/month resets off the active ruleset's reset clock
+            // so multi-day runs re-base drawdown + reset the governor (C4/H7). Single-day golden never crosses.
+            resetConfig: ResetConfig.FromRuleSet(ruleSet.DailyResetTimeUtc, ruleSet.DailyResetTimezone));
     }
 
     private void ReportBar(Bar bar, EngineState state)
@@ -156,18 +195,21 @@ public sealed class EngineRunner
             $"Bar {bar.OpenTimeUtc:yyyy-MM-dd HH:mm} | close={bar.Close:F5} | total={Interlocked.Read(ref _barCount)}",
             _clock.UtcNow));
 
-        // Surface the evaluator's per-strategy verdicts as BarEvaluated events — the BarEvaluationHandler
-        // persists them (the BarEvaluations table the UI + e2e completion-poll read). The StepRecord
-        // journal also carries them (K1/K5); this keeps the legacy table populated until it's subsumed.
-        var verdicts = _evaluator.Latest.Verdicts;
-        for (var i = 0; i < verdicts.Count; i++)
-        {
-            var v = verdicts[i];
-            _ = _eventBus.PublishAsync(new BarEvaluated(
-                _runContext.RunId, bar.Symbol, bar.Timeframe, bar.OpenTimeUtc,
-                v.StrategyId, v.Indicators ?? new Dictionary<string, double>(),
-                v.SignalFired, v.Direction, v.Reason, _clock.UtcNow), CancellationToken.None);
-        }
+        // gap-4: persist an equity/DD snapshot from the AUTHORITATIVE EngineState so the Monitor (which polls
+        // IAccountSnapshotStore) isn't blank under the kernel engine. Was AccountProcessor's job — now the
+        // kernel owns drawdown/equity, so the snapshot is read straight off state (sim-time stamped).
+        _equitySink?.Observe(KernelEquitySnapshot.From(state, bar.OpenTimeUtc, _runContext.RunId));
+
+        // iter-37 K-GAP-3: persist the per-run bar so the chart renders for LIVE + non-catalog runs (a
+        // backtest over catalog data already has bars; BarQueryService dedups by timestamp, so the extra
+        // per-run copy is harmless). BarPersistenceHandler (wired via WireEventHandlers) enqueues to the
+        // BufferedBarWriter → IBarRepository. The old imperative TradingLoop published this; the kernel
+        // path didn't, leaving live charts blank.
+        _ = _eventBus.PublishAsync(new BarIngested(_runContext.RunId, bar), CancellationToken.None);
+
+        // iter-36 K5: the per-strategy verdicts are folded onto the BarClosed StepRecord (the single
+        // journal) by KernelBacktestLoop.BuildStepRecord — the old BarEvaluated → BarEvaluationHandler →
+        // BarEvaluations path is gone. iter-37 F2's per-bar "why" funnel reads the StepRecord journal.
     }
 
     private IReadOnlyList<ProjectedPosition> ProjectOpenPositions(EngineState state)

@@ -22,7 +22,7 @@ public sealed class BacktestReplayTests
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task ReplayBacktest_FullPipeline_ProducesBarEvaluations()
+    public async Task ReplayBacktest_FullPipeline_ProducesJournalEntries()
     {
         const int barCount = 50;
         var bars = MakeBars(barCount);
@@ -35,9 +35,11 @@ public sealed class BacktestReplayTests
         using var scope = harness.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
 
-        var evalCount = await db.BarEvaluations.CountAsync();
-        evalCount.Should().BeGreaterThan(0,
-            "bars should flow through the full pipeline and produce BarEvaluation records");
+        // iter-36 K5: per-bar "why" + decisions now land on the single lossless StepRecord journal
+        // (JournalEntries), not the deleted BarEvaluations table.
+        var journalCount = await db.JournalEntries.CountAsync();
+        journalCount.Should().BeGreaterThan(0,
+            "bars should flow through the kernel pipeline and produce StepRecord journal entries");
 
         var trades = await db.Trades.ToListAsync();
         foreach (var t in trades)

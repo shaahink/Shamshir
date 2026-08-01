@@ -18,10 +18,6 @@ export const routes: Routes = [
     loadChildren: () => import('./features/strategies/strategies.routes').then((m) => m.STRATEGIES_ROUTES),
   },
   {
-    path: 'compliance',
-    loadComponent: () => import('./features/compliance/compliance.component').then((m) => m.ComplianceComponent),
-  },
-  {
     path: 'risk-profiles',
     loadChildren: () => import('./features/risk-profiles/risk-profiles.routes').then((m) => m.RISK_PROFILES_ROUTES),
   },
@@ -32,10 +28,6 @@ export const routes: Routes = [
   {
     path: 'governor-options',
     loadComponent: () => import('./features/governor/governor-edit.component').then((m) => m.GovernorEditComponent),
-  },
-  {
-    path: 'events',
-    loadComponent: () => import('./features/events/events.component').then((m) => m.EventsComponent),
   },
   {
     path: 'settings',

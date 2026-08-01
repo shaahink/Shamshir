@@ -85,10 +85,14 @@ public sealed class Iter26FixTests
         lots.Should().Be(5.0m);
     }
 
-    // ---- F10c: monthly reset keeps the monthly baseline (mirrors weekly), not the day-start ----
+    // ---- F10c (SUPERSEDED by iter-36 K-GAP-1): monthly reset re-bases to CURRENT equity ----
+    // iter-26 deferred this: the reducer then had no current-equity input, so MonthRolled deliberately
+    // KEPT the monthly baseline rather than wrongly rebasing to DailyStartEquity. Post-cutover that input
+    // exists (EngineState.Account.Equity, folded by the last EquityObserved), so the kernel now re-bases
+    // monthly DD to current equity — symmetric with the daily/weekly resets (EngineReducer.HandleMonthRolled).
 
     [Fact]
-    public void F10_MonthRolled_keeps_monthly_baseline()
+    public void F10_MonthRolled_rebases_monthly_baseline_to_current_equity()
     {
         var dd = new DrawdownState(
             InitialAccountBalance: 100_000m, PeakEquity: 100_000m,
@@ -96,11 +100,12 @@ public sealed class Iter26FixTests
             CurrentDailyDrawdown: 0m, CurrentMaxDrawdown: 0m, CurrentWeeklyDrawdown: 0m,
             CurrentMonthlyDrawdown: 0.05m, DrawdownVelocity: 0m, DrawdownType: "Fixed");
 
-        var state = EngineState.Empty with { Drawdown = dd };
+        // Current equity is the authoritative input at roll time (98k here, not the 95k day-start).
+        var state = EngineState.Empty with { Drawdown = dd, Account = new AccountView(98_000m, 98_000m, 0m) };
         var r = EngineReducer.Apply(state, new MonthRolled(DateTime.UtcNow));
 
-        r.State.Drawdown.MonthlyStartEquity.Should().Be(100_000m,
-            "monthly baseline is kept; passing DailyStartEquity (95k) would wrongly rebase the month");
+        r.State.Drawdown.MonthlyStartEquity.Should().Be(98_000m,
+            "K-GAP-1: monthly DD re-bases to the authoritative current equity, not the stale baseline or day-start");
         r.State.Drawdown.CurrentMonthlyDrawdown.Should().Be(0m);
     }
 

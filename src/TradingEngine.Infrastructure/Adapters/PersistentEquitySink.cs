@@ -7,11 +7,13 @@ public sealed class PersistentEquitySink : IEquitySink
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<PersistentEquitySink> _logger;
+    private readonly EngineMode _mode;
 
-    public PersistentEquitySink(IServiceScopeFactory scopeFactory, ILogger<PersistentEquitySink> logger)
+    public PersistentEquitySink(IServiceScopeFactory scopeFactory, ILogger<PersistentEquitySink> logger, EngineMode mode = EngineMode.Live)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _mode = mode;
     }
 
     public void Observe(AccountSnapshot snapshot)
@@ -34,7 +36,7 @@ public sealed class PersistentEquitySink : IEquitySink
                 snapshot.DailyStartEquity,
                 snapshot.DailyDrawdown,
                 snapshot.MaxDrawdown,
-                EngineMode.Live);
+                _mode);
             await repo.SaveAsync(equitySnapshot, snapshot.RunId, CancellationToken.None);
         }
         catch (Exception ex)

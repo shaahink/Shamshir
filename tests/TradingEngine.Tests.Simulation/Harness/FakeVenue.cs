@@ -65,7 +65,10 @@ public sealed class FakeVenue : IBrokerAdapter
 
         var fill = new ExecutionEvent(
             orderId, OrderState.Filled, fillPrice,
-            request.Lots, null, BrokerTimeUtc);
+            request.Lots, null, BrokerTimeUtc)
+        {
+            Symbol = request.Intent.Symbol,
+        };
         await _executionChannel.Writer.WriteAsync(fill, ct);
         return orderId;
     }
@@ -110,10 +113,12 @@ public sealed class FakeVenue : IBrokerAdapter
         decimal? grossProfit = null;
         decimal? netProfit = null;
         var fillLots = 0m;
+        Symbol? closeSymbol = null;
 
         if (_orderEntries.TryGetValue(positionId, out var entry))
         {
             fillLots = partialLots ?? entry.Lots;
+            closeSymbol = entry.Symbol;
             var symbolInfo = _symbolRegistry.Get(entry.Symbol);
             var gross = PipCalculator.GrossPnL(entry.Direction, entry.EntryPrice, exitPrice, fillLots, symbolInfo, _crossRate);
             grossProfit = gross.Amount;
@@ -128,6 +133,7 @@ public sealed class FakeVenue : IBrokerAdapter
             NetProfit = netProfit,
             Commission = 0m,
             Swap = 0m,
+            Symbol = closeSymbol,
         };
         await _executionChannel.Writer.WriteAsync(close, ct);
     }

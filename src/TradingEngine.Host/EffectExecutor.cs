@@ -8,7 +8,7 @@ public sealed class EffectExecutor : IEffectExecutor
 {
     private readonly IBrokerAdapter _broker;
     private readonly IEventBus _eventBus;
-    private readonly IDecisionJournal _decisionJournal;
+    private readonly IDecisionJournal? _decisionJournal;
     private readonly IEquitySink? _equitySink;
     private readonly IProgress<BacktestProgressEvent>? _progress;
     private readonly string _runId;
@@ -73,7 +73,7 @@ public sealed class EffectExecutor : IEffectExecutor
                 break;
 
             case ModifyStopLoss modSl:
-                await _broker.ModifyOrderAsync(modSl.PositionId, modSl.NewStopLoss, null, ct);
+                await _broker.ModifyOrderAsync(modSl.PositionId, modSl.NewStopLoss, modSl.TakeProfit, ct);
                 break;
 
             case ModifyTakeProfit modTp:
@@ -93,7 +93,10 @@ public sealed class EffectExecutor : IEffectExecutor
                 break;
 
             case RecordDecisionEvent record:
-                _decisionJournal.Record(record.Decision);
+                // iter-36 K5: the gate decision is now journaled losslessly on the StepRecord (DecisionReason),
+                // so the kernel path no longer needs the old IDecisionJournal. Kept optional only for the
+                // golden oracle harness, which still asserts on it; production passes null / a no-op.
+                _decisionJournal?.Record(record.Decision);
                 break;
 
             case PublishTradeClosed tradeClosed:

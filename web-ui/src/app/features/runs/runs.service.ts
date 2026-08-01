@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import type {
   RunSummary, RunDetail, TradeSummary, JournalEntry, EquityPoint,
-  DailyPnl, RunAnalytics, StartRunRequest, StartRunResponse,
+  DailyPnl, RunAnalytics, StartRunRequest, StartRunResponse, StrategyPerformance,
 } from '../../models/api.types';
 
 @Injectable({ providedIn: 'root' })
@@ -32,6 +32,7 @@ export class RunsApiService {
       strategyIds: req.strategyIds,
       riskProfileId: req.riskProfileId ?? '',
       venue: req.venue ?? '',
+      strategyOverrides: req.strategyOverrides ?? {},
     };
     return firstValueFrom(this.http.post<StartRunResponse>('/api/runs', payload));
   }
@@ -61,5 +62,29 @@ export class RunsApiService {
 
   getRunAnalytics(runId: string): Promise<RunAnalytics> {
     return firstValueFrom(this.http.get<RunAnalytics>(`/api/runs/${runId}/analytics`));
+  }
+
+  // iter-37 F2 — per-strategy decision funnel (signals fired / top no-signal reasons), off the journal.
+  getStrategyBreakdown(runId: string): Promise<StrategyPerformance[]> {
+    return firstValueFrom(this.http.get<StrategyPerformance[]>(`/api/runs/${runId}/analytics/strategies`));
+  }
+
+  // iter-36 K6 / iter-37 F3 — "duplicate with changes": re-run the source over the SAME dataset with an
+  // optionally-changed strategy set / risk profile / overrides. Returns the new run id (parent linked).
+  duplicateRun(
+    sourceRunId: string,
+    body?: { strategyIds?: string[]; riskProfileId?: string; venue?: string; strategyOverrides?: Record<string, Record<string, unknown>> },
+  ): Promise<StartRunResponse> {
+    return firstValueFrom(this.http.post<StartRunResponse>(`/api/runs/${sourceRunId}/duplicate`, body ?? {}));
+  }
+
+  // iter-37 F3 — NDJSON download of the lossless StepRecord journal.
+  journalExportUrl(runId: string): string {
+    return `/api/runs/${runId}/journal/export`;
+  }
+
+  // iter-37 F8 — CSV export of the run's trades (M20).
+  tradesCsvUrl(runId: string): string {
+    return `/api/export/trades.csv?runId=${runId}`;
   }
 }

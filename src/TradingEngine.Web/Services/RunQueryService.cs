@@ -8,18 +8,15 @@ public sealed class RunQueryService : IRunQueryService
 {
     private readonly TradingDbContext _db;
     private readonly IBacktestRunRepository _runRepo;
-    private readonly IPipelineEventRepository _pipelineRepo;
     private readonly IEquityRepository _equityRepo;
 
     public RunQueryService(
         TradingDbContext db,
         IBacktestRunRepository runRepo,
-        IPipelineEventRepository pipelineRepo,
         IEquityRepository equityRepo)
     {
         _db = db;
         _runRepo = runRepo;
-        _pipelineRepo = pipelineRepo;
         _equityRepo = equityRepo;
     }
 
@@ -115,28 +112,6 @@ public sealed class RunQueryService : IRunQueryService
                 DurationSeconds = t.DurationSeconds,
             })
             .ToListAsync(ct);
-    }
-
-    public async Task<IReadOnlyList<JournalEntryResponse>> GetRunJournalAsync(
-        string runId, string? kind, long? afterSeq, int limit, CancellationToken ct)
-    {
-        var all = await _pipelineRepo.GetByRunIdAsync(runId, ct);
-        var filtered = all.AsEnumerable();
-        if (afterSeq.HasValue)
-            filtered = filtered.Where(e => e.Seq > afterSeq.Value);
-        if (!string.IsNullOrWhiteSpace(kind))
-            filtered = filtered.Where(e => string.Equals(e.NormalizedKind, kind, StringComparison.OrdinalIgnoreCase));
-
-        return filtered.Take(Math.Clamp(limit, 1, 500)).Select(e => new JournalEntryResponse
-        {
-            Seq = e.Seq,
-            SimTimeUtc = e.SimTimeUtc,
-            Kind = e.NormalizedKind,
-            Symbol = e.CorrelationId,
-            StrategyId = e.StrategyId,
-            Reason = e.Reason,
-            Detail = e.DetailJson,
-        }).ToList();
     }
 
     public async Task<IReadOnlyList<EquityPointResponse>> GetRunEquityAsync(string runId, CancellationToken ct)

@@ -23,10 +23,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TradingEngine.Domain\TradingEngine.Domain.csproj" />
+    <ProjectReference Include="..\..\src\TradingEngine.Engine\TradingEngine.Engine.csproj" />
     <ProjectReference Include="..\..\src\TradingEngine.Risk\TradingEngine.Risk.csproj" />
     <ProjectReference Include="..\..\src\TradingEngine.Services\TradingEngine.Services.csproj" />
     <ProjectReference Include="..\..\src\TradingEngine.Strategies\TradingEngine.Strategies.csproj" />
     <ProjectReference Include="..\..\src\TradingEngine.Infrastructure\TradingEngine.Infrastructure.csproj" />
+    <ProjectReference Include="..\TradingEngine.Tests.Support\TradingEngine.Tests.Support.csproj" />
   </ItemGroup>
 
 </Project>

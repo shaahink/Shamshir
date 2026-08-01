@@ -65,6 +65,9 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.Property<decimal>("NetProfit")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ParentRunId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Period")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -154,57 +157,6 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.ToTable("Bars", (string)null);
                 });
 
-            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.BarEvaluationEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("BarOpenTimeUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("IndicatorValuesJson")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("OccurredAtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RunId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SignalDirection")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("SignalFired")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("StrategyId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Symbol")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Timeframe")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RunId");
-
-                    b.HasIndex("RunId", "StrategyId", "BarOpenTimeUtc");
-
-                    b.ToTable("BarEvaluations", (string)null);
-                });
-
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ConfigSetEntity", b =>
                 {
                     b.Property<string>("Id")
@@ -226,55 +178,6 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.HasIndex("ContentHash");
 
                     b.ToTable("ConfigSets", (string)null);
-                });
-
-            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.DailyProtectionLedgerEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("BreachOccurred")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("TEXT");
-
-                    b.Property<decimal>("EndEquity")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("FinalGovernorState")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<double>("MaxDailyDdUsedFraction")
-                        .HasColumnType("REAL");
-
-                    b.Property<decimal>("MinEquity")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RunId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("SignalsBlocked")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<decimal>("StartEquity")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("TradesClosed")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("TradesOpened")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Date");
-
-                    b.HasIndex("RunId");
-
-                    b.ToTable("DailyProtectionLedgers", (string)null);
                 });
 
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.DatasetEntity", b =>
@@ -596,70 +499,6 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.ToTable("Orders", (string)null);
                 });
 
-            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.PipelineEventEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CorrelationId")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("DetailJson")
-                        .IsRequired()
-                        .HasMaxLength(4096)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("GuardResult")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("NormalizedKind")
-                        .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PhaseAfter")
-                        .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PhaseBefore")
-                        .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Reason")
-                        .HasMaxLength(512)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RunId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("Seq")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("SimTimeUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Stage")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("StrategyId")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("WallTimeUtc")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RunId", "Seq");
-
-                    b.ToTable("PipelineEvents", (string)null);
-                });
-
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.PositionEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -726,41 +565,6 @@ namespace TradingEngine.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("PropFirmRuleSets", (string)null);
-                });
-
-            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ProtectionLedgerEntryEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("AtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<double>("DailyDdUsedFraction")
-                        .HasColumnType("REAL");
-
-                    b.Property<decimal>("EquityAtTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("LedgerId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AtUtc");
-
-                    b.HasIndex("LedgerId");
-
-                    b.ToTable("ProtectionLedgerEntries", (string)null);
                 });
 
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.RiskProfileEntity", b =>
@@ -953,22 +757,6 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Experiment");
-                });
-
-            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ProtectionLedgerEntryEntity", b =>
-                {
-                    b.HasOne("TradingEngine.Infrastructure.Persistence.Entities.DailyProtectionLedgerEntity", "Ledger")
-                        .WithMany("Entries")
-                        .HasForeignKey("LedgerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Ledger");
-                });
-
-            modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.DailyProtectionLedgerEntity", b =>
-                {
-                    b.Navigation("Entries");
                 });
 
             modelBuilder.Entity("TradingEngine.Infrastructure.Persistence.Entities.ExperimentEntity", b =>

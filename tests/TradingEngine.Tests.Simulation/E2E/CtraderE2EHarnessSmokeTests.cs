@@ -19,7 +19,10 @@ public sealed class CtraderE2EHarnessSmokeTests
     {
         if (!HasCredentials)
         {
-            Console.WriteLine("[E2E-Smoke] No cTrader credentials — skipping");
+            // ⚠ BUG (iter-36, OPEN-ISSUES CT-1): this silent skip reports a misleading PASS while CRITICAL
+            // live coverage is NOT running. The fix is the cTrader env (creds + built cBot algo), not the
+            // test — see .claude/skills/ctrader-e2e. xUnit v2 has no Assert.Skip; revisit with [SkippableFact].
+            Console.WriteLine("[E2E-Smoke] No cTrader credentials — SKIPPING (should run; see ctrader-e2e skill)");
             return;
         }
 
@@ -53,7 +56,10 @@ public sealed class CtraderE2EHarnessSmokeTests
     {
         if (!HasCredentials)
         {
-            Console.WriteLine("[E2E-Smoke] No cTrader credentials — skipping");
+            // ⚠ BUG (iter-36, OPEN-ISSUES CT-1): this silent skip reports a misleading PASS while CRITICAL
+            // live coverage is NOT running. The fix is the cTrader env (creds + built cBot algo), not the
+            // test — see .claude/skills/ctrader-e2e. xUnit v2 has no Assert.Skip; revisit with [SkippableFact].
+            Console.WriteLine("[E2E-Smoke] No cTrader credentials — SKIPPING (should run; see ctrader-e2e skill)");
             return;
         }
 
@@ -73,7 +79,7 @@ public sealed class CtraderE2EHarnessSmokeTests
     {
         if (!HasCredentials)
         {
-            Console.WriteLine("[Ledger-E2E] No cTrader credentials — skipping");
+            Console.WriteLine("[Ledger-E2E] No cTrader credentials — SKIPPING (should run; see ctrader-e2e skill)");
             return;
         }
 

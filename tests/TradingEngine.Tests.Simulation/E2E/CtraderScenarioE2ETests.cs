@@ -16,7 +16,9 @@ public sealed class CtraderScenarioE2ETests
     {
         if (!HasCredentials)
         {
-            Console.WriteLine($"[{label}] No cTrader credentials — skipping");
+            // ⚠ BUG (iter-36, OPEN-ISSUES CT-1): silent skip → misleading PASS while live coverage isn't
+            // running. Fix the cTrader env (see .claude/skills/ctrader-e2e), not the test.
+            Console.WriteLine($"[{label}] No cTrader credentials — SKIPPING (should run; see ctrader-e2e skill)");
             return null;
         }
 

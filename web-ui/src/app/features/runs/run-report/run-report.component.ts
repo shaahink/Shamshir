@@ -6,13 +6,16 @@ import { RunsApiService } from '../runs.service';
 import { StatTileComponent } from '../../../shared/stat-tile.component';
 import { DataTableComponent, type ColumnDef } from '../../../shared/data-table.component';
 import { EquityChartComponent, type ChartPoint } from '../../../shared/equity-chart.component';
+import { ScatterChartComponent } from '../../../shared/scatter-chart.component';
 import { BadgeComponent } from '../../../shared/badge.component';
-import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../../models/api.types';
+import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl, StrategyPerformance } from '../../../models/api.types';
+
+type JournalRow = JournalEntry & { outcome?: string | null };
 
 @Component({
   selector: 'app-run-report',
   standalone: true,
-  imports: [RouterLink, DatePipe, NgClass, DecimalPipe, StatTileComponent, DataTableComponent, EquityChartComponent, BadgeComponent],
+  imports: [RouterLink, DatePipe, NgClass, DecimalPipe, StatTileComponent, DataTableComponent, EquityChartComponent, ScatterChartComponent, BadgeComponent],
   template: `
     @if (store.isLoading()) { <div class="py-12 text-center text-sm text-gray-500">Loading...</div> }
     @else {
@@ -22,8 +25,23 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
             <div>
               <h1 class="text-xl font-semibold">Run {{ d.runId.slice(0, 8) }}</h1>
               <p class="text-sm text-gray-500">{{ symbolsDisplay() }} {{ d.period }} {{ d.backtestFrom | date }} - {{ d.backtestTo | date }} · Balance {{ d.initialBalance | number }}</p>
+              <p class="mt-0.5 text-xs text-gray-600">
+                @if (d.parentRunId) {
+                  <a [routerLink]="['/runs', d.parentRunId, 'report']" class="text-emerald-500 hover:underline">⤷ duplicate of {{ d.parentRunId.slice(0, 8) }}</a>
+                  <span class="mx-1">·</span>
+                }
+                @if (d.datasetId) { <span title="dataset identity (same data window)">data {{ d.datasetId.slice(0, 8) }}</span> }
+                @if (d.configSetId) { <span class="mx-1">·</span><span title="effective-config identity">cfg {{ d.configSetId.slice(0, 8) }}</span> }
+              </p>
             </div>
             <div class="flex gap-2">
+              <button (click)="duplicate(d.runId)" [disabled]="duplicating()" class="rounded-md border border-emerald-700 px-3 py-1.5 text-xs text-emerald-400 hover:bg-emerald-900/30 disabled:opacity-50">
+                {{ duplicating() ? 'Duplicating…' : 'Duplicate' }}
+              </button>
+              <a [href]="journalExportUrl(d.runId)" download class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Download journal (NDJSON)</a>
+              <a [href]="tradesCsvUrl(d.runId)" download class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Export CSV</a>
+              <button (click)="exportReport('json')" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Report JSON</button>
+              <button (click)="exportReport('md')" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Report MD</button>
               <a [routerLink]="['/runs', d.runId, 'monitor']" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Monitor</a>
               <a [routerLink]="['/runs', d.runId, 'analyzer']" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">Analyzer</a>
               <a routerLink="/runs" class="rounded-md border border-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800">All Runs</a>
@@ -71,6 +89,61 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
             </div>
           }
 
+          @if (breakdown().length > 0) {
+            <div>
+              <h2 class="mb-3 text-sm font-medium text-gray-400">Per-strategy funnel (why)</h2>
+              <div class="overflow-x-auto rounded-lg border border-gray-800">
+                <table class="w-full text-xs">
+                  <thead class="text-gray-500"><tr class="border-b border-gray-800">
+                    <th class="px-3 py-1.5 text-left">Strategy</th><th class="px-3 py-1.5 text-right">Bars</th>
+                    <th class="px-3 py-1.5 text-right">Signals</th><th class="px-3 py-1.5 text-right">Trades</th>
+                    <th class="px-3 py-1.5 text-right">Win%</th><th class="px-3 py-1.5 text-left">Top no-signal reasons</th>
+                  </tr></thead>
+                  <tbody>
+                    @for (s of breakdown(); track s.strategyId) {
+                      <tr class="border-b border-gray-800 last:border-0">
+                        <td class="px-3 py-1.5 text-gray-300">{{ s.strategyId }}</td>
+                        <td class="px-3 py-1.5 text-right text-gray-400">{{ s.totalBarsEvaluated }}</td>
+                        <td class="px-3 py-1.5 text-right" [class.text-emerald-400]="s.signalsFired > 0" [class.text-red-400]="s.signalsFired === 0">{{ s.signalsFired }}</td>
+                        <td class="px-3 py-1.5 text-right text-gray-400">{{ s.tradesOpened }}</td>
+                        <td class="px-3 py-1.5 text-right text-gray-400">{{ (s.winRatePct * 100).toFixed(0) }}%</td>
+                        <td class="px-3 py-1.5 text-gray-500">{{ topReasons(s) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
+
+          @if (scatterData().length > 0) {
+            <app-scatter-chart title="MAE (orange) vs MFE (green) — pips per trade" [data]="scatterData()" />
+          }
+
+          @if (perBarVerdicts().length > 0) {
+            <div>
+              <h2 class="mb-3 text-sm font-medium text-gray-400">Per-bar "why" ({{ perBarVerdicts().length }})</h2>
+              <div class="max-h-72 overflow-y-auto rounded-lg border border-gray-800">
+                <table class="w-full text-xs">
+                  <thead class="text-gray-500"><tr class="border-b border-gray-800">
+                    <th class="px-3 py-1.5 text-left">Sim time</th><th class="px-3 py-1.5 text-left">Strategy</th>
+                    <th class="px-3 py-1.5 text-left">Signal</th><th class="px-3 py-1.5 text-left">Reason</th>
+                  </tr></thead>
+                  <tbody>
+                    @for (v of perBarVerdicts(); track $index) {
+                      <tr class="border-b border-gray-800 last:border-0">
+                        <td class="px-3 py-1 text-gray-500">{{ v.simTimeUtc | date:'MM-dd HH:mm' }}</td>
+                        <td class="px-3 py-1 text-gray-300">{{ v.strategyId }}</td>
+                        <td class="px-3 py-1" [class.text-emerald-400]="v.signalFired" [class.text-gray-500]="!v.signalFired">{{ v.signalFired ? (v.direction || 'FIRED') : '—' }}</td>
+                        <td class="px-3 py-1 text-gray-500">{{ v.reason }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
+
           @if (trades().length > 0) {
             <div>
               <h2 class="mb-3 text-sm font-medium text-gray-400">Trades ({{ trades().length }})</h2>
@@ -81,7 +154,7 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
           @if (journal().length > 0) {
             <div>
               <h2 class="mb-3 text-sm font-medium text-gray-400">Journal</h2>
-              <div class="flex gap-2 mb-2">
+              <div class="flex flex-wrap gap-2 mb-2">
                 @for (k of journalKinds; track k) {
                   @let active = (journalKind() || 'ALL') === k;
                   <button (click)="journalKind.set(k === 'ALL' ? null : k)" class="rounded px-2 py-0.5 text-xs"
@@ -92,9 +165,10 @@ import type { TradeSummary, JournalEntry, EquityPoint, DailyPnl } from '../../..
                 @for (entry of filteredJournal(); track entry.seq) {
                   <div class="border-b border-gray-800 px-4 py-1.5 text-xs last:border-0 hover:bg-gray-800/20">
                     <span class="text-gray-500">{{ entry.simTimeUtc | date:'MM-dd HH:mm' }}</span>
-                    <app-badge [label]="entry.kind ?? '?'" [variant]="entry.kind === 'SIGNAL' ? 'warning' : entry.kind === 'CLOSE' ? 'success' : entry.kind === 'REJECTED' ? 'error' : 'neutral'" />
+                    <app-badge [label]="kindOf(entry)" [variant]="badgeVariant(kindOf(entry))" />
+                    @if (entry.outcome) { <app-badge [label]="entry.outcome" [variant]="badgeVariant(entry.outcome)" /> }
                     @if (entry.symbol) { <span class="ml-1 text-gray-500">{{ entry.symbol }}</span> }
-                    @if (entry.reason) { <span class="ml-2 text-gray-600">- {{ fmtReason(entry.reason) }}</span> }
+                    @if (reasonOf(entry)) { <span class="ml-2 text-gray-600">- {{ reasonOf(entry) }}</span> }
                   </div>
                 }
               </div>
@@ -117,12 +191,59 @@ export class RunReportComponent implements OnInit {
 
   trades = signal<TradeSummary[]>([]);
   journal = signal<JournalEntry[]>([]);
+  breakdown = signal<StrategyPerformance[]>([]);
   equityPoints = signal<ChartPoint[]>([]);
   dailyPnl = signal<DailyPnl[]>([]);
   journalKind = signal<string | null>(null);
-  journalKinds = ['ALL', 'SIGNAL', 'ORDER', 'FILL', 'CLOSE', 'REJECTED', 'BREACH', 'GOVERNOR', 'ENTRY_EXPIRED', 'CANCELLED'];
+  duplicating = signal(false);
+  journalKinds = ['ALL', 'SIGNAL', 'ORDER', 'FILL', 'CLOSE', 'REJECTED', 'BREACH', 'GOVERNOR', 'ENTRY_EXPIRED', 'CANCELLED', 'TRAIL', 'BREAKEVEN', 'PARTIAL'];
 
-  filteredJournal = computed(() => { const k = this.journalKind(); return k ? this.journal().filter(e => e.kind === k) : this.journal(); });
+  journalExportUrl(runId: string): string { return this.api.journalExportUrl(runId); }
+  tradesCsvUrl(runId: string): string { return this.api.tradesCsvUrl(runId); }
+
+  // F1 — join an order's FILL / EXPIRY / REJECTION into its OrderProposed row by orderId, so the lifecycle
+  // reads as one line instead of several. Applied to the full journal; the kind filter runs on the result.
+  displayJournal = computed<JournalRow[]>(() => {
+    const byOrder = new Map<string, JournalRow>();
+    const out: JournalRow[] = [];
+    for (const e of this.journal()) {
+      const kind = this.kindOf(e);
+      const oid = this.orderIdOf(e);
+      if (oid && (kind === 'OrderFilled' || kind === 'OrderCancelled' || kind === 'OrderRejected' || kind === 'OrderPartiallyFilled')) {
+        const proposal = byOrder.get(oid);
+        if (proposal) { proposal.outcome = kind; continue; }
+      }
+      const row: JournalRow = { ...e };
+      if (oid && kind === 'OrderProposed') byOrder.set(oid, row);
+      out.push(row);
+    }
+    return out;
+  });
+
+  filteredJournal = computed(() => {
+    const k = this.journalKind();
+    return k && k !== 'ALL' ? this.displayJournal().filter(e => this.kindOf(e) === k) : this.displayJournal();
+  });
+
+  kindOf(e: JournalEntry): string { return (e.eventKind ?? e.kind) ?? '?'; }
+
+  private orderIdOf(e: JournalEntry): string | null {
+    if (!e.eventJson) return null;
+    try { const o = JSON.parse(e.eventJson); return o.OrderId ?? o.orderId ?? null; } catch { return null; }
+  }
+
+  badgeVariant(kind: string): 'success' | 'error' | 'warning' | 'neutral' {
+    switch (kind) {
+      case 'CLOSE': case 'OrderFilled': case 'TP': return 'success';
+      case 'REJECTED': case 'OrderRejected': case 'BREACH': case 'SL': return 'error';
+      case 'SIGNAL': case 'OrderProposed': case 'GOVERNOR': case 'ENTRY_EXPIRED': case 'OrderCancelled':
+      case 'TRAIL': case 'BREAKEVEN': case 'PARTIAL': return 'warning';
+      default: return 'neutral';
+    }
+  }
+
+  reasonOf(e: JournalEntry): string { return this.fmtReason((e.decisionReason ?? e.reason) ?? null); }
+
   grossTotal = computed(() => this.trades().reduce((s, t) => s + t.grossPnLAmount, 0));
   commTotal = computed(() => this.trades().reduce((s, t) => s + t.commissionAmount, 0));
   swapTotal = computed(() => this.trades().reduce((s, t) => s + t.swapAmount, 0));
@@ -140,21 +261,98 @@ export class RunReportComponent implements OnInit {
   recClosesOk = computed(() => { const d = this.store.selectedRun(); return d ? d.totalTrades === this.trades().length : false; });
   recCostOk = computed(() => Math.abs(this.grossTotal() - this.commTotal() - this.swapTotal() - this.trades().reduce((s, t) => s + t.netPnLAmount, 0)) < 0.01);
 
+  topReasons(s: StrategyPerformance): string {
+    return (s.topRejections ?? []).map(r => `${r.reason} (${r.count})`).join(', ') || '—';
+  }
+
+  // F4 — MAE/MFE scatter from the run's trades (x = MAE as negative pips, y = MFE).
+  scatterData = computed(() => this.trades().map(t => ({ x: -(t.maxAdverseExcursion ?? 0), y: t.maxFavorableExcursion ?? 0 })));
+
+  // F2 — flatten the journal's per-bar StrategyVerdicts into a "why" table.
+  perBarVerdicts = computed(() =>
+    this.journal()
+      .filter(e => (e.eventKind ?? e.kind) === 'BarClosed' && (e.strategyVerdicts?.length ?? 0) > 0)
+      .flatMap(e => (e.strategyVerdicts ?? []).map(v => ({
+        simTimeUtc: e.simTimeUtc, strategyId: v.strategyId, signalFired: v.signalFired,
+        direction: v.direction, reason: v.reason,
+      }))));
+
+  // F4 — client-side report export (JSON / Markdown) off the data the report already has.
+  exportReport(fmt: 'json' | 'md'): void {
+    const d = this.store.selectedRun();
+    if (!d) return;
+    const stats = {
+      runId: d.runId, symbols: this.symbolsDisplay(), period: d.period,
+      from: d.backtestFrom, to: d.backtestTo, initialBalance: d.initialBalance,
+      netProfit: d.netProfit, grossPnL: d.grossPnL, commissionTotal: d.commissionTotal, swapTotal: d.swapTotal,
+      maxDrawdownPct: d.maxDrawdownPct, winRatePct: d.winRatePct, profitFactor: this.profitFactor(),
+      avgR: this.avgR(), totalTrades: d.totalTrades,
+      perStrategy: this.breakdown(),
+    };
+    let content: string; let mime: string; let ext: string;
+    if (fmt === 'json') {
+      content = JSON.stringify({ ...stats, trades: this.trades() }, null, 2);
+      mime = 'application/json'; ext = 'json';
+    } else {
+      content = [
+        `# Run ${d.runId.slice(0, 8)}`,
+        ``,
+        `- Symbols: ${stats.symbols} ${d.period}`,
+        `- Period: ${d.backtestFrom} → ${d.backtestTo}`,
+        `- Balance: ${d.initialBalance}`,
+        `- Net P/L: ${d.netProfit.toFixed(2)} (Gross ${(d.grossPnL ?? 0).toFixed(2)}, Comm ${(d.commissionTotal ?? 0).toFixed(2)}, Swap ${(d.swapTotal ?? 0).toFixed(2)})`,
+        `- Max DD: ${(d.maxDrawdownPct * 100).toFixed(2)}% · Win rate: ${(d.winRatePct * 100).toFixed(1)}% · Profit factor: ${this.pfDisplay()} · Avg R: ${this.avgR().toFixed(2)}`,
+        `- Trades: ${d.totalTrades}`,
+        ``,
+        `## Per-strategy`,
+        `| Strategy | Bars | Signals | Trades | Win% | Top no-signal |`,
+        `|---|---|---|---|---|---|`,
+        ...this.breakdown().map(s => `| ${s.strategyId} | ${s.totalBarsEvaluated} | ${s.signalsFired} | ${s.tradesOpened} | ${(s.winRatePct * 100).toFixed(0)}% | ${this.topReasons(s)} |`),
+      ].join('\n');
+      mime = 'text/markdown'; ext = 'md';
+    }
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `run-${d.runId.slice(0, 8)}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // F1 — render a violation/decision reason as a readable name, never raw JSON / [object Object].
   fmtReason(reason: string | null): string {
     if (!reason) return '';
     if (reason.startsWith('[') || reason.startsWith('{')) {
       try {
         const parsed = JSON.parse(reason);
-        if (Array.isArray(parsed)) return parsed.map((v: any) => v.name || v.code || v.reason || JSON.stringify(v)).join(', ');
-        if (parsed.reason) return parsed.reason;
+        if (Array.isArray(parsed)) return parsed.map((v: any) => this.nameOf(v)).join(', ');
+        return this.nameOf(parsed);
       } catch { return reason; }
     }
     return reason;
   }
 
+  private nameOf(v: any): string {
+    if (v == null) return '';
+    if (typeof v !== 'object') return String(v);
+    return v.name ?? v.code ?? v.reason ?? v.message
+      ?? Object.entries(v).map(([k, val]) => `${k}=${val}`).join(' ');
+  }
+
   barHeight(pnl: number): number { const arr = this.dailyPnl(); const m = arr.length > 0 ? Math.max(...arr.map(d => Math.abs(d.pnl ?? 0)), 1) : 1; return Math.min(100, (Math.abs(pnl ?? 0) / m) * 100); }
 
   symbolsDisplay(): string { const d = this.store.selectedRun(); if (!d) return ''; try { const s = typeof d.symbols === 'string' ? JSON.parse(d.symbols) : d.symbols; if (Array.isArray(s) && s.length > 1) return s.join(', '); } catch {} return d.symbol; }
+
+  async duplicate(runId: string): Promise<void> {
+    if (this.duplicating()) return;
+    this.duplicating.set(true);
+    try {
+      const res = await this.api.duplicateRun(runId);
+      if (res?.runId) this.router.navigate(['/runs', res.runId, 'monitor']);
+    } finally {
+      this.duplicating.set(false);
+    }
+  }
 
   tradeColumns: ColumnDef[] = [
     { key: 'symbol', label: 'Sym' }, { key: 'direction', label: 'Dir' }, { key: 'lots', label: 'Lots', format: 'number' },
@@ -173,6 +371,7 @@ export class RunReportComponent implements OnInit {
     await this.store.loadRun(runId);
     try { this.trades.set(await this.api.getRunTrades(runId)); } catch { /* no trades */ }
     try { this.journal.set(await this.api.getRunJournal(runId, undefined, undefined, 200)); } catch { /* no journal */ }
+    try { this.breakdown.set(await this.api.getStrategyBreakdown(runId)); } catch { /* no breakdown */ }
     try { this.equityPoints.set((await this.api.getRunEquity(runId)).map((p: EquityPoint) => ({ time: new Date(p.timestampUtc).getTime(), value: p.equity, balance: p.balance }))); } catch { /* no equity */ }
     try { this.dailyPnl.set(await this.api.getRunDailyPnl(runId)); } catch { /* no daily PnL */ }
   }

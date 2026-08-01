@@ -35,6 +35,7 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             DatasetId = run.DatasetId,
             ConfigSetId = run.ConfigSetId,
             Seed = run.Seed,
+            ParentRunId = run.ParentRunId,
         };
         db.BacktestRuns.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -141,6 +142,6 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             e.InitialBalance, e.AlgoHash, e.StrategyParamsJson, e.EffectiveConfigJson,
             net, grossPnL, commissionTotal, swapTotal, maxDd, total, wins, winRate,
             exitCode, e.ErrorMessage, e.ReportJsonPath,
-            e.DatasetId, e.ConfigSetId, e.Seed);
+            e.DatasetId, e.ConfigSetId, e.Seed, e.ParentRunId);
     }
 }

@@ -60,7 +60,7 @@ export class TradeListComponent implements OnInit {
   page = signal(1); pageSize = 50;
 
   columns = [
-    { key: 'symbol', label: 'Sym' }, { key: 'direction', label: 'Dir' },
+    { key: 'symbol', label: 'Sym' }, { key: 'timeframe', label: 'TF' }, { key: 'direction', label: 'Dir' },
     { key: 'lots', label: 'Lots', format: 'number' },
     { key: 'entryPrice', label: 'Entry', format: 'number' },
     { key: 'exitPrice', label: 'Exit', format: 'number' },

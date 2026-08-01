@@ -60,9 +60,12 @@ export class TradeDetailComponent implements OnInit {
     const id = this.route.snapshot.paramMap.get('id'); if (!id) return;
     const t = await firstValueFrom(this.http.get<TradeSummary>(`/api/trades/${id}`));
     this.trade.set(t);
-    const opened = new Date(t.openedAtUtc); const closed = new Date(t.closedAtUtc);
-    const pad = (closed.getTime() - opened.getTime()) * 2 || 3600000;
-    const from = new Date(opened.getTime() - pad); const to = new Date(closed.getTime() + pad);
+    // T1: order-safe window — never assume openedAtUtc < closedAtUtc (a wall-clock-stamped entry can
+    // invert the order). Build [min-pad, max+pad] so /api/bars always gets a valid (from <= to) range.
+    const a = new Date(t.openedAtUtc).getTime(); const b = new Date(t.closedAtUtc).getTime();
+    const lo = Math.min(a, b); const hi = Math.max(a, b);
+    const pad = Math.max((hi - lo) * 2, 3_600_000);
+    const from = new Date(lo - pad); const to = new Date(hi + pad);
     const tf = t.timeframe || 'H1';
     try {
       const bars = await firstValueFrom(this.http.get<any[]>(`/api/bars?symbol=${t.symbol}&timeframe=${tf}&from=${from.toISOString()}&to=${to.toISOString()}`));

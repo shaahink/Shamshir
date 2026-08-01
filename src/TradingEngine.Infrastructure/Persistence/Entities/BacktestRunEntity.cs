@@ -29,4 +29,5 @@ public sealed class BacktestRunEntity
     public string? DatasetId { get; set; }
     public string? ConfigSetId { get; set; }
     public int Seed { get; set; }
+    public string? ParentRunId { get; set; }
 }

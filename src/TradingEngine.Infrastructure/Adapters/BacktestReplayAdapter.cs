@@ -177,7 +177,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
     private void FillEntry(Guid orderId, TradeDirection direction, decimal fillPrice, decimal lots)
     {
         _executionChannel.Writer.TryWrite(
-            new ExecutionEvent(orderId, OrderState.Filled, new Price(fillPrice), lots, null, BrokerTimeUtc));
+            new ExecutionEvent(orderId, OrderState.Filled, new Price(fillPrice), lots, null, BrokerTimeUtc) { Symbol = _symbol });
         _openTrades[orderId] = new OpenTrade(direction, fillPrice, lots, BrokerTimeUtc);
     }
 
@@ -209,7 +209,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             {
                 _pendingLimits.Remove(orderId);
                 _executionChannel.Writer.TryWrite(new ExecutionEvent(
-                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc));
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
                 _logger.LogDebug("BacktestReplay: limit expired {Id} at {Price:F5}", orderId, limit.LimitPrice);
             }
         }
@@ -290,6 +290,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
                 Commission = costs.Commission,
                 Swap = costs.Swap,
                 NetProfit = costs.NetProfit,
+                Symbol = _symbol,
             });
 
             // F1: surface the realized balance change as an account update so equity/drawdown move.
@@ -302,7 +303,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
             // No tracked trade (unknown / already closed) — surface a cost-free fill so the lifecycle
             // FSM can still resolve.
             _executionChannel.Writer.TryWrite(
-                new ExecutionEvent(positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc));
+                new ExecutionEvent(positionId, OrderState.Filled, fillPrice, 0, null, BrokerTimeUtc) { Symbol = _symbol });
         }
 
         return Task.CompletedTask;
@@ -346,6 +347,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
                 Commission = costs.Commission,
                 Swap = costs.Swap,
                 NetProfit = costs.NetProfit,
+                Symbol = _symbol,
             });
 
             var remaining = trade.Lots - lots;
@@ -361,7 +363,7 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IAsyncDisposable
         else
         {
             _executionChannel.Writer.TryWrite(
-                new ExecutionEvent(positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc));
+                new ExecutionEvent(positionId, OrderState.Filled, fillPrice, lots, null, BrokerTimeUtc) { Symbol = _symbol });
         }
 
         return Task.CompletedTask;

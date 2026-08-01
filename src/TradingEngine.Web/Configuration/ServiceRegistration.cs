@@ -70,9 +70,9 @@ public static class ServiceRegistration
         initConn.Close();
 
         services.AddScoped<IBacktestRunRepository, SqliteBacktestRunRepository>();
+        services.AddScoped<IJournalQueryRepository, SqliteJournalQueryRepository>();
         services.AddScoped<IBarRepository, SqliteBarRepository>();
         services.AddScoped(_ => new TradeReportQueries(new SqliteConnection(cs)));
-        services.AddScoped<IPipelineEventRepository, SqlitePipelineEventRepository>();
         services.AddScoped<IExperimentRepository, SqliteExperimentRepository>();
         services.AddScoped<ITradeRepository, SqliteTradeRepository>();
         services.AddScoped<IEquityRepository, SqliteEquityRepository>();
@@ -86,7 +86,6 @@ public static class ServiceRegistration
     private static IServiceCollection AddAppServices(this IServiceCollection services)
     {
         services.AddScoped<IRunQueryService, RunQueryService>();
-        services.AddScoped<IProtectionQueryService, ProtectionQueryService>();
         services.AddScoped<IBarQueryService, BarQueryService>();
 
         services.AddSingleton<IExperimentHostFactory, ExperimentHostFactoryAdapter>();
@@ -151,7 +150,6 @@ public static class ServiceRegistration
         services.AddSingleton(new ConfigLoader(solutionRoot).LoadBase().Governor);
         services.AddSingleton<ITradingGovernor>(sp => new GovernorMachine(sp.GetRequiredService<GovernorOptions>()));
         services.AddSingleton(new RegimeOptions());
-        services.AddSingleton<ProtectionLedgerWriter>();
         return services;
     }
 }

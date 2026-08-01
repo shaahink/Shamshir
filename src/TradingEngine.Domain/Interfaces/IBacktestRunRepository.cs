@@ -27,7 +27,8 @@ public sealed record BacktestRunSummary(
     string? ReportJsonPath = null,
     string? DatasetId = null,
     string? ConfigSetId = null,
-    int Seed = 0);
+    int Seed = 0,
+    string? ParentRunId = null);
 
 public interface IBacktestRunRepository
 {

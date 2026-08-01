@@ -10,20 +10,17 @@ public sealed class BacktestController : ControllerBase
     private readonly IBacktestCommandService _command;
     private readonly BacktestOrchestrator _orchestrator;
     private readonly BacktestProgressStore _progressStore;
-    private readonly IPipelineEventRepository _pipelineRepo;
     private readonly ILogger<BacktestController> _logger;
 
     public BacktestController(
         IBacktestCommandService command,
         BacktestOrchestrator orchestrator,
         BacktestProgressStore progressStore,
-        IPipelineEventRepository pipelineRepo,
         ILogger<BacktestController> logger)
     {
         _command = command;
         _orchestrator = orchestrator;
         _progressStore = progressStore;
-        _pipelineRepo = pipelineRepo;
         _logger = logger;
     }
 
@@ -60,6 +57,15 @@ public sealed class BacktestController : ControllerBase
             ? req.StrategyIds.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
                 .Select(s => s.Trim()).ToArray()
             : Array.Empty<string>();
+
+        // iter-37 guard: reject a structurally-empty/invalid backtest (mirrors RunsController.Start).
+        var errors = new List<string>();
+        if (symList.Length == 0 || symList.All(string.IsNullOrWhiteSpace)) errors.Add("At least one symbol is required.");
+        if (perList.Length == 0 || perList.All(string.IsNullOrWhiteSpace)) errors.Add("At least one timeframe is required.");
+        if (req.Start >= req.End) errors.Add("Start date must be before end date.");
+        if (req.Balance <= 0) errors.Add("Balance must be positive.");
+        if (errors.Count > 0)
+            return BadRequest(new { error = "Invalid backtest request.", details = errors });
 
         var cfg = new BacktestConfig
         {
@@ -139,40 +145,6 @@ public sealed class BacktestController : ControllerBase
             return NotFound(new { error = $"Run {runId} not found" });
 
         return Ok(new { logs = state.GetLogs() });
-    }
-
-    [HttpGet("{runId}/journal")]
-    public async Task<IActionResult> Journal(
-        string runId,
-        [FromQuery] string? kind = null,
-        [FromQuery] long? afterSeq = null,
-        [FromQuery] int limit = 50)
-    {
-        var all = await _pipelineRepo.GetByRunIdAsync(runId, HttpContext.RequestAborted);
-
-        var filtered = all.AsEnumerable();
-        if (afterSeq.HasValue)
-        {
-            filtered = filtered.Where(e => e.Seq > afterSeq.Value);
-        }
-        if (!string.IsNullOrWhiteSpace(kind))
-        {
-            filtered = filtered.Where(e =>
-                string.Equals(e.NormalizedKind, kind, StringComparison.OrdinalIgnoreCase));
-        }
-
-        var page = filtered.Take(Math.Clamp(limit, 1, 500)).ToList();
-
-        return Ok(page.Select(e => new
-        {
-            seq = e.Seq,
-            simTime = e.SimTimeUtc,
-            symbol = e.CorrelationId,
-            strategy = e.StrategyId,
-            kind = e.NormalizedKind,
-            reason = e.Reason,
-            detail = e.DetailJson
-        }));
     }
 
     // LEGACY / intentionally unconsumed: the live Monitor moved to SignalR (RunHub +

@@ -5,6 +5,28 @@ trail — items are never deleted, only added.
 
 ---
 
+## Iteration 37 — Frontend Finish + Pressure Tests + Dead-Code Sign-off (`iter/37-frontend-finish`)
+
+**iter-36 cutover follow-ups (K-GAP):**
+- **K-GAP-1** day/week/month roll emitted in the kernel loop; DD re-bases to current equity (C4/H7 now provably closed multi-day) → `ResetClock` + `EngineReducer` + `KernelResetMultiDayTests`
+- **K-GAP-2** backtest equity persisted (on-completion batch flush; `PersistentEquitySink` mode no longer hard-coded Live) → `EquitySnapshotFlush` + `BacktestEquityFlushTests`
+- **K-GAP-3** per-run bars persisted on the kernel path (live/non-catalog charts render) → `EngineRunner.ReportBar` publishes `BarIngested` + `PerRunBarPersistenceTests`
+- **K-GAP-4** report/funnel readers repointed off the empty tables onto the StepRecord journal → `RunProjection`/`BacktestQueryService` + `StrategyBreakdownFromJournalTests`
+- **K-GAP-6** multi-symbol fill attribution (venue stamps `ExecutionEvent.Symbol`; pump prefers it) → `MultiSymbolAttributionTests`
+- **M6** profit target confirmed keying off equity
+
+**Pressure/reality test spine (TEST-PLAN):** G (governor/drawdown/protection ×12), F (FTMO daily-vs-overall + profit target), J (journal source-of-truth ×9), E (equity persistence), B (chart/timeframe), C (per-strategy characterization), D (multi-symbol + replay/duplicate).
+
+**Frontend (PLAN F1–F8):** unified journal (order/fill join, named violations, full kind filter, badges), per-strategy funnel, NDJSON download + Duplicate + lineage, report stats + MAE/MFE scatter + JSON/MD export, live-monitor stick-to-bottom + balance-null fix (L1/L2/L3/NEW-7), per-trade SL/TP chart + TF column, risk-profile validate-before-save, new-backtest overrides + resolved-config preview, dashboard placeholder hygiene, real CSV export (M20).
+
+**Dead-code sign-off (D-drop):** deleted `PipelineEvents`/`BarEvaluations` (entities/mapping/repo/interface/DTO/`JournalNormalizer`), dead consumers (`EventsController` + events page, `BacktestController.Journal`, `RunQueryService.GetRunJournalAsync`), and the never-fired protection-ledger path (handlers/`ProtectionQueryService`/`ProtectionController`/ledger tables/`compliance` page). EF reset → fresh `InitialCreate` with no dead tables. `grep PipelineEvent|BarEvaluationEntity|ProtectionLedger src → 0`.
+
+**Empty/invalid backtest guard:** API 400 on no-symbol / inverted range / non-positive balance (`BacktestStartGuardTests`).
+
+**Still open:** K-GAP-5 (per-trade Timeframe column, Low); F7 server-side validation framework; cTrader-E2E/NetMQ (env/owner-verified).
+
+---
+
 ## Iteration 17 — Deterministic Pipeline
 
 - **NetMQ thread-affinity bug** (orders silently lost) → Fixed with `NetMQQueue<T>` (Phase A1)
@@ -201,3 +223,24 @@ trail — items are never deleted, only added.
 - **`shamshir-kernel` skill** — Kernel architecture, determinism rules, cutover patterns.
 - **Verified**: 13/13 E2E pass with real trade data (16 trades, 6403 PnL, 6953 Gross, 615 Comm, -65 Swap).
 - **H20** — `PipelineEventWriter` + `BarEvaluationHandler` buffer.Clear() moved after successful save.
+
+---
+
+## Iteration 36 � The Kernel Cutover (one engine, one journal, real replay/duplicate)
+
+**K0-K3** (gates, evaluator, venue-feedback bridge, kernel backtest loop) � DELIVERED; golden reproduced bit-identically, no re-baseline.
+
+**K4 � full flip + correctness gaps:**
+- Production runs ONLY the kernel (`KernelBacktestLoop.RunFromBrokerAsync`) for live + backtest; imperative loop deleted.
+- gap-1: `OrderProposed` carries the resolved per-strategy `RiskProfile`; `Kernel.DecideProposed` sizes with it (multi-profile runs no longer mis-size).
+- gap-3: trailing/breakeven runs in the kernel loop � new `StopLossModifyRequested` event ? reducer updates the authoritative stop + emits `ModifyStopLoss` (TP preserved); `KernelTrailingEvaluator` reuses the real `PositionManager`.
+- gap-4: per-bar `AccountSnapshot` written from the authoritative `EngineState` (Monitor no longer blank under the kernel).
+- **Twins out of `src` (literal K4 gate):** `OrderDispatcher`/`KernelOrderGate`/`AccountProcessor` relocated to `tests/TradingEngine.Tests.Support` (golden oracle, D81); `grep "AccountProcessor|KernelOrderGate|OrderDispatcher|RunBacktestLoopAsync(|SimulateBarExitsAsync(" src ? 0`.
+
+**K5 � one journal:** `GET /api/runs/{id}/journal` serves the lossless StepRecord stream (SQL-paged) + `/journal/export` NDJSON; `KernelJournalController` consolidated away. `EffectExecutor` off `IDecisionJournal`. **`PipelineEventWriter` + `BarEvaluationHandler` deleted** (the two `DropOldest` lossy writers, D83); legacy `IDecisionJournal`/`IPipelineJournal` consumers bind to `NullDecisionJournal`/`NullPipelineJournal`. Fixed a latent bug: `IJournalQueryRepository` was missing from the Web root DI.
+
+**K6 � real replay + duplicate:** `POST /api/runs/{id}/duplicate` (same dataset, new config, `ParentRunId` lineage); run identity persisted (`DatasetId`=hash(data-window spec), `ConfigSetId`=hash(effective config), `Seed`); EF regen-init for `ParentRunId` (D84).
+
+**K7 � reconciliation:** C3/C4/H1/H2/H5/H6/M7 shadowed `RiskManager` bugs confirmed **production-dead** (no caller in `src`; oracle-only). OPEN-ISSUES + this file + SYSTEM-REFERENCE updated.
+
+Verified: build 0 errors � Unit 208/4-skip � Simulation non-cTrader 82/2 (2 pre-existing: EntryPlanner-harness DI gap + NetMQ transport) � in-host replay writes StepRecord journal � `run-shamshir` driver 11/11 � `npm run build` green.

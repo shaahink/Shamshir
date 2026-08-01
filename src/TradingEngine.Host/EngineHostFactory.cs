@@ -26,10 +26,6 @@ public static class EngineHostFactory
             host.Services.GetRequiredService<EquityPersistenceHandler>());
         eventBus.Subscribe<TradeClosed>(
             host.Services.GetRequiredService<TradePersistenceHandler>());
-        eventBus.Subscribe<BarEvaluated>(
-            host.Services.GetRequiredService<BarEvaluationHandler>());
-        eventBus.Subscribe<GovernorStateChanged>(
-            host.Services.GetRequiredService<ProtectionLedgerPersistenceHandler>());
         eventBus.Subscribe<BarIngested>(
             host.Services.GetRequiredService<BarPersistenceHandler>());
     }
@@ -50,7 +46,14 @@ public static class EngineHostFactory
             var resolvedProfile = activeProfile ?? new RiskProfile(
                 "standard", "Standard", 1.0, 5.0, 10.0, 100.0, 10.0, 0.5, 0.1, 5,
                 false, activeRuleSetId, LotSizingMethod.PercentRisk, 0.1m, 0m, 0.25, 1.5, 3);
-            rm.SetConstraints(ConstraintSet.Resolve(resolvedProfile, ruleSet));
+            // iter-37 T8: the Governor page (GovernorOptions, DB-backed via PreloadedConfig) is authoritative —
+            // AND its Enabled into the kernel gate switch so disabling on that page actually turns the governor
+            // off (PreTradeGate gates ALL governor blocking on ConstraintSet.GovernorEnabled). The prop-firm
+            // ruleset toggle still applies; either being off disables it.
+            var constraints = ConstraintSet.Resolve(resolvedProfile, ruleSet);
+            var govOptions = host.Services.GetRequiredService<GovernorOptions>();
+            constraints = constraints with { GovernorEnabled = constraints.GovernorEnabled && govOptions.Enabled };
+            rm.SetConstraints(constraints);
 
             var passEstimator = host.Services.GetRequiredService<IPassProbabilityEstimator>();
             var complianceSvc = new PropFirmComplianceService(

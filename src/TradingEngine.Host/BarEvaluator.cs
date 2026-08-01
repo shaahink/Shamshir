@@ -129,13 +129,17 @@ public sealed class BarEvaluator(
             var slPips = (decimal)PipCalculator.Distance(entryPrice, intent.StopLoss, symbolInfo).Value;
             var pipValuePerLot = PipCalculator.PipValuePerLot(symbolInfo, entryPrice.Value, getCrossRate);
 
-            var external = ComputeVerdicts(intent, state, simTime);
+            // K4 gap-1: resolve the strategy's profile ONCE here and carry it on the proposal so the pure
+            // kernel sizes with it (not the run-constant profile). Reused for the compliance verdict below.
+            var resolvedProfile = riskProfileResolver.Resolve(intent.RiskProfileId);
+
+            var external = ComputeVerdicts(intent, state, simTime, resolvedProfile);
 
             var proposal = new OrderProposed(
                 DeterministicOrderId(Interlocked.Increment(ref _orderSeq)),
                 intent.Symbol, intent.Direction, intent.OrderType,
                 intent.LimitPrice, intent.StopLoss, intent.TakeProfit, intent.StrategyId,
-                entryPrice.Value, slPips, pipValuePerLot, simTime, external);
+                entryPrice.Value, slPips, pipValuePerLot, simTime, external, resolvedProfile);
 
             proposals.Add(proposal);
             verdicts.Add(new StrategyVerdict(strategy.Id, HadEnoughBars: true, SignalFired: true,
@@ -154,13 +158,12 @@ public sealed class BarEvaluator(
     /// the BAR's sim-time (not wall-clock), folding in the rule-set toggles, so the verdict is frozen onto
     /// the proposal and replay-stable.
     /// </summary>
-    private ExternalVerdicts ComputeVerdicts(TradeIntent intent, EngineState state, DateTime simTime)
+    private ExternalVerdicts ComputeVerdicts(TradeIntent intent, EngineState state, DateTime simTime, RiskProfile profile)
     {
         var ruleSet = riskManager.ActiveRuleSet;
         var newsActive = ruleSet?.AllowTradesDuringNews == false && newsFilter.IsNewsWindowActive(intent.Symbol, simTime);
         var weekend = sessionFilter.IsWeekend(simTime) && ruleSet?.AllowWeekendHolding == false;
 
-        var profile = riskProfileResolver.Resolve(intent.RiskProfileId);
         var compliance = riskManager.CheckComplianceBlock(intent, profile);
 
         string? governorReason = null;
