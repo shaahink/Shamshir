@@ -408,3 +408,25 @@ exit fix at all, so no rescue lever exists for the bank-wide-worst family (F68, 
    data-power recommendation (Dukascopy backfill) which also unblocks honest power for
    everything downstream.
 3. Ratify the D7 park (reversible).
+
+---
+
+## OWNER GATE ruling — 2026-07-16 (recorded by the quant-review session on the owner's instruction to merge all work and prepare the next session; owner may amend by a further ledger entry)
+
+1. **G1 ACCEPTED, early stop ACCEPTED.** The exit layer holds no D5-surviving structural
+   component in this bank; remaining factorials stay un-run (power, per the gate pack above).
+2. **Direction: `iter-viability` ADOPTED** (`docs/iterations/iter-viability/PLAN.md`, drafted
+   by the external quant review) as the successor program. Mapping of this iteration's
+   remaining stages: S2(b) regime conditioning survives as a zero-run analysis in
+   iter-viability Session 1; S2(a)/S3 are absorbed into V4/V3; S4–S7 are superseded by
+   V2/V5/V7 (re-census happens as the frozen-bank pure-OOS census on backfilled data; the
+   embargo dress rehearsal and portfolio phase keep their exact discipline inside V7).
+   **Session 1 = V0 (FTMO rule-model truth) + the S2(b) regime analysis. Session 2 = V1
+   (Dukascopy 2019–24 backfill).** This is the gate-vote next-move with V0 added (cheap, and
+   it recalibrates the metrics everything downstream reports).
+3. **D7 park RATIFIED** (mtf-trend, 4 cells, reversible rows stand).
+
+This iteration's branch (`iter/structural-edge` @ 68aa53e) merges to `main` with this ruling;
+its LEDGER stays the audit trail for S0–S1. Findings continue at **F73** in
+`docs/iterations/iter-viability/LEDGER.md`. EMBARGO-2 remains untouched; the 2024 era-holdout
+(iter-viability D3) is added alongside it.

@@ -5,6 +5,14 @@
 **Companion to:** the technical reference set (`SYSTEM-REFERENCE.md`, `CODE-MAP.md`, `BACKTEST-ARCHITECTURE.md`,
 `TEST-ARCHITECTURE.md`, `TEST-AUDIT.md`) — this doc is the plain-English overview, not the spec.
 
+> **Still accurate as of 2026-07-16** — the kernel-funnel model below is unchanged. What's new
+> since this was written: the strategy bank is **9 families** (not 4); the fast research venue is
+> the **tape** (`TapeReplayAdapter`, recorded history, measured cTrader-parity fill semantics);
+> a full **research platform** sits on top (experiments, sv2 scoring, walk-forward, split-half,
+> parity gates, embargo windows); the UI is an Angular SPA; and the alpha-loop iteration closed
+> with a trustworthy negative on the current bank (see `docs/iterations/iter-alpha-loop/HANDOVER.md`
+> and `docs/SENIOR-QUANT-BRIEF-2026-07.md` for the story).
+
 ---
 
 ## What it is (one breath)

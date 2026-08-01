@@ -1,181 +1,80 @@
 # Shamshir Trading Engine — System Reference
 
-**Written**: 2026-06-18 (updated 2026-07-10)
-**Branch**: `iter/parity-pipeline`
+**Written**: 2026-06-18 · **Rewritten**: 2026-07-16 (post iter-alpha-loop close + structural-edge S0/S1.1)
 **For**: Any implementing agent needing to understand the full system
 
-> ## ⚠ iter-36 UPDATE (2026-06-20) — read this first; sections below are pre-cutover history
-> The **kernel cutover is complete**. Several flows described below are now **historical** (the old
-> imperative architecture). What is true now:
-> - **One engine:** production (live + backtest) runs ONLY the pure kernel via
->   `KernelBacktestLoop.RunFromBrokerAsync` (`BarTape/BrokerStream → BarEvaluator → Kernel → EffectExecutor
->   → venue + feedback bridge`), `EngineState` the single authority. **`TradingLoop`/`OrderDispatcher`/
->   `KernelOrderGate`/`AccountProcessor`/`SimulateBarExitsAsync` are NOT in the production path** — the gate
->   is `PreTradeGate` (in-kernel), sizing is `KernelSizing`, SL/TP is `EngineReducer.HandleBarClosed`, breach
->   is `Kernel.DecideEquity`, resets are `Kernel.DecideReset`, trailing is `KernelTrailingEvaluator` →
->   `StopLossModifyRequested`. The four imperative classes live ONLY in `tests/TradingEngine.Tests.Support`
->   as the golden regression oracle (D81). So §1's flow diagram, §2's `OrderDispatcher` sizing flow, §3's
->   `RiskManager.Validate` gate, and the "kernel half-wired / `HandleBarClosed` Dead" note are **obsolete**.
-> - **One journal:** the lossless **StepRecord** stream (`ChannelJournalWriter`, Wait-mode) is the single
->   journal. `PipelineEventWriter` + `BarEvaluationHandler` (and `PipelineEvents`/`BarEvaluations` as live
->   sinks) are **deleted/unwritten** (D83). `GET /api/runs/{id}/journal` serves SQL-paged StepRecords +
->   `/journal/export` NDJSON. (The funnel/report readers still point at the old tables → iter-37 F2/F4.)
-> - **Replay/duplicate:** `POST /api/runs/{id}/duplicate` (same dataset, new config, `ParentRunId`); run
->   identity persisted (`DatasetId`/`ConfigSetId`/`Seed`). Replay = the kernel loop's determinism.
-> - Per-strategy risk profiles, trailing/breakeven, and Monitor equity snapshots all run in the kernel loop.
->
-> See `docs/iterations/iter-36/{PLAN,HANDOVER}.md` + `DECISIONS.md` D81–D84 for specifics.
+> Historical versions of this document described the pre-iter-36 imperative architecture
+> (TradingLoop/OrderDispatcher production path, PipelineEvents journal, 4 strategies, Razor Pages
+> UI). All of that is gone or test-only. This version describes the system as it is on
+> 2026-07-16. If a section here contradicts code, the code wins — file a doc fix.
 
 ---
 
 ## 1. What Is This System?
 
-Shamshir is a **prop-firm algorithmic trading engine** targeting .NET 10 / C# 13. It runs
-automated trading strategies with FTMO-style risk rules, position sizing, and drawdown
-tracking. The engine is designed to be **strategy-agnostic** and **venue-agnostic** — the same
-strategy code runs identically across backtest and live modes, with the venue differences
-abstracted behind `IBrokerAdapter`.
+Shamshir is a **prop-firm algorithmic trading engine** (.NET 10 / C# 13). It runs automated
+trading strategies with FTMO-style risk rules, position sizing, and drawdown tracking, plus a
+**research platform** (experiments, scoring, walk-forward, parity gates) built on top of a fast
+recorded-data venue. The engine is **strategy-agnostic** and **venue-agnostic** — the same kernel
+runs identically across backtest and live, with venue differences behind `IBrokerAdapter`.
 
-### How it all fits together — end to end
+### The production engine: one kernel loop
+
+Since the iter-36 cutover there is exactly **one engine**: the pure kernel, driven by
+`KernelBacktestLoop.RunFromBrokerAsync` for every venue and mode.
 
 ```
-MARKET DATA IN          →   EVALUATION    →   EXECUTION   →   TRACKING    →   PERSISTENCE
-                                                                                │
-  BacktestReplayAdapter      TradingLoop       OrderDispatcher   PositionTracker   PipelineEvents
-  (bars from SQLite)    →    strategy.Evaluate  risk.Validate     OnExecutionAsync   + Trades
-  SimulatedBrokerAdapter      EntryPlanner       broker.Submit     TradeCostCalc      + EquitySnapshots
-  (ticks from CSV)            SignalGate         cost compute      exit reasons       + BarEvaluations
-  cTrader cBot / NetMQ                                                        
-                                                                                │
-                                                                                ▼
-STRATEGIES (4)           RISK GATE           VENUE FILLS        JOURNAL         WEB UI
-  TrendBreakout          PROTECTION_MODE     market order       SIGNAL          Dashboard
-  MeanReversion          DAILY_DD_LIMIT      limit (rest/expire) ORDER           Trades
-  SessionBreakout        MAX_DD_LIMIT        cost computation   FILL            Report + Journal
-  EMA Alignment          MAX_POSITIONS       SL/TP/force close  CLOSE           Live Monitor
-                         MAX_EXPOSURE                            BREACH          SSE / SignalR
-                         NEWS_WINDOW
+venue (IBrokerAdapter)                 Host shell                        Pure kernel (TradingEngine.Engine)
+  bars/ticks/execs/account   →   KernelBacktestLoop per-bar cycle:
+                                   BarEvaluator (strategies → OrderProposed)
+                                   → Kernel.Decide(state, event) ──────→  PreTradeGate (gate)
+                                   → EffectExecutor (orders, journal,     KernelSizing (lots)
+                                     trade close, risk feedback)          EngineReducer (positions, SL/TP)
+                                   → KernelFeedback (venue → events)      DrawdownReducer (DD, resets)
+                                   KernelTrailingEvaluator (BE/trail)     GovernorMachine (loss bands)
+                                   KernelEquitySnapshot / DailyDdGuard /
+                                   TimeFlatten / WeekendFlatten evaluators
 ```
 
-**The pipeline per bar:**
+- **The kernel is pure**: no `DateTime.UtcNow`, no `Guid.NewGuid()`, no I/O anywhere in
+  `src/TradingEngine.Engine/` — enforced by a source-scanning test (`EnginePurityTests`) and an
+  architecture test (Engine references only Domain). All side effects are `EngineEffect`
+  descriptions executed by `EffectExecutor`.
+- **Deterministic**: `DeterminismTests` re-runs scenarios and asserts byte-identical journals.
+  `PositionId == OrderId` by construction. Run identity is content-addressed
+  (`DatasetId`/`ConfigSetId`/`Seed` on `BacktestRunEntity`).
+- **One journal**: the lossless **StepRecord** stream (`ChannelJournalWriter`, Wait-mode channel
+  → `ScopedStepRecordSink` → `SqliteStepRecordSink`). The old `PipelineEvents`/`BarEvaluations`
+  writers are deleted (D83). API: `GET /api/runs/{id}/journal` (+ `/journal/export` NDJSON).
+- The old imperative classes (`OrderDispatcher`, `KernelOrderGate`, `AccountProcessor`) live only
+  in `tests/TradingEngine.Tests.Support` as the golden regression oracle (D81).
 
-1. **Data arrives** — bars come from the venue (SQLite replay, CSV synthesis, or live
-   cTrader NetMQ). Each bar carries `(Symbol, Timeframe, OHLCV, OpenTimeUtc)`.
+### Per-bar cycle (KernelBacktestLoop.ProcessBarAsync)
 
-2. **Indicators are computed** — `IndicatorSnapshotService` maintains per-`(symbol, timeframe)`
-   bar buffers and computes Skender indicators per strategy's `RequiredIndicators`. Keyed
-   by full signature `(symbol, tf, type, period)` to prevent cross-strategy bleed.
+1. Advance venue (`OnBarObserved`) and drain prior feedback (executions, account updates)
+2. Reconcile venue positions (cTrader is `VenueManaged` — the venue owns SL/TP execution)
+3. Prop-firm day/week/month roll checks
+4. Evaluate strategies (`BarEvaluator` → `OrderProposed` events)
+5. Kernel gate + sizing → order effects → venue submit
+6. SL/TP/exit detection, equity → drawdown/breach, trailing/breakeven evaluation
+7. `CompleteBarAsync` (cTrader: sends buffered commands in one `bar_done` envelope)
 
-3. **Strategies evaluate** — each active strategy gets a `MarketContext` (bars, indicators,
-   current price, engine time) and returns an optional `TradeIntent`. Active strategies are
-   filtered by `StrategyBankService` which respects `RunPlan` (per-run symbol/TF selection)
-   and regime filters.
+### Multi-symbol / multi-timeframe
 
-4. **Entry planning** — `EntryPlanner` reads the strategy's `OrderEntryOptions` and rewrites
-   the intent's `OrderType` and `LimitPrice`. `Market` orders fill immediately. `LimitOffset`
-   places a limit at a configurable pullback. SL/TP are re-derived so R stays consistent.
-
-5. **Risk gate** — `RiskManager.Validate()` checks 8 violations (protection mode, daily DD,
-   max DD, position caps, exposure, news, weekend). Also does worst-case portfolio projection
-   and budget downsizing. Blocked signals journal as `REJECTED`.
-
-6. **Order dispatched** — `OrderDispatcher` sizes the position (lot size = `floor(riskAmt /
-   (slPips × pipValue) / lotStep) × lotStep`), applies drawdown scaling, and submits to the
-   venue.
-
-7. **Execution** — the venue fills the order and emits an `ExecutionEvent`. For market orders
-   this happens immediately. For limit orders the venue rests the order until price reaches
-   the limit or `LimitOrderExpiryBars` passes (then cancels → `ENTRY_EXPIRED`).
-
-8. **Position tracking** — `PositionTracker` applies the execution event through
-   `EngineReducer`, creating positions, tracking fills, and publishing `TradeClosed` with
-   exit reason (SL/TP/FORCE/DailyDD/MaxDD).
-
-9. **Cost computation** — `TradeCostCalculator` stamps every close with `GrossPnl`,
-   `Commission` (round-turn × lots × perSide), `Swap` (nightsHeld × rate, triple on
-   Wednesdays), and `NetPnl`. Both venues use the same calculator.
-
-10. **Journal** — `PipelineEventWriter` persists every decision as a `PipelineEvent` with
-    normalized `JournalEventKind` (SIGNAL → ORDER → FILL → CLOSE / REJECTED / BREACH /
-    ENTRY_EXPIRED). The Report UI renders the full journal filterable by kind.
-
-11. **Persistence** — three background handlers flush to SQLite: `TradePersistenceHandler`
-    (trades), `BarEvaluationHandler` (per-bar strategy diagnostics), and
-    `EquityPersistenceHandler` (equity snapshots for the curve).
-
-**Multi-symbol / multi-timeframe:** The engine handles multiple symbols and timeframes
-simultaneously. `RunPlan` (`(strategyId, symbol, timeframe)[]`) routes per-strategy selection.
-Indicator snapshots are per-`(symbol, timeframe, strategy)`. Risk management is unified
-across all symbols — `MAX_POSITIONS` and exposure caps are global.
-
-**Config system:** DB is canonical. `StrategyConfigSeeder` populates from JSON on first run.
-`IStrategyConfigStore` provides `GetAllAsync()` / `UpsertAsync()`. `EffectiveConfigResolver`
-deep-merges stored defaults ← per-run overrides ← run plan for per-run customization.
-
-**Strategies shipped:** TrendBreakout, MeanReversion (with `LimitOffset` demo), SessionBreakout,
-EMA Alignment. All use ATR-based SL/TP, configurable position management (trailing,
-breakeven), and regime filtering.
-
-### Three venue paths
-
-| Path | How | Used for | Credentials |
-|------|-----|----------|-------------|
-| **Replay** (default) | `BacktestReplayAdapter` reads bars from SQLite. Cost-aware fills via `TradeCostCalculator`. Supports limit orders. | Fast iteration, CI, development | None |
-| **Synthetic** (testing) | `SimulatedBrokerAdapter` driven by `DataFeedService` + CSV. Tick-level fill simulation. | Simulation tests, harness-driven | None |
-| **cTrader** (prod-equiv) | `ctrader-cli.exe` runs cBot in-process. NetMQ DEALER/ROUTER lock-step protocol. | Final verification | Required |
-
-The default credential-free UI path (`RunEngineReplayAsync`) uses the Replay path when
-`CTrader:UseForBacktest=false`.
-
-### Architecture notes
-
-**Kernel (EngineState/EngineReducer) is half-wired.** A pure functional kernel was built
-across iter-20→23, but only the position-lifecycle slice is actively used:
-
-| Component | Status | What's wired |
-|-----------|--------|-------------|
-| `EngineReducer.Apply` | **Partially wired** | Handles `OrderSubmitted/OrderFilled/OrderRejected/OrderCancelled/ForceCloseAll` from `PositionTracker`. Bar/time/equity events never reach it. |
-| `PositionLifecycle` (FSM) | **Fully wired** | Position state transitions via the events above |
-| `DrawdownReducer` | **Imperative only** | Called from `RiskManager.UpdateEquityLevels`/`OnDailyReset` — not through the reducer's `HandleEquityObserved` path |
-| `GovernorMachine` | **Dead** | Never called. Governor runs via `TradingGovernorService` imperatively |
-| `HandleBarClosed`/`DetectSlTpExit` | **Dead** | SL/TP exits simulated imperatively via `EngineRunner.SimulateBarExitsAsync` |
-| `HandleDayRolled`/`WeekRolled`/`MonthRolled` | **Dead** | Published only to EventBus; reset logic runs in `RiskManager` |
-
-**Known gap:** `TradingGovernorService.OnBar` (cooling-off decrement) is never called from
-production. `TradingLoop` calls `signalGate?.OnBar()` which is `ISignalGate`, not
-`ITradingGovernor`. Governor cooling-off state once entered may persist until daily reset.
-
-Full analysis: `docs/archive/SYSTEM-MODEL.md`.
-
-**Two config sources overlap** but are correctly reconciled: `RiskProfile` (strategy-level:
-max DD%, risk%, exposure) and `PropFirmRuleSet` (FTMO guardrails: daily loss%, total loss%).
-Both are checked; the prop firm rules are the hard floor.
-
-**Fastest feedback loop**: `dotnet test tests/TradingEngine.Tests.Unit` (~2s, 207 tests).
+`RunPlan` is row-based: `[{StrategyId, Symbol, Timeframe, PackId}]` — a run executes N rows on
+one account (this is also what a future portfolio run is). `StrategyBankService.GetActive`
+filters by run plan + regime; indicator snapshots are keyed
+`(symbol, timeframe, type, period, param)` to prevent cross-strategy bleed. Risk is unified
+across all rows: concurrent-position, exposure, and budget caps are account-global.
 
 ---
 
-## 2. Position Sizing — End-to-End
+## 2. Position Sizing
 
-### Flow
+Sizing lives in the kernel (`KernelSizing.Calculate` + `ComputeScaleFactor`), invoked from the
+gate path — not in a dispatcher.
 
-```
-Strategy.Evaluate() → TradeIntent
-  → TradingLoop → EntryPlanner.Plan(intent, orderEntryOptions, signalPrice)
-    → rewrites OrderType + LimitPrice + re-derived SL/TP per config
-  → OrderDispatcher.DispatchAsync(intent, equity, currentMid, broker, ct)
-    ├─ riskManager.Validate(intent, equity, profile)  → violations? → BLOCK
-    ├─ PipCalculator.Distance(entry, sl, symbolInfo)    → slDistance (Pips)
-    ├─ PipCalculator.PipValuePerLot(symbolInfo, price, crossRate)
-    ├─ DrawdownScaler.ComputeScaleFactor(currentDD%, maxLimit, threshold, floor)
-    └─ PositionSizer.Calculate(equity, risk%, slDistance, pipValue, scale, maxLots, minLots, step)
-        → lots (decimal, floored to lot step)
-  → broker.SubmitOrderAsync(orderRequest, ct)          → orderId (Guid)
-  → PositionTracker.TrackOrder(orderId, request, riskAmount)
-  → returns OrderContext(orderId, lots, riskAmount, profile)
-```
-
-### Lot Size Formula
+### Lot size formula
 
 ```
 riskAmount = equity × riskPerTradePercent
@@ -183,428 +82,401 @@ pipValue   = PipCalculator.PipValuePerLot(symbol, price, crossRate)
 rawLots    = riskAmount / (slPips × pipValue)
 scaledLots = rawLots × drawdownScaleFactor
 clamped    = min(scaledLots, maxLots)
-stepped    = floor(clamped / lotStep) × lotStep
+stepped    = floor(clamped / lotStep) × lotStep      ← floor, never round
 finalLots  = max(stepped, minLots)
 ```
 
-### Pip Value Calculation (three-branch)
+### Pip value (three-branch)
 
 ```
-If quoteCurrency == accountCurrency (e.g. EUR/USD, account = USD):
-    pipValue = pipSize × contractSize  (e.g. 0.0001 × 100000 = $10)
-
-If baseCurrency == accountCurrency (e.g. USD/JPY, account = USD):
-    pipValue = (pipSize × contractSize) / currentPrice
-
-Otherwise (cross pair, e.g. EUR/GBP, account = USD):
-    pipValue = (pipSize × contractSize) × crossRate(quote → account)
+quoteCurrency == accountCurrency  (EURUSD, USD account):  pipValue = pipSize × contractSize
+baseCurrency  == accountCurrency  (USDJPY, USD account):  pipValue = (pipSize × contractSize) / price
+cross pair    (EURGBP, USD account):                      pipValue = pipSize × contractSize × crossRate(quote→USD)
 ```
 
-### Drawdown Scaler
+### Drawdown scaler
 
-Linear interpolation between 1.0 (below threshold) and scaleFloor (at limit):
+Linear interpolation between 1.0 (below threshold) and `scaleFloor` (at limit):
+
 ```
 ddRatio = currentDrawdown / maxDrawdownLimit
-if ddRatio <= threshold: return 1.0
-if ddRatio >= 1.0:       return scaleFloor
-return 1.0 - ((ddRatio - threshold) / (1.0 - threshold)) × (1.0 - scaleFloor)
+ddRatio <= threshold → 1.0;  ddRatio >= 1.0 → scaleFloor
+else → 1.0 − ((ddRatio − threshold) / (1 − threshold)) × (1 − scaleFloor)
 ```
 
-Standard profile: threshold=0.5, floor=0.5. At 50% DD usage, scale stays 1.0. At 100% usage, scale = 0.5.
+### Lot sizing methods (`LotSizingMethod`)
 
-### Lot Sizing Methods
-
-| Method | Description | Config Property |
-|--------|-------------|-----------------|
-| `PercentRisk` (default) | Risk a % of equity per trade | `riskPerTradePercent` |
-| `FixedLots` | Always trade a fixed lot size | `fixedLots` |
-| `FixedDollarRisk` | Risk a fixed dollar amount per trade | `fixedDollarRisk` |
-| `KellyFraction` | Kelly criterion: % risk × kelly fraction | `kellyFraction` |
-| `AntiMartingale` | Increase size after wins | `antiMartingaleMultiplier` |
+`PercentRisk` (default) · `FixedLots` · `FixedDollarRisk` · `KellyFraction` · `AntiMartingale`.
+Optional `SizeModifierPipeline` (ATR regime / time-of-day / confidence) — all disabled in the
+shipped risk profiles.
 
 ---
 
-## 3. Risk Management — End-to-End
+## 3. Risk Management
 
-### Flow
+### PreTradeGate (in-kernel, the single pre-trade gate)
 
-```
-TradeIntent → RiskManager.Validate(intent, equity, profile) → List<RiskViolation>
+One pure evaluation per proposal (`src/TradingEngine.Engine/Kernel/PreTradeGate.cs`):
+protection mode; governor verdict; SL validation (`MaxSlPips` / `MaxSlAtrMultiple` ceiling —
+`MaxSlPips <= 0` means no limit); global + per-strategy `MaxConcurrentPositions`; global
+`MaxExposure` + per-currency / opt-in `ExposureGroups` caps; a risk **budget with heat**
+(open-risk accounting); and a **worst-case drawdown projection** (if every open SL and the
+candidate's SL all hit, do we breach the daily/total floor?). Rejections journal with a
+`GuardResult` reason (e.g. `SL_TOO_WIDE:...`).
 
-Checks (in order):
-1. PROTECTION_MODE_ACTIVE    — Trading suspended after breach
-2. DAILY_DD_LIMIT            — Daily drawdown ≥ maxDailyLossPercent (FTMO)
-3. MAX_DD_LIMIT              — Max drawdown ≥ maxTotalLossPercent (FTMO)
-4. MAX_POSITIONS             — Global concurrent position limit from RiskProfile
-5. STRATEGY_MAX_POSITIONS    — Per-strategy position limit
-6. MAX_EXPOSURE              — (currentRisk + newRisk) / equity > maxExposurePercent
-7. NEWS_WINDOW               — High-impact news window active (if FTMO rule set)
-8. WEEKEND_RESTRICTION       — Weekend close approaching (if FTMO rule set)
+Known gap: the gate's worst-case commission estimate treats `CommissionPerLotPerSide` as flat
+per-lot dollars regardless of `CommissionType` (F26) — wrong order of magnitude for per-million
+symbols; sizing-side conservatism only, ledger costs are correct.
 
-If any violation: OrderDispatcher returns null → signal blocked → no order sent.
-```
+### Governor (`GovernorMachine`, in-kernel)
 
-### Position Tracking
+Loss bands, cooling-off, streak handling, profit-lock. Config `config/governor.json`. ON by
+default in research runs.
 
-```
-PositionTracker.OnExecutionAsync(execEvent)
-  → execEvent.OrderId NOT in _pendingOrders
-    → ClosePositionAsync()  → calculates PnL, determines exit reason (SL/TP/FORCE)
-      → publishes TradeClosed event → TradePersistenceHandler → DB
-  → execEvent.OrderId IN _pendingOrders
-    → accumulate partial fills → when full:
-      → Create Position → Register with RiskManager + PositionManager
-      → Apply trailing stop/breakeven via PositionManager.Evaluate()
-  → OrderCancelled (limit expiry)
-    → PositionPhase.Cancelled → cleanup pending intent + dedup
-    → journals as ENTRY_EXPIRED
-```
+### Breach handling
 
-### Position Lifecycle States
+Equity events → `Kernel.DecideEquity` → drawdown state → breach effects. Daily-DD guard,
+time-flatten, and weekend-flatten evaluators run in the loop (`Host/Kernel*Evaluator.cs`).
+`forceCloseOnBreach` is a rule-set option (off for FTMO sets — FTMO breach = account failure,
+not auto-flatten).
 
-```
-Active → BreakevenSet → Trailing → Closed | Cancelled (limit expiry)
-```
+### Position management add-ons
 
-### Trailing Stop Methods
+Per-strategy defaults (see §6) or **packs** (DB-seeded by `AddOnPackSeeder`, e.g.
+`runner-aggressive` = breakeven + AtrMultiple trail + Ride (ADX-relaxed trail widening) +
+PartialTp 50%@1R, all `Mode: Auto`). Trailing methods (`TrailingMethod`): `StepPips`,
+`AtrMultiple`, `BreakevenThenTrail`, `Structure`, `SteppedR`, `None`. Evaluated by
+`KernelTrailingEvaluator` → `StopLossModifyRequested` through the reducer.
 
-| Method | Description |
-|--------|-------------|
-| `StepPips` | Advance SL by fixed pip step when price moves favorably |
-| `AtrMultiple` | Advance SL = (high/low water mark) - (ATR × multiplier) |
-| `BreakevenThenTrail` | Move to breakeven first, then trail after |
+**F71 (open):** `TakeProfit.Method = "None"` is a dead knob for the hand-rolled strategy families
+(`trend-breakout`, `rsi-divergence`, `macd-momentum` call `SlTpHelpers`/own params directly and
+never read `Method`) — "disable TP" is not currently expressible for them via config, even though
+`EffectiveConfigJson` will happily record it. See `iter-structural-edge/LEDGER.md` S1.1.
 
 ---
 
-## 4. FTMO Prop Firm Rules
+## 4. FTMO Prop-Firm Rules & Risk Profiles
 
-### Config: `config/prop-firms/ftmo-standard.json`
+### Rule sets (`config/prop-firms/`)
 
-| Rule | Standard | Aggressive |
-|------|----------|------------|
-| Max Daily Loss | **5%** | **8%** |
-| Max Total Loss | **10%** | **15%** |
-| Profit Target | **10%** | **20%** |
-| Min Trading Days | 4 | 4 |
-| Drawdown Type | Fixed (from initial) | Fixed (from initial) |
-| Daily DD Base | InitialBalance | InitialBalance |
-| News Block | 30min before, 15min after (High impact) | Same |
-| Weekend Holding | No | No |
-| Weekend No-Open | After 20:00 UTC Friday | Same |
-| ForceCloseOnBreach | No | No |
-| Daily Reset | 22:00 UTC (Europe/Prague) | Same |
-| Protection Reset | Next Trading Day | Same |
+| Rule | ftmo-standard | ftmo-aggressive | raw |
+|------|---------------|-----------------|-----|
+| Max daily loss | **5%** | 8% | off |
+| Max total loss | **10%** (Fixed base) | 15% | off |
+| Weekly / monthly soft caps | 4% / 8% | — | off |
+| Profit target | **10%** | 20% | off |
+| Min trading days | 4 | 4 | 0 |
+| Equity definition | Balance + floating − fees/swaps | same | same |
+| Daily reset | 22:00 Prague | same | same |
+| News block (High impact) | 30 min before / 15 after | same | off |
+| Weekend holding | No (no-open 20:00 UTC Fri, close 21:00) | same | allowed |
+| ForceCloseOnBreach | No | No | No |
 
-**Daily drawdown** is calculated as: `(InitialBalance - currentEquity) / InitialBalance` (when DailyDdBase = InitialBalance).
+`raw` disables every toggle (governor, exposure, budget, max positions included) — diagnostics
+only, never research.
 
-**Max drawdown** is calculated as: `(equityBase - currentEquity) / equityBase`, where equityBase = InitialBalance (Fixed mode) or PeakEquity (Trailing mode).
+### Risk profiles (`config/risk-profiles/`)
 
-### Risk Profiles (config/risk-profiles/)
+| Profile | Risk/trade | Daily DD | Total DD | MaxSlPips | Max SL ATR× | Exposure | Max positions | DD scale (threshold→floor) |
+|---------|-----------|----------|----------|-----------|-------------|----------|---------------|---------------------------|
+| conservative | **0.25%** | 3% | 6% | 50 | 2.5 | 3% | 2 | 0.5 → 0.5 |
+| standard (research default) | **0.5%** | 4% | 8% | 100 | 5.0 | 5% | 3 | 0.5 → 0.5 |
+| aggressive | **2.0%** | 5% | 10% | 150 | 7.5 | 10% | 5 | 0.75 → 0.25 |
+| raw | 5.0% | off | off | 500 | 25 | 50% | 20 | none |
 
-| Profile | Risk/Trade | Max Daily DD | Max Total DD | Max SL | Max Exposure | DD Scale | Max Positions |
-|---------|------------|--------------|--------------|--------|--------------|----------|---------------|
-| Conservative | 0.5% | 3% | 6% | 50 pips | 3% | starts 50%, min 50% | 2 |
-| Standard | 1.0% | 4% | 8% | 100 pips | 5% | starts 50%, min 50% | 3 |
-| Aggressive | 2.0% | 5% | 10% | 150 pips | 10% | starts 75%, min 25% | 5 |
-
----
-
-## 5. Multi-Symbol Support
-
-The UI allows selecting up to 12 symbols and 6 timeframes. The `RunPlan` (`(strategyId, symbol, timeframe)[]`) routes per-strategy symbol/TF selection. `StrategyBankService.GetActive` filters strategies by run plan; falls back to strategy's stored defaults.
-
-### Verified
-
-Multi-symbol test (EURUSD + GBPUSD, H1): Unified risk management — `MAX_POSITIONS` violations block signals across both symbols.
+Both layers apply: `RiskProfile` (per-strategy) and `PropFirmRuleSet` (account guardrails, the
+hard floor). **No portfolio profile exists yet** — `standard`'s caps saturate immediately with
+many concurrent cells (known gap for any portfolio phase).
 
 ---
 
-## 6. Strategy Implementations
+## 5. Venues
 
-### Common Interface
-```csharp
-public interface IStrategy {
-    string Id { get; }
-    TradeIntent? Evaluate(MarketContext context);
-    void OnTradeResult(TradeResult result);
-    IReadOnlyList<IndicatorRequest> RequiredIndicators { get; }
-    int RequiredBarCount { get; }
-}
-```
+Venue is a per-run custom param (`CustomParams["Venue"]`), resolved by the `IVenueRunner` seam
+(`Web/Services/Venues/`): `ReplayVenueRunner` (everything credential-free) and
+`CTraderVenueRunner` (`"ctrader"`, explicit opt-in). Default when unset: `"replay"`.
 
-Every strategy receives `MarketContext` with: symbol, latest tick, OHLC bars keyed by timeframe, pre-computed indicator values, engine time.
+| Venue param | Adapter | Bars from | Used for |
+|---|---|---|---|
+| `tape` | `TapeReplayAdapter` | `IMarketDataStore` (canonical downloaded history, deduped; 14 symbols × 6 TFs, auto-synced) | **All scored research.** Sub-second runs |
+| `replay` (default) | `BacktestReplayAdapter` | legacy `Bars` table | Legacy/dev path |
+| `sim` / `simulated` | `SimulatedBrokerAdapter` (`Infrastructure/Venues/`) | CSV + synthetic ticks | Simulation-test harnesses |
+| `ctrader` | `CTraderBrokerAdapter` (`Infrastructure/Venues/CTrader/`) + cBot over NetMQ | cTrader itself | Parity guard, E2E, eventual live |
 
-### TrendBreakout
-- **Signal**: Break of 20-bar high (Long) or low (Short), confirmed above/below EMA50
-- **SL/TP**: ATR-based (1.5× ATR offset), TP = 2.0× SL
-- **Indicators**: EMA(50), ATR(14)
+### Fill semantics (tape) — measured, not assumed
 
-### MeanReversion
-- **Signal**: RSI < 35 (oversold Long) or RSI > 65 (overbought Short), price within 0.2% of bar extremum
-- **SL/TP**: ATR-based, TP = 1.0× SL
-- **Indicators**: RSI(14), Bollinger Bands(20, 2.0σ), ATR(14)
-- **Entry**: `LimitOffset` (demonstration) — places limit order at a pullback
+Normative doc: `docs/reference/RESTING-ORDER-CONTRACT.md` (corrected against six recorded
+cTrader fills, F43). cTrader replays each M1 bar as four synthetic ticks (O/H/L/C); a resting
+order fills at **the first tick to breach its level, never at the level itself** (stops fill
+through, limits fill better). One shared implementation: `VenueFillModel.FirstBreachingTick`,
+spread applied via `SpreadConvention` (ask = bid + spread on the buy side; exit levels already
+on the exit side of the book get no second spread). `HonestFills` (default ON) enforces honest
+entry timing. Limit entries are the research default (D11) — entry price is reproducible by
+construction.
 
-### SessionBreakout
-- **Signal**: Records 05:00-07:00 UTC session range, trades breakouts until 09:00 UTC
-- **SL/TP**: ATR-based, TP = 2.0× SL
-- **Flatten**: All positions closed at 12:00 UTC
+### Costs — one convention (D9/D10)
 
-### EMA Alignment
-- **Signal**: Fast EMA(20) crosses above Slow EMA(50) (Long) or below (Short)
-- **SL/TP**: ATR-based, TP = 2.0× SL
+**Costs are NEGATIVE; `Net = Gross + Commission + Swap`** — invariant-tested on every
+`TradeResult` row, both venues. Commission honours the venue-declared `CommissionType` (this
+broker: USD per million USD notional, charged per side at entry and exit prices; research runs
+use $30/M round-turn). Swap = venue-declared signed per-night rates × nights held (weekends
+free, triple Wednesday). Symbol economics come from the venue: the cBot emits `symbol_spec` on
+connect; `SymbolInfoRegistry.MergeVenueSpec` merges it (everything except spread — F24);
+`config/symbols.json` is a loudly-logged fallback only. Caveats: specs are in-memory
+process-lifetime only (F25 — `VenueSymbolSpecs` table exists but is never written);
+`SwapCalculationType` is captured but not dispatched on (F28).
 
----
+### Parity (tape vs cTrader)
 
-## 7. UI Features
+Permanent gate with a pre-registered tolerance budget (trade count exact, entry ≤1 tick, lots
+exact, exit ≤1 tick on ≥95%, commission ≤2%, swap ≤5%, net ≤1% of gross). EURUSD: `VERDICT:
+PASS`. Known residuals: F47 (venue prices commission at one reference spot — not matched, by
+decision), F48 (XAUUSD net ~1.37% — pip cross-rate timing; open). Any owner-facing candidate
+needs a parity verdict ≤ 14 days old. See `docs/iterations/iter-alpha-loop/PARITY-TRUTH*.md`
+and `evidence/p1-p3*.md`.
 
-### Pages
+### cTrader specifics
 
-| Route | Description |
-|-------|-------------|
-| `/` | Dashboard — trading status, daily/max DD %, equity curve chart |
-| `/trades` | Paginated trades list (50/page), clickable rows |
-| `/trades/{id}` | Trade detail — all fields, PnL gradient chart |
-| `/performance` | Total trades, win rate, net PnL, avg hold, equity chart |
-| `/backtests` | Merged list of active + completed backtests |
-| `/backtests/run` | New backtest form — multi-symbol, timeframes, date picker, balance |
-| `/backtest/{runId}` | Live progress via SSE — color-coded log, counters, result table |
-| `/backtests/detail?runId=` | Completed backtest detail + per-strategy breakdown + **Journal tab** |
-| `/events` | Last 100 engine events |
-
-### API Endpoints
-
-| Method | Route | Description |
-|--------|-------|-------------|
-| `POST` | `/api/backtest/start` | Start backtest → `{runId, status}` |
-| `GET` | `/api/backtest/{runId}/status` | Current status + result |
-| `GET` | `/api/backtest/{runId}/logs` | Raw log lines |
-| `GET` | `/api/backtest/{runId}/journal` | Paged journal with `?kind=&afterSeq=&limit=` |
-| `GET` | `/api/backtest/{runId}/stream` | Server-Sent Events for live progress |
+Lock-step protocol (§12); headless launches use **dynamic ports** via `CTraderProcessOwner`
+(PID-owned, orphan-reaped); desktop capture (`CTraderListenService`) listens on fixed
+15555/15556. The cBot writes its own resilient ledger (`shamshir-report.json`) so venue truth
+survives CLI crashes. cTrader runs are strictly serial; tape runs pool concurrently.
 
 ---
 
-## 8. Cost & Journal System (iter-31)
+## 6. Strategy Bank (9 families)
 
-### Cost Computation
+Interface: `IStrategy.Evaluate(MarketContext) → TradeIntent?` with declared
+`RequiredIndicators`/`RequiredBarCount`. Configs seeded from `config/strategies/*.json`
+(DB canonical). All families default to **LimitOffset** entries and `standard` risk. Scored
+research so far: H1/H4 only.
 
-`TradeCostCalculator` (in `Services/Helpers/`) is the single source of truth:
+| Family | Thesis | Key params | SL / TP | Own add-ons (PackId-null baseline, F69) |
+|---|---|---|---|---|
+| trend-breakout | N-bar high/low breakout above trend EMA, ADX-confirmed | lookback 20, MA 50 | 1.5×ATR / 2R | BE@1R + trail 2.5×ATR |
+| mean-reversion | RSI 30/70 extreme + outer-BB rejection snaps back | RSI 14, BB 20/2σ | 1.5×ATR / 1R | none |
+| session-breakout | Break of 05–07 UTC range in 07–09 window; flatten 12:00 | UTC session times | 1.5×ATR / 2R | BE@1R + trail 2.0×ATR |
+| ema-alignment | First pullback to fast EMA after 20/50 crossover | 20/50 | 1.5×ATR / 2R | BE@1R + trail 2.5×ATR |
+| macd-momentum | MACD histogram zero-cross on trend side of SMA(200), ADX≥20 | 12/26/9 | 2×ATR / 3R | BE@1R + trail 2.5×ATR |
+| rsi-divergence | Pivot-based price/RSI divergence, entry on pivot break | RSI 14, lookback 50 | 1.5×ATR / 2R | none |
+| bb-squeeze | BB contraction resolves in breakout direction | BB 20/2σ, threshold 0.8 | swing-point / 2.5R | BE@1R + trail 2.0×ATR |
+| super-trend | SuperTrend flip confirmed by ADX≥20 | ATR 10 ×3.0 | swing-point / 2R | BE@1R + trail 2.5×ATR |
+| mtf-trend | H1 RSI pullback resuming H4/EMA(200) trend | EMA 200, RSI 45/55 | swing-point / 2R | BE@1R + Structure trail (10-bar) |
 
-```
-GrossProfit  = PipCalculator.GrossPnL(entry, exit, direction, lots, symbolInfo, crossRate)
-Commission   = lots × commissionPerLotPerSide × 2  (round turn)
-Swap         = nightsHeld × swapRate(direction) × lots (×3 on triple-swap day)
-NetProfit    = GrossProfit − Commission − Swap
-```
-
-Cost data lives in `SymbolInfo` fields: `CommissionPerLotPerSide`, `SwapLongPerLotPerNight`, `SwapShortPerLotPerNight`, `TripleSwapWeekday`. All default to 0 (costs off). Seeded in `config/symbols.json` with realistic estimates.
-
-### Journal
-
-`JournalNormalizer` maps both live and persisted event vocabularies onto one taxonomy:
-
-| Kind | Meaning |
-|------|---------|
-| SIGNAL | Strategy emitted TradeIntent (reason + direction + indicators) |
-| ORDER | Order accepted by dispatcher (size, risk, profile) |
-| FILL | Order filled / position opened |
-| CLOSE | Position closed with exit reason + itemized costs |
-| REJECTED | Order rejected by risk gate |
-| BREACH | Drawdown limit breach detected |
-| GOVERNOR | Governor state change |
-| ENTRY_EXPIRED | Limit order expired unfilled |
-
-### EntryPlanner (iter-31 C0)
-
-Single place where order entry policy is applied. Called in `TradingLoop` after `strategy.Evaluate()`:
-
-- Reads `OrderEntryOptions` from strategy config
-- `Market` → immediate fill
-- `LimitOffset` → places limit `offsetPips` more favorable, rests until price reached or expires
-- `MarketWithSlippage` → immediate fill capped at `maxSlippagePips`
-- Re-derives SL/TP off the planned entry so R stays consistent
-- All strategies default to `Market`; `mean-reversion` uses `LimitOffset` as demonstration
+History worth knowing: `rsi-divergence` and `ema-alignment` originally shipped with fake logic
+(self-comparing RSI; always-true state condition) and were rewritten before any scored research.
+These are infrastructure-exercise hypotheses, not curated alpha; census evidence (F68) puts the
+bank at ≈ +0.02R/trade pooled, with `mean-reversion` best (+0.10R) and `mtf-trend` worst
+(−0.22R).
 
 ---
 
-## 9. Config System (iter-32)
+## 7. Research Platform
 
-### Source of Truth
+The reason the tape venue exists. Everything is server-side + CLI-drivable.
 
-DB is canonical. JSON is seed + manual export only. `StrategyConfigSeeder` seeds DB from `config/strategies/*.json` on first run (idempotent).
+- **Experiments**: one `Experiment` row per batch (Name, Hypothesis, **SpecJson = the
+  pre-registration**); one `ExperimentRun` per scored cell (`BacktestRunId`, `VariantLabel`,
+  fold fields, `ScoreJson`). Cell = strategy × symbol × TF × pack × risk. One cell per run (D13).
+- **Scoring** (`SetupScoreService`, versioned): composite = Expectancy 30 + FTMO-survival 25 +
+  Drawdown 15 + Consistency 15 + Robustness/OOS 15. Validity floor: ≥20 trades, DataQuality
+  PASS, completed, zero warnings — else score = null **with reason**. **sv2** (current):
+  survival = real `ChallengeSimulator` rolling 30-day windows over the run's actual daily
+  equity, `PassRate = Pass/Windows`, incomplete counts as non-pass. sv1 rows (the 075d5240
+  census) are frozen history — survival there was a placeholder (F63).
+- **Walk-forward**: `WalkForwardController` + `WalkForwardBackgroundService` +
+  `Experiments/WalkForwardSplitter` — 6 rolling folds, train/test split, per-fold param freeze;
+  OOS ratio = Σ test profit / Σ chosen-params train profit (F62); cull gate < 0.5 → parked
+  (`StrategyCellParks`, never deleted). Carries `PackId`/`RiskProfileId` into folds.
+- **Challenge sim**: `ChallengeSimulator` (`Risk/Compliance/`) + `ChallengeSimulationService` —
+  FTMO-standard semantics (target / daily cap / max loss / min days) over real daily equity;
+  `GET /api/runs/{runId}/challenge-sim`. `PassProbabilityEstimator` = Monte Carlo forward
+  projection (different question).
+- **Split-half persistence** (F64 machinery): `SplitHalfPersistenceService`,
+  `GET /api/experiments/persistence`, CLI verb `research persistence` — prints the selection-
+  persistence table for any experiment. Python equivalents in `tools/research/`.
+- **Parity**: `ParityGateService` + `LedgerReconcileService` / `LedgerReconciler` — per-trade
+  reconcile + tolerance verdict (`research parity`).
+- **Exit lab**: excursion recording (opt-in `RecordExcursions`) + `ExitReplayer`
+  (`Services/ExitLab/`) — replay exit rules offline against recorded excursion paths (the
+  entry-stream-identical exit comparison; the run-level factorial measures whole-system effects
+  instead).
+- **Sweeps**: `SweepController` + `SweepRunnerService` (tape-only, queued).
+- **ResearchCli** (`src/TradingEngine.ResearchCli`): verb-based HTTP client + playbook executor
+  (`research doctor|run|score|scoreboard|parity|persistence|...`), machine `VERDICT:` lines.
+  Known quirk: bare `research score <runId>` mis-parses (CliArgs joins two positionals) — use
+  options/API.
+- **Discipline** (enforced by plan + ledger convention, see `docs/iterations/*/PLAN.md`):
+  pre-register before running, ≤8 variants/session, evaluate at family level on
+  **position-level dollars** (row-level ExpectancyR is inflated by PartialTp row-splitting —
+  F70), split-half + sign-consistency + walk-forward for any survival claim, embargo windows
+  touched exactly once.
 
-### Config Store
+---
 
-`IStrategyConfigStore` (EF-backed `SqliteStrategyConfigStore`) — `GetAllAsync()` / `UpsertAsync()`. `ConfigLoader` reads strategy configs from the store, not directly from JSON.
+## 8. Web UI & API
 
-### Per-Run Overrides
+**UI**: Angular SPA (`web-ui/`), served single-origin by `TradingEngine.Web` (SPA + Scalar API
+docs + REST). Dev port **5134**. `NgServeHost` proxies `ng serve` in dev; production builds land
+in `wwwroot` (`npm --prefix web-ui run build` — a stale wwwroot vs Angular src breaks
+`dotnet build` static assets). Live monitor uses SignalR push from in-memory run state (zero DB
+reads); read APIs are cache-first (`RunDataCache`, write-through from the persistence handlers).
 
-`EffectiveConfigResolver` — deep-merges: stored default ← per-run overrides ← run plan. Pure, unit-tested.
+**API controllers** (`Web/Api/`): `RunsController` (runs, journal, duplicate, challenge-sim),
+`TradesController`, `BarsController`, `ExperimentsController` (+ scoreboard, persistence),
+`WalkForwardController`, `SweepController`, `ExitLabController`, `EntryQualityController`,
+`BlockBootstrapController`, `BacktestAnalyticsController` (reconcile), `DataManagerController`
+(coverage/sync), `CtraderListenController`, `VenueSessionsController`, `StrategiesController`,
+`RiskProfilesController`, `PropFirmRulesController`, `AddOnPacksController`,
+`GovernorController`, `ScoreboardController`, `ResearchPipelinesController`, `SystemController`
+(health), `ExportController`, `LogController`, `PhaseTrackerController`.
 
-### Run Plan
+---
 
-`RunPlan` record — `(strategyId, symbol, timeframe)[]`. Threaded through `StrategyBankService.GetActive()` to override strategy defaults per run.
+## 9. Config System
+
+DB is canonical; JSON is seed + export. `StrategyConfigSeeder` seeds `config/strategies/*.json`
+on first run (idempotent); `AddOnPackSeeder` seeds packs. `EffectiveConfigResolver` deep-merges
+stored default ← per-run overrides ← run plan; the resolved `EffectiveConfigJson` is persisted
+on the run. Risk profiles / prop-firm rules / symbols load from JSON (`ConfigLoader`), with
+symbol economics overridden by venue-declared specs at runtime (§5). Other config:
+`governor.json`, `regime.json` (regime detection — `AtrBasedRegimeDetector`), `rotation.json`,
+`sizing-policy.json`, `position-management.json`, `exposure-groups.json`, `news/`,
+`experiments/`, `compare-both/`, `r4-embargo/`.
+
+Known audit-trail caveat (F61): the API's displayed effective config does not apply legacy
+`UsePackId`/`StripAddOns` custom params (execution is correct; display can lie about packs on
+old-style runs).
 
 ---
 
 ## 10. Test Infrastructure
 
-### Unit Tests: ~207 tests (credential-free)
+Baseline at 2026-07-16 (structural-edge S0): **build 0 err · Unit 767 pass / 6 skip ·
+Integration 153 · Simulation-fast 144** — all credential-free.
 
-Categories: RiskManager, DrawdownTracker, PositionSizer, PipCalculator, SlTpCalculator, TrailingStop, ExcursionTracker, ExitReason, DrawdownScaler, OrderDispatcher, PositionTracker, EntryPlanner, TradeCostCalculator, JournalNormalizer, EffectiveConfigResolver, EngineReducer, PositionLifecycle, StrategyBankService.
+| Tier | What | Notes |
+|------|------|-------|
+| Architecture | Reflection invariants: Engine references only Domain; purity (no UtcNow/NewGuid/ILogger in Engine) | seconds |
+| Unit | Pure logic: reducers, gate, sizing, costs, fill model (`VenueFillModelTests` pinned to recorded venue fills), swap model, challenge simulator | ~seconds |
+| Integration | Real DI + SQLite + WebApplicationFactory: API, scoring (`SetupScoreSv2Tests`), persistence, split-half | ~10s+ |
+| Simulation (fast) | Full engine on harnesses: golden journeys, determinism, replay E2E, resting-order contract | `RequiresCTrader!=true` |
+| cTrader E2E | Real compiled cBot under ctrader-cli over NetMQ incl. ledger reconciliation | `RequiresCTrader=true`, credentials + desktop install; see `ctrader-e2e` skill |
 
-### Simulation Tests (credential-free)
-
-| Test | Verifies |
-|------|----------|
-| FtmoGoldenJourney (4 tests) | FTMO rule enforcement over multi-bar scenarios |
-| TradingLoopDirect | Strategy→EntryPlanner→OrderDispatcher integrated |
-| DecisionJournal | Journal normalization + persistence |
-| BacktestReplayCostsAndLimits | Cost computation + limit order fill/expiry |
-
-### Test Harnesses
-
-- `EngineTestHarness.cs` — In-process engine test builder (fluent API)
-- `ReplayTestHarness.cs` — DB replay test builder
-- `DrawdownTestHarness.cs` — Drawdown isolation test harness
-- `AlwaysSignalStrategy.cs` — Test strategy that always fires signals
+Golden gates: `golden-snapshot.json` (kernel behaviour), determinism suite, cost-sign invariant.
+**Credential-free green does not prove cTrader behaviour** — venue-path changes need a live
+compare-both smoke (doctrine after F24; see `docs/reference/INVESTIGATION-METHOD.md`).
 
 ---
 
 ## 11. Key Files Reference
 
-### Domain (`src/TradingEngine.Domain/`)
+### Kernel (`src/TradingEngine.Engine/`)
 | File | Purpose |
 |------|---------|
-| `Interfaces/IBrokerAdapter.cs` | Broker adapter contract (SubmitOrder, ClosePosition, CompleteBarAsync, streams) |
-| `Interfaces/IStrategy.cs` | Strategy contract (Evaluate, OnTradeResult, required indicators) |
-| `Interfaces/IRiskManager.cs` | Risk manager contract (Validate, CalculateLotSize, UpdateEquityLevels) |
-| `Interfaces/IPipelineJournal.cs` | Journal contract for pipeline events |
-| `Interfaces/IPipelineEventRepository.cs` | Pipeline event persistence |
-| `Interfaces/ISymbolInfoRegistry.cs` | Symbol metadata lookup (cost fields, etc.) |
-| `Trading/TradeIntent.cs` | Signal-to-order bridge (Symbol, Direction, SL, TP, StrategyId, Reason, OrderType, LimitPrice) |
-| `Trading/TradeResult.cs` | Completed trade (PnL, R-multiple, MAE/MFE, exit reason, Commission, Swap, Gross, Net) |
-| `Trading/Position.cs` | Open position state |
-| `RiskAndEquity/RiskProfile.cs` | Per-strategy risk configuration |
-| `RiskAndEquity/PropFirmRuleSet.cs` | FTMO rule set |
-| `MarketData/MarketContext.cs` | What strategies see (bars, indicators, tick, time) |
-| `SymbolInfo/SymbolInfo.cs` | Symbol metadata (pip size, contract size, currencies, spread, cost fields) |
+| `Kernel/Kernel.cs` | Top-level router: `Decide(state, event)`; static helpers (`EvaluateDrawdownBreach`, `DetectSlTpExit`) |
+| `EngineReducer.cs` | Pure state machine `Apply(state, event) → (state', effects)` |
+| `PositionLifecycle.cs` | Position FSM: Intended → Submitted → Open → Reducing → Closed |
+| `Kernel/PreTradeGate.cs` | The single pre-trade gate (protection, governor, SL, exposure, budget/heat, worst-case DD) |
+| `Kernel/KernelSizing.cs` | Sizing math + drawdown scale factor |
+| `DrawdownReducer.cs` | Daily/weekly/monthly/max DD, resets, velocity |
+| `GovernorMachine.cs` | Governor state machine |
+| `Kernel/KernelDriver.cs` / `Kernel/ChannelJournalWriter.cs` | Replay driver / lossless StepRecord journal |
 
-### Host (`src/TradingEngine.Host/`)
+### Host shell (`src/TradingEngine.Host/`)
 | File | Purpose |
 |------|---------|
-| `EngineWorker.cs` | Main engine loop (Backtest: single-threaded bar-stepped; Live: concurrent loops) |
-| `EngineHostFactory.cs` | Single composition root — all DI, event handler wiring |
-| `TradingLoop.cs` | Per-bar evaluate→plan→gate→dispatch pipeline (shared live+backtest) |
-| `EngineHostOptions.cs` | Run configuration (RunId, Mode, AdapterFactory, DbPath, Symbols, RunPlan) |
-| `ConfigLoader.cs` | Loads config from DB store (strategies) + JSON (risk/prop-firm/symbols) |
-| `StrategyRegistry.cs` | Scans assembly for strategies, instantiates via config |
-| `PipelineEventWriter.cs` | Channel-backed background flusher for pipeline journal |
-| `TradePersistenceHandler.cs` | Background flusher for trade persistence |
-| `EquityPersistenceHandler.cs` | Background flusher for equity snapshot persistence |
-| `BarEvaluationHandler.cs` | Background flusher for bar evaluation persistence |
-| `SymbolCatalog.cs` | Loads `config/symbols.json`, resolves symbol metadata incl. cost fields |
-| `CrossRateStore.cs` | Mutable cross-rate store (GBP→USD, JPY→USD) |
+| `KernelBacktestLoop.cs` | THE production loop (all venues, backtest + live) |
+| `EngineRunner.cs` / `EngineWorker.cs` / `EngineHostFactory.cs` | Build + run the inner engine host |
+| `BarEvaluator.cs` | Strategies → `OrderProposed` |
+| `EffectExecutor.cs` / `KernelFeedback.cs` | Effects out / venue events in |
+| `KernelTrailingEvaluator.cs`, `KernelEquitySnapshot.cs`, `KernelDailyDdGuardEvaluator.cs`, `KernelTimeFlattenEvaluator.cs`, `KernelWeekendFlattenEvaluator.cs` | Per-bar evaluators |
+| `StrategyBankService.cs` / `StrategyRegistry.cs` / `ConfigLoader.cs` / `IndicatorSnapshotService.cs` | Strategy activation + config + indicators |
+| `TradingLoop.cs` | Golden-oracle shell only (not production) |
 
-### Services (`src/TradingEngine.Services/`)
+### Venues & data (`src/TradingEngine.Infrastructure/`)
 | File | Purpose |
 |------|---------|
-| `PipCalculator.cs` | Distance, PipValue, GrossPnL, FloatingPnL |
-| `PositionTracker.cs` | Tracks open positions, executes reducer, dispatches effects |
-| `Helpers/TradeCostCalculator.cs` | Single source of truth for gross/commission/swap/net |
-| `Helpers/EntryPlanner.cs` | Config→order type + limit price + re-derived SL/TP |
-| `Helpers/JournalNormalizer.cs` | Maps event vocabularies to normalized taxonomy |
-| `Helpers/EffectiveConfigResolver.cs` | Deep-merge default ← overrides ← run plan |
+| `Adapters/TapeReplayAdapter.cs` | Research venue (IMarketDataStore-fed, resting orders, honest fills) |
+| `Adapters/VenueFillModel.cs` / `Adapters/SpreadConvention.cs` | First-breaching-tick fill rule / bid-ask convention |
+| `Adapters/BacktestReplayAdapter.cs` | Legacy replay venue (Bars table) |
+| `Venues/CTrader/CTraderBrokerAdapter.cs` | Engine side of the cTrader lock-step |
+| `Venues/SimulatedBrokerAdapter.cs` | Synthetic tick venue (tests) |
+| `Transport/NetMq/NetMqMessageTransport.cs` | SUB + ROUTER sockets, poller |
+| `SymbolInfoRegistry.cs` | Symbol economics; venue-spec merge (process singleton — beware cross-run state) |
+| `Reconcile/LedgerReconciler.cs` | Per-trade tape-vs-venue reconcile |
+| `Persistence/TradePersistenceHandler.cs`, `Persistence/EquityPersistenceHandler.cs`, `Persistence/Repositories/SqliteStepRecordSink.cs` | Write paths (all push to `RunDataCache`) |
+| `Caching/RunDataCache.cs` | Write-through run cache shared Web ↔ inner host |
+| `Indicators/SkenderIndicatorService.cs`, `Indicators/AtrBasedRegimeDetector.cs` | Indicators, regime |
 
-### Risk (`src/TradingEngine.Risk/`)
+### Services & risk (`src/TradingEngine.Services/`, `src/TradingEngine.Risk/`)
 | File | Purpose |
 |------|---------|
-| `RiskManager.cs` | Central orchestrator — validates signals, calculates lot sizes, tracks positions |
-| `DrawdownTracker.cs` | Tracks peak equity, daily/max drawdown fractions |
-| `PositionSizer.cs` | Lot size calculation (5 methods) |
-| `DrawdownScaler.cs` | Linear interpolation between 1.0 and scaleFloor |
-| `Filters/NewsFilter.cs` | Stub — always returns false |
-| `Filters/SessionFilter.cs` | Weekend detection |
-
-### Infrastructure (`src/TradingEngine.Infrastructure/`)
-| File | Purpose |
-|------|---------|
-| `Adapters/BacktestReplayAdapter.cs` | DB bar replay — instant-fills at close, cost-aware, limit order support |
-| `Adapters/SimulatedBrokerAdapter.cs` | Tick-driven synthetic broker — cost-aware, limit order support |
-| `Adapters/NetMQBrokerAdapter.cs` | NetMQ transport — SUB (telemetry), ROUTER (lock-step bar/command flow) |
-| `Persistence/TradingDbContext.cs` | EF Core context — includes StrategyConfigs table |
-| `Persistence/SqliteStrategyConfigStore.cs` | DB-backed strategy config store |
-| `Persistence/StrategyConfigSeeder.cs` | Seeds DB from JSON on empty store |
-| `Persistence/Repositories/` | SQLite-backed repositories |
+| `Services/PipCalculator.cs` | Distance, pip value, gross PnL |
+| `Services/Helpers/TradeCostCalculator.cs` | Gross/commission/swap/net (D9 convention) |
+| `Services/EntryPlanner.cs` | Order-entry policy (market/limit-offset, SL/TP re-derivation) |
+| `Services/SLTPCalculation/SlTpCalculator.cs` + `SlTpResolver.cs` | SL/TP methods (note F71: some strategies bypass these) |
+| `Services/ExitLab/ExitReplayer.cs`, `Services/Helpers/ExcursionTracker.cs` | Exit lab |
+| `Risk/Compliance/ChallengeSimulator.cs`, `Risk/Compliance/PassProbabilityEstimator.cs` | Challenge windows / Monte Carlo P(pass) |
+| `Risk/RiskManager.cs` etc. | Legacy imperative risk (oracle-path; kernel gate is production) |
 
 ### Web (`src/TradingEngine.Web/`)
 | File | Purpose |
 |------|---------|
-| `Services/BacktestOrchestrator.cs` | Backtest lifecycle — start, run, cancel, status, trade stats |
-| `Services/BacktestJournal.cs` | Unified SSE + log queue writer |
-| `Api/BacktestController.cs` | REST endpoints (start, status, logs, journal, SSE stream) |
-| `Pages/Backtests/Run.cshtml` | Multi-symbol backtest form |
-| `Pages/Backtests/Progress.cshtml` | Live SSE progress |
-| `Pages/Backtests/Report.cshtml` | Completed backtest detail + Journal tab |
-| `Pages/Strategies.cshtml` | Strategy browse/edit (scaffolding) |
+| `Services/BacktestOrchestrator.cs` | Run queue/lifecycle/finalize (decomposed 2026-07: run-scoped services in `Services/Runs/`, venue execution behind `Services/Venues/IVenueRunner`) |
+| `Services/Runs/*` | RunRegistry, RunRecordStore, RunConfigAssembler, RunMarketContextLoader, RunProgressProjector, EngineHostLifecycle, `ILiveRunReader` + query classes (RunListQuery/RunDetailQuery/RunDataQuery/RunBarNarrativeQuery) |
+| `Services/Venues/ReplayVenueRunner.cs` / `CTraderVenueRunner.cs` | Venue execution seam |
+| `Services/SetupScoreService.cs`, `ChallengeSimulationService.cs`, `SplitHalfPersistenceService.cs`, `SweepRunnerService.cs`, `WalkForwardBackgroundService.cs`, `ParityGateService.cs`, `LedgerReconcileService.cs` | Research services |
+| `Services/CTraderListenService.cs`, `CTraderProcessOwner.cs`, `AutoSyncService.cs` | Desktop capture, CLI process ownership, data auto-sync |
+| `Configuration/AddOnPackSeeder.cs` | Pack seeding |
 
-### Configuration (`config/`)
-| File | Purpose |
+### Research tooling
+| Path | Purpose |
 |------|---------|
-| `symbols.json` | 16 symbol definitions (pip size, contract size, currencies, spread, cost fields) |
-| `prop-firms/ftmo-standard.json` | FTMO rules |
-| `risk-profiles/` | Risk profile configs |
-| `strategies/` | Strategy configs (seed → DB on first run) |
-| `regime.json` | Regime detection config |
-| `sizing-policy.json` | Sizing policy config |
-| `governor.json` | Governor machine config |
-| `rotation.json` | Strategy rotation config |
+| `src/TradingEngine.ResearchCli/` | `research` CLI (verbs + playbooks + VERDICT lines) |
+| `src/TradingEngine.Experiments/` | ExperimentRunner, VariantScorer, WalkForwardSplitter, report writer |
+| `tools/research/` | `quant_research.py`, `split_half.py` (+ README) — DB-direct analysis, committed S0 |
+| `playbooks/` | ResearchCli playbooks |
 
 ---
 
-## 12. Lock-Step Protocol (cTrader path only)
-
-The cBot and engine communicate via a deterministic lock-step protocol over NetMQ DEALER/ROUTER:
+## 12. Lock-Step Protocol (cTrader path)
 
 ```
-cBot → engine   {type:"hello", v:1, symbols:[..], periods:[..], barsLoaded:N}
-engine → cBot   {type:"hello_ack", v:1}
+cBot → engine   {type:"hello", v:2, symbols:[..], periods:[..], subs:[..], barsLoaded:N,
+                 account:{..}, positions:[..], mode:"backtest"|"live"}
+engine → cBot   {type:"hello_ack", v:1}          (cBot retries 1s×5 → HELLO_TIMEOUT stop)
 
-cBot → engine   {type:"bar", seq:N, symbol, period, openTime, o,h,l,c, volume, simTime, account}
-cBot BLOCKS until:
-engine → cBot   {type:"bar_done", seq:N, commands:[{submit_order,...},{close_position,...}]}
-cBot executes commands synchronously at simulated time:
-cBot → engine   {type:"bar_result", seq:N, execs:[{clientOrderId,kind,state,fillPrice,...}], account}
+cBot → engine   {type:"bar", seq:N, symbol, period, openTime, OHLCV, account:{..}}
+cBot BLOCKS (30s) until:
+engine → cBot   {type:"bar_done", v:1, seq:N, commands:[{submit_order|close_position|modify_order|cancel_order}...]}
+cBot executes commands at simulated time, then:
+cBot → engine   {type:"bar_result", seq:N, execs:[..], account:{..}}
 
-cBot → engine   {type:"exec", ...}     ← async SL/TP hits between bars
-
-cBot → engine   {type:"stats", barsSent:N, cmdsReceived:N, ordersExecuted:N, execsSent:N}
-engine → cBot   {type:"shutdown"}
+cBot → engine   {type:"exec", ...}    ← venue-initiated executions (SL/TP) between bars
+PUB → SUB side channel: {type:"tick"|"acct"|diagnostics}
+cBot → engine   {type:"stats", ...};  engine → cBot {type:"shutdown"}
 ```
 
-Full protocol spec: `docs/iterations/iter-17/PROTOCOL.md`
+cBot emits `symbol_spec` on connect (§5). Full details: `shamshir-ctrader` skill +
+`docs/iterations/iter-17/PROTOCOL.md` (original spec; v2 additions above).
 
 ---
 
 ## 13. Build and Test Commands
 
 ```powershell
-# Full build
+npm --prefix web-ui run build      # if Angular src is newer than wwwroot (static-assets gotcha)
 dotnet build
 
-# Unit tests (~207 pass)
-dotnet test tests/TradingEngine.Tests.Unit
-
-# Simulation tests (FTMO + replay)
-dotnet test tests/TradingEngine.Tests.Simulation
-
-# Architecture tests
+dotnet test tests/TradingEngine.Tests.Unit                                        # 767 pass / 6 skip
+dotnet test tests/TradingEngine.Tests.Integration                                 # 153
+dotnet test tests/TradingEngine.Tests.Simulation --filter "RequiresCTrader!=true" # 144 (fast tier)
+dotnet test tests/TradingEngine.Tests.Simulation --filter "FullyQualifiedName~Determinism"
 dotnet test tests/TradingEngine.Tests.Architecture
 
-# Run web UI
-dotnet run --project src/TradingEngine.Web
+dotnet run --project src/TradingEngine.Web        # http://localhost:5134
 
-# EF migration
 dotnet ef migrations add <Name> --startup-project src/TradingEngine.Web --project src/TradingEngine.Infrastructure
 ```
 
@@ -612,18 +484,21 @@ dotnet ef migrations add <Name> --startup-project src/TradingEngine.Web --projec
 
 ## 14. Key Design Decisions (summary)
 
-See `DECISIONS.md` in repo root for full decision registry (D1–D80).
+Full registry: `DECISIONS.md` (D1–D97+). Research-era decisions live in the iteration plans
+(`iter-alpha-loop/PLAN.md` D1–D14, `iter-structural-edge/PLAN.md` D1–D8).
 
 | Decision | Value |
 |----------|-------|
-| Money math | `decimal` for all price/money/lot arithmetic |
-| Lot rounding | `Math.Floor`, never `Math.Round` |
-| Default venue | `BacktestReplayAdapter` (credential-free, cost-aware) |
-| Cost source | `TradeCostCalculator` — single source, used by both venues |
-| Order entry | `EntryPlanner` — one place, config-driven, not per-strategy |
-| Config source | DB canonical (JSON = seed + export only) |
-| Journal taxonomy | `JournalNormalizer` maps both vocabularies to `SIGNAL/ORDER/FILL/CLOSE/...` |
-| Schema | EF migrations only — no raw SQL |
-| Logging | Serilog only — no `Console.WriteLine` |
-| Time | `IEngineClock` — never `DateTime.UtcNow` directly |
-| Channels | `Wait` for order/trade; `DropOldest` only for analytics |
+| Money math | `decimal` everywhere; lot rounding = `Math.Floor`, never `Round` |
+| Engine | One pure kernel; effects as data; imperative twins are test oracles (D81) |
+| Journal | Single lossless StepRecord stream (D83); PipelineEvents deleted |
+| Cost convention | Costs NEGATIVE; `Net = Gross + Commission + Swap` (D9), invariant-tested |
+| Symbol economics | Venue-declared (`symbol_spec`); `symbols.json` = loud fallback (D10) |
+| Research entries | LimitOffset default (D11) — reproducible entry prices |
+| Research venue | Tape only for volume; cTrader = parity guard + live (alpha-loop D1) |
+| Cell integrity | One cell per run; below-floor → null-with-reason (D13/D3) |
+| Scoring | Versioned (sv1 frozen, sv2 current); formula changes = new version |
+| Parity | Permanent gate, pre-registered tolerances, verdict ≤14 days old (D12) |
+| Config | DB canonical; JSON seed/export only |
+| Time | `IEngineClock`; sim-time from events — never `DateTime.UtcNow` in engine |
+| Channels | `Wait` for orders/trades/journal; `DropOldest` only for analytics |

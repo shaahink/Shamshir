@@ -9,20 +9,17 @@ the conductor plan stays valid — hand stages back to conductor whenever the ow
 
 ## Handoff  (overwrite this block, ≤12 lines, no history)
 
-last: **S1 CLOSED early-with-reason (2026-07-16) — Gate G1: the exit layer holds NO D5-surviving
-component.** Both highest-prior families refuted in dollars: trend-breakout (`862C5D04`, 8 arms ×
-12 cells) and ema-alignment (`23DA6546`, 8 × 6) — **R3's 8/8 and its v6a star (+82% expR) both
-replicate as the F70 PartialTp row-splitting artifact while LOSING dollars vs control.** No-TP
-(F65's direct test, valid post-F71-fix) is strongly value-destroying (−$25.8k / −$10.1k swings).
-Remaining families not run: power (quant review: needs ~6.3k trades/arm, families give 100–900) —
-they cannot produce a bankable positive. **D7 EXECUTED**: mtf-trend parked family-level (4 cells,
-reversible). F69–F72 filed; F71 FIXED in code (+3 unit tests, preservation verified live).
-Speed kit shipped: dev-restart.ps1, parallel gates.ps1, exit_factorial_driver.py (--parallel
-validated by determinism probe: concurrent tape runs byte-identical), determinism_probe.py.
-gate: build 0/5 · Unit 770 · Int 153 · Sim 144. EMBARGO-2 untouched.
-next: **OWNER GATE** — (1) accept G1 negative + early stop; (2) S2 as planned (regime conditioning
-on EXISTING census trades, no new runs) and/or quant-review Dukascopy backfill for power;
-(3) ratify D7 park. LEDGER.md "S1 CLOSE" has the full gate pack.
+last: **OWNER GATE RULED (2026-07-16, LEDGER.md final entry): G1 accepted, early stop accepted,
+D7 park ratified, `iter-viability` ADOPTED as successor** (`docs/iterations/iter-viability/PLAN.md`
+— drafted by the external quant review, `docs/QUANT-REVIEW-RESPONSE-2026-07.md`). S1's verdict
+stands: no D5-surviving exit component (trend-breakout `862C5D04` + ema-alignment `23DA6546`
+refuted in dollars; R3's 8/8 and v6a = F70 artifact; no-TP value-destroying; remaining families
+unpowered). F71 fixed; speed kit shipped. gate: build 0/5 · Unit 770 · Int 153 · Sim 144.
+EMBARGO-2 untouched.
+next: **this iteration is CLOSED to new stages** — S2(b) survives as a zero-run analysis inside
+iter-viability Session 1; S2(a)/S3 absorbed into V4/V3; S4–S7 superseded by V2/V5/V7 (same
+discipline, backfilled data). Resume from `docs/iterations/iter-viability/TRACKER.md` on branch
+`iter/viability`. This tracker is historical from here.
 
 ## Checkpoints
 

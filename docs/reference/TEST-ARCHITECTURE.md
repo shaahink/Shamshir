@@ -1,23 +1,32 @@
 # Test Architecture
 
-**Last updated**: 2026-06-18 (post iter-31/32)
+**Last updated**: 2026-07-16 (counts refreshed to the structural-edge S0 baseline; tier
+structure unchanged since iter-31/32)
 
 How the test suite is layered, what each layer proves, what it hides, and which tests
 need credentials. Complements `tests/README.md` (basic taxonomy) and
 `BACKTEST-ARCHITECTURE.md` (backtest venue paths).
+
+> **2026-07-16 counts baseline:** Unit **767 pass / 6 skip** · Integration **153** ·
+> Simulation fast tier (`RequiresCTrader!=true`, incl. determinism + golden + resting-order
+> contract) **144** · cTrader E2E gated by `RequiresCTrader=true` (credentials + desktop
+> install — see the `ctrader-e2e` skill). Specific test names/counts quoted in the body below
+> may lag; the tier model and what-each-layer-proves guidance remain accurate. Standing
+> doctrine (F24): credential-free green proves nothing about live cTrader behaviour — venue-path
+> changes need a live compare-both smoke.
 
 ---
 
 ## 1. The four tiers
 
 ```
-Architecture   ← Reflection invariants (3 tests, <1s)
+Architecture   ← Reflection invariants (<1s)
     ↓
-Unit           ← Pure logic, NSubstitute mocks, no DI, no DB (207 tests, ~4s)
+Unit           ← Pure logic, NSubstitute mocks, no DI, no DB (767 tests, seconds)
     ↓
-Integration    ← Real DI + real SQLite + WebApplicationFactory (35 tests, ~10s)
+Integration    ← Real DI + real SQLite + WebApplicationFactory (153 tests, ~10s+)
     ↓
-Simulation     ← Full engine: harnesses + cTrader CLI (40+ tests, 30–300s)
+Simulation     ← Full engine: harnesses + cTrader CLI (144 credential-free + E2E, 30–300s)
 ```
 
 ### Architecture (`TradingEngine.Tests.Architecture`)
