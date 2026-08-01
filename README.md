@@ -185,6 +185,11 @@ docs/reference/                   # Normative architecture docs
 Roughly **47k lines of hand-written C#** (excluding generated EF migrations) across 13 projects,
 plus ~11k lines of TypeScript/HTML.
 
+> This repo is itself driven by [Conductor](https://github.com/shaahink/conductor). `conductor-DEBT.md`
+> (open debt tracked across iterations, see [`AGENTS.md`](AGENTS.md)), `conductor.plan.json`, and
+> `conductor-structural-edge.plan.json` sit at the repo root because that's the `tracker`/default-plan
+> path Conductor reads from — not stray output.
+
 ## Quick start
 
 ```powershell
