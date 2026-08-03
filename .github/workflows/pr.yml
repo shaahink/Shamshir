@@ -9,8 +9,21 @@ jobs:
   build-and-test:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+
+      # Same reason as release.yml: wwwroot is gitignored, so the Angular UI has to be built
+      # before dotnet or TradingEngine.Web's EnsureAngularCurrent target fails the build.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: web-ui/package-lock.json
+      - run: npm ci
+        working-directory: web-ui
+      - run: npm run build
+        working-directory: web-ui
+
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.x'
       - run: dotnet restore
@@ -21,8 +34,8 @@ jobs:
   lint:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.x'
       - run: dotnet restore
