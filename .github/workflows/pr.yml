@@ -29,7 +29,9 @@ jobs:
           dotnet-version: '10.x'
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
-      - run: dotnet test --no-build -c Release --logger trx --collect:"XPlat Code Coverage"
+      # See release.yml: same filter as scripts/gates.ps1 - the cTrader E2E tests need a cTrader
+      # installation and credentials on the machine and cannot run on a hosted runner.
+      - run: dotnet test --no-build -c Release --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ" --logger trx --collect:"XPlat Code Coverage"
       - uses: codecov/codecov-action@v5
 
   lint:

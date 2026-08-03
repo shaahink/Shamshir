@@ -35,7 +35,12 @@ jobs:
           dotnet-version: '10.x'
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
-      - run: dotnet test --no-build -c Release
+      # Same filter scripts/gates.ps1 uses for the Simulation suite: the cTrader E2E tests need
+      # a cTrader desktop installation and broker credentials on the machine, so they cannot run
+      # on a hosted runner - they fail with "cTrader installation not found". These traits exist
+      # only in TradingEngine.Tests.Simulation, so Unit, Integration and Architecture still run
+      # in full.
+      - run: dotnet test --no-build -c Release --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ"
       - run: dotnet publish src/TradingEngine.Host -c Release -r win-x64 --self-contained -o publish/engine
       - run: dotnet publish src/TradingEngine.Web -c Release -r win-x64 --self-contained -o publish/web
 
