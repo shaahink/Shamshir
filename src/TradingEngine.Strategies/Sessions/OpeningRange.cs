@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.Sessions;
+﻿namespace TradingEngine.Strategies.Sessions;
 
 /// <summary>
 /// Computes the opening-range <c>(High, Low)</c> over the entry-timeframe bars whose <c>OpenTimeUtc</c>

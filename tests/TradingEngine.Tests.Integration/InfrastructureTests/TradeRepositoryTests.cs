@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using TradingEngine.Tests.Integration.Support;
 
 namespace TradingEngine.Tests.Integration.InfrastructureTests;

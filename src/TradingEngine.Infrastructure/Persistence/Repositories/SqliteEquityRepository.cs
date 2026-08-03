@@ -1,4 +1,4 @@
-using System.Data.Common;
+﻿using System.Data.Common;
 using Microsoft.Data.Sqlite;
 
 namespace TradingEngine.Infrastructure.Persistence.Repositories;

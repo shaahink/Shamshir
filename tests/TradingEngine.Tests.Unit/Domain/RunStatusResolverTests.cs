@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Domain;
+﻿namespace TradingEngine.Tests.Unit.Domain;
 
 // P0.2 (F5, Q5) — run-status vocabulary. Before this, four readers each derived status inline as
 // `ErrorMessage != null ? failed : completed`, conflating an engine-result failure with a

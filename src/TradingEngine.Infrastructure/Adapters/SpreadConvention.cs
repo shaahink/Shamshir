@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Adapters;
+﻿namespace TradingEngine.Infrastructure.Adapters;
 
 /// <summary>
 /// P0.2 (D3): the single bid-bar spread convention shared by both replay venues

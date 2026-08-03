@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using TradingEngine.Web.Dtos.Runs;
 using TradingEngine.Web.Services;
 

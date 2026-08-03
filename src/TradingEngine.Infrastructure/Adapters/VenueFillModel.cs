@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Adapters;
+﻿namespace TradingEngine.Infrastructure.Adapters;
 
 /// <summary>
 /// P4.3 (F43): the venue's resting-order fill model, shared by both replay venues so the two can never

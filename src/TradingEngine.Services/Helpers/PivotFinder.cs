@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.Helpers;
+﻿namespace TradingEngine.Services.Helpers;
 
 /// <summary>A confirmed swing pivot: <see cref="Index"/> is the bar's position in the list passed to
 /// <see cref="PivotFinder"/>, <see cref="Price"/> is the pivot bar's Low (swing low) or High (swing high).</summary>

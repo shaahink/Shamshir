@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Indicators;
+﻿namespace TradingEngine.Infrastructure.Indicators;
 
 /// <summary>
 /// Classifies the market regime from the bar window it is handed. It computes ATR and ADX itself

@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Production wall-clock that delegates to <see cref="DateTime.UtcNow"/>.

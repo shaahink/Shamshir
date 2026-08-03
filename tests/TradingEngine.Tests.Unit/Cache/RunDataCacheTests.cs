@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using TradingEngine.Infrastructure.Caching;
 
 namespace TradingEngine.Tests.Unit.Cache;

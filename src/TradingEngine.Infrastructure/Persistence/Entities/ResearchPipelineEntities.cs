@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Persistence.Entities;
+﻿namespace TradingEngine.Infrastructure.Persistence.Entities;
 
 /// <summary>
 /// P3.2 (Q6) — persistent state of a research pipeline run. A pipeline is a playbook (an ordered list of

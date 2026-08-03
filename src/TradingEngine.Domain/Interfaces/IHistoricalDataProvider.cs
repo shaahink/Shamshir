@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Pluggable HISTORICAL-data source (iter-marketdata-tape P2 / D5). Distinct from the live-feed

@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Dtos.Trades;
+﻿namespace TradingEngine.Web.Dtos.Trades;
 
 public sealed record TradeDetailResponse
 {

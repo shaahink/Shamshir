@@ -1,4 +1,4 @@
-namespace TradingEngine.Application;
+﻿namespace TradingEngine.Application;
 
 public sealed class SymbolCatalog
 {

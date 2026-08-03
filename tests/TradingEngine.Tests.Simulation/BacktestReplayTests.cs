@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Tests.Simulation.Harness;

@@ -1,4 +1,4 @@
-using TradingEngine.Strategies.DayOfWeek;
+﻿using TradingEngine.Strategies.DayOfWeek;
 using TradingEngine.Tests.Unit.Strategies;
 
 namespace TradingEngine.Tests.Unit.Strategies.DayOfWeek;

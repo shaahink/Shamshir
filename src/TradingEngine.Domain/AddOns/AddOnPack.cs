@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// iter-38 (owner decision D1). A reusable, named bundle of add-ons that can be attached to ANY strategy or

@@ -1,4 +1,4 @@
-using TradingEngine.Strategies.NyOpenDrive;
+﻿using TradingEngine.Strategies.NyOpenDrive;
 using TradingEngine.Tests.Unit.Strategies;
 
 namespace TradingEngine.Tests.Unit.Strategies.NyOpenDrive;

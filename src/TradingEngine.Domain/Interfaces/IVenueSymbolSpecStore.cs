@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain.Interfaces;
+﻿namespace TradingEngine.Domain.Interfaces;
 
 /// <summary>
 /// P4.4 (F44): durable storage for venue-declared symbol economics (<see cref="VenueSymbolSpec"/>).

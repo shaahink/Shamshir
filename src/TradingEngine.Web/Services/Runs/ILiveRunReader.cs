@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Services;
+﻿namespace TradingEngine.Web.Services;
 
 /// <summary>Read-side port over the live (non-finalized) runs the orchestrator owns: current
 /// in-memory state, the live-run list, and queue position. Query services observe live runs

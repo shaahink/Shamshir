@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Persistence;
+﻿namespace TradingEngine.Infrastructure.Persistence;
 
 /// <summary>
 /// Single source of truth for the physical <c>trading.db</c> (and its sibling <c>marketdata.db</c>)

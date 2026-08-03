@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Replay model (iter-35 A1/A4). A <see cref="RunSpec"/> is the full, reproducible definition of a

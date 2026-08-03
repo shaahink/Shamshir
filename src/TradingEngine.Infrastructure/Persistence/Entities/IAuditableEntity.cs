@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Persistence.Entities;
+﻿namespace TradingEngine.Infrastructure.Persistence.Entities;
 
 /// <summary>
 /// iter-38 (owner decision D5). Every persisted entity carries creation + last-update timestamps. Stamped

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using TradingEngine.Domain;
 using TradingEngine.Host;
@@ -134,7 +134,10 @@ public sealed class CTraderListenService : IDisposable
                         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
                         db.VenueSessions.Add(new VenueSessionEntity
                         {
-                            RunId = runId, Event = type, Detail = msg, OccurredAtUtc = DateTime.UtcNow
+                            RunId = runId,
+                            Event = type,
+                            Detail = msg,
+                            OccurredAtUtc = DateTime.UtcNow
                         });
                         await db.SaveChangesAsync();
                     });
@@ -259,7 +262,10 @@ public sealed class CTraderListenService : IDisposable
             var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
             db.VenueSessions.Add(new VenueSessionEntity
             {
-                RunId = runId, Event = eventType, Detail = detail, OccurredAtUtc = DateTime.UtcNow
+                RunId = runId,
+                Event = eventType,
+                Detail = detail,
+                OccurredAtUtc = DateTime.UtcNow
             });
             await db.SaveChangesAsync();
         }

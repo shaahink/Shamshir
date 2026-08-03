@@ -1,4 +1,4 @@
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using TradingEngine.Domain;
 using TradingEngine.Engine;
@@ -499,7 +499,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             {
                 _pendingLimits.Remove(orderId);
                 EmitExecutionEvent(new ExecutionEvent(
-                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc)
+                { Symbol = _symbol });
             }
         }
     }
@@ -542,7 +543,8 @@ public sealed class TapeReplayAdapter : IBrokerAdapter, IReplayVenue, IAsyncDisp
             {
                 _pendingStops.Remove(orderId);
                 EmitExecutionEvent(new ExecutionEvent(
-                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc)
+                { Symbol = _symbol });
             }
         }
     }

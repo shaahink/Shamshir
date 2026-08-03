@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -117,8 +117,10 @@ public sealed class AddOnPacksApiTests : IClassFixture<WebApplicationFactory<Pro
         {
             ["symbols"] = new[] { "EURUSD" },
             ["periods"] = new[] { "H1" },
-            ["start"] = "2024-01-01", ["end"] = "2024-01-02",
-            ["balance"] = 100_000, ["venue"] = "replay",
+            ["start"] = "2024-01-01",
+            ["end"] = "2024-01-02",
+            ["balance"] = 100_000,
+            ["venue"] = "replay",
             ["usePackId"] = "runner-aggressive",
             ["disableRegime"] = true,
         };

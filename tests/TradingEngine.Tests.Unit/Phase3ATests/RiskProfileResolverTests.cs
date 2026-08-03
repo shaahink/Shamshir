@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Phase3ATests;
+﻿namespace TradingEngine.Tests.Unit.Phase3ATests;
 
 [Trait("Category", "Services")]
 public sealed class RiskProfileResolverTests

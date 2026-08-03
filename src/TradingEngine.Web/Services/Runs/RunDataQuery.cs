@@ -1,4 +1,4 @@
-using TradingEngine.Web.Dtos.Runs;
+﻿using TradingEngine.Web.Dtos.Runs;
 
 namespace TradingEngine.Web.Services;
 
@@ -23,21 +23,36 @@ public sealed class RunDataQuery(
             {
                 return cachedTrades.Select(t => new TradeSummaryResponse
                 {
-                    Id = t.Id, PositionId = t.PositionId, OrderId = t.OrderId,
-                    Symbol = t.Symbol.Value, Direction = t.Direction.ToString(), Lots = t.Lots,
-                    EntryPrice = t.EntryPrice.Value, ExitPrice = t.ExitPrice.Value,
+                    Id = t.Id,
+                    PositionId = t.PositionId,
+                    OrderId = t.OrderId,
+                    Symbol = t.Symbol.Value,
+                    Direction = t.Direction.ToString(),
+                    Lots = t.Lots,
+                    EntryPrice = t.EntryPrice.Value,
+                    ExitPrice = t.ExitPrice.Value,
                     StopLoss = t.StopLoss.Value == 0 ? null : t.StopLoss.Value,
                     TakeProfit = t.TakeProfit?.Value,
-                    OpenedAtUtc = t.OpenedAtUtc, ClosedAtUtc = t.ClosedAtUtc,
-                    GrossPnLAmount = t.GrossPnL.Amount, CommissionAmount = t.Commission.Amount,
-                    SwapAmount = t.Swap.Amount, NetPnLAmount = t.NetPnL.Amount,
-                    PnLPips = t.PnLPips.Value, RMultiple = t.RMultiple,
-                    MaxAdverseExcursion = t.MaxAdverseExcursion.Value, MaxFavorableExcursion = t.MaxFavorableExcursion.Value,
-                    MaeR = t.MaeR, MfeR = t.MfeR,
-                    ExitReason = t.ExitReason, StrategyId = t.StrategyId,
-                    DurationSeconds = t.DurationSeconds, EntryType = t.OrderEntryMethod,
-                    EntryReason = t.EntryReason, EntryRegime = t.EntryRegime,
-                    EntrySnapshotJson = t.EntrySnapshotJson, ExitDetailJson = t.ExitDetailJson,
+                    OpenedAtUtc = t.OpenedAtUtc,
+                    ClosedAtUtc = t.ClosedAtUtc,
+                    GrossPnLAmount = t.GrossPnL.Amount,
+                    CommissionAmount = t.Commission.Amount,
+                    SwapAmount = t.Swap.Amount,
+                    NetPnLAmount = t.NetPnL.Amount,
+                    PnLPips = t.PnLPips.Value,
+                    RMultiple = t.RMultiple,
+                    MaxAdverseExcursion = t.MaxAdverseExcursion.Value,
+                    MaxFavorableExcursion = t.MaxFavorableExcursion.Value,
+                    MaeR = t.MaeR,
+                    MfeR = t.MfeR,
+                    ExitReason = t.ExitReason,
+                    StrategyId = t.StrategyId,
+                    DurationSeconds = t.DurationSeconds,
+                    EntryType = t.OrderEntryMethod,
+                    EntryReason = t.EntryReason,
+                    EntryRegime = t.EntryRegime,
+                    EntrySnapshotJson = t.EntrySnapshotJson,
+                    ExitDetailJson = t.ExitDetailJson,
                 }).ToList();
             }
         }
@@ -91,7 +106,9 @@ public sealed class RunDataQuery(
             {
                 return cached.Select(e => new EquityPointResponse
                 {
-                    TimestampUtc = e.TimestampUtc, Equity = e.Equity, Balance = e.Balance,
+                    TimestampUtc = e.TimestampUtc,
+                    Equity = e.Equity,
+                    Balance = e.Balance,
                 }).ToList();
             }
         }
@@ -99,7 +116,9 @@ public sealed class RunDataQuery(
         var snapshots = await _equityRepo.GetByRunIdAsync(runId, ct);
         return snapshots.Select(s => new EquityPointResponse
         {
-            TimestampUtc = s.TimestampUtc, Equity = s.Equity, Balance = s.Balance,
+            TimestampUtc = s.TimestampUtc,
+            Equity = s.Equity,
+            Balance = s.Balance,
         }).ToList();
     }
 

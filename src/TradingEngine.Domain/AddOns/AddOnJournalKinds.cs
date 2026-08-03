@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// iter-38 (Stream A7). The canonical <c>EventKind</c> strings the kernel emits for add-on decisions, so the

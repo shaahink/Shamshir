@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Strategies;
+﻿namespace TradingEngine.Tests.Unit.Strategies;
 
 /// <summary>Shared fixtures for the V4 session/time-of-day strategy unit tests: a registered EURUSD, an
 /// M15 bar factory, and a <see cref="MarketContext"/> builder that mirrors the engine's evaluation

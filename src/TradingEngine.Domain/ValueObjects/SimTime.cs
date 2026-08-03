@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Simulation time — the engine's own clock, always supplied by the caller and never read from the

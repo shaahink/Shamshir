@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.MarketData;
+﻿namespace TradingEngine.Infrastructure.MarketData;
 
 /// <summary>
 /// Canonical market-data bar row (iter-marketdata-tape P1). Prices stored as REAL (double) — cTrader's own

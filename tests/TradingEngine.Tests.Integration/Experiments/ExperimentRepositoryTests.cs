@@ -1,4 +1,4 @@
-using TradingEngine.Infrastructure.Persistence.Entities;
+﻿using TradingEngine.Infrastructure.Persistence.Entities;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Tests.Integration.Support;
 

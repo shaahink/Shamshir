@@ -1,4 +1,4 @@
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
 using TradingEngine.Host;
 using TradingEngine.Tests.Simulation.Harness;

@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Phase33Tests;
+﻿namespace TradingEngine.Tests.Unit.Phase33Tests;
 
 using TradingEngine.Services.ExitLab;
 

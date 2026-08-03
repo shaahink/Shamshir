@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 public record ComplianceResult(bool Passed, IReadOnlyList<string> Violations, ComplianceSeverity Severity);
 

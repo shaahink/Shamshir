@@ -1,4 +1,4 @@
-using TradingEngine.Domain;
+﻿using TradingEngine.Domain;
 using TradingEngine.Engine;
 
 namespace TradingEngine.Host;

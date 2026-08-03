@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Services;
+﻿namespace TradingEngine.Web.Services;
 
 /// <summary>Shared status-truth rules for the run read paths: how long a "running"/"queued" row
 /// with no live in-memory state may age before it is reported stuck, and the single-run status

@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Dtos.Governor;
+﻿namespace TradingEngine.Web.Dtos.Governor;
 
 public sealed record GovernorStateResponse
 {

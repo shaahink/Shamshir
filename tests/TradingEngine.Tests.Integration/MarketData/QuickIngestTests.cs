@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using TradingEngine.Infrastructure.MarketData;
 
 namespace TradingEngine.Tests.Integration.MarketData;

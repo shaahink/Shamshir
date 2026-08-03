@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
@@ -40,8 +40,11 @@ public sealed class BarNarrativeTests : IDisposable
         // Bar 1: a proposal with a numeric rejection + BarClosed with a signal verdict
         db.JournalEntries.Add(new JournalEntryEntity
         {
-            RunId = RunId, Seq = 1, SimTimeUtc = t1,
-            EventKind = "OrderProposed", EventJson = "{}",
+            RunId = RunId,
+            Seq = 1,
+            SimTimeUtc = t1,
+            EventKind = "OrderProposed",
+            EventJson = "{}",
             EffectKinds = "[\"SubmitOrder\",\"RecordDecisionEvent\"]",
             EffectsJson = "[]",
             RiskJson = emptyRisk,
@@ -57,9 +60,13 @@ public sealed class BarNarrativeTests : IDisposable
 
         db.JournalEntries.Add(new JournalEntryEntity
         {
-            RunId = RunId, Seq = 2, SimTimeUtc = t1,
-            EventKind = "BarClosed", EventJson = "{}",
-            EffectKinds = "[]", EffectsJson = "[]",
+            RunId = RunId,
+            Seq = 2,
+            SimTimeUtc = t1,
+            EventKind = "BarClosed",
+            EventJson = "{}",
+            EffectKinds = "[]",
+            EffectsJson = "[]",
             RiskJson = riskT1,
             Regime = "Trending",
             VerdictsJson = verdictsJson,
@@ -68,8 +75,11 @@ public sealed class BarNarrativeTests : IDisposable
         // Bar 2: a fill + close + BarClosed with a position open
         db.JournalEntries.Add(new JournalEntryEntity
         {
-            RunId = RunId, Seq = 3, SimTimeUtc = t2,
-            EventKind = "OrderFilled", EventJson = "{}",
+            RunId = RunId,
+            Seq = 3,
+            SimTimeUtc = t2,
+            EventKind = "OrderFilled",
+            EventJson = "{}",
             EffectKinds = "[\"RegisterRisk\",\"RecordDecisionEvent\"]",
             EffectsJson = "[]",
             RiskJson = emptyRisk,
@@ -77,8 +87,11 @@ public sealed class BarNarrativeTests : IDisposable
 
         db.JournalEntries.Add(new JournalEntryEntity
         {
-            RunId = RunId, Seq = 4, SimTimeUtc = t2,
-            EventKind = "OrderFilled", EventJson = "{}",
+            RunId = RunId,
+            Seq = 4,
+            SimTimeUtc = t2,
+            EventKind = "OrderFilled",
+            EventJson = "{}",
             EffectKinds = "[\"PublishTradeClosed\",\"DeregisterRisk\"]",
             EffectsJson = "[]",
             RiskJson = riskT2,

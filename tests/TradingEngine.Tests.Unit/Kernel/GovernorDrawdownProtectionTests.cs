@@ -1,4 +1,4 @@
-using TradingEngine.Engine;
+﻿using TradingEngine.Engine;
 using KernelCore = TradingEngine.Engine.Kernel;
 
 namespace TradingEngine.Tests.Unit.Kernel;
@@ -83,7 +83,8 @@ public sealed class GovernorTests
     {
         var s = GovernorMachine.CreateInitial() with
         {
-            State = GovernorTradingState.CoolingOff, CoolingOffBarsRemaining = 2,
+            State = GovernorTradingState.CoolingOff,
+            CoolingOffBarsRemaining = 2,
         };
 
         s = GovernorMachine.ApplyBar(s);
@@ -102,7 +103,8 @@ public sealed class GovernorTests
         {
             Governor = GovernorMachine.CreateInitial() with
             {
-                State = GovernorTradingState.ProfitLocked, ProfitLockedToday = true,
+                State = GovernorTradingState.ProfitLocked,
+                ProfitLockedToday = true,
             },
         };
         var c = GFx.Constraints();
@@ -122,7 +124,8 @@ public sealed class GovernorTests
     {
         var s = GovernorMachine.CreateInitial() with
         {
-            State = GovernorTradingState.ProfitLocked, ProfitLockedToday = true,
+            State = GovernorTradingState.ProfitLocked,
+            ProfitLockedToday = true,
         };
 
         s = GovernorMachine.ApplyDailyReset(s);

@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Simulation.Strategies;
+﻿namespace TradingEngine.Tests.Simulation.Strategies;
 
 [Trait("Category", "Simulation")]
 public sealed class RsiDivergenceScenarios

@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
@@ -34,8 +34,12 @@ public sealed class ResearchPipelinesController : ControllerBase
             .Take(100)
             .Select(p => new
             {
-                p.Id, p.Name, p.Status, p.CurrentStepIndex,
-                startedAtUtc = p.StartedAtUtc, completedAtUtc = p.CompletedAtUtc,
+                p.Id,
+                p.Name,
+                p.Status,
+                p.CurrentStepIndex,
+                startedAtUtc = p.StartedAtUtc,
+                completedAtUtc = p.CompletedAtUtc,
                 stepCount = p.Steps.Count,
             })
             .ToListAsync(ct);
@@ -162,15 +166,27 @@ public sealed class ResearchPipelinesController : ControllerBase
 
     private static object MapDetail(ResearchPipelineEntity p) => new
     {
-        p.Id, p.Name, p.Status, p.CurrentStepIndex, p.PlaybookJson, p.ArtifactDir,
-        startedAtUtc = p.StartedAtUtc, completedAtUtc = p.CompletedAtUtc,
+        p.Id,
+        p.Name,
+        p.Status,
+        p.CurrentStepIndex,
+        p.PlaybookJson,
+        p.ArtifactDir,
+        startedAtUtc = p.StartedAtUtc,
+        completedAtUtc = p.CompletedAtUtc,
         steps = p.Steps.OrderBy(s => s.StepIndex).Select(MapStep),
     };
 
     private static object MapStep(ResearchPipelineStepEntity s) => new
     {
-        s.StepIndex, s.Kind, s.Status, s.ParamHash, s.VerdictJson, s.ArtifactPath,
-        startedAtUtc = s.StartedAtUtc, completedAtUtc = s.CompletedAtUtc,
+        s.StepIndex,
+        s.Kind,
+        s.Status,
+        s.ParamHash,
+        s.VerdictJson,
+        s.ArtifactPath,
+        startedAtUtc = s.StartedAtUtc,
+        completedAtUtc = s.CompletedAtUtc,
     };
 }
 

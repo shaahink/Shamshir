@@ -1,1 +1,1 @@
-global using TradingEngine.Domain;
+﻿global using TradingEngine.Domain;

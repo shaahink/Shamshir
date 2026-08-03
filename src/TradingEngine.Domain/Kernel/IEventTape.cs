@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// A recorded, replayable source of <see cref="EngineEvent"/>s for one <see cref="DatasetRef"/>

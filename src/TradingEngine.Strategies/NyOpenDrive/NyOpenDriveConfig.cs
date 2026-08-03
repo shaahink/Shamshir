@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.NyOpenDrive;
+﻿namespace TradingEngine.Strategies.NyOpenDrive;
 
 public sealed record NyOpenDriveParameters
 {

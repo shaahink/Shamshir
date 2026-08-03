@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using TradingEngine.ResearchCli;
 
 namespace TradingEngine.Tests.Unit.ResearchCli;

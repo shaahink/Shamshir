@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.MeanReversion;
+﻿namespace TradingEngine.Strategies.MeanReversion;
 
 public sealed record MeanReversionParameters
 {

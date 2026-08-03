@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using TradingEngine.Engine;
 
 namespace TradingEngine.Tests.Unit.Architecture;

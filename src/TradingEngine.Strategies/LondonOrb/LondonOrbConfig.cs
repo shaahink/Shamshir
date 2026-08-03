@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.LondonOrb;
+﻿namespace TradingEngine.Strategies.LondonOrb;
 
 public sealed record LondonOrbParameters
 {

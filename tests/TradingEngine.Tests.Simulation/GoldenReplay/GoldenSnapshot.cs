@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Simulation.GoldenReplay;
+﻿namespace TradingEngine.Tests.Simulation.GoldenReplay;
 
 /// <summary>
 /// The serialized output of a golden replay run. This is the committed baseline that every subsequent

@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Reconcile;
+﻿namespace TradingEngine.Infrastructure.Reconcile;
 
 /// <summary>
 /// iter-marketdata-tape P0 — a source-agnostic, normalized ledger used to reconcile our engine's DB result
@@ -70,7 +70,7 @@ public sealed record ReconcileReport(IReadOnlyList<Divergence> Divergences, IRea
             for (var i = 0; i < TradeDeltas.Count; i++)
             {
                 var td = TradeDeltas[i];
-                lines.Add($"  {i+1,2}  {td.OpenedAtUtc:yyyy-MM-dd HH:mm}  {td.Direction,4}  {td.Lots,5:F2}  {td.EntryPrice,8:F5}  {td.ExitPrice,8:F5}  {td.CommissionDelta,10:F2}  {td.SwapDelta,8:F2}  {td.NetDelta,8:F2}");
+                lines.Add($"  {i + 1,2}  {td.OpenedAtUtc:yyyy-MM-dd HH:mm}  {td.Direction,4}  {td.Lots,5:F2}  {td.EntryPrice,8:F5}  {td.ExitPrice,8:F5}  {td.CommissionDelta,10:F2}  {td.SwapDelta,8:F2}  {td.NetDelta,8:F2}");
             }
         }
         return string.Join("\n", lines);

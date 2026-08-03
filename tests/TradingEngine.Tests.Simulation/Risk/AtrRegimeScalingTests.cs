@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Simulation.Risk;
+﻿namespace TradingEngine.Tests.Simulation.Risk;
 
 [Trait("Category", "Simulation")]
 public sealed class AtrRegimeScalingTests

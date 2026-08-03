@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain.Experiments;
+﻿namespace TradingEngine.Domain.Experiments;
 
 /// <summary>
 /// P6.8 — pyramiding policy: model structured adds (add at +1R, move stop to entry) as an exit-lab

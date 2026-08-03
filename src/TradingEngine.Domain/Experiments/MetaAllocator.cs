@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain.Experiments;
+﻿namespace TradingEngine.Domain.Experiments;
 
 /// <summary>
 /// P6.6 — meta-allocator: monthly re-weighting of enabled cells by contribution score (proxy for

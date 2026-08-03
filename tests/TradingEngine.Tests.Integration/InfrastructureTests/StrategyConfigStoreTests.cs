@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Tests.Integration.Support;
 

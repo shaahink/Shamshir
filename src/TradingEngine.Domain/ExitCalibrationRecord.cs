@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>P3.4 — the exit-rule values calibrated for one (strategy, symbol, timeframe, regime) cell.
 /// Used by <see cref="AddOnResolver"/> when <see cref="AddOnMode.Calibrated"/> is set.</summary>

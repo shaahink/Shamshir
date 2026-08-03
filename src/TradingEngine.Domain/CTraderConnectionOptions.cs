@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Strongly-typed binding for the CTrader config section. One place for CtId, PwdFile, and Account —

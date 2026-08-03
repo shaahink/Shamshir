@@ -1,4 +1,4 @@
-using TradingEngine.Engine;
+﻿using TradingEngine.Engine;
 using KernelCore = TradingEngine.Engine.Kernel;
 
 namespace TradingEngine.Tests.Unit.Kernel;

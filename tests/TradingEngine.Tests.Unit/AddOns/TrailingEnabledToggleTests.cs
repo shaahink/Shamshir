@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.AddOns;
+﻿namespace TradingEngine.Tests.Unit.AddOns;
 
 /// <summary>
 /// iter-38 A1 (toggle wiring fix): the Trailing add-on is gated by its universal <c>Enabled</c> flag, just like

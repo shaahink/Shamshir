@@ -1,4 +1,4 @@
-using TradingEngine.Strategies.LondonOrb;
+﻿using TradingEngine.Strategies.LondonOrb;
 using TradingEngine.Tests.Unit.Strategies;
 
 namespace TradingEngine.Tests.Unit.Strategies.LondonOrb;

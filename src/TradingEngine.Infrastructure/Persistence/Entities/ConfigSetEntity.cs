@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Persistence.Entities;
+﻿namespace TradingEngine.Infrastructure.Persistence.Entities;
 
 public sealed class ConfigSetEntity : IAuditableEntity
 {

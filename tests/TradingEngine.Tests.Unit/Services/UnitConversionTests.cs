@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Services;
+﻿namespace TradingEngine.Tests.Unit.Services;
 
 /// <summary>
 /// iter-quant-model P2.6 (D9, units doctrine). <see cref="UnitConversion"/> is the ONE place a normalized

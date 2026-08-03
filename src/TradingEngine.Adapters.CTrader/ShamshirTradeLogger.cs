@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -143,12 +143,20 @@ public sealed class ShamshirTradeLogger
         double requestedPrice, double bid, double ask, long venueTime, string outcome, string error)
     {
         lock (_gate)
+        {
             _submits.Add(new OrderSubmit
             {
-                clientOrderId = clientOrderId, orderType = orderType, direction = direction,
-                requestedPrice = requestedPrice, bid = bid, ask = ask,
-                venueTime = venueTime, outcome = outcome, error = error,
+                clientOrderId = clientOrderId,
+                orderType = orderType,
+                direction = direction,
+                requestedPrice = requestedPrice,
+                bid = bid,
+                ask = ask,
+                venueTime = venueTime,
+                outcome = outcome,
+                error = error,
             });
+        }
     }
 
     /// <summary>
@@ -179,14 +187,24 @@ public sealed class ShamshirTradeLogger
         {
             _open[posId] = new OpenInfo
             {
-                Direction = direction, EntryPrice = entryPrice, Quantity = quantity, EntryTime = time
+                Direction = direction,
+                EntryPrice = entryPrice,
+                Quantity = quantity,
+                EntryTime = time
             };
             _events.Add(new EventItem
             {
-                serial = _serial++, positionId = posId, clientOrderId = clientOrderId,
-                @event = "Create Position", time = time, type = direction,
-                entryPrice = entryPrice, closePrice = null, quantity = quantity,
-                balance = balance, equity = equity
+                serial = _serial++,
+                positionId = posId,
+                clientOrderId = clientOrderId,
+                @event = "Create Position",
+                time = time,
+                type = direction,
+                entryPrice = entryPrice,
+                closePrice = null,
+                quantity = quantity,
+                balance = balance,
+                equity = equity
             });
         }
     }
@@ -205,17 +223,39 @@ public sealed class ShamshirTradeLogger
 
             _history.Add(new HistoryItem
             {
-                id = posId, clientOrderId = clientOrderId, symbol = Symbol, direction = dir,
-                net = net, gross = gross, commissions = commission, swaps = swap,
-                entryPrice = entry, closePrice = closePrice, pips = pips, quantity = qty,
-                entryTime = entryTime, closeTime = time
+                id = posId,
+                clientOrderId = clientOrderId,
+                symbol = Symbol,
+                direction = dir,
+                net = net,
+                gross = gross,
+                commissions = commission,
+                swaps = swap,
+                entryPrice = entry,
+                closePrice = closePrice,
+                pips = pips,
+                quantity = qty,
+                entryTime = entryTime,
+                closeTime = time
             });
             _events.Add(new EventItem
             {
-                serial = _serial++, positionId = posId, clientOrderId = clientOrderId,
-                @event = eventName, time = time, type = dir, entryPrice = entry, closePrice = closePrice,
-                grossProfit = gross, netProfit = net, commission = commission, swap = swap, pips = pips,
-                quantity = qty, balance = balance, equity = equity
+                serial = _serial++,
+                positionId = posId,
+                clientOrderId = clientOrderId,
+                @event = eventName,
+                time = time,
+                type = dir,
+                entryPrice = entry,
+                closePrice = closePrice,
+                grossProfit = gross,
+                netProfit = net,
+                commission = commission,
+                swap = swap,
+                pips = pips,
+                quantity = qty,
+                balance = balance,
+                equity = equity
             });
             _open.Remove(posId);
         }

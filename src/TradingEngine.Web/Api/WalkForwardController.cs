@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -86,7 +86,13 @@ public sealed class WalkForwardController : ControllerBase
 
         return Ok(new
         {
-            job.Id, job.Status, job.TotalWindows, job.CompletedWindows, job.CreatedAtUtc, job.CompletedAtUtc, job.ErrorMessage,
+            job.Id,
+            job.Status,
+            job.TotalWindows,
+            job.CompletedWindows,
+            job.CreatedAtUtc,
+            job.CompletedAtUtc,
+            job.ErrorMessage,
             windows = job.Windows.OrderBy(w => w.WindowIndex).Select(w => new
             {
                 w.WindowIndex,
@@ -94,7 +100,9 @@ public sealed class WalkForwardController : ControllerBase
                 trainTo = w.TrainToUtc.ToString("O"),
                 testFrom = w.TestFromUtc.ToString("O"),
                 testTo = w.TestToUtc.ToString("O"),
-                w.StrategyId, w.Symbol, w.Timeframe,
+                w.StrategyId,
+                w.Symbol,
+                w.Timeframe,
                 w.ChosenParamsJson,
                 w.TestRunId,
                 w.TestNetProfit,

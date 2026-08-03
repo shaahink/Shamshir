@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// P2.1 (F8) — the single, pure source of truth for legal run-lifecycle transitions.

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 

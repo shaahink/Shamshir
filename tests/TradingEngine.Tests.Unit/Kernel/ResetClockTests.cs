@@ -1,4 +1,4 @@
-using TradingEngine.Host;
+﻿using TradingEngine.Host;
 
 namespace TradingEngine.Tests.Unit.Kernel;
 

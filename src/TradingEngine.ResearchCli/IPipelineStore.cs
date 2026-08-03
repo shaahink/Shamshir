@@ -1,4 +1,4 @@
-namespace TradingEngine.ResearchCli;
+﻿namespace TradingEngine.ResearchCli;
 
 /// <summary>
 /// P3.2 (Q6) — the seam the <see cref="PlaybookExecutor"/> uses to PERSIST pipeline state, backed by the

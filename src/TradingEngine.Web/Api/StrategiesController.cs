@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.Domain;
 using TradingEngine.Host;
@@ -290,8 +290,14 @@ public class StrategiesController : ControllerBase
 
     private static object EmptyStats() => new
     {
-        totalTrades = 0, winningTrades = 0, totalPnL = 0m, profitFactor = 0.0,
-        winStreak = 0, lossStreak = 0, lastRegime = 0, winRate = 0.0,
+        totalTrades = 0,
+        winningTrades = 0,
+        totalPnL = 0m,
+        profitFactor = 0.0,
+        winStreak = 0,
+        lossStreak = 0,
+        lastRegime = 0,
+        winRate = 0.0,
     };
 
     private static string? GetString(JsonElement root, string name) =>

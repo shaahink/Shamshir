@@ -1,4 +1,4 @@
-namespace TradingEngine.Risk.Filters;
+﻿namespace TradingEngine.Risk.Filters;
 
 public sealed class SessionFilter
 {

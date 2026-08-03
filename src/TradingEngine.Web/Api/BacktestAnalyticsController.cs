@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Api;
+﻿namespace TradingEngine.Web.Api;
 
 using TradingEngine.Infrastructure.Reconcile;
 using TradingEngine.Web.Services;

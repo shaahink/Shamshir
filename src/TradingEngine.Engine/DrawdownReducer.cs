@@ -1,4 +1,4 @@
-namespace TradingEngine.Engine;
+﻿namespace TradingEngine.Engine;
 
 public static class DrawdownReducer
 {

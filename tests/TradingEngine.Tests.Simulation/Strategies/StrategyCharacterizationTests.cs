@@ -1,4 +1,4 @@
-using TradingEngine.Strategies.EmaAlignment;
+﻿using TradingEngine.Strategies.EmaAlignment;
 using TradingEngine.Strategies.MeanReversion;
 
 namespace TradingEngine.Tests.Simulation.Strategies;

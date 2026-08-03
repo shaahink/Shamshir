@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// One append-only record of <b>exactly what happened on one kernel step</b> — the unit of the

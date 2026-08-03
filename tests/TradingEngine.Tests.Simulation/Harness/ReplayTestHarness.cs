@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
@@ -64,8 +64,10 @@ public sealed class ReplayTestHarness : IAsyncDisposable
                 riskManager.CurrentState.Returns(
                     new ExtendedRiskState
                     {
-                        TradingAllowed = false, InProtectionMode = false,
-                        DailyDrawdownUsed = 0m, MaxDrawdownUsed = 0m,
+                        TradingAllowed = false,
+                        InProtectionMode = false,
+                        DailyDrawdownUsed = 0m,
+                        MaxDrawdownUsed = 0m,
                     });
                 // iter-36 K4: the kernel path reads these off the RiskManager (the imperative
                 // Validate/CalculateLotSize above are dead now). Without them the evaluator NREs and

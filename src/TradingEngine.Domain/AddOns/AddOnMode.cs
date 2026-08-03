@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// iter-38 (D2) / P3.4. How an add-on's numeric values are sourced when it is enabled:

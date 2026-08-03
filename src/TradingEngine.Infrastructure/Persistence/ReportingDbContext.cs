@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Persistence;
+﻿namespace TradingEngine.Infrastructure.Persistence;
 
 public sealed class ReportingDbContext(DbContextOptions<ReportingDbContext> options) : DbContext(options)
 {

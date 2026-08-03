@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Regime;
+﻿namespace TradingEngine.Tests.Unit.Regime;
 
 /// <summary>
 /// iter-38 R1 / D3: the regime filter is a no-op when detection is disabled. <see cref="RegimeFilterOptions.DetectionEnabled"/>

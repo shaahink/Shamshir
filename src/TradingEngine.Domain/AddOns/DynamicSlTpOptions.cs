@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// iter-38 add-on (Stream A6). When <see cref="Enabled"/>, an auto-tuned ATR-based stop/target REPLACES the

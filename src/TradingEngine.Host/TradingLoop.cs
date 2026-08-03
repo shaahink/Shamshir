@@ -1,4 +1,4 @@
-namespace TradingEngine.Host;
+﻿namespace TradingEngine.Host;
 
 /// <summary>
 /// The single canonical per-bar trading body, extracted from <see cref="EngineWorker"/> so it is a

@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.SuperTrend;
+﻿namespace TradingEngine.Strategies.SuperTrend;
 
 public sealed record SuperTrendConfig : IStrategyConfig
 {

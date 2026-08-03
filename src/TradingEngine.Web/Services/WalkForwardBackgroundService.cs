@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;

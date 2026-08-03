@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Services;
+﻿namespace TradingEngine.Web.Services;
 
 public sealed record CtraderListenConfig
 {

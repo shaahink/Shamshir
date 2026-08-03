@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Dtos.Runs;
+﻿namespace TradingEngine.Web.Dtos.Runs;
 
 /// <summary>
 /// Per-bar decision narrative (iter-redesign P5) — answers "what did the engine see, decide, and

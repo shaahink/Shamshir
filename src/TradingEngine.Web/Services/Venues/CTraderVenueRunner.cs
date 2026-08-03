@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -189,7 +189,10 @@ public sealed class CTraderVenueRunner(
                         var db = scope.ServiceProvider.GetRequiredService<TradingDbContext>();
                         db.VenueSessions.Add(new TradingEngine.Infrastructure.Persistence.Entities.VenueSessionEntity
                         {
-                            RunId = runId, Event = type, Detail = msg, OccurredAtUtc = DateTime.UtcNow
+                            RunId = runId,
+                            Event = type,
+                            Detail = msg,
+                            OccurredAtUtc = DateTime.UtcNow
                         });
                         await db.SaveChangesAsync();
                     });

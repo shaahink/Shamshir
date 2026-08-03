@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Services;
+﻿namespace TradingEngine.Web.Services;
 
 /// <summary>
 /// Per-strategy decision funnel (signals → orders → fills → closes) computed from a run's decision

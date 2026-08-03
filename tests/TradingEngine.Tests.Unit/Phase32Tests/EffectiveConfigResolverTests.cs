@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using FluentAssertions;
 
 namespace TradingEngine.Tests.Unit.Phase32Tests;

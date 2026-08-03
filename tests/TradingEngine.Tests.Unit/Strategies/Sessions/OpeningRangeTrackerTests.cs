@@ -1,4 +1,4 @@
-using TradingEngine.Strategies.Sessions;
+﻿using TradingEngine.Strategies.Sessions;
 
 namespace TradingEngine.Tests.Unit.Strategies.Sessions;
 

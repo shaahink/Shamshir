@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using TradingEngine.CTraderRunner;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.MarketData;

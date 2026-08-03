@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using TradingEngine.Strategies.BollingerSqueeze;
 using TradingEngine.Strategies.MacdMomentum;
 using TradingEngine.Strategies.MtfTrend;

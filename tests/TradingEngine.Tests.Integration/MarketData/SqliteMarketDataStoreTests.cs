@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.MarketData;

@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Web.Configuration;

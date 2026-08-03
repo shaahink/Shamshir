@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Simulation.GoldenReplay;
+﻿namespace TradingEngine.Tests.Simulation.GoldenReplay;
 
 /// <summary>
 /// A small, fully deterministic bar fixture for the golden replay oracle.

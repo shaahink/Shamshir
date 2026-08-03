@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Impure gate verdicts the pure kernel cannot compute itself — they depend on wall-clock / external

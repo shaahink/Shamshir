@@ -1,4 +1,4 @@
-namespace TradingEngine.Risk.Compliance;
+﻿namespace TradingEngine.Risk.Compliance;
 
 public sealed class PassProbabilityEstimator : IPassProbabilityEstimator
 {

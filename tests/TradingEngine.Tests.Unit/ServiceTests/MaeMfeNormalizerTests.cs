@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.ServiceTests;
+﻿namespace TradingEngine.Tests.Unit.ServiceTests;
 
 public sealed class MaeMfeNormalizerTests
 {

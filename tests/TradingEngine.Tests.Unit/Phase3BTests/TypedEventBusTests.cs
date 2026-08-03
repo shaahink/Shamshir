@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Phase3BTests;
+﻿namespace TradingEngine.Tests.Unit.Phase3BTests;
 
 [Trait("Category", "Infrastructure")]
 public sealed class TypedEventBusTests

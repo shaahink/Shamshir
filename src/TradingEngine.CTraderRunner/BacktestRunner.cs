@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -109,15 +109,15 @@ public sealed class BacktestRunner
 
             return new BacktestResult
             {
-                RunId           = runId,
-                ExitCode        = isKnownCrash ? 0 : cliProcess.ExitCode,
-                ErrorMessage    = errorMessage,
-                NetProfit       = report.NetProfit,
-                MaxDrawdownPct  = report.MaxDrawdownPct,
-                TotalTrades     = report.TotalTrades,
-                WinningTrades   = report.WinningTrades,
-                WinRatePct      = report.WinRatePct,
-                AlgoHash        = algoHash,
+                RunId = runId,
+                ExitCode = isKnownCrash ? 0 : cliProcess.ExitCode,
+                ErrorMessage = errorMessage,
+                NetProfit = report.NetProfit,
+                MaxDrawdownPct = report.MaxDrawdownPct,
+                TotalTrades = report.TotalTrades,
+                WinningTrades = report.WinningTrades,
+                WinRatePct = report.WinRatePct,
+                AlgoHash = algoHash,
             };
         }
         finally

@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.Helpers;
+﻿namespace TradingEngine.Services.Helpers;
 
 public sealed class ExcursionTracker
 {

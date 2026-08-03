@@ -1,4 +1,4 @@
-namespace TradingEngine.Host;
+﻿namespace TradingEngine.Host;
 
 /// <summary>
 /// A no-op <see cref="IJournalWriter"/> placeholder for the kernel engine until K5 wires the real

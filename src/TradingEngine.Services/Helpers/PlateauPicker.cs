@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.Helpers;
+﻿namespace TradingEngine.Services.Helpers;
 
 /// <summary>
 /// P4.5.1: pure plateau picker for walk-forward sweep results. Given a set of sweep cells

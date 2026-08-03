@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.Strategy.Filters;
+﻿namespace TradingEngine.Services.Strategy.Filters;
 
 public sealed class AtrRangeFilter(string atrKey, double minAtr, double maxAtr) : IEntryFilter
 {

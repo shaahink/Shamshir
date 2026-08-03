@@ -1,4 +1,4 @@
-namespace TradingEngine.Risk.Sizing;
+﻿namespace TradingEngine.Risk.Sizing;
 
 public sealed class ConfidenceSizeModifier : ISizeModifier
 {

@@ -1,4 +1,4 @@
-using TradingEngine.Engine;
+﻿using TradingEngine.Engine;
 
 namespace TradingEngine.Tests.Unit.Phase3ATests;
 

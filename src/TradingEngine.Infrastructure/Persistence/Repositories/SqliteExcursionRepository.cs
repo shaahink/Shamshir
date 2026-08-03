@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Persistence.Repositories;
+﻿namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
 public sealed class SqliteExcursionRepository(TradingDbContext db) : IExcursionRepository
 {

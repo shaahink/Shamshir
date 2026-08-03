@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using NetMQ;
@@ -84,9 +84,16 @@ public sealed class FakeCBot : IAsyncDisposable
     {
         var bar = Serialize("bar", new Dictionary<string, object>
         {
-            ["v"] = 1, ["seq"] = seq, ["symbol"] = symbol, ["period"] = period,
-            ["openTime"] = openTime.ToString("o"), ["open"] = open, ["high"] = high,
-            ["low"] = low, ["close"] = close, ["volume"] = volume,
+            ["v"] = 1,
+            ["seq"] = seq,
+            ["symbol"] = symbol,
+            ["period"] = period,
+            ["openTime"] = openTime.ToString("o"),
+            ["open"] = open,
+            ["high"] = high,
+            ["low"] = low,
+            ["close"] = close,
+            ["volume"] = volume,
             ["simTime"] = simTime.ToString("o"),
             ["account"] = new Dictionary<string, double> { ["balance"] = balance, ["equity"] = equity }
         });
@@ -147,7 +154,8 @@ public sealed class FakeCBot : IAsyncDisposable
 
         var result = Serialize("bar_result", new Dictionary<string, object>
         {
-            ["v"] = 1, ["seq"] = seq,
+            ["v"] = 1,
+            ["seq"] = seq,
             ["execs"] = execArray,
             ["account"] = new Dictionary<string, double> { ["balance"] = balance, ["equity"] = equity }
         });

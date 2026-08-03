@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.Strategy;
+﻿namespace TradingEngine.Services.Strategy;
 
 public sealed class ComposedStrategy : IStrategy
 {

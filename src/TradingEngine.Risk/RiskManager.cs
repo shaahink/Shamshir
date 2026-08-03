@@ -1,4 +1,4 @@
-using TradingEngine.Engine;
+﻿using TradingEngine.Engine;
 using TradingEngine.Risk.Compliance;
 using TradingEngine.Risk.Sizing;
 
@@ -32,9 +32,16 @@ public sealed class RiskManager(
 
     public ExtendedRiskState CurrentState { get; private set; } = new()
     {
-        TradingAllowed = true, InProtectionMode = false, ProtectionReason = null,
-        DailyDrawdownUsed = 0, WeeklyDrawdownUsed = 0, MonthlyDrawdownUsed = 0,
-        MaxDrawdownUsed = 0, DailyDrawdownLimit = 0, MaxDrawdownLimit = 0, ProtectionUntilUtc = null,
+        TradingAllowed = true,
+        InProtectionMode = false,
+        ProtectionReason = null,
+        DailyDrawdownUsed = 0,
+        WeeklyDrawdownUsed = 0,
+        MonthlyDrawdownUsed = 0,
+        MaxDrawdownUsed = 0,
+        DailyDrawdownLimit = 0,
+        MaxDrawdownLimit = 0,
+        ProtectionUntilUtc = null,
     };
 
     public PropFirmRuleSet? ActiveRuleSet { get; private set; }

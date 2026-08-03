@@ -1,4 +1,4 @@
-namespace TradingEngine.Services;
+﻿namespace TradingEngine.Services;
 
 /// <summary>The gate's decision for an accepted signal: the submitted order id, the sized lots, the
 /// computed risk amount, and the resolved profile. Part of the <see cref="IOrderGate"/> contract (kept in

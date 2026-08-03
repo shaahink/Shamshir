@@ -1,4 +1,4 @@
-using TradingEngine.Strategies.BollingerSqueeze;
+﻿using TradingEngine.Strategies.BollingerSqueeze;
 using TradingEngine.Strategies.MacdMomentum;
 using TradingEngine.Strategies.MtfTrend;
 using TradingEngine.Strategies.RsiDivergence;

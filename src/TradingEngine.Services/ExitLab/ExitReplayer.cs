@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.ExitLab;
+﻿namespace TradingEngine.Services.ExitLab;
 
 /// <summary>
 /// P3.3 / P4.5.3: pure function that replays a single exit rule against a single recorded excursion path.

@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Dtos.Strategies;
+﻿namespace TradingEngine.Web.Dtos.Strategies;
 
 public sealed record StrategyUpdateRequest
 {

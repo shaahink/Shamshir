@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace TradingEngine.Tests.Integration.InfrastructureTests;
@@ -77,14 +77,22 @@ public sealed class ResearchPipelinePersistenceTests
         using var db = NewDb(conn);
         db.ResearchPipelines.Add(new ResearchPipelineEntity
         {
-            Id = id, Name = "dup", PlaybookJson = "{}", Status = "running", StartedAtUtc = DateTime.UtcNow,
+            Id = id,
+            Name = "dup",
+            PlaybookJson = "{}",
+            Status = "running",
+            StartedAtUtc = DateTime.UtcNow,
             Steps = [new ResearchPipelineStepEntity { Id = Guid.NewGuid(), PipelineId = id, StepIndex = 0, Kind = "report", Status = "pending" }],
         });
         await db.SaveChangesAsync();
 
         db.ResearchPipelineSteps.Add(new ResearchPipelineStepEntity
         {
-            Id = Guid.NewGuid(), PipelineId = id, StepIndex = 0, Kind = "report", Status = "pending",
+            Id = Guid.NewGuid(),
+            PipelineId = id,
+            StepIndex = 0,
+            Kind = "report",
+            Status = "pending",
         });
         var act = async () => await db.SaveChangesAsync();
         await act.Should().ThrowAsync<DbUpdateException>("(PipelineId, StepIndex) is a unique index");
@@ -100,7 +108,11 @@ public sealed class ResearchPipelinePersistenceTests
         using var db = NewDb(conn);
         db.ResearchPipelines.Add(new ResearchPipelineEntity
         {
-            Id = id, Name = "cascade", PlaybookJson = "{}", Status = "running", StartedAtUtc = DateTime.UtcNow,
+            Id = id,
+            Name = "cascade",
+            PlaybookJson = "{}",
+            Status = "running",
+            StartedAtUtc = DateTime.UtcNow,
             Steps = [new ResearchPipelineStepEntity { Id = Guid.NewGuid(), PipelineId = id, StepIndex = 0, Kind = "report", Status = "pending" }],
         });
         await db.SaveChangesAsync();

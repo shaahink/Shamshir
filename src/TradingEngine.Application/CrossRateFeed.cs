@@ -1,4 +1,4 @@
-namespace TradingEngine.Application;
+﻿namespace TradingEngine.Application;
 
 /// <summary>
 /// Advances a <see cref="CrossRateStore"/> along pre-loaded USD-leg series as sim-time moves.

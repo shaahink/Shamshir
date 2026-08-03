@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using TradingEngine.Engine;
 
 namespace TradingEngine.Services;
@@ -154,17 +154,17 @@ public sealed class PositionManager(
                     ComputeAtr(recentBars, config, symbolInfo), EffectiveAtrMultiple(t, recentBars), symbolInfo);
 
             case TrailingMethod.SteppedR:
-            {
-                var levels = t.SteppedRLevels is { Length: > 0 } ? t.SteppedRLevels : [1.0, 2.0, 3.0];
-                var initialSl = _initialSlDistance.GetValueOrDefault(ps.PositionId);
-                if (initialSl <= 0)
                 {
-                    initialSl = Math.Abs(ps.EntryPrice.Value - ps.CurrentStopLoss.Value);
-                    _initialSlDistance[ps.PositionId] = initialSl;
+                    var levels = t.SteppedRLevels is { Length: > 0 } ? t.SteppedRLevels : [1.0, 2.0, 3.0];
+                    var initialSl = _initialSlDistance.GetValueOrDefault(ps.PositionId);
+                    if (initialSl <= 0)
+                    {
+                        initialSl = Math.Abs(ps.EntryPrice.Value - ps.CurrentStopLoss.Value);
+                        _initialSlDistance[ps.PositionId] = initialSl;
+                    }
+                    return PositionLifecycle.TrailSteppedR(
+                        ps with { InitialSlDistance = initialSl }, tick.Bid, tick.Ask, levels, symbolInfo);
                 }
-                return PositionLifecycle.TrailSteppedR(
-                    ps with { InitialSlDistance = initialSl }, tick.Bid, tick.Ask, levels, symbolInfo);
-            }
 
             // BreakevenThenTrail is a breakeven-trigger method (kept for back-compat). For genuine
             // "breakeven then trail", set UseBreakeven=true AND Trailing.Method=AtrMultiple/Structure.
@@ -265,7 +265,8 @@ public sealed class PositionManager(
         return indicatorService.Adx(recentBars, Math.Min(14, recentBars.Count)) > t.RideAdxFloor;
     }
 
-    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config, SymbolInfo symbolInfo)    {
+    private double ComputeAtr(IReadOnlyList<Bar> recentBars, PositionManagementConfig config, SymbolInfo symbolInfo)
+    {
         var fallback = (double)symbolInfo.PipSize;
         if (recentBars.Count == 0) return config.TrailingStop.AtrMultiple * fallback;
         var atrValue = indicatorService.Atr(recentBars, Math.Min(14, recentBars.Count));

@@ -1,4 +1,4 @@
-namespace TradingEngine.CTraderRunner;
+﻿namespace TradingEngine.CTraderRunner;
 
 public sealed record BacktestCliRequest
 {

@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Dtos.Runs;
+﻿namespace TradingEngine.Web.Dtos.Runs;
 
 public sealed record EquityPointResponse
 {

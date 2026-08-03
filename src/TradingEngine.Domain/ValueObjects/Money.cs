@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 public readonly record struct Money(decimal Amount, string Currency)
 {

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -20,8 +20,8 @@ public sealed class SqliteStrategyConfigStore(TradingDbContext db, IMemoryCache?
 
         var results = new List<StrategyConfigEntry>(entities.Count);
         foreach (var e in entities) results.Add(ToEntry(e));
-            var list = results.AsReadOnly();
-            cache?.Set(CacheKey, list, TimeSpan.FromMinutes(5));
+        var list = results.AsReadOnly();
+        cache?.Set(CacheKey, list, TimeSpan.FromMinutes(5));
         return list;
     }
 

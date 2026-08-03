@@ -1,4 +1,4 @@
-using TradingEngine.Engine;
+﻿using TradingEngine.Engine;
 using TradingEngine.Risk;
 
 namespace TradingEngine.Tests.Unit.Iter26;

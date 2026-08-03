@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 // ExcursionPathJson (P3.1): the recorded MAE/MFE path, if the venue recorded one -- kept separate from
 // TradeResult (a new TradeExcursions table, not a new TradeResult column) so TradePersistenceHandler can

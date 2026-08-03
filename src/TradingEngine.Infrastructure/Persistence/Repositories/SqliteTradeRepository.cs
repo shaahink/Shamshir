@@ -1,4 +1,4 @@
-using TradingEngine.Services.Helpers;
+﻿using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Infrastructure.Persistence.Repositories;
 

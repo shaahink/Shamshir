@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// The durable persistence boundary for the unified journal (iter-35 A3). <see cref="ChannelJournalWriter"/>

@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.AddOns;
+﻿namespace TradingEngine.Tests.Unit.AddOns;
 
 /// <summary>
 /// iter-38 PK2 / D1: applying a reusable add-on pack over a strategy's own add-ons. The pack REPLACES the

@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.TrendBreakout;
+﻿namespace TradingEngine.Strategies.TrendBreakout;
 
 public sealed record TrendBreakoutConfig : IStrategyConfig
 {

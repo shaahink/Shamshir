@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using TradingEngine.Strategies.RsiDivergence;
 
 namespace TradingEngine.Tests.Unit.StrategyTests;

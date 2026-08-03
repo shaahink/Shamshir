@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Symbol-level economics captured from a live venue (cTrader) at connection time. This is the

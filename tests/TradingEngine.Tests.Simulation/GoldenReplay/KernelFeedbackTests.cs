@@ -1,4 +1,4 @@
-using TradingEngine.Engine;
+﻿using TradingEngine.Engine;
 using TradingEngine.Host;
 
 namespace TradingEngine.Tests.Simulation.GoldenReplay;
@@ -97,7 +97,10 @@ public sealed class KernelFeedbackTests
         // The venue reports the close fill at the SL price; the bridge maps it to OrderFilled.
         var closeFill = new ExecutionEvent(orderId, OrderState.Filled, new Price(1.0920m), 0.20m, null, t)
         {
-            GrossProfit = -100m, NetProfit = -100m, Commission = 0m, Swap = 0m,
+            GrossProfit = -100m,
+            NetProfit = -100m,
+            Commission = 0m,
+            Swap = 0m,
         };
         var evt = KernelFeedback.FromExecution(closeFill, Eurusd);
         evt.Should().BeOfType<OrderFilled>();

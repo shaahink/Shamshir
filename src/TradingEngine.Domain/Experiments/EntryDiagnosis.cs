@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain.Experiments;
+﻿namespace TradingEngine.Domain.Experiments;
 
 /// <summary>
 /// P6.7 — entry-quality decomposition: for each strategy (or run), regress OOS trade R on observable-at-entry

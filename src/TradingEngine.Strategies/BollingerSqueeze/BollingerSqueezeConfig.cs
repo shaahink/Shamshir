@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.BollingerSqueeze;
+﻿namespace TradingEngine.Strategies.BollingerSqueeze;
 
 public sealed record BollingerSqueezeConfig : IStrategyConfig
 {

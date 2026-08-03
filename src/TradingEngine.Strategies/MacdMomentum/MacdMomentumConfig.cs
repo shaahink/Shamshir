@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.MacdMomentum;
+﻿namespace TradingEngine.Strategies.MacdMomentum;
 
 public sealed record MacdMomentumConfig : IStrategyConfig
 {

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence.Entities;

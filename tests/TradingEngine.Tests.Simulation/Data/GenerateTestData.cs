@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Simulation.Data;
+﻿namespace TradingEngine.Tests.Simulation.Data;
 
 public static class GenerateTestData
 {
