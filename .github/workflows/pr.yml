@@ -18,7 +18,8 @@ jobs:
           node-version: '22.x'
           cache: npm
           cache-dependency-path: web-ui/package-lock.json
-      - run: npm ci
+      # See release.yml: the lockfile was resolved with --legacy-peer-deps.
+      - run: npm ci --legacy-peer-deps
         working-directory: web-ui
       - run: npm run build
         working-directory: web-ui

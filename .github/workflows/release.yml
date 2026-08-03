@@ -22,7 +22,10 @@ jobs:
           node-version: '22.x'
           cache: npm
           cache-dependency-path: web-ui/package-lock.json
-      - run: npm ci
+      # --legacy-peer-deps because package-lock.json was already resolved that way:
+      # @angular-devkit/build-angular declares a peerOptional jest ^29 for its experimental
+      # jest builder, which this project does not use - it runs jest 30 via jest-preset-angular.
+      - run: npm ci --legacy-peer-deps
         working-directory: web-ui
       - run: npm run build
         working-directory: web-ui
