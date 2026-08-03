@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.MtfTrend;
+﻿namespace TradingEngine.Strategies.MtfTrend;
 
 public sealed record MtfTrendConfig : IStrategyConfig
 {

@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Phase31Tests;
+﻿namespace TradingEngine.Tests.Unit.Phase31Tests;
 
 [Trait("Category", "Unit")]
 public sealed class TradeCostCalculatorTests

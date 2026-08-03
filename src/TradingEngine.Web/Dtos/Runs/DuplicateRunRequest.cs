@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Dtos.Runs;
+﻿namespace TradingEngine.Web.Dtos.Runs;
 
 /// <summary>
 /// "Duplicate with changes" (iter-36 K6 / iter-37 F3): re-run a finished run over the SAME dataset window

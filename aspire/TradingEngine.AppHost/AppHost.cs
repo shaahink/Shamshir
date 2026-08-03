@@ -1,4 +1,4 @@
-var builder = DistributedApplication.CreateBuilder(args);
+﻿var builder = DistributedApplication.CreateBuilder(args);
 
 var dbPath = Path.GetFullPath(
     Path.Combine(builder.AppHostDirectory, "..", "..", "data", "trading.db"));

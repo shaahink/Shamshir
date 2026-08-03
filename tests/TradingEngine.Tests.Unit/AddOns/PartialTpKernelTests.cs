@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.AddOns;
+﻿namespace TradingEngine.Tests.Unit.AddOns;
 
 /// <summary>
 /// iter-38 A4 (PartialTp): the PositionManager emits a single <see cref="PartialClose"/> the first time the

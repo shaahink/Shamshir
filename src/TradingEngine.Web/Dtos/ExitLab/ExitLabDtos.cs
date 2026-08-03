@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Dtos.ExitLab;
+﻿namespace TradingEngine.Web.Dtos.ExitLab;
 
 /// <summary>P3.5 — request to evaluate a grid of exit rules against recorded excursion paths.</summary>
 public sealed record ExitLabEvaluateRequest

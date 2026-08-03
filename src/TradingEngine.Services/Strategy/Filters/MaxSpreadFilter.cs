@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.Strategy.Filters;
+﻿namespace TradingEngine.Services.Strategy.Filters;
 
 public sealed class MaxSpreadFilter(decimal maxPips, ISymbolInfoRegistry reg) : IEntryFilter
 {

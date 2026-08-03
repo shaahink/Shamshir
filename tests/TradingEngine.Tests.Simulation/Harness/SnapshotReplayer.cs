@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using NetMQ;
 
 namespace TradingEngine.Tests.Simulation.Harness;

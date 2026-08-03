@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Dtos.Trades;
+﻿namespace TradingEngine.Web.Dtos.Trades;
 
 /// <summary>
 /// P3.5 — per-bar excursion path for one trade. ExcursionPoint maps to the domain's

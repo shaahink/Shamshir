@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.SessionBreakout;
+﻿namespace TradingEngine.Strategies.SessionBreakout;
 
 public sealed record SessionBreakoutParameters
 {

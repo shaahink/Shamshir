@@ -1,6 +1,6 @@
-namespace TradingEngine.Infrastructure.Persistence.Entities;
+﻿namespace TradingEngine.Infrastructure.Persistence.Entities;
 
-public sealed class VenueSymbolSpecEntity
+public sealed class VenueSymbolSpecEntity : IAuditableEntity
 {
     public string Symbol { get; set; } = "";
     public string Broker { get; set; } = "";
@@ -17,4 +17,6 @@ public sealed class VenueSymbolSpecEntity
     public int Digits { get; set; }
     public string TripleSwapDay { get; set; } = "";
     public double TypicalSpread { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
 }

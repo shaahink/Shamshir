@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using TradingEngine.Tests.Integration.Support;
 using TradingEngine.Web.Services;

@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Phase3ATests;
+﻿namespace TradingEngine.Tests.Unit.Phase3ATests;
 
 [Trait("Category", "Infrastructure")]
 public sealed class SimulatedBrokerPhase3ATests

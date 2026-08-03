@@ -1,4 +1,4 @@
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using TradingEngine.Services.Helpers;
 
 namespace TradingEngine.Tests.Simulation.Harness;

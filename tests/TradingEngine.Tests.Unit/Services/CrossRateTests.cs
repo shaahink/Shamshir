@@ -1,4 +1,4 @@
-using TradingEngine.Application;
+﻿using TradingEngine.Application;
 
 namespace TradingEngine.Tests.Unit.Services;
 

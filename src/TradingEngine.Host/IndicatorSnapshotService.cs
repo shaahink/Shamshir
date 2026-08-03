@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using TradingEngine.Infrastructure.Indicators;
 
 namespace TradingEngine.Host;

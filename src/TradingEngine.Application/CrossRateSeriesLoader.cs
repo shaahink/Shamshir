@@ -1,4 +1,4 @@
-namespace TradingEngine.Application;
+﻿namespace TradingEngine.Application;
 
 /// <summary>
 /// Works out which USD legs a run must be able to price, and loads them from stored market data.

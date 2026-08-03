@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.DayOfWeek;
+﻿namespace TradingEngine.Strategies.DayOfWeek;
 
 public sealed record DayOfWeekParameters
 {

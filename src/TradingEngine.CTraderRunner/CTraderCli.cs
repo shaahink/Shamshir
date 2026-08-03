@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using CliWrap;
 using CliWrap.EventStream;
 using Microsoft.Extensions.Configuration;

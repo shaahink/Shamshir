@@ -1,4 +1,4 @@
-using TradingEngine.Web.Api;
+﻿using TradingEngine.Web.Api;
 
 namespace TradingEngine.Tests.Integration.Trades;
 

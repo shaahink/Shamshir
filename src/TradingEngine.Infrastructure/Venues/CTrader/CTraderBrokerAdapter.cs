@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
@@ -69,7 +69,7 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
 
     private static readonly JsonSerializerOptions JsonOpts = new()
-        { PropertyNameCaseInsensitive = true };
+    { PropertyNameCaseInsensitive = true };
 
     public CTraderBrokerAdapter(IMessageTransport transport,
         ILogger<CTraderBrokerAdapter> logger, IPipelineJournal? journal = null)
@@ -271,28 +271,28 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
         switch (topic)
         {
             case "tick":
-            {
-                var bid = root.GetProperty("bid").GetDecimal();
-                var ask = root.GetProperty("ask").GetDecimal();
-                _lastMid = (bid + ask) / 2m;
-                var tick = new Tick(
-                    Symbol.Parse(root.GetProperty("symbol").GetString()!),
-                    bid, ask,
-                    root.GetProperty("time").GetDateTime().ToUniversalTime());
-                BrokerTimeUtc = tick.TimestampUtc;
-                _tickChannel.Writer.TryWrite(tick);
-                break;
-            }
+                {
+                    var bid = root.GetProperty("bid").GetDecimal();
+                    var ask = root.GetProperty("ask").GetDecimal();
+                    _lastMid = (bid + ask) / 2m;
+                    var tick = new Tick(
+                        Symbol.Parse(root.GetProperty("symbol").GetString()!),
+                        bid, ask,
+                        root.GetProperty("time").GetDateTime().ToUniversalTime());
+                    BrokerTimeUtc = tick.TimestampUtc;
+                    _tickChannel.Writer.TryWrite(tick);
+                    break;
+                }
             case "acct":
-            {
-                var acct = new AccountUpdate(
-                    root.GetProperty("balance").GetDecimal(),
-                    root.GetProperty("equity").GetDecimal(),
-                    root.GetProperty("floatingPnL").GetDecimal(),
-                    root.GetProperty("time").GetDateTime().ToUniversalTime());
-                _accountChannel.Writer.TryWrite(acct);
-                break;
-            }
+                {
+                    var acct = new AccountUpdate(
+                        root.GetProperty("balance").GetDecimal(),
+                        root.GetProperty("equity").GetDecimal(),
+                        root.GetProperty("floatingPnL").GetDecimal(),
+                        root.GetProperty("time").GetDateTime().ToUniversalTime());
+                    _accountChannel.Writer.TryWrite(acct);
+                    break;
+                }
         }
     }
 
@@ -531,7 +531,10 @@ public sealed class CTraderBrokerAdapter : IBrokerAdapter, IAsyncDisposable
                 new ExecutionEvent(positionId, OrderState.Filled,
                     new Price(_lastMid), 0, "FORCE_CLOSE_ENGINE_SHUTDOWN", BrokerTimeUtc)
                 {
-                    GrossProfit = 0m, NetProfit = 0m, Commission = 0m, Swap = 0m
+                    GrossProfit = 0m,
+                    NetProfit = 0m,
+                    Commission = 0m,
+                    Swap = 0m
                 });
             return Task.CompletedTask;
         }

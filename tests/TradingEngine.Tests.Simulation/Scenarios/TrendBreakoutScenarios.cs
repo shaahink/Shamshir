@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Simulation.Scenarios;
+﻿namespace TradingEngine.Tests.Simulation.Scenarios;
 
 public sealed class TrendBreakoutScenarios
 {

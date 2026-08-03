@@ -1,4 +1,4 @@
-using TradingEngine.ResearchCli;
+﻿using TradingEngine.ResearchCli;
 
 namespace TradingEngine.Tests.Unit.ResearchCli;
 

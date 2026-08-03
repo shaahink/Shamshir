@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.Helpers;
+﻿namespace TradingEngine.Services.Helpers;
 
 /// <summary>
 /// F87 P4: the ONE place that decides which spread <b>number</b> a consumer reads — before this,

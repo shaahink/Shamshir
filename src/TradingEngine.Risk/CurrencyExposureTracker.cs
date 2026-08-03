@@ -1,4 +1,4 @@
-namespace TradingEngine.Risk;
+﻿namespace TradingEngine.Risk;
 
 public sealed class CurrencyExposureTracker : ICurrencyExposureTracker
 {

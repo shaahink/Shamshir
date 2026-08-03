@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Persistence.Entities;
+﻿namespace TradingEngine.Infrastructure.Persistence.Entities;
 
 /// <summary>
 /// iter-38 (Stream PK1). Persisted form of a reusable <c>AddOnPack</c> (owner decision D1). The add-on bundle

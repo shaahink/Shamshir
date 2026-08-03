@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -40,11 +40,13 @@ public partial class TradingEngineCBot
         if (!_publishedBars.Add(key)) { _duplicateCount++; return; }
 
         if (Verbose)
+        {
             Print($"CBOT|BAR_EVENT|seq={_barEventCount}|" +
                   $"count={bars.Count}|" +
                   $"openTime={bar.OpenTime:yyyy-MM-dd HH:mm}|" +
                   $"open={bar.Open:F5}|high={bar.High:F5}|low={bar.Low:F5}|close={bar.Close:F5}|" +
                   $"dup=false");
+        }
 
         var openTimeUtc = DateTime.SpecifyKind(bar.OpenTime, DateTimeKind.Utc);
 

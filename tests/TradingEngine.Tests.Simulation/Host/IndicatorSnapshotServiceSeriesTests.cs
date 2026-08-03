@@ -1,4 +1,4 @@
-using TradingEngine.Host;
+﻿using TradingEngine.Host;
 using TradingEngine.Infrastructure.Indicators;
 
 namespace TradingEngine.Tests.Simulation.Host;

@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Persistence.Reporting;
+﻿namespace TradingEngine.Infrastructure.Persistence.Reporting;
 
 public sealed class TradeReportQueries(IDbConnection db)
 {

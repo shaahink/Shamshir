@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// The decision core (iter-35 A2): a pure function <c>(state, event) → (state', effects)</c>.

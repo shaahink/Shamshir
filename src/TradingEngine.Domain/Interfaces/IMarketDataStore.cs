@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Canonical, source-agnostic market-data store (iter-marketdata-tape P1). Holds OHLCV history keyed by

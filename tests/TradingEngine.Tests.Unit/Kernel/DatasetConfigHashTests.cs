@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using TradingEngine.Infrastructure;
 
 namespace TradingEngine.Tests.Unit.Kernel;

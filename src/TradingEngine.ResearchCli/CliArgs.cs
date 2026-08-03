@@ -1,4 +1,4 @@
-namespace TradingEngine.ResearchCli;
+﻿namespace TradingEngine.ResearchCli;
 
 /// <summary>
 /// P3.1 — a deliberately tiny, dependency-free arg model (no System.CommandLine — the repo has zero CLI

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using TradingEngine.Strategies.Sessions;
 
 namespace TradingEngine.Strategies.LondonOrb;

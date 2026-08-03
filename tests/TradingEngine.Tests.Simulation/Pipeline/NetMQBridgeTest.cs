@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO.Pipes;
 using NetMQ;
 using NetMQ.Sockets;
@@ -31,7 +31,8 @@ public sealed class NetMQBridgeTest
         using var engine = Process.Start(new ProcessStartInfo("dotnet",
             $"run --project \"{projPath}\" --no-build")
         {
-            UseShellExecute = false, CreateNoWindow = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
             Environment =
             {
                 ["Engine__Mode"] = "Live",

@@ -1,4 +1,4 @@
-using TradingEngine.Domain;
+﻿using TradingEngine.Domain;
 using TradingEngine.ResearchCli;
 
 // P3.1 — TradingEngine.ResearchCli entry point. Verbs speak HTTP to the running Web app (Q3) and print a
@@ -853,7 +853,7 @@ static async Task<int> DoctorAsync(CliArgs cli, string baseUrl, TimeSpan timeout
 
 static void PrintUsage()
 {
-        Console.Error.WriteLine("""
+    Console.Error.WriteLine("""
         TradingEngine.ResearchCli (research) — drives the running Shamshir Web app over HTTP.
         Usage:
           research data ensure  --symbols EURUSD,XAUUSD --tfs H1,M15 [--from 2026-01-01 --to 2026-07-01] [--download]

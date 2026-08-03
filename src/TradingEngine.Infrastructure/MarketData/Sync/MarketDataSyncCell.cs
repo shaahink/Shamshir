@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.MarketData.Sync;
+﻿namespace TradingEngine.Infrastructure.MarketData.Sync;
 
 /// <summary>
 /// X4 — one watchlist row: a symbol × timeframe the auto-sync service keeps filled from

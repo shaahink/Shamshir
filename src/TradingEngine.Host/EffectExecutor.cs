@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using TradingEngine.Domain.Events;
 using TradingEngine.Services.Helpers;
 

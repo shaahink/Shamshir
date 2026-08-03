@@ -1,4 +1,4 @@
-using Skender.Stock.Indicators;
+﻿using Skender.Stock.Indicators;
 
 namespace TradingEngine.Infrastructure.Indicators;
 

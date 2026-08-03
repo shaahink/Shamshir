@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Per-protection on/off toggles (iter-35 B1). Threaded into <see cref="ConstraintSet"/> so the

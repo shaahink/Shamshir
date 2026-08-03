@@ -1,4 +1,4 @@
-namespace TradingEngine.Experiments;
+﻿namespace TradingEngine.Experiments;
 
 public static class WalkForwardSplitter
 {

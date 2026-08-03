@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.SignalR;
+﻿using Microsoft.AspNetCore.SignalR;
 using TradingEngine.Web.Services;
 
 namespace TradingEngine.Web.Hubs;

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.CTraderRunner;
 using TradingEngine.Infrastructure.Persistence;

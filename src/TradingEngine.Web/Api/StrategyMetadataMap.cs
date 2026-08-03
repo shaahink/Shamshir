@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Api;
+﻿namespace TradingEngine.Web.Api;
 
 /// <summary>
 /// P6: static metadata map — entry rule + exit formula per strategy.

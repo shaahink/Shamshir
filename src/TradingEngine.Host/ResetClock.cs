@@ -1,4 +1,4 @@
-namespace TradingEngine.Host;
+﻿namespace TradingEngine.Host;
 
 /// <summary>
 /// The prop-firm reset clock (iter-36 NEW-1 / K-GAP-1). Given the previous and current bar sim-times (UTC)

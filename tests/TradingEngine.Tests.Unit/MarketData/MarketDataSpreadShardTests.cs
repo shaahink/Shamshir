@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.MarketData;
+﻿namespace TradingEngine.Tests.Unit.MarketData;
 
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.MarketData;

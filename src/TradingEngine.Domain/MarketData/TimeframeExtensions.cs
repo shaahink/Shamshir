@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Canonical bar-duration for a <see cref="Timeframe"/>. Several call sites (BarEvaluator,

@@ -1,4 +1,4 @@
-namespace TradingEngine.CTraderRunner;
+﻿namespace TradingEngine.CTraderRunner;
 
 /// <summary>
 /// Harvests cTrader's native backtest report output from its Backtesting directory.

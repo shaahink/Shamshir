@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// P0.2 (F5, Q5) — the single source of truth for a run's status string. Before this, four readers

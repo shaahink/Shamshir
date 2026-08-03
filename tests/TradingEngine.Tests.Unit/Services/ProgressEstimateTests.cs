@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Services;
+﻿namespace TradingEngine.Tests.Unit.Services;
 
 /// <summary>
 /// P0 repro: EstimateBarCount (BacktestOrchestrator.cs:262) uses calendar duration without

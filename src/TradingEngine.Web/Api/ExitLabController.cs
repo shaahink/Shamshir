@@ -1,4 +1,4 @@
-using TradingEngine.Domain;
+﻿using TradingEngine.Domain;
 using TradingEngine.Domain.Experiments;
 using TradingEngine.Infrastructure.Persistence;
 using TradingEngine.Infrastructure.Persistence.Entities;
@@ -99,9 +99,12 @@ public sealed class ExitLabController : ControllerBase
         {
             return Ok(new ExitLabEvaluateResponse
             {
-                TotalTrades = 0, TotalCells = 0, Cells = [],
+                TotalTrades = 0,
+                TotalCells = 0,
+                Cells = [],
                 MalformedPathCount = malformedCount,
-                DefaultSlMultiples = slMultiples, DefaultTpMultiples = tpMultiples,
+                DefaultSlMultiples = slMultiples,
+                DefaultTpMultiples = tpMultiples,
                 Regime = req.Regime,
                 RegimeBreakdown = regimeBreakdown.Count > 0 ? regimeBreakdown : null,
             });

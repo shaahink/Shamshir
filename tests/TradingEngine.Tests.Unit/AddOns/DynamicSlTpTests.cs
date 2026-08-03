@@ -1,4 +1,4 @@
-using TradingEngine.Services.AddOns;
+﻿using TradingEngine.Services.AddOns;
 using TradingEngine.Services.SLTPCalculation;
 
 namespace TradingEngine.Tests.Unit.AddOns;

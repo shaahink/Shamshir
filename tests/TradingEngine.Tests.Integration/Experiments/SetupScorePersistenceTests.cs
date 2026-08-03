@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using TradingEngine.Tests.Integration.Support;
 using TradingEngine.Web.Services;
@@ -17,19 +17,19 @@ public sealed class SetupScorePersistenceTests : IDisposable
     private static BacktestRunEntity Run(
         string id, string venue = "tape", string? warnings = null, string status = "completed",
         bool finished = true, decimal maxDrawdownPct = 0.02m) => new()
-    {
-        RunId = id,
-        StartedAtUtc = DateTime.UtcNow.AddHours(-2),
-        CompletedAtUtc = finished ? DateTime.UtcNow.AddHours(-1) : DateTime.MinValue,
-        Status = status,
-        Venue = venue,
-        WarningsJson = warnings,
-        BacktestFrom = DateTime.UtcNow.AddDays(-90),
-        BacktestTo = DateTime.UtcNow,
-        MaxDrawdownPct = maxDrawdownPct, // stored as a FRACTION (0.02 = 2%) — see F60
-        Symbol = "EURUSD",
-        Period = "H1",
-    };
+        {
+            RunId = id,
+            StartedAtUtc = DateTime.UtcNow.AddHours(-2),
+            CompletedAtUtc = finished ? DateTime.UtcNow.AddHours(-1) : DateTime.MinValue,
+            Status = status,
+            Venue = venue,
+            WarningsJson = warnings,
+            BacktestFrom = DateTime.UtcNow.AddDays(-90),
+            BacktestTo = DateTime.UtcNow,
+            MaxDrawdownPct = maxDrawdownPct, // stored as a FRACTION (0.02 = 2%) — see F60
+            Symbol = "EURUSD",
+            Period = "H1",
+        };
 
     private static TradeResultEntity Trade(string runId, double r, decimal netPnl, DateTime closedAt) => new()
     {

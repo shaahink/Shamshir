@@ -1,4 +1,4 @@
-using TradingEngine.Strategies.AsiaRange;
+﻿using TradingEngine.Strategies.AsiaRange;
 using TradingEngine.Strategies.Sessions;
 using TradingEngine.Tests.Unit.Strategies;
 

@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Dtos.Bars;
+﻿namespace TradingEngine.Web.Dtos.Bars;
 
 public sealed record BarResponse
 {

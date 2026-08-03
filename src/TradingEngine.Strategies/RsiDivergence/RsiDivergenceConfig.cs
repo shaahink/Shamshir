@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.RsiDivergence;
+﻿namespace TradingEngine.Strategies.RsiDivergence;
 
 public sealed record RsiDivergenceConfig : IStrategyConfig
 {

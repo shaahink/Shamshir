@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using TradingEngine.Engine;
 using TradingEngine.Host;
 using TradingEngine.Tests.Simulation.Harness;

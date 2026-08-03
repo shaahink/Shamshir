@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// The time-varying account slice of the kernel state (iter-35 A2). Folded from each

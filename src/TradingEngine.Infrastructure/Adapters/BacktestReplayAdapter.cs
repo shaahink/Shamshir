@@ -1,4 +1,4 @@
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using TradingEngine.Domain;
 using TradingEngine.Engine;
@@ -308,7 +308,8 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
             {
                 _pendingLimits.Remove(orderId);
                 EmitExecutionEvent(new ExecutionEvent(
-                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc)
+                { Symbol = _symbol });
                 _logger.LogDebug("BacktestReplay: limit expired {Id} at {Price:F5}", orderId, limit.LimitPrice);
             }
         }
@@ -389,7 +390,8 @@ public sealed class BacktestReplayAdapter : IBrokerAdapter, IReplayVenue, IAsync
             {
                 _pendingStops.Remove(orderId);
                 EmitExecutionEvent(new ExecutionEvent(
-                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc) { Symbol = _symbol });
+                    orderId, OrderState.Cancelled, null, 0, "ENTRY_EXPIRED", BrokerTimeUtc)
+                { Symbol = _symbol });
                 _logger.LogDebug("BacktestReplay: stop expired {Id} at {Price:F5}", orderId, stop.StopPrice);
             }
         }

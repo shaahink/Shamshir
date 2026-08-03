@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Adapters;
+﻿namespace TradingEngine.Tests.Unit.Adapters;
 
 using TradingEngine.Domain;
 

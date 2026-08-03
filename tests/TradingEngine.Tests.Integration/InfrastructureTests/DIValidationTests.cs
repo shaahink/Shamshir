@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Integration.InfrastructureTests;
+﻿namespace TradingEngine.Tests.Integration.InfrastructureTests;
 
 public sealed class DIValidationTests
 {
@@ -24,7 +24,7 @@ public sealed class DIValidationTests
         services.AddSingleton<IEngineClock, BrokerClock>();
         services.AddSingleton<INewsFilter>(_ => new ConfigurableNewsFilter([]));
         services.AddSingleton<SessionFilter>();
-        
+
         services.AddSingleton<ICurrencyExposureTracker, CurrencyExposureTracker>();
         services.AddSingleton(new SizingPolicyOptions());
         services.AddSingleton(new GovernorOptions());
@@ -63,7 +63,7 @@ public sealed class DIValidationTests
         var failures = new List<string>();
 
         AssertResolves<IRiskManager>(sp, failures);
-                AssertResolves<IStrategyBank>(sp, failures);
+        AssertResolves<IStrategyBank>(sp, failures);
         AssertResolves<IRegimeDetector>(sp, failures);
         AssertResolves<ICurrencyExposureTracker>(sp, failures);
         AssertResolves<INewsFilter>(sp, failures);

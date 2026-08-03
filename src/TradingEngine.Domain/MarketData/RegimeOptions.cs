@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// Tunables for <c>AtrBasedRegimeDetector</c>. Previously these lived as magic numbers in the

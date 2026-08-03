@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using TradingEngine.Domain;
 
 namespace TradingEngine.Infrastructure.MarketData;

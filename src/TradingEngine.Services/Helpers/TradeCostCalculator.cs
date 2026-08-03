@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.Helpers;
+﻿namespace TradingEngine.Services.Helpers;
 
 /// <summary>
 /// Itemised result of closing a position: the gross (cost-free) PnL, the round-turn commission,

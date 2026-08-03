@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using TradingEngine.Infrastructure.MarketData.Sync;
 using TradingEngine.Web.Api;
 

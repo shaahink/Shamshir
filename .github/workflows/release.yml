@@ -3,26 +3,53 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+
+      # The Angular UI must be built before anything .NET runs. wwwroot is gitignored, so on a
+      # fresh checkout it does not exist and TradingEngine.Web's EnsureAngularCurrent target
+      # fails the build. `npm run build` writes straight into src/TradingEngine.Web/wwwroot.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: web-ui/package-lock.json
+      # --legacy-peer-deps because package-lock.json was already resolved that way:
+      # @angular-devkit/build-angular declares a peerOptional jest ^29 for its experimental
+      # jest builder, which this project does not use - it runs jest 30 via jest-preset-angular.
+      - run: npm ci --legacy-peer-deps
+        working-directory: web-ui
+      - run: npm run build
+        working-directory: web-ui
+
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.x'
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
-      - run: dotnet test --no-build -c Release
+      # Same filter scripts/gates.ps1 uses for the Simulation suite: the cTrader E2E tests need
+      # a cTrader desktop installation and broker credentials on the machine, so they cannot run
+      # on a hosted runner - they fail with "cTrader installation not found". These traits exist
+      # only in TradingEngine.Tests.Simulation, so Unit, Integration and Architecture still run
+      # in full.
+      - run: dotnet test --no-build -c Release --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ"
       - run: dotnet publish src/TradingEngine.Host -c Release -r win-x64 --self-contained -o publish/engine
       - run: dotnet publish src/TradingEngine.Web -c Release -r win-x64 --self-contained -o publish/web
-      - uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
+          # A release cut by hand off a branch is not a main-line release.
+          prerelease: ${{ github.ref_name != 'main' }}
           body: |
             ## Shamshir Trading Engine Release v${{ github.run_number }}
             - Engine: `publish/engine/`

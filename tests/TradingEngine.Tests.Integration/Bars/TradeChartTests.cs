@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using NSubstitute;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;
@@ -57,7 +57,10 @@ public sealed class TradeChartTests : IDisposable
                 Symbol = "EURUSD",
                 Timeframe = "H1",
                 OpenTimeUtc = time,
-                Open = 1.1000m, High = 1.1010m, Low = 1.0990m, Close = 1.1000m,
+                Open = 1.1000m,
+                High = 1.1010m,
+                Low = 1.0990m,
+                Close = 1.1000m,
                 Volume = 1000,
             });
         }

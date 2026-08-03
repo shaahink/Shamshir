@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 public sealed class StubClock(DateTime initialTime) : IEngineClock
 {

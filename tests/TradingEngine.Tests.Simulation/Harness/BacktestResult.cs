@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Simulation.Harness;
+﻿namespace TradingEngine.Tests.Simulation.Harness;
 
 public sealed record BacktestResult(
     decimal NetPnL,

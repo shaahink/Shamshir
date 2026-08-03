@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 
 namespace TradingEngine.Infrastructure.Persistence.Repositories;
 
@@ -96,25 +96,25 @@ public sealed class SqliteBacktestRunRepository(TradingDbContext db) : IBacktest
             var entity = await db.BacktestRuns.FindAsync([run.RunId], ct);
             if (entity is null) return;
             entity.CompletedAtUtc = run.CompletedAtUtc;
-        entity.NetProfit = run.NetProfit;
-        entity.GrossPnL = run.GrossPnL;
-        entity.CommissionTotal = run.CommissionTotal;
-        entity.SwapTotal = run.SwapTotal;
-        entity.MaxDrawdownPct = run.MaxDrawdownPct;
-        entity.TotalTrades = run.TotalTrades;
-        entity.WinningTrades = run.WinningTrades;
-        entity.WinRatePct = run.WinRatePct;
-        entity.ExitCode = run.ExitCode;
-        entity.ErrorMessage = run.ErrorMessage;
-        entity.WarningsJson = run.WarningsJson;
-        entity.EffectiveConfigJson = run.EffectiveConfigJson;
-        entity.ReportJsonPath = run.ReportJsonPath;
-        entity.WallElapsedMs = run.WallElapsedMs;
-        entity.BarsPerSec = run.BarsPerSec;
-        entity.TotalBars = run.TotalBars;
-        entity.Status = run.Status ?? "";
-        entity.QueuePosition = run.QueuePosition;
-        await db.SaveChangesAsync(ct);
+            entity.NetProfit = run.NetProfit;
+            entity.GrossPnL = run.GrossPnL;
+            entity.CommissionTotal = run.CommissionTotal;
+            entity.SwapTotal = run.SwapTotal;
+            entity.MaxDrawdownPct = run.MaxDrawdownPct;
+            entity.TotalTrades = run.TotalTrades;
+            entity.WinningTrades = run.WinningTrades;
+            entity.WinRatePct = run.WinRatePct;
+            entity.ExitCode = run.ExitCode;
+            entity.ErrorMessage = run.ErrorMessage;
+            entity.WarningsJson = run.WarningsJson;
+            entity.EffectiveConfigJson = run.EffectiveConfigJson;
+            entity.ReportJsonPath = run.ReportJsonPath;
+            entity.WallElapsedMs = run.WallElapsedMs;
+            entity.BarsPerSec = run.BarsPerSec;
+            entity.TotalBars = run.TotalBars;
+            entity.Status = run.Status ?? "";
+            entity.QueuePosition = run.QueuePosition;
+            await db.SaveChangesAsync(ct);
         }, ct);
     }
 

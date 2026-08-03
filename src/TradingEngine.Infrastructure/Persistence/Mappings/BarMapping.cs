@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Persistence.Mappings;
+﻿namespace TradingEngine.Infrastructure.Persistence.Mappings;
 
 public sealed class BarMapping : IEntityTypeConfiguration<BarEntity>
 {

@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// The single-threaded, in-order event queue at the heart of the kernel funnel (iter-35 A2).

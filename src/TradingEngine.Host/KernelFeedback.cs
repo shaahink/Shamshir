@@ -1,4 +1,4 @@
-namespace TradingEngine.Host;
+﻿namespace TradingEngine.Host;
 
 /// <summary>
 /// The venue-feedback bridge (iter-36 K2). Translates the venue's <see cref="ExecutionEvent"/> /

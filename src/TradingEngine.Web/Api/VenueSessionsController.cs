@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TradingEngine.Infrastructure.Persistence;
 
@@ -16,7 +16,12 @@ public class VenueSessionsController(TradingDbContext db) : ControllerBase
             .Take(limit)
             .Select(s => new
             {
-                s.Id, s.RunId, s.Venue, s.Event, s.Detail, s.OccurredAtUtc
+                s.Id,
+                s.RunId,
+                s.Venue,
+                s.Event,
+                s.Detail,
+                s.OccurredAtUtc
             })
             .ToListAsync(ct);
         return Ok(new { sessions });
@@ -30,7 +35,12 @@ public class VenueSessionsController(TradingDbContext db) : ControllerBase
             .OrderBy(s => s.OccurredAtUtc)
             .Select(s => new
             {
-                s.Id, s.RunId, s.Venue, s.Event, s.Detail, s.OccurredAtUtc
+                s.Id,
+                s.RunId,
+                s.Venue,
+                s.Event,
+                s.Detail,
+                s.OccurredAtUtc
             })
             .ToListAsync(ct);
         return Ok(new { sessions });

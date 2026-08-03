@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.StrategyTests;
+﻿namespace TradingEngine.Tests.Unit.StrategyTests;
 
 [Trait("Category", "Strategy")]
 public sealed class TrendBreakoutStrategyTests

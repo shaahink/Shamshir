@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// How the venue computes commission. Mirrors cTrader's <c>SymbolCommissionType</c> enum with a

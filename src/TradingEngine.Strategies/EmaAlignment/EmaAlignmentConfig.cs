@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.EmaAlignment;
+﻿namespace TradingEngine.Strategies.EmaAlignment;
 
 public sealed record EmaAlignmentParameters
 {

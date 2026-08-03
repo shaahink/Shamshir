@@ -1,4 +1,4 @@
-using TradingEngine.Domain;
+﻿using TradingEngine.Domain;
 using TradingEngine.Domain.Interfaces;
 using TradingEngine.Infrastructure.Caching;
 using TradingEngine.Infrastructure.Events;

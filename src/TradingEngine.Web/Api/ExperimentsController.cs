@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Api;
+﻿namespace TradingEngine.Web.Api;
 
 [ApiController]
 [Route("api/experiments")]

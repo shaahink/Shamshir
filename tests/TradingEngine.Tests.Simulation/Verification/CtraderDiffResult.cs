@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Simulation.Verification;
+﻿namespace TradingEngine.Tests.Simulation.Verification;
 
 public enum DiscrepancyKind
 {

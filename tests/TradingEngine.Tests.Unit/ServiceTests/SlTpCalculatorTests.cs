@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.ServiceTests;
+﻿namespace TradingEngine.Tests.Unit.ServiceTests;
 
 [Trait("Category", "Services")]
 public sealed class SlTpCalculatorTests

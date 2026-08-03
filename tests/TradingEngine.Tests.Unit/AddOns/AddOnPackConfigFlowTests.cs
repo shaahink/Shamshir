@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.AddOns;
+﻿namespace TradingEngine.Tests.Unit.AddOns;
 
 /// <summary>
 /// iter-38 PK2/PK3 (run-wiring seam): proves the chain the <c>BacktestOrchestrator</c> relies on to make a pack

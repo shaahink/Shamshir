@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 public sealed record IndicatorRequest(string Key, IndicatorType Type, int Period,
     double StdDev = 2.0, Timeframe Timeframe = Timeframe.H1)

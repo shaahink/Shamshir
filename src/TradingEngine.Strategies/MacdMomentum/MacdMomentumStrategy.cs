@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using TradingEngine.Services.SLTPCalculation;
 
@@ -140,7 +140,9 @@ public sealed class MacdMomentumStrategy : IStrategy
     {
         var config = new MacdMomentumConfig
         {
-            Id = entry.Id, DisplayName = entry.DisplayName, Enabled = entry.Enabled,
+            Id = entry.Id,
+            DisplayName = entry.DisplayName,
+            Enabled = entry.Enabled,
             RiskProfileId = entry.RiskProfileId,
             RegimeFilter = entry.RegimeFilter ?? new(),
             OrderEntry = entry.OrderEntry ?? new(),

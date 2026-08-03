@@ -2,27 +2,47 @@ name: PR Build & Test
 
 on:
   pull_request:
-    branches: [develop]
-    paths: ['src/**', 'tests/**']
+    # main is the default branch, so a PR into it had been getting zero checks — the one place
+    # the merge-on-green rule most needs to hold. develop keeps its coverage; main gains it.
+    branches: [develop, main]
+    # A change to a workflow file can break CI just as a source change can, and until now it was
+    # the one kind of change that merged unchecked.
+    paths: ['src/**', 'tests/**', '.github/workflows/**']
 
 jobs:
   build-and-test:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+
+      # Same reason as release.yml: wwwroot is gitignored, so the Angular UI has to be built
+      # before dotnet or TradingEngine.Web's EnsureAngularCurrent target fails the build.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: web-ui/package-lock.json
+      # See release.yml: the lockfile was resolved with --legacy-peer-deps.
+      - run: npm ci --legacy-peer-deps
+        working-directory: web-ui
+      - run: npm run build
+        working-directory: web-ui
+
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.x'
       - run: dotnet restore
       - run: dotnet build --no-restore -c Release
-      - run: dotnet test --no-build -c Release --logger trx --collect:"XPlat Code Coverage"
+      # See release.yml: same filter as scripts/gates.ps1 - the cTrader E2E tests need a cTrader
+      # installation and credentials on the machine and cannot run on a hosted runner.
+      - run: dotnet test --no-build -c Release --filter "RequiresCTrader!=true&Category!=E2E&Category!=Slow&Category!=NetMQ" --logger trx --collect:"XPlat Code Coverage"
       - uses: codecov/codecov-action@v5
 
   lint:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.x'
       - run: dotnet restore

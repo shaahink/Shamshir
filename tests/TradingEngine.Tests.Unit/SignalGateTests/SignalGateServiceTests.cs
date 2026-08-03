@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.SignalGateTests;
+﻿namespace TradingEngine.Tests.Unit.SignalGateTests;
 
 [Trait("Category", "SignalGate")]
 public sealed class SignalGateServiceTests

@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.RiskTests;
+﻿namespace TradingEngine.Tests.Unit.RiskTests;
 
 [Trait("Category", "Risk")]
 public sealed class RiskManagerTests

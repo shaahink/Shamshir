@@ -1,4 +1,4 @@
-namespace TradingEngine.Web.Services;
+﻿namespace TradingEngine.Web.Services;
 
 /// <summary>
 /// The throttled live-run progress envelope pushed over SignalR (<see cref="Hubs.RunHub"/>).

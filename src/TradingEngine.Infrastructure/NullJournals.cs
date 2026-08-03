@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure;
+﻿namespace TradingEngine.Infrastructure;
 
 /// <summary>
 /// No-op <see cref="IDecisionJournal"/> / <see cref="IPipelineJournal"/> (iter-36 K5). The lossless

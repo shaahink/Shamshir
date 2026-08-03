@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using TradingEngine.Domain;
 using TradingEngine.Services.Helpers;
 

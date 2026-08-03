@@ -1,4 +1,4 @@
-namespace TradingEngine.Risk.Compliance;
+﻿namespace TradingEngine.Risk.Compliance;
 
 /// <summary>
 /// One calendar day of an equity curve, bucketed from EquitySnapshots + Trades.

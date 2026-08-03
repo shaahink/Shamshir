@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using TradingEngine.CTraderRunner;
 using TradingEngine.Domain;
 using TradingEngine.Services;

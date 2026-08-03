@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.SLTPCalculation;
+﻿namespace TradingEngine.Services.SLTPCalculation;
 
 public static class SlTpHelpers
 {

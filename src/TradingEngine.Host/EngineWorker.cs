@@ -1,4 +1,4 @@
-namespace TradingEngine.Host;
+﻿namespace TradingEngine.Host;
 
 /// <summary>
 /// Thin hosted shell. All engine run logic lives in <see cref="EngineRunner"/> (no hosting

@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.Sessions;
+﻿namespace TradingEngine.Strategies.Sessions;
 
 /// <summary>
 /// A UTC time-of-day window <c>[StartUtc, EndUtc)</c> — start-inclusive, end-exclusive — that correctly

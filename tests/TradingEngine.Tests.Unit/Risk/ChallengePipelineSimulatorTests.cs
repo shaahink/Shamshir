@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Risk;
+﻿namespace TradingEngine.Tests.Unit.Risk;
 
 /// <summary>
 /// iter-pass-economics E1 — pins the pipeline walker's arithmetic on degenerate streams where

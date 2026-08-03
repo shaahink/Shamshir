@@ -1,4 +1,4 @@
-using TradingEngine.Domain;
+﻿using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence.Entities;
 
 namespace TradingEngine.Infrastructure.Persistence.Repositories;

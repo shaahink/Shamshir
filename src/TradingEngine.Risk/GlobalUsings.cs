@@ -1,4 +1,4 @@
-global using TradingEngine.Domain;
+﻿global using TradingEngine.Domain;
 global using TradingEngine.Domain.Events;
 global using TradingEngine.Risk.Compliance;
 global using TradingEngine.Risk.Filters;

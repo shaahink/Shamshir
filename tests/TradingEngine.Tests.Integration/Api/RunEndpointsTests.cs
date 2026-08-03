@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -41,9 +41,12 @@ public sealed class RunEndpointsTests : IClassFixture<WebApplicationFactory<Prog
     {
         var payload = new Dictionary<string, object?>
         {
-            ["symbol"] = "EURUSD", ["period"] = "h1",
-            ["start"] = "2024-01-01", ["end"] = "2024-01-02",
-            ["balance"] = 100_000, ["venue"] = "replay",
+            ["symbol"] = "EURUSD",
+            ["period"] = "h1",
+            ["start"] = "2024-01-01",
+            ["end"] = "2024-01-02",
+            ["balance"] = 100_000,
+            ["venue"] = "replay",
         };
         if (overrides is not null) payload["strategyOverrides"] = overrides;
 

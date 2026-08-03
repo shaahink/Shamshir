@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 public sealed record ExposureGroup(string Id, string Label, IReadOnlySet<string> Symbols, decimal MaxExposure)
 {

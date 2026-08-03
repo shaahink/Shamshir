@@ -1,4 +1,4 @@
-namespace TradingEngine.ResearchCli;
+﻿namespace TradingEngine.ResearchCli;
 
 /// <summary>
 /// P3.1 (Q3) — every ResearchCli command prints exactly ONE machine verdict as its LAST stdout line:

@@ -1,4 +1,4 @@
-namespace TradingEngine.ResearchCli;
+﻿namespace TradingEngine.ResearchCli;
 
 /// <summary>
 /// P3.2 (the centerpiece) — the dumb sequential playbook executor. It walks a playbook's steps in order,

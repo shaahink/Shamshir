@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using TradingEngine.CTraderRunner;
 using TradingEngine.Domain;
 using TradingEngine.Domain.Interfaces;
@@ -98,9 +98,11 @@ public sealed class RunConfigAssembler(
                     }
                     if (pack is not null)
                     {
-                        c = c with {
+                        c = c with
+                        {
                             PositionManagement = _configResolver.ApplyPack(c.PositionManagement, pack),
-                            RegimeFilter = (c.RegimeFilter ?? new RegimeFilterOptions()) with {
+                            RegimeFilter = (c.RegimeFilter ?? new RegimeFilterOptions()) with
+                            {
                                 DetectionEnabled = pack.RegimeDetectionEnabled
                             }
                         };

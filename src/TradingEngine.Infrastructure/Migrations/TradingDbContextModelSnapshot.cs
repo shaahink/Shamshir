@@ -1314,6 +1314,9 @@ namespace TradingEngine.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("Digits")
                         .HasColumnType("INTEGER");
 
@@ -1345,6 +1348,9 @@ namespace TradingEngine.Infrastructure.Migrations
 
                     b.Property<double>("TypicalSpread")
                         .HasColumnType("REAL");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Symbol", "Broker");
 

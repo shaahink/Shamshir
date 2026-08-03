@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.ExitLab;
+﻿namespace TradingEngine.Services.ExitLab;
 
 // P3.3: the excursion path format stored by TapeReplayAdapter (P3.1). HiPips/LoPips are signed
 // distances from entry price in pips (positive = above entry, negative = below entry). Bar-level

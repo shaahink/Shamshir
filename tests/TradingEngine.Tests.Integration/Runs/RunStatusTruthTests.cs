@@ -1,4 +1,4 @@
-using TradingEngine.Domain;
+﻿using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence.Entities;
 using TradingEngine.Infrastructure.Persistence.Repositories;
 using TradingEngine.Tests.Integration.Support;
@@ -64,7 +64,10 @@ public sealed class RunStatusTruthTests : IDisposable
     {
         var end = Base("run-clean") with
         {
-            CompletedAtUtc = DateTime.UtcNow, ExitCode = 0, ErrorMessage = null, WarningsJson = null,
+            CompletedAtUtc = DateTime.UtcNow,
+            ExitCode = 0,
+            ErrorMessage = null,
+            WarningsJson = null,
             TotalTrades = 5,
         };
 
@@ -79,7 +82,10 @@ public sealed class RunStatusTruthTests : IDisposable
     {
         var end = Base("run-fail") with
         {
-            CompletedAtUtc = DateTime.UtcNow, ExitCode = 1, ErrorMessage = "No bars found", WarningsJson = null,
+            CompletedAtUtc = DateTime.UtcNow,
+            ExitCode = 1,
+            ErrorMessage = "No bars found",
+            WarningsJson = null,
         };
 
         var read = await RoundTrip(end);

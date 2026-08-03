@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <summary>
 /// One observation of a currency's USD leg: how many USD one unit of it bought at <see cref="AtUtc"/>.

@@ -1,4 +1,4 @@
-using TradingEngine.Infrastructure.Configuration;
+﻿using TradingEngine.Infrastructure.Configuration;
 
 namespace TradingEngine.Tests.Integration.InfrastructureTests;
 

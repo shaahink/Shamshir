@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.AddOns;
+﻿namespace TradingEngine.Tests.Unit.AddOns;
 
 /// <summary>
 /// iter-38 A5 (Ride): while enabled and ADX is above the floor, the ATR trail uses the relaxed (wider)

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 
 namespace TradingEngine.Services.ExitLab;
 
@@ -25,12 +25,12 @@ public static class ExitGridEvaluator
                     foreach (var trail in trailMultiples)
                     {
                         yield return new ExitRule
-            {
-                SlAtrMultiple = sl,
-                TpRrMultiple = tp,
-                BeTriggerR = be,
-                TrailAtrMultiple = trail,
-                ReferenceAtrPips = referenceAtrPips,
+                        {
+                            SlAtrMultiple = sl,
+                            TpRrMultiple = tp,
+                            BeTriggerR = be,
+                            TrailAtrMultiple = trail,
+                            ReferenceAtrPips = referenceAtrPips,
                         };
                     }
                 }

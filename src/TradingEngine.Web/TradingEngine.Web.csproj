@@ -35,6 +35,23 @@
     <NgProjectDir>..\..\web-ui</NgProjectDir>
   </PropertyGroup>
 
+  <!-- TradingEngine.Host is referenced for the engine types this app drives, but it is an
+       executable worker that carries its own appsettings*.json. Those files ride the project
+       reference into this project's publish output at exactly the relative paths this app's own
+       configuration occupies, so the SDK refuses to guess a winner (NETSDK1152) - and before it
+       started erroring, whichever copy landed last silently became the web app's configuration.
+       The web app ships its own config; the worker's belongs in the worker's publish only. -->
+  <Target Name="ExcludeHostConfigFromWebPublish"
+          AfterTargets="ComputeFilesToPublish"
+          BeforeTargets="_HandleFileConflictsForPublish">
+    <ItemGroup>
+      <_HostOwnedConfig Include="@(ResolvedFileToPublish)"
+                        Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('appsettings')) AND
+                                   $([System.String]::Copy('%(ResolvedFileToPublish.Identity)').Contains('TradingEngine.Host'))" />
+      <ResolvedFileToPublish Remove="@(_HostOwnedConfig)" />
+    </ItemGroup>
+  </Target>
+
   <!-- Pre-build check: ensure Angular front-end is up to date.
        The Angular build cannot run inside dotnet build because .NET 10's static web assets
        pipeline evaluates @(Content) items at project evaluation time (before any targets run).

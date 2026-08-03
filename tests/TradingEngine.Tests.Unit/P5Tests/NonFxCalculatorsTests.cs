@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.P5Tests;
+﻿namespace TradingEngine.Tests.Unit.P5Tests;
 
 public sealed class NonFxPipCalculatorTests
 {

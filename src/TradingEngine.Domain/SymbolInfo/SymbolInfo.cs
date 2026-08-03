@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 /// <param name="SwapLongPerLotPerNight">Overnight financing for a LONG, in <b>PIPS per lot per night</b>,
 ///     signed as a P&amp;L adjustment: <b>negative = the trader pays</b>, positive = the trader receives.

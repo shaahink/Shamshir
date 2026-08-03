@@ -1,4 +1,4 @@
-namespace TradingEngine.Strategies.AsiaRange;
+﻿namespace TradingEngine.Strategies.AsiaRange;
 
 public sealed record AsiaRangeParameters
 {

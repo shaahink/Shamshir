@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Services;
+﻿namespace TradingEngine.Tests.Unit.Services;
 
 /// <summary>
 /// iter-redesign P3.2 — a "no add-ons (raw)" run must strip every enrichment add-on while preserving the

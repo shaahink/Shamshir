@@ -1,4 +1,4 @@
-namespace TradingEngine.Host;
+﻿namespace TradingEngine.Host;
 
 public sealed class DataFeedService(
     IMarketDataProvider marketData,

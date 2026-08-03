@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain.Events;
+﻿namespace TradingEngine.Domain.Events;
 
 public record PositionPartiallyClosed(
     Guid PositionId,

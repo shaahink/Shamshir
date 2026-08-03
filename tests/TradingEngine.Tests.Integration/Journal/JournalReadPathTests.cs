@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Persistence;

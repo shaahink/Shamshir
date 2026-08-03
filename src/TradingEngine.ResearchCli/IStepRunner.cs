@@ -1,4 +1,4 @@
-namespace TradingEngine.ResearchCli;
+﻿namespace TradingEngine.ResearchCli;
 
 /// <summary>
 /// P3.2 — the seam the <see cref="PlaybookExecutor"/> uses to run ONE step against the running app. Real

@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain;
+﻿namespace TradingEngine.Domain;
 
 public interface IEventHandler<in TEvent> where TEvent : EngineEvent
 {

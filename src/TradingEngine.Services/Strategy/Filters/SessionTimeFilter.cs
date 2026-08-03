@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.Strategy.Filters;
+﻿namespace TradingEngine.Services.Strategy.Filters;
 
 public sealed class SessionTimeFilter(TimeOnly openUtc, TimeOnly closeUtc, bool excludeWeekends = true) : IEntryFilter
 {

@@ -1,4 +1,4 @@
-using TradingEngine.Infrastructure.Persistence.Entities;
+﻿using TradingEngine.Infrastructure.Persistence.Entities;
 
 namespace TradingEngine.Tests.Simulation;
 

@@ -1,4 +1,4 @@
-using TradingEngine.Web.Dtos.Bars;
+﻿using TradingEngine.Web.Dtos.Bars;
 
 namespace TradingEngine.Web.Services;
 

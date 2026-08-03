@@ -1,4 +1,4 @@
-namespace TradingEngine.Risk.Compliance;
+﻿namespace TradingEngine.Risk.Compliance;
 
 /// <summary>
 /// One trading day of a candidate's pooled position stream: net closed PnL (CE(S)T daily

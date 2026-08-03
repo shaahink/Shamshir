@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Risk;
+﻿namespace TradingEngine.Tests.Unit.Risk;
 
 [Trait("Category", "Risk")]
 public sealed class ChallengeSimulatorTests

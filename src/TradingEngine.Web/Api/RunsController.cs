@@ -1,4 +1,4 @@
-using TradingEngine.CTraderRunner;
+﻿using TradingEngine.CTraderRunner;
 using TradingEngine.Infrastructure.MarketData;
 using TradingEngine.Web.Dtos.Runs;
 using TradingEngine.Web.Services;
@@ -169,7 +169,7 @@ public sealed class RunsController : ControllerBase
         // Run-level protection toggles (P5) — default "true" means ruleset defaults apply.
         cfg.CustomParams["DailyDdEnabled"] = req.DailyDdEnabled ? "true" : "false";
         cfg.CustomParams["MaxDdEnabled"] = req.MaxDdEnabled ? "true" : "false";
-            cfg.CustomParams["ForceCloseOnBreachEnabled"] = req.ForceCloseOnBreachEnabled ? "true" : "false";
+        cfg.CustomParams["ForceCloseOnBreachEnabled"] = req.ForceCloseOnBreachEnabled ? "true" : "false";
         if (!string.IsNullOrWhiteSpace(req.RiskProfileId))
             cfg.CustomParams["RiskProfileId"] = req.RiskProfileId.Trim();
         cfg.CustomParams["Venue"] = venue;

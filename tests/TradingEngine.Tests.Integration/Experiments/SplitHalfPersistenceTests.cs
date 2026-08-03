@@ -1,4 +1,4 @@
-using TradingEngine.Tests.Integration.Support;
+﻿using TradingEngine.Tests.Integration.Support;
 using TradingEngine.Web.Services;
 
 namespace TradingEngine.Tests.Integration.Experiments;

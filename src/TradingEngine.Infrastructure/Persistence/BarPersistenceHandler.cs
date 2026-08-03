@@ -1,4 +1,4 @@
-using TradingEngine.Domain;
+﻿using TradingEngine.Domain;
 using TradingEngine.Infrastructure.Caching;
 
 namespace TradingEngine.Infrastructure.Persistence;

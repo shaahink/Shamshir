@@ -1,4 +1,4 @@
-using TradingEngine.Infrastructure.Adapters;
+﻿using TradingEngine.Infrastructure.Adapters;
 
 namespace TradingEngine.Tests.Unit.Adapters;
 

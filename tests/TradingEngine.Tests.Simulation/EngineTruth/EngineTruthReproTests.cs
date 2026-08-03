@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using TradingEngine.Engine;
 using TradingEngine.Host;
 using TradingEngine.Infrastructure.Configuration;

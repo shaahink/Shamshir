@@ -1,4 +1,4 @@
-using TradingEngine.Infrastructure.Indicators;
+﻿using TradingEngine.Infrastructure.Indicators;
 
 namespace TradingEngine.Tests.Unit.Infrastructure;
 

@@ -1,4 +1,4 @@
-namespace TradingEngine.Services;
+﻿namespace TradingEngine.Services;
 
 public static class SessionDetector
 {

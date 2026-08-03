@@ -1,4 +1,4 @@
-using TradingEngine.CTraderRunner;
+﻿using TradingEngine.CTraderRunner;
 
 namespace TradingEngine.Web.Services;
 

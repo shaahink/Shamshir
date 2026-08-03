@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using TradingEngine.Infrastructure.MarketData.Sync;
 
 namespace TradingEngine.Infrastructure.MarketData;

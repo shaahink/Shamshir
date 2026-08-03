@@ -1,4 +1,4 @@
-using TradingEngine.Web.Services;
+﻿using TradingEngine.Web.Services;
 
 namespace TradingEngine.Tests.Integration.LiveMonitorChain;
 

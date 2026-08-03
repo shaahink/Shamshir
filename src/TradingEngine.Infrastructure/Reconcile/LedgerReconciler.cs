@@ -1,4 +1,4 @@
-namespace TradingEngine.Infrastructure.Reconcile;
+﻿namespace TradingEngine.Infrastructure.Reconcile;
 
 /// <summary>
 /// iter-marketdata-tape P0 — diffs an engine ledger against a venue (cTrader) ledger, classifying each

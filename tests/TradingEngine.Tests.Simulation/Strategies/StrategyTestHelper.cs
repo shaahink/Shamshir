@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Simulation.Strategies;
+﻿namespace TradingEngine.Tests.Simulation.Strategies;
 
 public static class StrategyTestHelper
 {

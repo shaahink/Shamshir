@@ -1,4 +1,4 @@
-namespace TradingEngine.Services.Helpers;
+﻿namespace TradingEngine.Services.Helpers;
 
 /// <summary>
 /// P0.3 (F6): the single place that turns a <see cref="PublishTradeClosed"/> effect into a

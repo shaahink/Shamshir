@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Unit.Infrastructure;
+﻿namespace TradingEngine.Tests.Unit.Infrastructure;
 
 [Trait("Category", "Infrastructure")]
 public sealed class NetMQBrokerDedupTests

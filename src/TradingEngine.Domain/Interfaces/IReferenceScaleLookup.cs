@@ -1,4 +1,4 @@
-namespace TradingEngine.Domain.Interfaces;
+﻿namespace TradingEngine.Domain.Interfaces;
 
 /// <summary>
 /// Reads pre-computed reference volatilities (rolling-median ATR, median bar range) from the

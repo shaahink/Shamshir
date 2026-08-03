@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using TradingEngine.Engine;
 
 namespace TradingEngine.Host;
@@ -188,7 +188,7 @@ public sealed class KernelBacktestLoop
         {
             var venueOpenIds = _venue.GetOpenPositionIds();
             var lastPrice = bar.Close > 0 ? new Price(bar.Close) : new Price(0m);
-            var rec = EngineReducer.ReconcileToVenue(state, venueOpenIds, lastPrice, bar.BarOpenTimeUtc);
+            var rec = EngineReducer.ReconcileToVenue(state, venueOpenIds, lastPrice, new SimTime(bar.BarOpenTimeUtc));
             if (rec.Effects.Count > 0)
             {
                 state = rec.State;

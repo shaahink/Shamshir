@@ -1,4 +1,4 @@
-namespace TradingEngine.Tests.Simulation.Harness;
+﻿namespace TradingEngine.Tests.Simulation.Harness;
 
 /// <summary>
 /// Fires every bar after warm-up (no skipping). Used to create overlapping

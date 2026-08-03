@@ -1,4 +1,4 @@
-using TradingEngine.Engine;
+﻿using TradingEngine.Engine;
 using TradingEngine.Host;
 using TradingEngine.Tests.Simulation.Harness;
 
