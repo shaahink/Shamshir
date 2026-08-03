@@ -2,8 +2,12 @@ name: PR Build & Test
 
 on:
   pull_request:
-    branches: [develop]
-    paths: ['src/**', 'tests/**']
+    # main is the default branch, so a PR into it had been getting zero checks — the one place
+    # the merge-on-green rule most needs to hold. develop keeps its coverage; main gains it.
+    branches: [develop, main]
+    # A change to a workflow file can break CI just as a source change can, and until now it was
+    # the one kind of change that merged unchecked.
+    paths: ['src/**', 'tests/**', '.github/workflows/**']
 
 jobs:
   build-and-test:
